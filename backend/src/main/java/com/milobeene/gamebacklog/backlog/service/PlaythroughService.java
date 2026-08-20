@@ -1,0 +1,140 @@
+package com.milobeene.gamebacklog.backlog.service;
+
+import com.milobeene.gamebacklog.backlog.domain.BacklogEntry;
+import com.milobeene.gamebacklog.backlog.domain.Playthrough;
+import com.milobeene.gamebacklog.backlog.domain.PlaythroughCommand;
+import com.milobeene.gamebacklog.backlog.repository.PlaythroughRepository;
+import com.milobeene.gamebacklog.platform.domain.Device;
+import com.milobeene.gamebacklog.platform.domain.Emulator;
+import com.milobeene.gamebacklog.platform.domain.PlatformAccount;
+import com.milobeene.gamebacklog.platform.repository.DeviceRepository;
+import com.milobeene.gamebacklog.platform.repository.EmulatorRepository;
+import com.milobeene.gamebacklog.platform.repository.PlatformAccountRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class PlaythroughService {
+
+    private final PlaythroughRepository playthroughRepository;
+    private final DeviceRepository deviceRepository;
+    private final EmulatorRepository emulatorRepository;
+    private final PlatformAccountRepository platformAccountRepository;
+    private final BacklogEntryFinder entryFinder;
+
+    /** 회차 추가 (FR-PT-01~07). 번호는 1부터 순차, 구멍은 메우지 않는다 */
+    @Transactional
+    public Long add(Long memberId, Long entryId, PlaythroughCommand command) {
+        BacklogEntry entry = entryFinder.findOwned(memberId, entryId);
+        List<Playthrough> siblings = siblingsOf(entryId);
+
+        Playthrough playthrough = Playthrough.of(entry, nextSequenceNo(siblings), command);
+        validateAgainstSiblings(playthrough, siblings);
+        assignReferences(playthrough, command);
+
+        playthroughRepository.persist(playthrough);
+
+        // 이 한 줄이 없으면 아래 sync가 방금 넣은 회차를 못 본다 (mappedBy 역방향은 읽기 전용)
+        entry.addPlaythrough(playthrough);
+        entry.syncDerivedState();
+
+        return playthrough.getId();
+    }
+
+    /** 회차 수정 (B-5) — 기간·상태·속성 전체 교체 */
+    @Transactional
+    public void update(Long memberId, Long playthroughId, PlaythroughCommand command) {
+        Playthrough playthrough = findOwnedPlaythrough(memberId, playthroughId);
+        BacklogEntry entry = playthrough.getBacklogEntry();
+
+        playthrough.update(command);
+        validateAgainstSiblings(playthrough, siblingsOf(entry.getId()));
+        assignReferences(playthrough, command);
+
+        entry.syncDerivedState();
+    }
+
+    /** 회차 물리 삭제 (§7.4 — 회차는 소프트 삭제 대상이 아니다) */
+    @Transactional
+    public void delete(Long memberId, Long playthroughId) {
+        Playthrough playthrough = findOwnedPlaythrough(memberId, playthroughId);
+        BacklogEntry entry = playthrough.getBacklogEntry();
+
+        playthroughRepository.delete(playthrough);
+        entry.removePlaythrough(playthrough);
+        entry.syncDerivedState();
+    }
+
+    public List<Playthrough> findAll(Long memberId, Long entryId) {
+        entryFinder.findOwned(memberId, entryId);
+        return siblingsOf(entryId);
+    }
+
+    private List<Playthrough> siblingsOf(Long entryId) {
+        return playthroughRepository.findByBacklogEntryIdOrderBySequenceNoAsc(entryId);
+    }
+
+    /** 구멍은 메우지 않는다 — 최대값 + 1. 번호는 표시용 라벨이고 최신 판정은 날짜가 한다 (§7.6) */
+    private int nextSequenceNo(List<Playthrough> siblings) {
+        return siblings.stream()
+                .mapToInt(Playthrough::getSequenceNo)
+                .max()
+                .orElse(0) + 1;
+    }
+
+    /** 형제를 봐야 하는 검증 둘. 혼자 판단 가능한 BR-PT-01·04는 엔티티가 이미 했다 */
+    private void validateAgainstSiblings(Playthrough target, List<Playthrough> siblings) {
+        for (Playthrough sibling : siblings) {
+            if (isSame(target, sibling)) {
+                continue;   // 수정 중인 자기 자신
+            }
+            // BR-PT-03 — PLAYING·PAUSED 둘 다 진행 중이다. 새로 넣으려면 기존 것을 닫아야 한다
+            if (target.isInProgress() && sibling.isInProgress()) {
+                throw new IllegalStateException(
+                        "진행 중인 회차가 이미 있습니다. " + sibling.getSequenceNo()
+                                + "회차를 DROPPED 또는 COMPLETED로 닫아주세요");
+            }
+            // BR-PT-02 — 진행 중 회차는 시작일부터 무한대까지 점유한다
+            if (target.overlaps(sibling)) {
+                throw new IllegalStateException(
+                        "회차 기간이 " + sibling.getSequenceNo() + "회차와 겹칩니다");
+            }
+        }
+    }
+
+    private boolean isSame(Playthrough target, Playthrough sibling) {
+        return target.getId() != null && target.getId().equals(sibling.getId());
+    }
+
+    /** 엔티티는 리포지토리를 모르므로 참조 조회는 서비스가 한다 */
+    private void assignReferences(Playthrough playthrough, PlaythroughCommand command) {
+        Device device = (command.deviceId() == null) ? null
+                : deviceRepository.findById(command.deviceId())
+                .orElseThrow(() -> new IllegalArgumentException("기기를 찾을 수 없습니다. id=" + command.deviceId()));
+
+        PlatformAccount account = (command.platformAccountId() == null) ? null
+                : platformAccountRepository.findById(command.platformAccountId())
+                .orElseThrow(() -> new IllegalArgumentException("플랫폼 계정을 찾을 수 없습니다. id=" + command.platformAccountId()));
+
+        Emulator emulator = (command.emulatorId() == null) ? null
+                : emulatorRepository.findById(command.emulatorId())
+                .orElseThrow(() -> new IllegalArgumentException("에뮬레이터를 찾을 수 없습니다. id=" + command.emulatorId()));
+
+        playthrough.assignReferences(device, account, emulator);
+    }
+
+    private Playthrough findOwnedPlaythrough(Long memberId, Long playthroughId) {
+        Playthrough playthrough = playthroughRepository.findById(playthroughId)
+                .orElseThrow(() -> new IllegalArgumentException("회차를 찾을 수 없습니다. id=" + playthroughId));
+
+        // 부모 항목의 소유권을 확인한다. 회차는 자기 소유자를 따로 갖지 않는다
+        entryFinder.findOwned(memberId, playthrough.getBacklogEntry().getId());
+
+        return playthrough;
+    }
+}

@@ -1,0 +1,6 @@
+# 테스트 전용 설정. main의 application.yml 위에 덮인다 (통째로 대체가 아니라 병합).
+# dev용 H2 TCP 서버를 건드리지 않도록 인메모리로 분리 — ddl-auto: create가 매 부팅마다
+# 테이블을 DROP하는데, DDL은 트랜잭션 롤백 대상이 아니라서 dev 데이터가 날아간다.
+spring:
+  datasource:
+    url: jdbc:h2:mem:test;DB_CLOSE_DELAY=-1

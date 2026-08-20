@@ -11,6 +11,8 @@ spring:
     properties:
       hibernate:
         format_sql: true
+#        type:
+#          preferred_enum_jdbc_type: VARCHAR
     open-in-view: false
 
   h2:

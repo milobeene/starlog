@@ -1,6 +1,7 @@
 package com.milobeene.gamebacklog.platform.domain;
 
 import com.milobeene.gamebacklog.common.entity.BaseEntity;
+import com.milobeene.gamebacklog.common.util.TextValues;
 import com.milobeene.gamebacklog.member.domain.Member;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -40,6 +41,41 @@ public class PlatformAccount extends BaseEntity {
     public PlatformAccount(Member member, Platform platform, String accountLabel) {
         this.member = member;
         this.platform = platform;
-        this.accountLabel = accountLabel;
+        this.accountLabel = requireLabel(accountLabel);
+    }
+
+    /** 라벨은 표시용 별칭이다. 실제 플랫폼 계정과 연동하지 않는다 (§6.5) */
+    public void rename(String accountLabel) {
+        this.accountLabel = requireLabel(accountLabel);
+    }
+
+    /**
+     * 소프트 삭제 (§6.5, §7.4). 회차·취득이 이 계정을 참조하므로 행을 보존한다.
+     * 삭제해도 과거 기록에서는 계정 이름이 계속 보여야 한다
+     */
+    public void softDelete(LocalDateTime deletedAt) {
+        if (isDeleted()) {
+            throw new IllegalStateException("이미 삭제된 계정입니다. id=" + id);
+        }
+        this.deletedAt = deletedAt;
+    }
+
+    public void revive() {
+        if (!isDeleted()) {
+            throw new IllegalStateException("삭제되지 않은 계정입니다. id=" + id);
+        }
+        this.deletedAt = null;
+    }
+
+    public boolean isDeleted() {
+        return deletedAt != null;
+    }
+
+    private static String requireLabel(String accountLabel) {
+        String normalized = TextValues.normalize(accountLabel);
+        if (normalized == null) {
+            throw new IllegalArgumentException("계정 라벨은 비울 수 없습니다");
+        }
+        return normalized;
     }
 }
