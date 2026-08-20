@@ -26,7 +26,7 @@ public interface BacklogEntryRepository extends BaseRepository<BacklogEntry, Lon
             @Param("memberId") Long memberId, @Param("gameId") Long gameId);
 
     /**
-     * 단건 조회 — 삭제된 항목 제외 (A-6).
+     * 단건 조회 — 삭제된 항목 제외 (A-6). BacklogService.findOne이 쓴다.
      * DeletedAtIsNull이 where deleted_at is null로 번역된다
      */
     Optional<BacklogEntry> findByIdAndDeletedAtIsNull(Long id);

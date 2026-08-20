@@ -8,6 +8,8 @@ import com.milobeene.gamebacklog.backlog.domain.AcquisitionCommand;
 import com.milobeene.gamebacklog.backlog.domain.AcquisitionMethod;
 import com.milobeene.gamebacklog.backlog.service.AcquisitionService;
 import com.milobeene.gamebacklog.backlog.service.BacklogService;
+import com.milobeene.gamebacklog.common.exception.InvalidInputException;
+import com.milobeene.gamebacklog.common.exception.NotFoundException;
 import com.milobeene.gamebacklog.game.domain.Game;
 import com.milobeene.gamebacklog.game.repository.GameRepository;
 import com.milobeene.gamebacklog.member.domain.Member;
@@ -68,7 +70,7 @@ class SubscriptionServiceTest {
         assertThatThrownBy(() -> subscriptionService.register(memberId, new SubscriptionCommand(
                 "PS Plus", LocalDate.of(2026, 6, 1), LocalDate.of(2026, 1, 1),
                 null, null, BillingCycle.YEARLY)))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(InvalidInputException.class);
     }
 
     @Test
@@ -114,7 +116,7 @@ class SubscriptionServiceTest {
 
         //when & then
         assertThatThrownBy(() -> subscriptionService.delete(stranger.getId(), id))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(NotFoundException.class);
     }
 
     // ── F-2: 취득 연결
@@ -150,7 +152,7 @@ class SubscriptionServiceTest {
         assertThatThrownBy(() -> acquisitionService.add(memberId, entryId, new AcquisitionCommand(
                 AcquisitionMethod.PURCHASED, null, null, subscriptionId,
                 new BigDecimal("59000"), "KRW", null, null)))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(InvalidInputException.class)
                 .hasMessageContaining("SUBSCRIPTION");
     }
 
@@ -186,7 +188,7 @@ class SubscriptionServiceTest {
         assertThatThrownBy(() -> acquisitionService.add(memberId, entryId, new AcquisitionCommand(
                 AcquisitionMethod.SUBSCRIPTION, null, null, strangerSubscription,
                 null, null, null, null)))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(NotFoundException.class);
     }
 
     // ── 헬퍼

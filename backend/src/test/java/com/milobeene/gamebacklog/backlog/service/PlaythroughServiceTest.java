@@ -10,11 +10,17 @@ import com.milobeene.gamebacklog.backlog.domain.Playthrough;
 import com.milobeene.gamebacklog.backlog.domain.PlaythroughCommand;
 import com.milobeene.gamebacklog.backlog.domain.PlaythroughStatus;
 import com.milobeene.gamebacklog.backlog.repository.BacklogEntryRepository;
+import com.milobeene.gamebacklog.common.exception.ConflictException;
+import com.milobeene.gamebacklog.common.exception.InvalidInputException;
+import com.milobeene.gamebacklog.common.exception.NotFoundException;
 import com.milobeene.gamebacklog.game.domain.Game;
 import com.milobeene.gamebacklog.game.repository.GameRepository;
 import com.milobeene.gamebacklog.member.domain.Member;
 import com.milobeene.gamebacklog.platform.domain.Device;
+import com.milobeene.gamebacklog.platform.domain.Platform;
 import com.milobeene.gamebacklog.platform.repository.DeviceRepository;
+import com.milobeene.gamebacklog.platform.repository.PlatformRepository;
+import com.milobeene.gamebacklog.platform.service.PlatformAccountService;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,6 +40,8 @@ class PlaythroughServiceTest {
     @Autowired BacklogEntryRepository backlogEntryRepository;
     @Autowired GameRepository gameRepository;
     @Autowired DeviceRepository deviceRepository;
+    @Autowired PlatformRepository platformRepository;
+    @Autowired PlatformAccountService platformAccountService;
     @Autowired EntityManager em;
 
     @Test
@@ -101,7 +109,7 @@ class PlaythroughServiceTest {
         //when & then — BR-PT-01
         assertThatThrownBy(() -> playthroughService.add(memberId, entryId,
                 finished(LocalDate.of(2026, 3, 10), LocalDate.of(2026, 3, 1))))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(InvalidInputException.class);
     }
 
     @Test
@@ -131,7 +139,7 @@ class PlaythroughServiceTest {
         //when & then — BR-PT-02. 하루라도 닿으면 겹친 것
         assertThatThrownBy(() -> playthroughService.add(memberId, entryId,
                 finished(LocalDate.of(2026, 1, 31), LocalDate.of(2026, 2, 10))))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(ConflictException.class)
                 .hasMessageContaining("겹칩니다");
     }
 
@@ -144,7 +152,7 @@ class PlaythroughServiceTest {
         //when & then — BR-PT-03. PAUSED로 넣어도 마찬가지다
         assertThatThrownBy(() -> playthroughService.add(memberId, entryId,
                 inProgress(LocalDate.of(2026, 6, 1), PlaythroughStatus.PAUSED)))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(ConflictException.class)
                 .hasMessageContaining("진행 중인 회차가 이미 있습니다");
     }
 
@@ -169,6 +177,111 @@ class PlaythroughServiceTest {
     }
 
     @Test
+    public void 멈춘_회차에_종료일을_적을_수_있다() {
+        //given — 실데이터의 포켓몬 소드실드 케이스: 6/3~6/11 하다 멈춤
+        Long entryId = givenEntry("포켓몬스터 소드 실드");
+
+        //when
+        playthroughService.add(memberId, entryId, new PlaythroughCommand(
+                LocalDate.of(2026, 6, 3), LocalDate.of(2026, 6, 11), PlaythroughStatus.PAUSED,
+                null, null, null, null, null));
+
+        em.flush();
+        em.clear();
+
+        //then — 상태는 PAUSED로 파생되고, lastPlayedOn은 시작일이 아니라 멈춘 날이다.
+        // 열린 채로 뒀다면 6/3이 되어 최근 플레이순 정렬이 8일 틀어졌을 것
+        BacklogEntry entry = backlogEntryRepository.findById(entryId).orElseThrow();
+        assertThat(entry.getStatus()).isEqualTo(BacklogStatus.PAUSED);
+        assertThat(entry.getLastPlayedOn()).isEqualTo(LocalDate.of(2026, 6, 11));
+    }
+
+    @Test
+    public void 종료일을_적은_멈춘_회차는_새_회차를_막지_않는다() {
+        //given — 판정 기준이 상태가 아니라 종료일이라서
+        Long entryId = givenEntry("Palworld");
+        playthroughService.add(memberId, entryId, new PlaythroughCommand(
+                LocalDate.of(2024, 3, 13), LocalDate.of(2025, 7, 21), PlaythroughStatus.PAUSED,
+                null, null, null, null, null));
+
+        //when
+        playthroughService.add(memberId, entryId, playing(LocalDate.of(2026, 7, 14)));
+
+        em.flush();
+        em.clear();
+
+        //then
+        BacklogEntry entry = backlogEntryRepository.findById(entryId).orElseThrow();
+        assertThat(entry.getStatus()).isEqualTo(BacklogStatus.PLAYING);
+        assertThat(playthroughService.findAll(memberId, entryId)).hasSize(2);
+    }
+
+    @Test
+    public void 마지막_회차가_비정규화된다() {
+        //given
+        Long entryId = givenEntry("링 피트 어드벤처");
+        Device device = saveDevice("Nintendo Switch");
+        playthroughService.add(memberId, entryId, new PlaythroughCommand(
+                LocalDate.of(2022, 1, 1), LocalDate.of(2023, 1, 1), PlaythroughStatus.COMPLETED,
+                null, null, null, null, null));
+
+        //when — 2회차 진행 중
+        playthroughService.add(memberId, entryId, new PlaythroughCommand(
+                LocalDate.of(2026, 5, 27), null, PlaythroughStatus.PLAYING,
+                device.getId(), null, null, null, null));
+
+        em.flush();
+        em.clear();
+
+        //then — 목록 카드가 필요로 하는 "N회차 · 기간 · 기기"가 참조 하나로 나온다
+        BacklogEntry entry = backlogEntryRepository.findById(entryId).orElseThrow();
+        assertThat(entry.getLastPlaythrough().getSequenceNo()).isEqualTo(2);
+        assertThat(entry.getLastPlaythrough().getStartedOn()).isEqualTo(LocalDate.of(2026, 5, 27));
+        assertThat(entry.getLastPlaythrough().getFinishedOn()).isNull();
+        assertThat(entry.getLastPlaythrough().getDevice().getName()).isEqualTo("Nintendo Switch");
+    }
+
+    @Test
+    public void 마지막_회차를_지우면_비정규화도_따라온다() {
+        //given
+        Long entryId = givenEntry("Split Fiction");
+        playthroughService.add(memberId, entryId,
+                finished(LocalDate.of(2026, 3, 23), LocalDate.of(2026, 7, 5)));
+        Long second = playthroughService.add(memberId, entryId,
+                finished(LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 10)));
+
+        //when
+        playthroughService.delete(memberId, second);
+
+        em.flush();
+        em.clear();
+
+        //then — 지운 회차를 계속 가리키면 FK가 깨진다
+        BacklogEntry entry = backlogEntryRepository.findById(entryId).orElseThrow();
+        assertThat(entry.getLastPlaythrough().getSequenceNo()).isEqualTo(1);
+        assertThat(entry.getLastPlayedOn()).isEqualTo(LocalDate.of(2026, 7, 5));
+    }
+
+    @Test
+    public void 회차를_전부_지우면_비정규화가_비워진다() {
+        //given
+        Long entryId = givenEntry("Detroit Become Human");
+        Long only = playthroughService.add(memberId, entryId,
+                finished(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 20)));
+
+        //when
+        playthroughService.delete(memberId, only);
+
+        em.flush();
+        em.clear();
+
+        //then
+        BacklogEntry entry = backlogEntryRepository.findById(entryId).orElseThrow();
+        assertThat(entry.getLastPlaythrough()).isNull();
+        assertThat(entry.getLastPlayedOn()).isNull();
+    }
+
+    @Test
     public void 진행_중인데_종료일을_주면_예외가_발생한다() {
         //given
         Long entryId = givenEntry("Cuphead");
@@ -177,7 +290,7 @@ class PlaythroughServiceTest {
         assertThatThrownBy(() -> playthroughService.add(memberId, entryId, new PlaythroughCommand(
                 LocalDate.of(2026, 1, 1), LocalDate.of(2026, 2, 1), PlaythroughStatus.PLAYING,
                 null, null, null, null, null)))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(InvalidInputException.class);
     }
 
     // ── 상태 파생 (§7.6)
@@ -245,6 +358,88 @@ class PlaythroughServiceTest {
     }
 
     @Test
+    public void 진행_중_회차가_있으면_과거_회차를_진행_중으로_수정할_수_없다() {
+        //given — 과거 완료 회차 + 현재 진행 중 회차
+        Long entryId = givenEntry("Nioh");
+        Long past = playthroughService.add(memberId, entryId,
+                finished(LocalDate.of(2025, 1, 1), LocalDate.of(2025, 2, 1)));
+        playthroughService.add(memberId, entryId, playing(LocalDate.of(2026, 1, 1)));
+
+        //when & then — 과거 회차를 PAUSED(진행 중)로 되돌리려 하면 막힌다
+        assertThatThrownBy(() -> playthroughService.update(memberId, past,
+                inProgress(LocalDate.of(2025, 1, 1), PlaythroughStatus.PAUSED)))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("진행 중인 회차가 이미 있습니다");
+    }
+
+    @Test
+    public void 기간이_이어지는_회차는_겹침이_아니다() {
+        //given — 1/31에 끝나고 2/1에 시작: 하루 차이는 허용, 같은 날은 겹침 (BR-PT-02 경계)
+        Long entryId = givenEntry("Ori");
+        playthroughService.add(memberId, entryId,
+                finished(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 31)));
+
+        //when
+        playthroughService.add(memberId, entryId,
+                finished(LocalDate.of(2026, 2, 1), LocalDate.of(2026, 2, 10)));
+
+        //then
+        assertThat(playthroughService.findAll(memberId, entryId)).hasSize(2);
+    }
+
+    @Test
+    public void 수정으로_기간이_겹치게_되면_예외가_발생한다() {
+        //given
+        Long entryId = givenEntry("Hollow Knight Silksong");
+        playthroughService.add(memberId, entryId,
+                finished(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 20)));
+        Long second = playthroughService.add(memberId, entryId,
+                finished(LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 20)));
+
+        //when & then — 시작일을 1회차 기간 안으로 당기면 BR-PT-02
+        assertThatThrownBy(() -> playthroughService.update(memberId, second,
+                finished(LocalDate.of(2026, 1, 15), LocalDate.of(2026, 3, 20))))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("겹칩니다");
+    }
+
+    @Test
+    public void 삭제된_항목에는_회차를_추가할_수_없다() {
+        //given
+        Long entryId = givenEntry("Returnal");
+        backlogService.delete(memberId, entryId);
+
+        //when & then
+        assertThatThrownBy(() -> playthroughService.add(memberId, entryId,
+                playing(LocalDate.of(2026, 1, 1))))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("삭제된 항목");
+    }
+
+    @Test
+    public void 삭제된_계정도_과거_회차에서는_계속_보인다() {
+        //given — 계정을 소프트 삭제하는 이유가 이것이다 (§6.5)
+        Long entryId = givenEntry("Persona 5");
+        Platform steam = savePlatform("Steam");
+        Long accountId = platformAccountService.register(memberId, steam.getId(), "본계정");
+        playthroughService.add(memberId, entryId, new PlaythroughCommand(
+                LocalDate.of(2026, 1, 1), LocalDate.of(2026, 2, 1), PlaythroughStatus.COMPLETED,
+                null, accountId, null, null, null));
+
+        //when
+        platformAccountService.delete(memberId, accountId);
+
+        em.flush();
+        em.clear();
+
+        //then — 선택지에는 없지만 과거 기록에는 남는다
+        Playthrough found = playthroughService.findAll(memberId, entryId).get(0);
+        assertThat(found.getPlatformAccount().getAccountLabel()).isEqualTo("본계정");
+        assertThat(found.getPlatformAccount().isDeleted()).isTrue();
+        assertThat(platformAccountService.findSelectable(memberId)).isEmpty();
+    }
+
+    @Test
     public void 남의_항목에는_회차를_추가할_수_없다() {
         //given
         Long entryId = givenEntry("Hades");
@@ -253,7 +448,7 @@ class PlaythroughServiceTest {
         //when & then
         assertThatThrownBy(() -> playthroughService.add(
                 stranger.getId(), entryId, playing(LocalDate.of(2026, 1, 1))))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(NotFoundException.class);   // 남의 것은 404
     }
 
     // ── 헬퍼
@@ -291,5 +486,11 @@ class PlaythroughServiceTest {
         Device device = Device.of(name);
         deviceRepository.persist(device);
         return device;
+    }
+
+    private Platform savePlatform(String name) {
+        Platform platform = Platform.of(name);
+        platformRepository.persist(platform);
+        return platform;
     }
 }

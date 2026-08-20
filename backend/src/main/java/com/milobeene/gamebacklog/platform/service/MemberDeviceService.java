@@ -1,5 +1,7 @@
 package com.milobeene.gamebacklog.platform.service;
 
+import com.milobeene.gamebacklog.common.exception.ConflictException;
+import com.milobeene.gamebacklog.common.exception.NotFoundException;
 import com.milobeene.gamebacklog.member.domain.Member;
 import com.milobeene.gamebacklog.member.repository.MemberRepository;
 import com.milobeene.gamebacklog.platform.domain.Device;
@@ -28,9 +30,9 @@ public class MemberDeviceService {
     @Transactional
     public Long register(Long memberId, Long deviceId, String label, String memo) {
         Member member = memberRepository.findById(memberId)
-                .orElseThrow(() -> new IllegalArgumentException("회원을 찾을 수 없습니다. id=" + memberId));
+                .orElseThrow(() -> new NotFoundException("회원을 찾을 수 없습니다. id=" + memberId));
         Device device = deviceRepository.findById(deviceId)
-                .orElseThrow(() -> new IllegalArgumentException("기기를 찾을 수 없습니다. id=" + deviceId));
+                .orElseThrow(() -> new NotFoundException("기기를 찾을 수 없습니다. id=" + deviceId));
 
         MemberDevice memberDevice = new MemberDevice(member, device, label);
 
@@ -38,7 +40,7 @@ public class MemberDeviceService {
         memberDeviceRepository
                 .findByMemberIdAndDeviceIdAndLabel(memberId, deviceId, memberDevice.getLabel())
                 .ifPresent(existing -> {
-                    throw new IllegalStateException("이미 등록된 기기입니다: " + memberDevice.getLabel());
+                    throw new ConflictException("이미 등록된 기기입니다: " + memberDevice.getLabel());
                 });
 
         memberDevice.updateMemo(memo);
@@ -50,6 +52,16 @@ public class MemberDeviceService {
     @Transactional
     public void update(Long memberId, Long memberDeviceId, String label, String memo) {
         MemberDevice memberDevice = findOwned(memberId, memberDeviceId);
+
+        // 검증을 변경보다 먼저. 라벨엔 유니크 제약이 있어서, 먼저 바꿔버리면
+        // 검증 쿼리 직전의 자동 flush가 내 검증보다 먼저 제약 위반을 터뜨린다
+        String newLabel = MemberDevice.normalizeLabel(label);
+        memberDeviceRepository.findByMemberIdAndDeviceIdAndLabel(
+                        memberId, memberDevice.getDevice().getId(), newLabel)
+                .filter(other -> !other.getId().equals(memberDeviceId))
+                .ifPresent(other -> {
+                    throw new ConflictException("이미 등록된 기기입니다: " + newLabel);
+                });
 
         memberDevice.rename(label);
         memberDevice.updateMemo(memo);
@@ -67,10 +79,10 @@ public class MemberDeviceService {
 
     private MemberDevice findOwned(Long memberId, Long memberDeviceId) {
         MemberDevice memberDevice = memberDeviceRepository.findById(memberDeviceId)
-                .orElseThrow(() -> new IllegalArgumentException("보유 기기를 찾을 수 없습니다. id=" + memberDeviceId));
+                .orElseThrow(() -> new NotFoundException("보유 기기를 찾을 수 없습니다. id=" + memberDeviceId));
 
         if (!memberDevice.getMember().getId().equals(memberId)) {
-            throw new IllegalStateException("내 기기가 아닙니다. id=" + memberDeviceId);
+            throw new NotFoundException("보유 기기를 찾을 수 없습니다. id=" + memberDeviceId);
         }
 
         return memberDevice;

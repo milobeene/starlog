@@ -16,6 +16,8 @@ public interface GenreRepository extends BaseRepository<Genre, Long> {
     /** 사전 목록. 태그와 같은 자동 소멸 메커니즘 (§6.7 v1.5 개정) */
     @Query("select distinct g from Genre g" +
             " join BacklogEntryGenre l on l.genre = g" +
-            " where g.member.id = :memberId order by g.name")
+            " where g.member.id = :memberId" +
+            " and l.backlogEntry.deletedAt is null" +   // 삭제된 항목에만 붙은 장르는 숨긴다
+            " order by g.name")
     List<Genre> findUsedByMemberId(@Param("memberId") Long memberId);
 }

@@ -9,6 +9,9 @@ import com.milobeene.gamebacklog.backlog.domain.OverrideCommand;
 import com.milobeene.gamebacklog.backlog.exception.RevivableEntryException;
 import com.milobeene.gamebacklog.backlog.repository.BacklogEntryRepository;
 import com.milobeene.gamebacklog.common.entity.Money;
+import com.milobeene.gamebacklog.common.exception.ConflictException;
+import com.milobeene.gamebacklog.common.exception.InvalidInputException;
+import com.milobeene.gamebacklog.common.exception.NotFoundException;
 import com.milobeene.gamebacklog.game.domain.Game;
 import com.milobeene.gamebacklog.game.domain.GameSource;
 import com.milobeene.gamebacklog.game.repository.GameRepository;
@@ -57,7 +60,7 @@ class BacklogServiceTest {
 
         //when & then
         assertThatThrownBy(() -> backlogService.addToBacklog(member.getId(), game.getId()))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(ConflictException.class);
     }
 
     @Test
@@ -91,7 +94,7 @@ class BacklogServiceTest {
         //when & then
         assertThatThrownBy(() -> backlogService.updatePersonalRecord(
                 member.getId(), entryId, new BigDecimal("100.1"), null, null))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(InvalidInputException.class);
     }
 
     @Test
@@ -105,7 +108,7 @@ class BacklogServiceTest {
         //when & then
         assertThatThrownBy(() -> backlogService.updatePersonalRecord(
                 stranger.getId(), entryId, new BigDecimal("50.0"), null, null))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(NotFoundException.class);   // 남의 것은 404
     }
 
     @Test
@@ -213,7 +216,7 @@ class BacklogServiceTest {
 
         //when & then
         assertThatThrownBy(() -> backlogService.delete(member.getId(), entryId))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(ConflictException.class);
     }
 
     @Test
@@ -227,7 +230,7 @@ class BacklogServiceTest {
         //when & then
         assertThatThrownBy(() -> backlogService.updatePersonalRecord(
                 member.getId(), entryId, new BigDecimal("90.0"), null, null))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(ConflictException.class);
     }
 
     @Test
@@ -299,7 +302,7 @@ class BacklogServiceTest {
 
         //when & then
         assertThatThrownBy(() -> backlogService.revive(member.getId(), entryId))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(ConflictException.class);
     }
 
     @Test
@@ -317,16 +320,18 @@ class BacklogServiceTest {
     }
 
     @Test
-    public void 삭제된_항목은_조회되지_않는다() {
+    public void 삭제된_항목은_조회에서_없는_것으로_취급된다() {
         //given
         Member member = saveMember("test@example.com");
         Game game = saveGame("Cuphead");
         Long entryId = backlogService.addToBacklog(member.getId(), game.getId());
         backlogService.delete(member.getId(), entryId);
 
-        //when & then
+        //when & then — "삭제된 항목입니다"가 아니라 "찾을 수 없습니다".
+        // 조회는 존재를 노출하지 않는다 (수정 경로와 의도적으로 다름)
         assertThatThrownBy(() -> backlogService.findOne(member.getId(), entryId))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(NotFoundException.class)
+                .hasMessageContaining("찾을 수 없습니다");
     }
 
     @Test

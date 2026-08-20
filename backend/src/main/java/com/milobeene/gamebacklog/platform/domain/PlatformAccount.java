@@ -1,6 +1,8 @@
 package com.milobeene.gamebacklog.platform.domain;
 
 import com.milobeene.gamebacklog.common.entity.BaseEntity;
+import com.milobeene.gamebacklog.common.exception.ConflictException;
+import com.milobeene.gamebacklog.common.exception.InvalidInputException;
 import com.milobeene.gamebacklog.common.util.TextValues;
 import com.milobeene.gamebacklog.member.domain.Member;
 import jakarta.persistence.*;
@@ -55,14 +57,14 @@ public class PlatformAccount extends BaseEntity {
      */
     public void softDelete(LocalDateTime deletedAt) {
         if (isDeleted()) {
-            throw new IllegalStateException("이미 삭제된 계정입니다. id=" + id);
+            throw new ConflictException("이미 삭제된 계정입니다. id=" + id);
         }
         this.deletedAt = deletedAt;
     }
 
     public void revive() {
         if (!isDeleted()) {
-            throw new IllegalStateException("삭제되지 않은 계정입니다. id=" + id);
+            throw new ConflictException("삭제되지 않은 계정입니다. id=" + id);
         }
         this.deletedAt = null;
     }
@@ -74,7 +76,7 @@ public class PlatformAccount extends BaseEntity {
     private static String requireLabel(String accountLabel) {
         String normalized = TextValues.normalize(accountLabel);
         if (normalized == null) {
-            throw new IllegalArgumentException("계정 라벨은 비울 수 없습니다");
+            throw new InvalidInputException("계정 라벨은 비울 수 없습니다");
         }
         return normalized;
     }

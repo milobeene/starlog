@@ -1,6 +1,7 @@
 package com.milobeene.gamebacklog.tag.domain;
 
 import com.milobeene.gamebacklog.common.entity.BaseEntity;
+import com.milobeene.gamebacklog.common.exception.InvalidInputException;
 import com.milobeene.gamebacklog.common.util.TextValues;
 import com.milobeene.gamebacklog.member.domain.Member;
 import jakarta.persistence.*;
@@ -43,7 +44,7 @@ public class Genre extends BaseEntity {
     private static String requireName(String name) {
         String normalized = TextValues.normalize(name);
         if (normalized == null) {
-            throw new IllegalArgumentException("장르 이름은 비울 수 없습니다");
+            throw new InvalidInputException("장르 이름은 비울 수 없습니다");
         }
         return normalized;
     }

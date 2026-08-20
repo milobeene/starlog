@@ -7,6 +7,7 @@ import com.milobeene.gamebacklog.backlog.domain.BacklogEntry;
 import com.milobeene.gamebacklog.backlog.domain.OverrideCommand;
 import com.milobeene.gamebacklog.backlog.repository.BacklogEntryRepository;
 import com.milobeene.gamebacklog.backlog.service.BacklogService;
+import com.milobeene.gamebacklog.common.exception.InvalidInputException;
 import com.milobeene.gamebacklog.game.domain.Game;
 import com.milobeene.gamebacklog.game.repository.GameRepository;
 import com.milobeene.gamebacklog.member.domain.Member;
@@ -91,7 +92,7 @@ class GameServiceTest {
 
         //when & then
         assertThatThrownBy(() -> gameService.updateName(game.getId(), "   "))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(InvalidInputException.class);
     }
 
     /** em.clear() 이후에 읽어야 벌크 UPDATE 결과가 보인다 */

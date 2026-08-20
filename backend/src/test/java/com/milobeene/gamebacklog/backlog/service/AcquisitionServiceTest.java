@@ -11,6 +11,9 @@ import com.milobeene.gamebacklog.backlog.domain.BacklogStatus;
 import com.milobeene.gamebacklog.backlog.domain.PlaythroughCommand;
 import com.milobeene.gamebacklog.backlog.domain.PlaythroughStatus;
 import com.milobeene.gamebacklog.backlog.repository.BacklogEntryRepository;
+import com.milobeene.gamebacklog.common.exception.ConflictException;
+import com.milobeene.gamebacklog.common.exception.InvalidInputException;
+import com.milobeene.gamebacklog.common.exception.NotFoundException;
 import com.milobeene.gamebacklog.game.domain.Game;
 import com.milobeene.gamebacklog.game.repository.GameRepository;
 import com.milobeene.gamebacklog.member.domain.Member;
@@ -125,11 +128,11 @@ class AcquisitionServiceTest {
 
         //when & then
         assertThatThrownBy(() -> acquisitionService.add(memberId, entryId, purchased("-100", "KRW")))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(InvalidInputException.class)
                 .hasMessageContaining("0 이상");
 
         assertThatThrownBy(() -> acquisitionService.add(memberId, entryId, purchased("100", "XYZ")))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(InvalidInputException.class)
                 .hasMessageContaining("ISO 4217");
     }
 
@@ -245,6 +248,34 @@ class AcquisitionServiceTest {
     }
 
     @Test
+    public void 삭제된_항목에는_취득을_추가할_수_없다() {
+        //given
+        Long entryId = givenEntry("Limbo");
+        backlogService.delete(memberId, entryId);
+
+        //when & then
+        assertThatThrownBy(() -> acquisitionService.add(memberId, entryId, purchased("10000", "KRW")))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("삭제된 항목");
+    }
+
+    @Test
+    public void 금액은_소수_둘째_자리로_반올림된다() {
+        //given
+        Long entryId = givenEntry("Baldur's Gate 3");
+
+        //when — Money가 setScale(2, HALF_UP) 후 범위 검증한다
+        acquisitionService.add(memberId, entryId, purchased("12345.678", "KRW"));
+
+        em.flush();
+        em.clear();
+
+        //then
+        assertThat(acquisitionService.findAll(memberId, entryId).get(0).getPrice().getAmount())
+                .isEqualByComparingTo("12345.68");
+    }
+
+    @Test
     public void 남의_항목에는_취득을_추가할_수_없다() {
         //given
         Long entryId = givenEntry("Stray");
@@ -253,7 +284,7 @@ class AcquisitionServiceTest {
         //when & then
         assertThatThrownBy(() -> acquisitionService.add(
                 stranger.getId(), entryId, purchased("10000", "KRW")))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(NotFoundException.class);   // 남의 것은 404
     }
 
     // ── 헬퍼

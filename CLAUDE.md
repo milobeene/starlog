@@ -4,8 +4,9 @@
 
 ## 참조 문서 (필요할 때 읽을 것, 미리 다 읽지 말 것)
 
-- `docs/spec-v1.4.md` — 기능명세서. **모든 설계 판단의 기준**
-- `docs/entity-design-v0.2.md` — 엔티티 설계서 (Phase 0 완료)
+- `docs/spec-v1.5.md` — 기능명세서. **모든 설계 판단의 기준**
+- `docs/entity-design-v0.3.md` — 엔티티 설계서 (Phase 1 완료)
+- `docs/api-design-v0.1.md` — API 설계서 (Phase 2). 화면에서 역산한 엔드포인트
 - `docs/dev-order.md` — 개발 순서. 슬라이스 A~P 단위로 진행
 - `docs/스프링_어플리케이션_개발시_체크리스트.md`
 
@@ -48,7 +49,8 @@
 10. 엔티티 매핑을 바꾸면 DDL을 확인한다
 11. `@Transactional`은 프록시 기반. 같은 객체 내 `this.메서드()` 호출은 트랜잭션이 안 걸린다 → 별도 빈으로 분리
 12. 리포지토리는 `BaseRepository<T, ID>`를 상속한다. `JpaRepository` 금지 — `save()`가 준영속 엔티티에 `merge()`를 돌려 5번과 충돌한다. 신규는 `persist()`, 수정은 변경 감지, 벌크는 `@Modifying` + `@Query`
-13. 벌크 연산은 영속성 컨텍스트를 우회한다 → 실행 후 `em.clear()`, `updatedAt`은 SET 절에 직접 쓸 것 (`@LastModifiedDate` 콜백이 안 돈다)
+13. 벌크 연산은 영속성 컨텍스트를 우회한다 → `@Modifying(flushAutomatically = true, clearAutomatically = true)`, `updatedAt`은 SET 절에 직접 쓸 것 (`@LastModifiedDate` 콜백이 안 돈다)
+14. 유니크 제약이 걸린 컬럼은 **검증을 변경보다 먼저**. 먼저 바꾸면 검증 쿼리의 자동 flush가 내 검증보다 DB 제약을 먼저 터뜨린다
 
 ### 일반
 

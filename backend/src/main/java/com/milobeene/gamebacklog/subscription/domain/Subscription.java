@@ -2,6 +2,7 @@ package com.milobeene.gamebacklog.subscription.domain;
 
 import com.milobeene.gamebacklog.common.entity.BaseEntity;
 import com.milobeene.gamebacklog.common.entity.Money;
+import com.milobeene.gamebacklog.common.exception.InvalidInputException;
 import com.milobeene.gamebacklog.common.util.TextValues;
 import com.milobeene.gamebacklog.member.domain.Member;
 import jakarta.persistence.*;
@@ -69,17 +70,17 @@ public class Subscription extends BaseEntity {
     private void apply(SubscriptionCommand command) {
         String serviceName = TextValues.normalize(command.serviceName());
         if (serviceName == null) {
-            throw new IllegalArgumentException("구독 서비스명은 필수입니다");
+            throw new InvalidInputException("구독 서비스명은 필수입니다");
         }
         if (command.startedOn() == null) {
-            throw new IllegalArgumentException("구독 시작일은 필수입니다");
+            throw new InvalidInputException("구독 시작일은 필수입니다");
         }
         if (command.billingCycle() == null) {
-            throw new IllegalArgumentException("결제 주기는 필수입니다");
+            throw new InvalidInputException("결제 주기는 필수입니다");
         }
         // 회차의 BR-PT-01과 같은 규칙. 당일 종료도 유효하므로 isBefore로 판정
         if (command.endedOn() != null && command.endedOn().isBefore(command.startedOn())) {
-            throw new IllegalArgumentException(
+            throw new InvalidInputException(
                     "종료일은 시작일 이후여야 합니다: " + command.startedOn() + " ~ " + command.endedOn());
         }
 

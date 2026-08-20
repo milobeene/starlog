@@ -3,6 +3,8 @@ package com.milobeene.gamebacklog.platform.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.milobeene.gamebacklog.common.exception.ConflictException;
+import com.milobeene.gamebacklog.common.exception.NotFoundException;
 import com.milobeene.gamebacklog.member.domain.Member;
 import com.milobeene.gamebacklog.platform.domain.Platform;
 import com.milobeene.gamebacklog.platform.domain.PlatformAccount;
@@ -52,7 +54,7 @@ class PlatformAccountServiceTest {
 
         //when & then
         assertThatThrownBy(() -> platformAccountService.register(memberId, steam.getId(), "본계정"))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(ConflictException.class);
     }
 
     @Test
@@ -134,7 +136,7 @@ class PlatformAccountServiceTest {
 
         //when & then
         assertThatThrownBy(() -> platformAccountService.rename(memberId, accountId, "부계정"))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(ConflictException.class)
                 .hasMessageContaining("이미 있는 계정 라벨");
     }
 
@@ -147,7 +149,7 @@ class PlatformAccountServiceTest {
 
         //when & then
         assertThatThrownBy(() -> platformAccountService.rename(memberId, accountId, "메인계정"))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(ConflictException.class);
     }
 
     @Test
@@ -159,7 +161,7 @@ class PlatformAccountServiceTest {
 
         //when & then
         assertThatThrownBy(() -> platformAccountService.delete(stranger.getId(), accountId))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(NotFoundException.class);   // 남의 것은 404
     }
 
     // ── 헬퍼

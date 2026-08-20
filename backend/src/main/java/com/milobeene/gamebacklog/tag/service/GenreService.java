@@ -4,6 +4,9 @@ import com.milobeene.gamebacklog.backlog.domain.BacklogEntry;
 import com.milobeene.gamebacklog.backlog.domain.BacklogEntryGenre;
 import com.milobeene.gamebacklog.backlog.repository.BacklogEntryGenreRepository;
 import com.milobeene.gamebacklog.backlog.service.BacklogEntryFinder;
+import com.milobeene.gamebacklog.common.exception.ConflictException;
+import com.milobeene.gamebacklog.common.exception.InvalidInputException;
+import com.milobeene.gamebacklog.common.exception.NotFoundException;
 import com.milobeene.gamebacklog.common.util.TextValues;
 import com.milobeene.gamebacklog.member.domain.Member;
 import com.milobeene.gamebacklog.tag.domain.Genre;
@@ -78,13 +81,13 @@ public class GenreService {
         Genre genre = findOwnedGenre(memberId, genreId);
         String normalized = TextValues.normalize(newName);
         if (normalized == null) {
-            throw new IllegalArgumentException("장르 이름은 비울 수 없습니다");
+            throw new InvalidInputException("장르 이름은 비울 수 없습니다");
         }
 
         genreRepository.findByMemberIdAndName(memberId, normalized)
                 .filter(other -> !other.getId().equals(genreId))
                 .ifPresent(other -> {
-                    throw new IllegalStateException("이미 있는 장르 이름입니다: " + normalized);
+                    throw new ConflictException("이미 있는 장르 이름입니다: " + normalized);
                 });
 
         genre.rename(normalized);
@@ -114,10 +117,10 @@ public class GenreService {
 
     private Genre findOwnedGenre(Long memberId, Long genreId) {
         Genre genre = genreRepository.findById(genreId)
-                .orElseThrow(() -> new IllegalArgumentException("장르를 찾을 수 없습니다. id=" + genreId));
+                .orElseThrow(() -> new NotFoundException("장르를 찾을 수 없습니다. id=" + genreId));
 
         if (!genre.getMember().getId().equals(memberId)) {
-            throw new IllegalStateException("내 장르가 아닙니다. id=" + genreId);
+            throw new NotFoundException("장르를 찾을 수 없습니다. id=" + genreId);
         }
 
         return genre;

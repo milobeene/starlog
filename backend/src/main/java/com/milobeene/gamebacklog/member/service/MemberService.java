@@ -1,5 +1,6 @@
 package com.milobeene.gamebacklog.member.service;
 
+import com.milobeene.gamebacklog.common.exception.NotFoundException;
 import com.milobeene.gamebacklog.member.domain.Member;
 import com.milobeene.gamebacklog.member.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +26,6 @@ public class MemberService {
 
     private Member findMember(Long memberId) {
         return memberRepository.findById(memberId)
-                .orElseThrow(() -> new IllegalArgumentException("회원을 찾을 수 없습니다. id=" + memberId));
+                .orElseThrow(() -> new NotFoundException("회원을 찾을 수 없습니다. id=" + memberId));
     }
 }

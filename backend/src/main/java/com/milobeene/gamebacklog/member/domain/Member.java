@@ -1,6 +1,7 @@
 package com.milobeene.gamebacklog.member.domain;
 
 import com.milobeene.gamebacklog.common.entity.BaseEntity;
+import com.milobeene.gamebacklog.common.exception.InvalidInputException;
 import com.milobeene.gamebacklog.common.util.TextValues;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -66,7 +67,7 @@ public class Member extends BaseEntity {
     public void updateProfile(String nickname, String memo) {
         String normalized = TextValues.normalize(nickname);
         if (normalized == null) {
-            throw new IllegalArgumentException("닉네임은 비울 수 없습니다");
+            throw new InvalidInputException("닉네임은 비울 수 없습니다");
         }
         this.nickname = normalized;
         this.memo = TextValues.normalize(memo);

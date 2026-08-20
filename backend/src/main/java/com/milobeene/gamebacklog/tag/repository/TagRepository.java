@@ -19,6 +19,8 @@ public interface TagRepository extends BaseRepository<Tag, Long> {
      */
     @Query("select distinct t from Tag t" +
             " join BacklogEntryTag l on l.tag = t" +
-            " where t.member.id = :memberId order by t.name")
+            " where t.member.id = :memberId" +
+            " and l.backlogEntry.deletedAt is null" +   // 삭제된 항목에만 붙은 태그는 숨긴다. 되살리면 다시 나온다
+            " order by t.name")
     List<Tag> findUsedByMemberId(@Param("memberId") Long memberId);
 }

@@ -2,6 +2,8 @@ package com.milobeene.gamebacklog.backlog.service;
 
 import com.milobeene.gamebacklog.backlog.domain.BacklogEntry;
 import com.milobeene.gamebacklog.backlog.repository.BacklogEntryRepository;
+import com.milobeene.gamebacklog.common.exception.ConflictException;
+import com.milobeene.gamebacklog.common.exception.NotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -21,7 +23,7 @@ public class BacklogEntryFinder {
 
         // 삭제된 항목은 수정 대상이 아니다. 되살리기만 삭제된 행을 다룬다
         if (entry.isDeleted()) {
-            throw new IllegalStateException("삭제된 항목입니다. id=" + entryId);
+            throw new ConflictException("삭제된 항목입니다. id=" + entryId);
         }
 
         return entry;
@@ -33,11 +35,12 @@ public class BacklogEntryFinder {
      */
     public BacklogEntry findOwnedIncludingDeleted(Long memberId, Long entryId) {
         BacklogEntry entry = backlogEntryRepository.findById(entryId)
-                .orElseThrow(() -> new IllegalArgumentException("백로그 항목을 찾을 수 없습니다. id=" + entryId));
+                .orElseThrow(() -> new NotFoundException("백로그 항목을 찾을 수 없습니다. id=" + entryId));
 
-        // Phase 3에서 인가로 승격 → 403
+        // 남의 것도 404다. 403을 주면 "그 id는 존재한다"가 새어나간다 (NFR-S7).
+        // 메시지도 위와 같게 유지한다
         if (!entry.getMember().getId().equals(memberId)) {
-            throw new IllegalStateException("내 백로그 항목이 아닙니다. id=" + entryId);
+            throw new NotFoundException("백로그 항목을 찾을 수 없습니다. id=" + entryId);
         }
 
         return entry;

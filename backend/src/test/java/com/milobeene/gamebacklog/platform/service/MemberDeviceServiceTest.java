@@ -3,6 +3,8 @@ package com.milobeene.gamebacklog.platform.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.milobeene.gamebacklog.common.exception.ConflictException;
+import com.milobeene.gamebacklog.common.exception.InvalidInputException;
 import com.milobeene.gamebacklog.member.domain.Member;
 import com.milobeene.gamebacklog.member.service.MemberService;
 import com.milobeene.gamebacklog.platform.domain.Device;
@@ -70,7 +72,7 @@ class MemberDeviceServiceTest {
 
         //when & then
         assertThatThrownBy(() -> memberDeviceService.register(memberId, pc.getId(), "메인", null))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(ConflictException.class);
     }
 
     @Test
@@ -86,6 +88,19 @@ class MemberDeviceServiceTest {
 
         //then
         assertThat(memberDeviceService.findAll(memberId).get(0).getLabel()).isEqualTo("");
+    }
+
+    @Test
+    public void 다른_기기와_같은_라벨로_수정하면_예외가_발생한다() {
+        //given
+        Device switchDevice = givenDevice("Nintendo Switch");
+        memberDeviceService.register(memberId, switchDevice.getId(), "거실용", null);
+        Long target = memberDeviceService.register(memberId, switchDevice.getId(), "휴대용", null);
+
+        //when & then — register와 같은 검증 (리뷰 D4)
+        assertThatThrownBy(() -> memberDeviceService.update(memberId, target, "거실용", null))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("이미 등록된 기기");
     }
 
     @Test
@@ -128,7 +143,7 @@ class MemberDeviceServiceTest {
 
         //when & then
         assertThatThrownBy(() -> memberService.updateProfile(memberId, "   ", null))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(InvalidInputException.class);
     }
 
     // ── 헬퍼

@@ -4,6 +4,8 @@ import com.milobeene.gamebacklog.backlog.domain.BacklogEntry;
 import com.milobeene.gamebacklog.backlog.domain.OverrideCommand;
 import com.milobeene.gamebacklog.backlog.exception.RevivableEntryException;
 import com.milobeene.gamebacklog.backlog.repository.BacklogEntryRepository;
+import com.milobeene.gamebacklog.common.exception.ConflictException;
+import com.milobeene.gamebacklog.common.exception.NotFoundException;
 import com.milobeene.gamebacklog.game.domain.Game;
 import com.milobeene.gamebacklog.game.repository.GameRepository;
 import com.milobeene.gamebacklog.member.domain.Member;
@@ -31,10 +33,10 @@ public class BacklogService {
     @Transactional
     public Long addToBacklog(Long memberId, Long gameId) {
         Member member = memberRepository.findById(memberId)
-                .orElseThrow(() -> new IllegalArgumentException("회원을 찾을 수 없습니다. id=" + memberId));
+                .orElseThrow(() -> new NotFoundException("회원을 찾을 수 없습니다. id=" + memberId));
 
         Game game = gameRepository.findById(gameId)
-                .orElseThrow(() -> new IllegalArgumentException("게임을 찾을 수 없습니다. id=" + gameId));
+                .orElseThrow(() -> new NotFoundException("게임을 찾을 수 없습니다. id=" + gameId));
 
         // §7.4 3분기. 앱 레벨 검증은 최선 노력이고 진짜 방어선은 DB 유니크 제약
         Optional<BacklogEntry> existing =
@@ -44,7 +46,7 @@ public class BacklogService {
             if (found.isDeleted()) {
                 throw new RevivableEntryException(found.getId());   // 확인 후 revive()로
             }
-            throw new IllegalStateException("이미 담은 게임입니다. gameId=" + gameId);
+            throw new ConflictException("이미 담은 게임입니다. gameId=" + gameId);
         }
 
         BacklogEntry entry = BacklogEntry.of(member, game);
@@ -76,9 +78,18 @@ public class BacklogService {
         entry.updateOverrides(command);
     }
 
-    /** 단건 조회 (A-6). 삭제된 항목은 없는 것으로 취급한다 */
+    /** 단건 조회 (A-6) */
     public BacklogEntry findOne(Long memberId, Long entryId) {
-        return entryFinder.findOwned(memberId, entryId);
+        // 조회에서 삭제된 항목은 "없는 것"이다 — 존재를 노출하지 않는다.
+        // 수정 경로(findOwned)의 "삭제된 항목입니다"와 의도적으로 다르다
+        BacklogEntry entry = backlogEntryRepository.findByIdAndDeletedAtIsNull(entryId)
+                .orElseThrow(() -> new NotFoundException("백로그 항목을 찾을 수 없습니다. id=" + entryId));
+
+        if (!entry.getMember().getId().equals(memberId)) {
+            throw new NotFoundException("백로그 항목을 찾을 수 없습니다. id=" + entryId);
+        }
+
+        return entry;
     }
 
     /**

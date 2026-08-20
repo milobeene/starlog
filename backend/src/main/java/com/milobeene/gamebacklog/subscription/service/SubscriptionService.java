@@ -1,5 +1,6 @@
 package com.milobeene.gamebacklog.subscription.service;
 
+import com.milobeene.gamebacklog.common.exception.NotFoundException;
 import com.milobeene.gamebacklog.member.domain.Member;
 import com.milobeene.gamebacklog.member.repository.MemberRepository;
 import com.milobeene.gamebacklog.subscription.domain.Subscription;
@@ -23,7 +24,7 @@ public class SubscriptionService {
     @Transactional
     public Long register(Long memberId, SubscriptionCommand command) {
         Member member = memberRepository.findById(memberId)
-                .orElseThrow(() -> new IllegalArgumentException("회원을 찾을 수 없습니다. id=" + memberId));
+                .orElseThrow(() -> new NotFoundException("회원을 찾을 수 없습니다. id=" + memberId));
 
         Subscription subscription = Subscription.of(member, command);
         subscriptionRepository.persist(subscription);
@@ -52,10 +53,10 @@ public class SubscriptionService {
     /** 취득이 구독을 연결할 때 소유권을 확인하는 통로 */
     public Subscription findOwned(Long memberId, Long subscriptionId) {
         Subscription subscription = subscriptionRepository.findById(subscriptionId)
-                .orElseThrow(() -> new IllegalArgumentException("구독을 찾을 수 없습니다. id=" + subscriptionId));
+                .orElseThrow(() -> new NotFoundException("구독을 찾을 수 없습니다. id=" + subscriptionId));
 
         if (!subscription.getMember().getId().equals(memberId)) {
-            throw new IllegalStateException("내 구독이 아닙니다. id=" + subscriptionId);
+            throw new NotFoundException("구독을 찾을 수 없습니다. id=" + subscriptionId);
         }
 
         return subscription;

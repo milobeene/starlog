@@ -1,5 +1,8 @@
 package com.milobeene.gamebacklog.platform.service;
 
+import com.milobeene.gamebacklog.common.exception.ConflictException;
+import com.milobeene.gamebacklog.common.exception.InvalidInputException;
+import com.milobeene.gamebacklog.common.exception.NotFoundException;
 import com.milobeene.gamebacklog.common.util.TextValues;
 import com.milobeene.gamebacklog.member.domain.Member;
 import com.milobeene.gamebacklog.member.repository.MemberRepository;
@@ -33,9 +36,9 @@ public class PlatformAccountService {
     @Transactional
     public Long register(Long memberId, Long platformId, String accountLabel) {
         Member member = memberRepository.findById(memberId)
-                .orElseThrow(() -> new IllegalArgumentException("회원을 찾을 수 없습니다. id=" + memberId));
+                .orElseThrow(() -> new NotFoundException("회원을 찾을 수 없습니다. id=" + memberId));
         Platform platform = platformRepository.findById(platformId)
-                .orElseThrow(() -> new IllegalArgumentException("플랫폼을 찾을 수 없습니다. id=" + platformId));
+                .orElseThrow(() -> new NotFoundException("플랫폼을 찾을 수 없습니다. id=" + platformId));
 
         String label = requireLabel(accountLabel);
 
@@ -46,7 +49,7 @@ public class PlatformAccountService {
             if (found.isDeleted()) {
                 throw new RevivableAccountException(found.getId());
             }
-            throw new IllegalStateException("이미 등록된 계정입니다: " + label);
+            throw new ConflictException("이미 등록된 계정입니다: " + label);
         }
 
         PlatformAccount account = new PlatformAccount(member, platform, label);
@@ -66,7 +69,7 @@ public class PlatformAccountService {
                         memberId, account.getPlatform().getId(), label)
                 .filter(other -> !other.getId().equals(accountId))
                 .ifPresent(other -> {
-                    throw new IllegalStateException("이미 있는 계정 라벨입니다: " + label);
+                    throw new ConflictException("이미 있는 계정 라벨입니다: " + label);
                 });
 
         account.rename(label);
@@ -98,17 +101,17 @@ public class PlatformAccountService {
     private PlatformAccount findOwnedAlive(Long memberId, Long accountId) {
         PlatformAccount account = findOwned(memberId, accountId);
         if (account.isDeleted()) {
-            throw new IllegalStateException("삭제된 계정입니다. id=" + accountId);
+            throw new ConflictException("삭제된 계정입니다. id=" + accountId);
         }
         return account;
     }
 
     private PlatformAccount findOwned(Long memberId, Long accountId) {
         PlatformAccount account = platformAccountRepository.findById(accountId)
-                .orElseThrow(() -> new IllegalArgumentException("플랫폼 계정을 찾을 수 없습니다. id=" + accountId));
+                .orElseThrow(() -> new NotFoundException("플랫폼 계정을 찾을 수 없습니다. id=" + accountId));
 
         if (!account.getMember().getId().equals(memberId)) {
-            throw new IllegalStateException("내 계정이 아닙니다. id=" + accountId);
+            throw new NotFoundException("플랫폼 계정을 찾을 수 없습니다. id=" + accountId);
         }
 
         return account;
@@ -117,7 +120,7 @@ public class PlatformAccountService {
     private String requireLabel(String accountLabel) {
         String normalized = TextValues.normalize(accountLabel);
         if (normalized == null) {
-            throw new IllegalArgumentException("계정 라벨은 비울 수 없습니다");
+            throw new InvalidInputException("계정 라벨은 비울 수 없습니다");
         }
         return normalized;
     }

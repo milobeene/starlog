@@ -1,6 +1,7 @@
 package com.milobeene.gamebacklog.game.service;
 
 import com.milobeene.gamebacklog.backlog.repository.BacklogEntryRepository;
+import com.milobeene.gamebacklog.common.exception.NotFoundException;
 import com.milobeene.gamebacklog.game.domain.Game;
 import com.milobeene.gamebacklog.game.repository.GameRepository;
 import lombok.RequiredArgsConstructor;
@@ -25,7 +26,7 @@ public class GameService {
     @Transactional
     public int updateName(Long gameId, String newName) {
         Game game = gameRepository.findById(gameId)
-                .orElseThrow(() -> new IllegalArgumentException("게임을 찾을 수 없습니다. id=" + gameId));
+                .orElseThrow(() -> new NotFoundException("게임을 찾을 수 없습니다. id=" + gameId));
 
         game.updateName(newName);
 

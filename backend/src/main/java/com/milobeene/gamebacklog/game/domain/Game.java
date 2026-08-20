@@ -2,6 +2,7 @@ package com.milobeene.gamebacklog.game.domain;
 
 import com.milobeene.gamebacklog.common.entity.BaseEntity;
 import com.milobeene.gamebacklog.common.entity.Money;
+import com.milobeene.gamebacklog.common.exception.InvalidInputException;
 import com.milobeene.gamebacklog.common.util.TextValues;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -97,7 +98,7 @@ public class Game extends BaseEntity {
     public void updateName(String name) {
         String normalized = TextValues.normalize(name);
         if (normalized == null) {
-            throw new IllegalArgumentException("게임 이름은 비울 수 없습니다");
+            throw new InvalidInputException("게임 이름은 비울 수 없습니다");
         }
         this.name = normalized;
     }

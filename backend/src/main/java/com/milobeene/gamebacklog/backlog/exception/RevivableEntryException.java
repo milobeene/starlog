@@ -6,11 +6,15 @@ import com.milobeene.gamebacklog.common.exception.RevivableException;
 public class RevivableEntryException extends RevivableException {
 
     public RevivableEntryException(Long entryId) {
-        super("삭제된 항목이 있습니다. 복원 여부를 확인하세요. id=" + entryId, entryId);
+        super("삭제된 항목이 있습니다. 복원하시겠습니까? id=" + entryId, entryId);
     }
 
-    /** 이전 이름 유지 — 호출부가 의미를 알아보기 쉽다 */
     public Long getEntryId() {
         return getTargetId();
+    }
+
+    @Override
+    public String reviveUrl() {
+        return "/api/backlog/" + getTargetId() + "/revive";
     }
 }

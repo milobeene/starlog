@@ -53,9 +53,10 @@ public class MemberDevice extends BaseEntity {
 
     /**
      * label은 유니크 제약(member, device, label)의 일부라 null 대신 빈 문자열로 수렴시킨다.
-     * null이면 DB가 중복으로 보지 않기 때문
+     * null이면 DB가 중복으로 보지 않기 때문.
+     * public static인 이유 — 서비스가 변경 전 중복 검증을 할 때 같은 규칙으로 정규화해야 한다
      */
-    private static String normalizeLabel(String label) {
+    public static String normalizeLabel(String label) {
         String normalized = TextValues.normalize(label);
         return (normalized == null) ? "" : normalized;
     }

@@ -100,6 +100,22 @@ class GenreServiceTest {
     }
 
     @Test
+    public void 소프트_삭제된_항목만_쓰던_장르는_사전에서_숨는다() {
+        //given — 태그와 같은 규칙 (리뷰 D1)
+        Long entryId = givenEntry("Firewatch", List.of());
+        genreService.replaceGenres(memberId, entryId, List.of("워킹시뮬"));
+
+        //when
+        backlogService.delete(memberId, entryId);
+
+        em.flush();
+        em.clear();
+
+        //then
+        assertThat(genreService.findDictionary(memberId)).isEmpty();
+    }
+
+    @Test
     public void 장르를_삭제하면_연결도_사라지고_마스터로_되돌아간다() {
         //given
         Long entryId = givenEntry("Gris", List.of("Adventure"));

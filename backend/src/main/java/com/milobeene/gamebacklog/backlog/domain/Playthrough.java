@@ -1,6 +1,7 @@
 package com.milobeene.gamebacklog.backlog.domain;
 
 import com.milobeene.gamebacklog.common.entity.BaseEntity;
+import com.milobeene.gamebacklog.common.exception.InvalidInputException;
 import com.milobeene.gamebacklog.common.util.TextValues;
 import com.milobeene.gamebacklog.platform.domain.Device;
 import com.milobeene.gamebacklog.platform.domain.Emulator;
@@ -92,8 +93,12 @@ public class Playthrough extends BaseEntity {
         return (finishedOn != null) ? finishedOn : startedOn;
     }
 
-    public boolean isInProgress() {
-        return status.isInProgress();
+    /**
+     * 기간을 아직 안 닫은 회차. BR-PT-03과 겹침 판정의 기준이 상태가 아니라 종료일이다.
+     * 종료일을 적은 PAUSED는 시간을 점유하지 않으므로 새 회차를 막지 않는다
+     */
+    public boolean isOngoing() {
+        return finishedOn == null;
     }
 
     /**
@@ -115,22 +120,23 @@ public class Playthrough extends BaseEntity {
         PlaythroughStatus status = command.status();
 
         if (startedOn == null) {
-            throw new IllegalArgumentException("시작일은 필수입니다");
+            throw new InvalidInputException("시작일은 필수입니다");
         }
         if (status == null) {
-            throw new IllegalArgumentException("회차 상태는 필수입니다");
+            throw new InvalidInputException("회차 상태는 필수입니다");
         }
         // BR-PT-01 (BR-PT-04: 당일 완료도 유효하므로 isBefore로 판정)
         if (finishedOn != null && finishedOn.isBefore(startedOn)) {
-            throw new IllegalArgumentException(
+            throw new InvalidInputException(
                     "종료일은 시작일 이후여야 합니다: " + startedOn + " ~ " + finishedOn);
         }
-        // 종료일과 상태는 한 몸이다. 어긋나면 §7.6 상태 파생이 깨진다
-        if (status.isInProgress() && finishedOn != null) {
-            throw new IllegalArgumentException("진행 중(" + status + ") 회차에는 종료일을 둘 수 없습니다");
+        // 종료일과 상태의 짝 (불변식 3줄). PAUSED만 양쪽이 다 허용된다
+        if (status.mustBeOpen() && finishedOn != null) {
+            throw new InvalidInputException(
+                    "PLAYING 회차에는 종료일을 둘 수 없습니다. 멈춘 날을 적으려면 PAUSED로 두세요");
         }
-        if (!status.isInProgress() && finishedOn == null) {
-            throw new IllegalArgumentException("종료된(" + status + ") 회차에는 종료일이 필요합니다");
+        if (status.mustBeClosed() && finishedOn == null) {
+            throw new InvalidInputException("종료된(" + status + ") 회차에는 종료일이 필요합니다");
         }
 
         this.startedOn = startedOn;

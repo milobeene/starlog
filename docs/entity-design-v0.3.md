@@ -1,19 +1,37 @@
-# 게임 백로그 — 엔티티 설계서 v0.2
+# 게임 백로그 — 엔티티 설계서 v0.3
 
 | 항목 | 내용 |
 |---|---|
-| 문서 버전 | v0.2 |
-| 최종 수정 | 2026-08-18 |
-| 상태 | **Phase 0 완료** — 코드화 및 DDL 검증 끝 |
-| 기준 명세 | 게임백로그 기능명세서 v1.4 |
+| 문서 버전 | v0.3 |
+| 최종 수정 | 2026-08-20 |
+| 상태 | **Phase 1 완료** — 서비스 계층 구현 및 테스트 106개 통과 |
+| 기준 명세 | 게임백로그 기능명세서 v1.5 |
 | 검증 환경 | Spring Boot 4.1.0 / Hibernate 7.4.1 / H2 2.4.240 |
 
-> v0.1은 코드 이전의 초안이었다. v0.2는 **실제로 코드로 옮기고 `ddl-auto: create`로 DDL을 확인한 결과**를 반영한다.
+> v0.1은 코드 이전의 초안, v0.2는 코드화 + DDL 검증 결과였다.
+> v0.3은 **서비스 계층을 실제로 구현하면서 드러난 것**을 반영한다. 엔티티 구조가 실사용을 견디는지 확인된 버전이다.
 > 스키마 확정은 여전히 Phase 9(Flyway 전환) 시점이다.
 
 ---
 
-## 0. v0.1 → v0.2 변경 요약
+## 0. v0.2 → v0.3 변경 요약
+
+| # | 변경 | 사유 |
+|---|---|---|
+| 1 | `BacklogEntry.lastPlaythrough` **비정규화 추가** | 목록 카드가 마지막 회차의 번호·기간·기기를 표시한다. 컬렉션은 fetch join 시 페이징이 깨지므로 `~ToOne` 참조로 우회 (§7.2) |
+| 2 | 역방향 컬렉션 2개 추가 — `acquisitions`, `genreLinks` | 상태 파생이 취득을 봐야 하고, 장르 폴백 계산이 엔티티 안에서 일어나야 한다. **태그는 추가하지 않았다** — 폴백도 파생도 없어 리포지토리로 충분 |
+| 3 | `Playthrough` 상태↔종료일 **불변식 3줄** (BR-PT-06) | 실데이터에 "닫힌 기간 + `PAUSED`"가 있었다. 열린 기간으로 대체하면 `lastPlayedOn`이 틀어져 기본 정렬이 깨진다 |
+| 4 | 리포지토리를 **Spring Data JPA + 커스텀 `BaseRepository`**로 | `SimpleJpaRepository.save()`가 준영속 엔티티에 `merge()`를 돌린다. 인터페이스에서 빼면 컴파일 단계에서 막힌다 |
+| 5 | `Money` 생성자에 **검증 추가** | 음수·비 ISO 4217 통화가 그대로 저장되고 있었다. `java.util.Currency`로 판정 |
+| 6 | 유니크 제약 **이름 명시** 5개 | `unique = true`는 이름이 자동 생성된다. Phase 9 Flyway 전환 대비 (OI-16 일부 해소) |
+| 7 | `Game.masterGenres`를 `updateMasterInfo`에 포함 | 장르 폴백 테스트와 Phase 4 RAWG 동기화에 필요 |
+| 8 | Command record 4종 신설 | 인자가 5~8개인 메서드에서 같은 타입이 나란히 붙어 순서를 바꿔도 컴파일이 통과했다 |
+| 9 | 예외 계층 신설 — `RevivableException` | 되살리기 확인이 필요한 상태를 타입으로 표현. Phase 2에서 핸들러 하나로 잡는다 |
+| 10 | 태그/장르 자동 소멸을 **조회 필터**로 | COUNT → DELETE에 경쟁 상태가 있었다. 조회에서 거르면 경쟁 대상 자체가 없다 |
+
+---
+
+## 0-1. v0.1 → v0.2 변경 요약 (이력)
 
 | # | 변경 | 사유 |
 |---|---|---|
@@ -32,13 +50,19 @@
 
 | ID | 결정 | 상태 |
 |---|---|---|
-| OI-05 | Platform / Device 초기 목록 | **Phase 1 시드 작성 시로 이관.** 엔티티 구조에 영향 없음 |
+| OI-05 | Platform / Device 초기 목록 | **해소 (v0.3)** — `DataInitializer` 시드. Steam/Nintendo/Epic Games, 기기 6종, 에뮬 4종 |
 | OI-06 | 구독 서비스명 → **문자열** (`Subscription.serviceName`) | 해소 |
-| OI-13 | 태그/장르 소멸 → **연결 해제 즉시.** 서비스 계층 COUNT 후 DELETE | 해소 |
+| OI-10 | 실데이터의 회차 규칙 위반 여부 | **해소 (v0.3)** — BR-PT-03이 아니라 상태↔종료일 짝이 문제였다. BR-PT-06 신설 |
+| OI-13 | 태그/장르 소멸 → **연결 해제 즉시** | 해소. 단 **구현 방식이 v0.3에서 바뀜** — 아래 |
 | OI-15 | `columnDefinition = "TEXT"`의 PostgreSQL 동작 확인 | Phase 9 |
-| OI-16 | 자동 생성된 FK 이름(`FK17cl9i...`) 정리 | Phase 9 |
+| OI-16 | 자동 생성된 제약 이름 정리 | **부분 해소 (v0.3)** — 유니크 5개 명시. FK 이름과 `CoverImage`는 Phase 9 |
 
-> **OI-13 구현 주의**: `orphanRemoval` / `CascadeType.REMOVE`로는 불가능하다. `Tag`는 여러 `BacklogEntry`가 공유하므로 부모가 하나로 특정되지 않는다.
+> **OI-13 구현 개정 (v0.3)**: COUNT → 0이면 DELETE 방식을 폐기했다. 읽고-쓰기 사이에 경쟁 상태가 있어 두 요청이 동시에 마지막 연결을 떼면 둘 다 지우려 든다.
+> **사전 행을 지우지 않고 조회에서 연결 1건 이상인 것만 반환한다.** 지연이 0이라 "즉시 사라진다"는 요구는 그대로 만족하고, 뗐던 태그를 다시 붙이면 원래 행을 재사용한다.
+> `orphanRemoval` / `CascadeType.REMOVE`가 불가능한 이유는 v0.2와 같다 — `Tag`를 여러 `BacklogEntry`가 공유하므로 부모가 하나로 특정되지 않는다.
+
+> **OI-16 부분 해소 (v0.3)**: `Platform.name`·`Device.name`·`Member.email`·`Member.googleSubject`·`AuthToken.tokenHash`에 이름을 붙였다.
+> `CoverImage`는 **불가능**했다 — `@OneToOne`이 하이버네이트 스스로 컬럼 unique를 만들어서, `@Table`로 같은 컬럼에 이름을 주면 중복 판정되어 무시된다. DDL로 확인했다.
 
 ---
 
@@ -50,21 +74,42 @@
 com.milobeene.gamebacklog
 ├─ GamebacklogApplication
 ├─ common/
-│  ├─ entity/     BaseEntity, Money
-│  ├─ config/     JpaConfig
-│  └─ exception/  (Phase 2)
-├─ member/domain/        Member, MemberRole
-├─ game/domain/          Game, GameSource
-├─ backlog/domain/       BacklogEntry, Playthrough, Acquisition, CoverImage,
-│                        BacklogEntryTag, BacklogEntryGenre, EntitySnapshot,
-│                        BacklogStatus, PlaythroughStatus, InputMethod,
-│                        AcquisitionMethod, SnapshotTarget
-├─ tag/domain/           Tag, Genre
-├─ platform/domain/      Platform, Device, PlatformAccount, MemberDevice
-├─ subscription/domain/  Subscription, BillingCycle
-├─ auth/domain/          AuthToken, TokenPurpose
-└─ admin/domain/         AuditLog
+│  ├─ entity/      BaseEntity, Money
+│  ├─ config/      JpaConfig, DataInitializer
+│  ├─ repository/  BaseRepository, BaseRepositoryImpl      (v0.3)
+│  ├─ exception/   RevivableException                      (v0.3)
+│  └─ util/        TextValues                              (v0.3)
+├─ member/
+│  ├─ domain/      Member, MemberRole
+│  ├─ repository/  MemberRepository
+│  └─ service/     MemberService
+├─ game/
+│  ├─ domain/      Game, GameSource
+│  ├─ repository/  GameRepository
+│  └─ service/     GameService
+├─ backlog/
+│  ├─ domain/      BacklogEntry, Playthrough, Acquisition, CoverImage,
+│  │               BacklogEntryTag, BacklogEntryGenre, EntitySnapshot,
+│  │               BacklogStatus, PlaythroughStatus, InputMethod,
+│  │               AcquisitionMethod, SnapshotTarget,
+│  │               OverrideCommand, PlaythroughCommand, AcquisitionCommand
+│  ├─ repository/  BacklogEntryRepository, PlaythroughRepository,
+│  │               AcquisitionRepository, BacklogEntryTagRepository,
+│  │               BacklogEntryGenreRepository
+│  ├─ service/     BacklogService, PlaythroughService, AcquisitionService,
+│  │               BacklogEntryFinder
+│  └─ exception/   RevivableEntryException
+├─ tag/            Tag, Genre / TagRepository, GenreRepository / TagService, GenreService
+├─ platform/       Platform, Device, PlatformAccount, MemberDevice, Emulator
+│                  / 리포지토리 4 / PlatformAccountService, MemberDeviceService
+│                  / RevivableAccountException
+├─ subscription/   Subscription, BillingCycle, SubscriptionCommand
+│                  / SubscriptionRepository / SubscriptionService
+├─ auth/domain/    AuthToken, TokenPurpose
+└─ admin/domain/   AuditLog
 ```
+
+> **`BacklogEntryFinder`** — 소유권·생존 확인을 백로그 자식 서비스 넷(회차·취득·태그·장르)이 공유한다. 서비스끼리 주입하면 순환이 생기므로 작은 협력자로 뽑았다. 처음엔 package-private이었으나 `tag.service`에서도 쓰게 되면서 공개했다.
 
 **배치 기준**: "이것만 따로 고칠 일이 있는가." 없으면 부모 피처에 흡수한다.
 
@@ -252,9 +297,9 @@ private Money fee;
 | 연관 | `member`(주인), `game`(주인) |
 | 오버라이드 | `nameOverride`, **`developerOverrides`(List)**, **`publisherOverrides`(List)**, `releasedOnOverride`, `listPriceOverride` |
 | 개인 기록 | `rating`(`numeric(4,1)`), `playTimeHours`, `memo`(TEXT) |
-| 비정규화 | `displayName`(not null), `status`(not null), `lastPlayedOn` |
+| 비정규화 | `displayName`(not null), `status`(not null), `lastPlayedOn`, **`lastPlaythrough`**(v0.3) |
 | 기타 | `deletedAt` |
-| 역방향 | `playthroughs` (`mappedBy = "backlogEntry"`) |
+| 역방향 | `playthroughs`, **`acquisitions`**, **`genreLinks`** (전부 `mappedBy = "backlogEntry"`) |
 
 - unique `(member_id, game_id)` — FR-BL-02
 - 인덱스 3개: `(member_id, status)` / `(member_id, last_played_on)` / `(member_id, display_name)`
@@ -262,16 +307,60 @@ private Money fee;
 
 **오버라이드 값 표현**: 리스트는 "없음"이 `null`이 아니라 **빈 리스트**다. 표시값 계산은 `overrides.isEmpty() ? master : overrides`.
 
-**역방향 컬렉션을 최소로 둔 이유**: 매핑은 언제든 추가할 수 있지만, 미리 만들면 안 쓰는 매핑만 늘고 실수로 컬렉션을 직접 조작할 여지가 생긴다. `playthroughs`만 둔 것은 상태 동기화에 확실히 필요하기 때문.
+#### 표시값 계산 메서드 (§5.2 — 한 곳에만)
+
+`resolvedDevelopers()` / `resolvedPublishers()` / `resolvedReleasedOn()` / `resolvedListPrice()` / `resolvedGenres()`
+
+`displayName`만 컬럼으로 저장한다. 나머지는 계산한다. **기준은 "쿼리 대상인가"** — 검색·정렬·필터에 쓰이면 컬럼, 화면에 뿌리기만 하면 계산이다. `displayName`은 두 테이블(`name_override` + `game.name`)에 걸쳐 있어 조인 건너편에 인덱스를 걸 수 없으므로 컬럼이어야 한다.
+
+#### `lastPlaythrough` (v0.3 신설)
+
+`@ManyToOne(fetch = LAZY)` → `last_playthrough_id` (nullable)
+
+- 목록 카드가 마지막 회차의 **번호·시작일·종료일·기기**를 표시한다. 매번 회차를 뒤지면 항목 수만큼 쿼리가 나가는데, 컬렉션 fetch join은 페이징을 깨므로 우회가 어렵다
+- `~ToOne`이라 **join fetch가 가능하고 페이징도 살아남는다**
+- 갱신 경로가 `syncDerivedState()` 하나뿐이라 유지 비용이 `lastPlayedOn`과 같다 (같은 자리에서 이미 최신 회차를 계산한다)
+- `backlog_entry ↔ playthrough` **순환 FK**가 생긴다. nullable이라 Hibernate가 INSERT → UPDATE 순으로 처리하고, 삭제 시에도 UPDATE(참조 이동)가 DELETE보다 먼저 나간다. SQL 로그로 확인함
+
+#### 역방향 컬렉션 3개 — 왜 이 셋만인가
+
+| 컬렉션 | 이유 |
+|---|---|
+| `playthroughs` | 상태 파생(§7.6)이 순회한다 |
+| `acquisitions` | 회차 0개일 때 상태를 취득이 정한다 |
+| `genreLinks` | 마스터 폴백 계산이 엔티티 안에서 일어나야 한다 (§5.2) |
+
+**태그는 넣지 않았다.** 폴백도 파생 상태도 없어서 리포지토리 조회로 충분하다. 대칭이 깨져 보이지만 의도된 것이다 — 매핑을 미리 만들면 안 쓰는 매핑만 늘고 컬렉션을 직접 조작할 여지가 생긴다.
+
+> **구현 함정 (Phase 1에서 3번 반복됨)**: `mappedBy` 역방향은 읽기 전용이라 자식을 `persist`해도 **이미 로드된 부모의 컬렉션에 들어가지 않는다.** 바로 뒤에 파생 계산을 부르면 방금 넣은 자식을 못 본다. `addPlaythrough()` / `addAcquisition()` / `addGenreLink()` 편의 메서드로 양쪽을 같이 채운다.
 
 ### 5.4 항목 종속 (`backlog/domain`)
 
 #### `Playthrough`
 
-`backlogEntry`(주인), `sequenceNo`(not null), `startedOn`(not null), `finishedOn`(null=진행 중), `status`, `label`, `device`(nullable ⚠️4), `platformAccount`(nullable), `inputMethod`(nullable)
+`backlogEntry`(주인), `sequenceNo`(not null), `startedOn`(not null), `finishedOn`(null=아직 안 닫힘), `status`, `label`, `device`(nullable ⚠️4), `platformAccount`(nullable), `emulator`(nullable), `inputMethod`(nullable)
 - unique `(backlog_entry_id, sequence_no)` / 삭제: 물리
 
-> 회차를 물리 삭제하면 `sequenceNo`에 구멍이 생긴다(1·3만 남는 등). 당겨서 재부여할지는 Phase 1에서 결정. 지금은 구멍 허용.
+**`sequenceNo` 구멍 — 허용으로 확정 (v0.3)**
+
+재부여하면 `(backlog_entry_id, sequence_no)` 유니크와 싸운다. 3→2로 내리는 순간 잠깐 2가 둘이 되어 UPDATE 순서를 정렬해야 한다. 무엇보다 **§7.6이 "최신 회차는 번호가 아니라 날짜 기준"**이라 번호는 표시용 라벨일 뿐 로직에 쓰이지 않는다.
+
+**상태 ↔ 종료일 불변식 (BR-PT-06, v0.3 신설)**
+
+```
+PLAYING              종료일 없어야 함
+PAUSED               종료일 있어도 없어도 됨   ← 여기만 자유
+DROPPED | COMPLETED  종료일 있어야 함
+```
+
+BR-PT-03(동시 1개)과 BR-PT-02(겹침)의 판정 기준도 **상태가 아니라 종료일**이다. 종료일 없는 회차는 시작일부터 무한대까지 점유한다.
+
+- 근거: 실데이터에 "6/3~6/11 하다 멈춤"(닫힌 기간 + `PAUSED`) 기록이 있었다. 열린 기간으로 대체하면 `lastPlayedOn`이 시작일이 되어 최근 플레이순 정렬이 틀어진다
+- 검증 분담: **BR-PT-01·04·06은 엔티티**(자기 필드만 보면 됨), **BR-PT-02·03은 서비스**(형제 회차를 봐야 함)
+
+**`inputMethod`는 단일 enum 유지 (v0.3 결정)**
+
+실데이터는 리스트(`[keyboard & mouse, controller (XBox)]`)다. 한 회차에서 입력 방식을 여럿 쓴 기록은 **하나만 남는다.** 입력 방식이 통계 축도 필터 조건도 아니므로(FR-PT-05는 SHOULD) 조인 테이블을 하나 더 만들 값어치가 없다고 판단했다.
 
 #### `Acquisition`
 
@@ -313,6 +402,68 @@ private Money fee;
 
 `actor`, `action`(not null), `targetType`, `targetId`, `requestIp`, `userAgent`
 - 삭제 없음. **인덱스는 아직 없다** — 조회 패턴이 Phase 3에서 정해진다. 추측으로 붙이지 않는다
+
+---
+
+## 5-1. 데이터 접근 계층 (v0.3 신설)
+
+Spring Data JPA를 쓰되 `JpaRepository`를 **직접 상속하지 않는다.**
+
+```
+common/repository/BaseRepository<T, ID>      findById · findAll · delete · persist
+      └─ BaseRepositoryImpl                  SimpleJpaRepository 상속 + persist 구현
+           MemberRepository / GameRepository / BacklogEntryRepository / ...  (총 11개)
+```
+
+**근거**: `SimpleJpaRepository.save()`는 내부가 `if (새 엔티티) persist else merge`다. 준영속 엔티티에 부르면 조용히 `merge()`가 돌아 설계 원칙(변경 감지 우선, `merge()` 금지)을 어긴다. **인터페이스에서 `save()`를 빼면 컴파일 단계에서 막힌다.** 실제로 `repo.save(detached)`가 `cannot find symbol`로 거부되는 것을 확인했다.
+
+- 신규 저장은 `persist()`, 수정은 **변경 감지**, 벌크는 `@Modifying` + `@Query`
+- `@EnableJpaRepositories(basePackages = "com.milobeene.gamebacklog", repositoryBaseClass = BaseRepositoryImpl.class)` — 이 애노테이션을 직접 달면 부트 자동 설정이 꺼지므로 `basePackages`를 반드시 명시한다
+
+> **시행착오**: 처음에 커스텀 조각(fragment) 방식(`EntityPersister` + `EntityPersisterImpl`)으로 시도했으나 스프링이 조각 구현을 못 찾아 `persist`를 **메서드 이름 쿼리**로 해석하려다 실패했다. 조각은 리포지토리마다 **다른** 기능을 붙일 때 쓰는 것이고, **모든 리포지토리가 공유하는** 기능은 `repositoryBaseClass`가 정석이다.
+
+**벌크 연산 주의** — `BacklogEntryRepository.updateDisplayNameByGameId` (마스터 이름 전파, A-7)
+
+```java
+@Modifying(flushAutomatically = true, clearAutomatically = true)
+@Query("update BacklogEntry b set b.displayName = :newName, b.updatedAt = :now ...")
+```
+
+- `updatedAt`을 SET 절에 **직접 써야 한다.** 벌크는 엔티티 생명주기 콜백을 안 거쳐 `@LastModifiedDate`가 돌지 않는다
+- `flushAutomatically`가 없으면 같은 트랜잭션에서 바꾼 `Game.name`이 유실된다. 자동 flush는 쿼리가 건드리는 테이블과 겹치는 변경만 밀어내는데, `Game` 변경은 `backlog_entry`와 안 겹쳐서 안 밀린 채 `clear`에 날아갔다 (테스트로 재현함)
+
+---
+
+## 5-2. Command record (v0.3 신설)
+
+서비스 입력을 묶은 도메인 record. **웹 DTO가 아니다** (그건 Phase 2 H-1에서 결정).
+
+`OverrideCommand` · `PlaythroughCommand` · `AcquisitionCommand` · `SubscriptionCommand`
+
+**근거**: 인자가 5~8개로 늘면서 같은 타입이 나란히 붙었다. `updateOverrides(memberId, entryId, name, devs, pubs, date, price)`는 `List<String>` 둘이 인접해 **순서를 바꿔 넣어도 컴파일이 통과한다.**
+
+---
+
+## 5-3. 예외 계층 (v0.3 신설)
+
+```
+common/exception/RevivableException          (추상, targetId 보유)
+  ├─ backlog/exception/RevivableEntryException
+  └─ platform/exception/RevivableAccountException
+```
+
+소프트 삭제 대상은 **재등록 시 3분기**가 필요하다 (§7.4).
+
+```
+재등록 요청
+ ├─ 살아있는 행 존재  → IllegalStateException
+ ├─ 삭제된 행 존재    → RevivableException  → 확인 후 revive()
+ └─ 없음             → INSERT
+```
+
+공통 베이스만 `common/exception`에 두고 구체 예외는 각 피처 패키지에 둔다. Phase 2(H-5)에서 `@ExceptionHandler(RevivableException.class)` 하나로 되살리기 계열을 전부 409 + "복원할까요?"로 번역하면서도, 구체 타입으로 어느 도메인인지 구분한다.
+
+**나머지 예외는 표준 타입을 쓴다** — `IllegalArgumentException`(못 찾음·입력 오류) / `IllegalStateException`(소유권·상태 충돌). H-5에서 상태코드로 번역한다.
 
 ---
 
@@ -372,19 +523,44 @@ TokenPurpose       EMAIL_VERIFICATION | PASSWORD_RESET                auth/
 
 ---
 
-## 8. Phase 1로 넘기는 것
+## 8. Phase 1 결과와 Phase 2로 넘기는 것
 
-엔티티에 **필드만 있고 행위가 없는 상태**다. 아래는 Phase 1에서 구현한다.
+### 8-1. Phase 1에서 구현 완료 ✅
 
 | 위치 | 내용 |
 |---|---|
-| `BacklogEntry` (엔티티) | `syncFromPlaythroughs()` — 최신 회차(§7.6) 기준 `status`·`lastPlayedOn` 재계산. 회차 0개일 때의 분기 포함 |
-| `BacklogEntry` (엔티티) | 표시값 계산 — `오버라이드 ?? 마스터`를 **한 곳에만** 둔다 |
-| `BacklogEntry` (엔티티) | 비정규화 갱신 메서드 — `displayName` 변경 경로를 한 곳으로 모은다 |
-| 서비스 계층 | BR-PT-02(기간 겹침), BR-PT-03(진행 중 1개) — 형제 회차를 봐야 판단 가능하므로 엔티티가 아님 |
-| 서비스 계층 | 태그/장르 자동 소멸 (COUNT → DELETE) |
-| 서비스 계층 | `Game.name` 수정 시 해당 게임을 담은 **모든** 항목의 `displayName` 갱신 |
-| 시드 | `Platform` / `Device` 초기 목록 (OI-05) |
+| `BacklogEntry` | `syncDerivedState()` — 회차 있으면 최신 회차가, 없으면 취득이 `status`를 정한다. `lastPlayedOn`·`lastPlaythrough`도 여기서 |
+| `BacklogEntry` | 표시값 계산 5종 — `오버라이드 ?? 마스터`를 한 곳에만 |
+| `BacklogEntry` | `refreshDisplayName()` — 비정규화 갱신 경로를 한 곳으로 |
+| 서비스 계층 | BR-PT-02·03 (형제 회차를 봐야 하므로 엔티티가 아님) |
+| 서비스 계층 | 태그/장르 자동 소멸 — **조회 필터 방식으로 변경** (OI-13 개정) |
+| 서비스 계층 | `GameService.updateName` — 벌크 UPDATE로 전 회원 `displayName` 전파 |
+| 시드 | `DataInitializer` — Platform 3 / Device 6 / Emulator 4 (OI-05 해소) |
+
+> `syncFromPlaythroughs()`는 취득까지 보게 되면서 **`syncDerivedState()`로 개명**했다.
+
+### 8-2. Phase 2로 넘기는 것
+
+| 대상 | 내용 |
+|---|---|
+| DTO | 엔티티를 그대로 반환 중인 조회 메서드들을 DTO로 감싼다. **`open-in-view: false`라 컨트롤러에서 LAZY를 건드리면 터진다** |
+| 조회 전용 서비스 | 화면 단위 조합 지점. 목록 카드가 5개 도메인을 걸친다 |
+| N+1 | 목록 조회에 batch size 적용. `lastPlaythrough`는 join fetch |
+| 예외 번역 | `@RestControllerAdvice` — 표준 예외 + `RevivableException` → 상태코드 |
+| 태그 카운트 | 폴더 UI를 위한 태그별 항목 수 집계 쿼리 (신규) |
+
+### 8-3. 미착수 — 슬라이스 G (변경 이력)
+
+`EntitySnapshot` 엔티티는 있으나 **아무도 쓰지 않는다.** SHOULD 우선순위라 Phase 2 이후로 이월했다.
+
+### 8-4. 이월된 결정 (Phase 1 리뷰에서 발견)
+
+| 대상 | 내용 | 시점 |
+|---|---|---|
+| `AuditLog.actor` / `EntitySnapshot.changedBy` | `optional = false` FK인데 I-8이 회원을 **물리 삭제**한다. FK 위반으로 삭제가 실패한다. FK 대신 `actorId` + 이메일 스냅샷이 정석 | **I-8 전** |
+| `Subscription` 물리 삭제 | 취득이 참조 중이면 커밋 시점 FK 예외. 앱에서 막지 않고 DB에 맡기기로 함 | H-5에서 409 번역 |
+| `display_name` 정렬 | 한글 정렬 순서가 H2와 PostgreSQL에서 다를 수 있다 | Phase 9 |
+| 모드 리스트 | 실데이터 본문에 회차별 모드 목록이 있으나 담을 필드가 없다 | Phase 7 |
 
 ### 동시성에 대한 인식
 

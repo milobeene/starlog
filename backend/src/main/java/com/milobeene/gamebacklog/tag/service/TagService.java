@@ -4,6 +4,9 @@ import com.milobeene.gamebacklog.backlog.domain.BacklogEntry;
 import com.milobeene.gamebacklog.backlog.domain.BacklogEntryTag;
 import com.milobeene.gamebacklog.backlog.repository.BacklogEntryTagRepository;
 import com.milobeene.gamebacklog.backlog.service.BacklogEntryFinder;
+import com.milobeene.gamebacklog.common.exception.ConflictException;
+import com.milobeene.gamebacklog.common.exception.InvalidInputException;
+import com.milobeene.gamebacklog.common.exception.NotFoundException;
 import com.milobeene.gamebacklog.common.util.TextValues;
 import com.milobeene.gamebacklog.member.domain.Member;
 import com.milobeene.gamebacklog.tag.domain.Tag;
@@ -74,13 +77,13 @@ public class TagService {
         Tag tag = findOwnedTag(memberId, tagId);
         String normalized = TextValues.normalize(newName);
         if (normalized == null) {
-            throw new IllegalArgumentException("태그 이름은 비울 수 없습니다");
+            throw new InvalidInputException("태그 이름은 비울 수 없습니다");
         }
 
         tagRepository.findByMemberIdAndName(memberId, normalized)
                 .filter(other -> !other.getId().equals(tagId))
                 .ifPresent(other -> {
-                    throw new IllegalStateException("이미 있는 태그 이름입니다: " + normalized);
+                    throw new ConflictException("이미 있는 태그 이름입니다: " + normalized);
                 });
 
         tag.rename(normalized);
@@ -110,11 +113,11 @@ public class TagService {
 
     private Tag findOwnedTag(Long memberId, Long tagId) {
         Tag tag = tagRepository.findById(tagId)
-                .orElseThrow(() -> new IllegalArgumentException("태그를 찾을 수 없습니다. id=" + tagId));
+                .orElseThrow(() -> new NotFoundException("태그를 찾을 수 없습니다. id=" + tagId));
 
-        // 태그는 회원 소유다. 다른 회원과 공유하지 않는다 (§6.7)
+        // 태그는 회원 소유다 (§6.7). 남의 것은 없는 것처럼 답한다
         if (!tag.getMember().getId().equals(memberId)) {
-            throw new IllegalStateException("내 태그가 아닙니다. id=" + tagId);
+            throw new NotFoundException("태그를 찾을 수 없습니다. id=" + tagId);
         }
 
         return tag;

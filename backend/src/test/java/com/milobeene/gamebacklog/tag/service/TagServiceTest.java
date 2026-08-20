@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.milobeene.gamebacklog.backlog.service.BacklogService;
+import com.milobeene.gamebacklog.common.exception.ConflictException;
+import com.milobeene.gamebacklog.common.exception.NotFoundException;
 import com.milobeene.gamebacklog.game.domain.Game;
 import com.milobeene.gamebacklog.game.repository.GameRepository;
 import com.milobeene.gamebacklog.member.domain.Member;
@@ -192,7 +194,7 @@ class TagServiceTest {
 
         //when & then — 병합하지 않고 거부한다
         assertThatThrownBy(() -> tagService.rename(memberId, tagId, "갓겜"))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(ConflictException.class)
                 .hasMessageContaining("이미 있는 태그 이름");
     }
 
@@ -218,6 +220,33 @@ class TagServiceTest {
     }
 
     @Test
+    public void 소프트_삭제된_항목만_쓰던_태그는_사전에서_숨는다() {
+        //given — 태그 연결은 되살리기 대비로 남지만, 사전 조회가 항목의 deletedAt을 본다 (리뷰 D1)
+        Long entryId = givenEntry("Firewatch");
+        tagService.replaceTags(memberId, entryId, List.of("워킹시뮬"));
+
+        //when
+        backlogService.delete(memberId, entryId);
+
+        em.flush();
+        em.clear();
+
+        //then
+        assertThat(tagService.findDictionary(memberId)).isEmpty();
+
+        //when — 되살리면 연결이 그대로라 사전에도 다시 나온다
+        backlogService.revive(memberId, entryId);
+
+        em.flush();
+        em.clear();
+
+        //then
+        assertThat(tagService.findDictionary(memberId))
+                .extracting(Tag::getName)
+                .containsExactly("워킹시뮬");
+    }
+
+    @Test
     public void 남의_태그는_건드릴_수_없다() {
         //given
         Long entryId = givenEntry("Hades");
@@ -227,7 +256,7 @@ class TagServiceTest {
 
         //when & then
         assertThatThrownBy(() -> tagService.rename(stranger.getId(), tagId, "갓겜"))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(NotFoundException.class);   // 남의 것은 404 — 존재를 노출하지 않는다
     }
 
     // ── 헬퍼

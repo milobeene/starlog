@@ -4,6 +4,7 @@ import com.milobeene.gamebacklog.backlog.domain.Acquisition;
 import com.milobeene.gamebacklog.backlog.domain.AcquisitionCommand;
 import com.milobeene.gamebacklog.backlog.domain.BacklogEntry;
 import com.milobeene.gamebacklog.backlog.repository.AcquisitionRepository;
+import com.milobeene.gamebacklog.common.exception.NotFoundException;
 import com.milobeene.gamebacklog.platform.domain.Platform;
 import com.milobeene.gamebacklog.platform.domain.PlatformAccount;
 import com.milobeene.gamebacklog.platform.repository.PlatformAccountRepository;
@@ -78,11 +79,11 @@ public class AcquisitionService {
     private void assignReferences(Acquisition acquisition, AcquisitionCommand command) {
         Platform platform = (command.platformId() == null) ? null
                 : platformRepository.findById(command.platformId())
-                .orElseThrow(() -> new IllegalArgumentException("플랫폼을 찾을 수 없습니다. id=" + command.platformId()));
+                .orElseThrow(() -> new NotFoundException("플랫폼을 찾을 수 없습니다. id=" + command.platformId()));
 
         PlatformAccount account = (command.platformAccountId() == null) ? null
                 : platformAccountRepository.findById(command.platformAccountId())
-                .orElseThrow(() -> new IllegalArgumentException("플랫폼 계정을 찾을 수 없습니다. id=" + command.platformAccountId()));
+                .orElseThrow(() -> new NotFoundException("플랫폼 계정을 찾을 수 없습니다. id=" + command.platformAccountId()));
 
         acquisition.assignReferences(platform, account);
 
@@ -95,7 +96,7 @@ public class AcquisitionService {
 
     private Acquisition findOwnedAcquisition(Long memberId, Long acquisitionId) {
         Acquisition acquisition = acquisitionRepository.findById(acquisitionId)
-                .orElseThrow(() -> new IllegalArgumentException("취득 기록을 찾을 수 없습니다. id=" + acquisitionId));
+                .orElseThrow(() -> new NotFoundException("취득 기록을 찾을 수 없습니다. id=" + acquisitionId));
 
         // 부모 항목의 소유권을 확인한다. 취득은 자기 소유자를 따로 갖지 않는다
         entryFinder.findOwned(memberId, acquisition.getBacklogEntry().getId());

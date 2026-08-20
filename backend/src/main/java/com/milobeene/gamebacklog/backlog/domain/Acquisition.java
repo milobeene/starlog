@@ -2,6 +2,7 @@ package com.milobeene.gamebacklog.backlog.domain;
 
 import com.milobeene.gamebacklog.common.entity.BaseEntity;
 import com.milobeene.gamebacklog.common.entity.Money;
+import com.milobeene.gamebacklog.common.exception.InvalidInputException;
 import com.milobeene.gamebacklog.common.util.TextValues;
 import com.milobeene.gamebacklog.platform.domain.Platform;
 import com.milobeene.gamebacklog.platform.domain.PlatformAccount;
@@ -95,11 +96,11 @@ public class Acquisition extends BaseEntity {
 
     private void apply(AcquisitionCommand command) {
         if (command.method() == null) {
-            throw new IllegalArgumentException("취득 방식은 필수입니다");
+            throw new InvalidInputException("취득 방식은 필수입니다");
         }
         // 모순 차단. SUBSCRIPTION인데 연결이 없는 건 허용한다 — 제약 최소화 방침
         if (command.subscriptionId() != null && command.method() != AcquisitionMethod.SUBSCRIPTION) {
-            throw new IllegalArgumentException("취득 방식이 SUBSCRIPTION일 때만 구독을 연결할 수 있습니다");
+            throw new InvalidInputException("취득 방식이 SUBSCRIPTION일 때만 구독을 연결할 수 있습니다");
         }
 
         this.method = command.method();

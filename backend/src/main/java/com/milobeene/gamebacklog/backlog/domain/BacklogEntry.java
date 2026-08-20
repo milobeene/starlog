@@ -2,6 +2,8 @@ package com.milobeene.gamebacklog.backlog.domain;
 
 import com.milobeene.gamebacklog.common.entity.BaseEntity;
 import com.milobeene.gamebacklog.common.entity.Money;
+import com.milobeene.gamebacklog.common.exception.ConflictException;
+import com.milobeene.gamebacklog.common.exception.InvalidInputException;
 import com.milobeene.gamebacklog.common.util.TextValues;
 import com.milobeene.gamebacklog.game.domain.Game;
 import com.milobeene.gamebacklog.member.domain.Member;
@@ -93,6 +95,16 @@ public class BacklogEntry extends BaseEntity {
     @Column(name = "last_played_on")
     private LocalDate lastPlayedOn;
 
+    /**
+     * 마지막 회차 참조 (§7.2 비정규화). 목록 화면이 "N회차 · 기간 · 기기"를 보여줘야 하는데
+     * 매번 회차를 뒤지면 항목 수만큼 쿼리가 나간다.
+     * ToOne이라 join fetch가 되고 페이징도 살아남는다.
+     * 갱신 경로가 syncDerivedState() 하나뿐이라 유지 비용은 lastPlayedOn과 같다
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "last_playthrough_id")
+    private Playthrough lastPlaythrough;
+
     private LocalDateTime deletedAt;
 
     // 역방향(읽기 전용). mappedBy = 상대 엔티티의 필드명
@@ -151,7 +163,7 @@ public class BacklogEntry extends BaseEntity {
      */
     public void softDelete(LocalDateTime deletedAt) {
         if (isDeleted()) {
-            throw new IllegalStateException("이미 삭제된 항목입니다. id=" + id);
+            throw new ConflictException("이미 삭제된 항목입니다. id=" + id);
         }
         this.deletedAt = deletedAt;
     }
@@ -166,9 +178,12 @@ public class BacklogEntry extends BaseEntity {
      */
     public void revive() {
         if (!isDeleted()) {
-            throw new IllegalStateException("삭제되지 않은 항목입니다. id=" + id);
+            throw new ConflictException("삭제되지 않은 항목입니다. id=" + id);
         }
         this.deletedAt = null;
+        // 지금은 삭제 중 자식 수정이 막혀 있어 드리프트 경로가 없지만,
+        // 나중에 경로가 생겨도 조용히 어긋나지 않게 방어적으로 재계산한다
+        syncDerivedState();
     }
 
     /**
@@ -214,12 +229,14 @@ public class BacklogEntry extends BaseEntity {
         if (latest != null) {
             this.status = latest.getStatus().toBacklogStatus();
             this.lastPlayedOn = latest.lastActivityOn();
+            this.lastPlaythrough = latest;
             return;
         }
 
         // 회차 없음 → 취득이 정한다.
         // NOT_OWNED가 아닌 취득이 하나라도 있으면 가진 것. 취득 0건도 WISHLIST다
         this.lastPlayedOn = null;
+        this.lastPlaythrough = null;
         boolean owned = acquisitions.stream().anyMatch(Acquisition::impliesOwnership);
         this.status = owned ? BacklogStatus.BACKLOG : BacklogStatus.WISHLIST;
     }
@@ -264,7 +281,7 @@ public class BacklogEntry extends BaseEntity {
         }
         BigDecimal scaled = value.setScale(1, RoundingMode.HALF_UP);
         if (scaled.compareTo(RATING_MIN) < 0 || scaled.compareTo(RATING_MAX) > 0) {
-            throw new IllegalArgumentException("평점은 0.0 ~ 100.0 범위여야 합니다: " + value);
+            throw new InvalidInputException("평점은 0.0 ~ 100.0 범위여야 합니다: " + value);
         }
         return scaled;
     }
@@ -274,7 +291,7 @@ public class BacklogEntry extends BaseEntity {
             return null;
         }
         if (hours < 0) {
-            throw new IllegalArgumentException("플레이 시간은 0 이상이어야 합니다: " + hours);
+            throw new InvalidInputException("플레이 시간은 0 이상이어야 합니다: " + hours);
         }
         return hours;
     }

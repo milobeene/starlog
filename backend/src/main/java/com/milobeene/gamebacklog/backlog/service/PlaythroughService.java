@@ -4,6 +4,8 @@ import com.milobeene.gamebacklog.backlog.domain.BacklogEntry;
 import com.milobeene.gamebacklog.backlog.domain.Playthrough;
 import com.milobeene.gamebacklog.backlog.domain.PlaythroughCommand;
 import com.milobeene.gamebacklog.backlog.repository.PlaythroughRepository;
+import com.milobeene.gamebacklog.common.exception.ConflictException;
+import com.milobeene.gamebacklog.common.exception.NotFoundException;
 import com.milobeene.gamebacklog.platform.domain.Device;
 import com.milobeene.gamebacklog.platform.domain.Emulator;
 import com.milobeene.gamebacklog.platform.domain.PlatformAccount;
@@ -93,15 +95,16 @@ public class PlaythroughService {
             if (isSame(target, sibling)) {
                 continue;   // 수정 중인 자기 자신
             }
-            // BR-PT-03 — PLAYING·PAUSED 둘 다 진행 중이다. 새로 넣으려면 기존 것을 닫아야 한다
-            if (target.isInProgress() && sibling.isInProgress()) {
-                throw new IllegalStateException(
+            // BR-PT-03 — 판정 기준은 상태가 아니라 종료일이다.
+            // 종료일 없는 회차가 둘이면 "지금 하는 중"이 둘이라는 뜻
+            if (target.isOngoing() && sibling.isOngoing()) {
+                throw new ConflictException(
                         "진행 중인 회차가 이미 있습니다. " + sibling.getSequenceNo()
-                                + "회차를 DROPPED 또는 COMPLETED로 닫아주세요");
+                                + "회차에 종료일을 적어 닫아주세요");
             }
             // BR-PT-02 — 진행 중 회차는 시작일부터 무한대까지 점유한다
             if (target.overlaps(sibling)) {
-                throw new IllegalStateException(
+                throw new ConflictException(
                         "회차 기간이 " + sibling.getSequenceNo() + "회차와 겹칩니다");
             }
         }
@@ -115,22 +118,22 @@ public class PlaythroughService {
     private void assignReferences(Playthrough playthrough, PlaythroughCommand command) {
         Device device = (command.deviceId() == null) ? null
                 : deviceRepository.findById(command.deviceId())
-                .orElseThrow(() -> new IllegalArgumentException("기기를 찾을 수 없습니다. id=" + command.deviceId()));
+                .orElseThrow(() -> new NotFoundException("기기를 찾을 수 없습니다. id=" + command.deviceId()));
 
         PlatformAccount account = (command.platformAccountId() == null) ? null
                 : platformAccountRepository.findById(command.platformAccountId())
-                .orElseThrow(() -> new IllegalArgumentException("플랫폼 계정을 찾을 수 없습니다. id=" + command.platformAccountId()));
+                .orElseThrow(() -> new NotFoundException("플랫폼 계정을 찾을 수 없습니다. id=" + command.platformAccountId()));
 
         Emulator emulator = (command.emulatorId() == null) ? null
                 : emulatorRepository.findById(command.emulatorId())
-                .orElseThrow(() -> new IllegalArgumentException("에뮬레이터를 찾을 수 없습니다. id=" + command.emulatorId()));
+                .orElseThrow(() -> new NotFoundException("에뮬레이터를 찾을 수 없습니다. id=" + command.emulatorId()));
 
         playthrough.assignReferences(device, account, emulator);
     }
 
     private Playthrough findOwnedPlaythrough(Long memberId, Long playthroughId) {
         Playthrough playthrough = playthroughRepository.findById(playthroughId)
-                .orElseThrow(() -> new IllegalArgumentException("회차를 찾을 수 없습니다. id=" + playthroughId));
+                .orElseThrow(() -> new NotFoundException("회차를 찾을 수 없습니다. id=" + playthroughId));
 
         // 부모 항목의 소유권을 확인한다. 회차는 자기 소유자를 따로 갖지 않는다
         entryFinder.findOwned(memberId, playthrough.getBacklogEntry().getId());

@@ -6,10 +6,15 @@ import com.milobeene.gamebacklog.common.exception.RevivableException;
 public class RevivableAccountException extends RevivableException {
 
     public RevivableAccountException(Long accountId) {
-        super("삭제된 플랫폼 계정이 있습니다. 복원 여부를 확인하세요. id=" + accountId, accountId);
+        super("삭제된 플랫폼 계정이 있습니다. 복원하시겠습니까? id=" + accountId, accountId);
     }
 
     public Long getAccountId() {
         return getTargetId();
+    }
+
+    @Override
+    public String reviveUrl() {
+        return "/api/me/platform-accounts/" + getTargetId() + "/revive";
     }
 }
