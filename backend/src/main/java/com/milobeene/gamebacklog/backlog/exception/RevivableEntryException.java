@@ -12,9 +12,4 @@ public class RevivableEntryException extends RevivableException {
     public Long getEntryId() {
         return getTargetId();
     }
-
-    @Override
-    public String reviveUrl() {
-        return "/api/backlog/" + getTargetId() + "/revive";
-    }
 }

@@ -13,8 +13,4 @@ public class RevivableAccountException extends RevivableException {
         return getTargetId();
     }
 
-    @Override
-    public String reviveUrl() {
-        return "/api/me/platform-accounts/" + getTargetId() + "/revive";
-    }
 }

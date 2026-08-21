@@ -29,7 +29,8 @@ import java.util.List;
         indexes = {
                 @Index(name = "idx_backlog_member_status", columnList = "member_id, status"),
                 @Index(name = "idx_backlog_member_last_played", columnList = "member_id, last_played_on"),
-                @Index(name = "idx_backlog_member_display_name", columnList = "member_id, display_name")
+                @Index(name = "idx_backlog_member_display_name", columnList = "member_id, display_name"),
+                @Index(name = "idx_backlog_member_released_on", columnList = "member_id, released_on_resolved")
         })
 public class BacklogEntry extends BaseEntity {
 
@@ -96,6 +97,14 @@ public class BacklogEntry extends BaseEntity {
     private LocalDate lastPlayedOn;
 
     /**
+     * 출시일 표시값 비정규화 (§7.2). displayName과 같은 이유다 —
+     * 정렬 대상이 오버라이드와 마스터로 흩어져 있으면 COALESCE 조인이 되어 인덱스를 못 탄다.
+     * 갱신 경로는 refreshReleasedOn() 하나뿐
+     */
+    @Column(name = "released_on_resolved")
+    private LocalDate releasedOnResolved;
+
+    /**
      * 마지막 회차 참조 (§7.2 비정규화). 목록 화면이 "N회차 · 기간 · 기기"를 보여줘야 하는데
      * 매번 회차를 뒤지면 항목 수만큼 쿼리가 나간다.
      * ToOne이라 join fetch가 되고 페이징도 살아남는다.
@@ -131,6 +140,7 @@ public class BacklogEntry extends BaseEntity {
         entry.game = game;
         entry.status = BacklogStatus.WISHLIST; //담을 때 취득 정보가 없으면 → WISHLIST | 취득이 붙으면 → 그때 상태 재계산
         entry.refreshDisplayName();
+        entry.refreshReleasedOn();
         return entry;
     }
 
@@ -155,6 +165,7 @@ public class BacklogEntry extends BaseEntity {
         this.listPriceOverride = command.listPrice();
 
         refreshDisplayName();
+        refreshReleasedOn();
     }
 
     /**
@@ -249,14 +260,27 @@ public class BacklogEntry extends BaseEntity {
         this.displayName = (nameOverride != null) ? nameOverride : game.getName();
     }
 
+    /**
+     * 출시일 표시값 갱신. 마스터 출시일이 바뀌는 경로(Phase 4 재동기화)에서도
+     * 이걸 불러야 한다 — 안 부르면 정렬만 옛 값으로 조용히 어긋난다
+     */
+    public void refreshReleasedOn() {
+        this.releasedOnResolved = resolvedReleasedOn();
+    }
+
     // ── 표시값: 오버라이드 ?? 마스터 (§5.2). 리스트는 isEmpty() 기준
+    //
+    // 컬렉션은 전부 List.copyOf로 복사해서 내보낸다 — Hibernate 컬렉션 "인스턴스"가
+    // 트랜잭션 밖(Jackson 직렬화)으로 새어나가면 LazyInitializationException이 난다.
+    // 호출부 규율(DTO마다 copyOf)에 맡기지 않고 여기서 막아야 잊는 것 자체가 불가능하다.
+    // 이미 불변 리스트면 List.copyOf가 복사 없이 그대로 돌려주므로 중복 비용도 없다
 
     public List<String> resolvedDevelopers() {
-        return developerOverrides.isEmpty() ? game.getDevelopers() : developerOverrides;
+        return List.copyOf(developerOverrides.isEmpty() ? game.getDevelopers() : developerOverrides);
     }
 
     public List<String> resolvedPublishers() {
-        return publisherOverrides.isEmpty() ? game.getPublishers() : publisherOverrides;
+        return List.copyOf(publisherOverrides.isEmpty() ? game.getPublishers() : publisherOverrides);
     }
 
     public LocalDate resolvedReleasedOn() {
@@ -272,7 +296,18 @@ public class BacklogEntry extends BaseEntity {
         List<String> personal = genreLinks.stream()
                 .map(link -> link.getGenre().getName())
                 .toList();
-        return personal.isEmpty() ? game.getMasterGenres() : personal;
+        return personal.isEmpty() ? game.getMasterGenres() : personal;   // toList()도 이미 새 리스트
+    }
+
+    // ── 문자열 컬렉션 getter — Lombok @Getter는 손으로 쓴 getter가 있는 필드를 건너뛴다.
+    // 내부 변경은 필드 직접 접근(TextValues.replaceAll)이라 영향 없다
+
+    public List<String> getDeveloperOverrides() {
+        return List.copyOf(developerOverrides);
+    }
+
+    public List<String> getPublisherOverrides() {
+        return List.copyOf(publisherOverrides);
     }
 
     private static BigDecimal normalizeRating(BigDecimal value) {

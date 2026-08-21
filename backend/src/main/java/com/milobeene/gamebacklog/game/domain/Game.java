@@ -90,6 +90,21 @@ public class Game extends BaseEntity {
         return game;
     }
 
+    // ── 문자열 컬렉션 getter — BacklogEntry와 같은 이유로 복사본을 반환한다.
+    // LAZY @ElementCollection이 트랜잭션 밖으로 새는 것을 원천 차단
+
+    public List<String> getDevelopers() {
+        return List.copyOf(developers);
+    }
+
+    public List<String> getPublishers() {
+        return List.copyOf(publishers);
+    }
+
+    public List<String> getMasterGenres() {
+        return List.copyOf(masterGenres);
+    }
+
     /**
      * 마스터 이름 수정 (FR-ADM-01). 전파는 GameService가 책임진다.
      * 빈 값을 막는 이유 — name은 nullable = false이고,
@@ -104,7 +119,8 @@ public class Game extends BaseEntity {
     }
 
     /**
-     * 마스터 정보 설정. A-7(관리자 수정)·Phase 4(RAWG 동기화)에서 재사용한다.
+     * 마스터 정보 설정. **항목이 이미 담긴 게임은 GameService.syncMasterInfo로 들어올 것** —
+     * 여기만 부르면 releasedOnResolved 전파가 빠진다. 직접 호출은 항목 생성 전(시드·신규 등록)만.
      * 컬렉션은 새 List로 갈아끼우지 않고 clear() + addAll() 한다.
      * @ElementCollection은 Hibernate가 컬렉션 "인스턴스"를 추적하므로,
      * 참조를 바꿔버리면 기존 걸 통째로 DELETE 후 재INSERT 한다.

@@ -12,6 +12,8 @@ import com.milobeene.gamebacklog.game.domain.Game;
 import com.milobeene.gamebacklog.game.repository.GameRepository;
 import com.milobeene.gamebacklog.member.domain.Member;
 import jakarta.persistence.EntityManager;
+import java.time.LocalDate;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -96,6 +98,49 @@ class GameServiceTest {
     }
 
     /** em.clear() 이후에 읽어야 벌크 UPDATE 결과가 보인다 */
+    @Test
+    public void 마스터_출시일을_바꾸면_오버라이드_없는_항목의_정렬용_날짜가_갱신된다() {
+        //given — 한 명은 출시일을 오버라이드했고 한 명은 안 했다
+        Member me = saveMember("me@example.com");
+        Member other = saveMember("other@example.com");
+        Game game = saveGame("Elden Ring");
+        Long overridden = backlogService.addToBacklog(me.getId(), game.getId());
+        Long plain = backlogService.addToBacklog(other.getId(), game.getId());
+        backlogService.updateOverrides(me.getId(), overridden,
+                new OverrideCommand(null, null, null, LocalDate.of(2000, 1, 1), null));
+
+        //when — Phase 4 재동기화의 진입점. Game.updateMasterInfo 직접 호출은 전파가 빠진다
+        int updated = gameService.syncMasterInfo(game.getId(),
+                List.of("FromSoftware"), List.of("Bandai Namco"), List.of("Action RPG"),
+                LocalDate.of(2022, 2, 25), null);
+
+        //then — 오버라이드가 있는 항목은 자기 날짜를 지킨다
+        assertThat(updated).isEqualTo(1);
+        assertThat(releasedOnResolvedOf(plain)).isEqualTo(LocalDate.of(2022, 2, 25));
+        assertThat(releasedOnResolvedOf(overridden)).isEqualTo(LocalDate.of(2000, 1, 1));
+    }
+
+    @Test
+    public void 출시일_전파는_소프트_삭제된_항목에도_적용된다() {
+        //given — 되살렸을 때 옛 날짜로 정렬되면 안 된다
+        Member me = saveMember("me@example.com");
+        Game game = saveGame("Sekiro");
+        Long entryId = backlogService.addToBacklog(me.getId(), game.getId());
+        backlogService.delete(me.getId(), entryId);
+
+        //when
+        gameService.syncMasterInfo(game.getId(), null, null, null,
+                LocalDate.of(2019, 3, 22), null);
+
+        //then
+        assertThat(releasedOnResolvedOf(entryId)).isEqualTo(LocalDate.of(2019, 3, 22));
+    }
+
+    private LocalDate releasedOnResolvedOf(Long entryId) {
+        // 벌크 UPDATE가 컨텍스트를 비웠으므로(clearAutomatically) DB에서 새로 읽는다
+        return em.find(BacklogEntry.class, entryId).getReleasedOnResolved();
+    }
+
     private String displayNameOf(Long entryId) {
         return backlogEntryRepository.findById(entryId).orElseThrow().getDisplayName();
     }

@@ -17,6 +17,21 @@ public class BacklogEntryFinder {
 
     private final BacklogEntryRepository backlogEntryRepository;
 
+    /**
+     * 상세 조회용. 살아있는 내 항목 + game을 함께 읽는다.
+     * 소유권 위반을 404로 답하는 정책을 이 클래스 밖으로 새지 않게 여기에 둔다
+     */
+    public BacklogEntry findOwnedWithGame(Long memberId, Long entryId) {
+        BacklogEntry entry = backlogEntryRepository.findDetailById(entryId)
+                .orElseThrow(() -> new NotFoundException("백로그 항목을 찾을 수 없습니다. id=" + entryId));
+
+        if (!entry.getMember().getId().equals(memberId)) {
+            throw new NotFoundException("백로그 항목을 찾을 수 없습니다. id=" + entryId);
+        }
+
+        return entry;
+    }
+
     /** 살아있는 내 항목만. 수정 경로는 전부 이걸 쓴다 */
     public BacklogEntry findOwned(Long memberId, Long entryId) {
         BacklogEntry entry = findOwnedIncludingDeleted(memberId, entryId);

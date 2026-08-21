@@ -1,11 +1,14 @@
-# 게임 백로그 — API 설계서 v0.1
+# 게임 백로그 — API 설계서 v0.2
 
 | 항목 | 내용 |
 |---|---|
-| 문서 버전 | v0.1 |
-| 최종 수정 | 2026-08-20 |
-| 상태 | **초안** — Phase 2 (H-0) 산출물 |
-| 기준 명세 | 기능명세서 v1.5 (`docs/spec-v1.5.md`) |
+| 문서 버전 | v0.2 |
+| 최종 수정 | 2026-08-21 |
+| 상태 | **구현 완료** — Phase 2 H-0~H-6 반영 |
+| 기준 명세 | 기능명세서 v1.5 (`docs/spec-v1.5.md`), DTO 설계서 v0.1 (`docs/dto-design-v0.1.md`) |
+
+> v0.1은 화면에서 역산한 초안이었다. v0.2는 **실제로 구현하고 p6spy로 재본 결과**를 반영한다.
+> 바뀐 것: 쿼리 예산 정정, 엔드포인트 3종 추가, §4 미결 전부 해소.
 
 > 화면에서 역산했다. 도메인에서 리소스를 뽑은 게 아니다.
 > 근거는 스펙 §13 "API 방향" — **읽기는 화면 단위, 쓰기는 리소스 단위**.
@@ -82,21 +85,34 @@ GET /api/backlog
 
 **태그는 카드에 넣지 않는다.** 폴더/모음집처럼 묶는 탐색 수단이다 (§6.7).
 
-#### 쿼리 예산 — 3방
+#### 쿼리 예산 — 4방 (v0.2에서 측정 후 정정)
 
 ```
-1방  항목 + lastPlaythrough + device + emulator + coverImage   전부 ~ToOne → join fetch (페이징 유지)
-1방  개인 장르 (batch size)
-1방  마스터 장르 (batch size)
+1방  항목 + game + lastPlaythrough + device + emulator   전부 ~ToOne → join fetch (페이징 유지)
+1방  개인 장르 연결 (backlog_entry_genre, batch size)
+1방  장르 본체     (genre, batch size)          ← v0.1이 빠뜨린 자리
+1방  마스터 장르   (game_master_genre, batch size)
 ```
+
+**v0.1은 3방으로 잡았는데 실제로는 4방이다.** `BacklogEntryGenre.genre`가 LAZY `@ManyToOne`이라
+조인 테이블에서 장르 본체로 가는 hop이 한 단계 더 있다. batch size가 없으면 이게 항목 수만큼 터진다
+(3항목에 8방을 실제로 관측했다).
+
+페이징을 걸면 count 쿼리가 붙어 5방. 총 개수가 페이지 크기보다 작으면 스프링이 count를 생략한다.
+**중요한 건 항목 수가 늘어도 이 숫자가 안 늘어난다는 것이다.**
 
 `lastPlaythrough` 비정규화(§7.2)가 없으면 이 자리가 항목 수만큼의 쿼리가 된다. 컬렉션 fetch join은 페이징을 깨므로(§6.8) 우회할 수 없다.
+
+> **커버 이미지는 아직 응답에서 항상 `null`이다.** `CoverImage`가 FK를 가진 주인이라 역참조가 없고,
+> 무엇보다 Phase 5(K) 전까지 행이 생길 경로가 없다. 죽은 조인을 미리 붙이지 않았다.
 
 ### 1.2 필터 사이드바 (화면 1 부속)
 
 ```
 GET /api/backlog/facets
 ```
+
+집계 5방. **목록과 한 응답에 묶지 않았다** — 페이지를 넘길 때마다 집계가 따라붙을 이유가 없다.
 
 ```jsonc
 {
@@ -109,7 +125,10 @@ GET /api/backlog/facets
 ```
 
 - 태그·장르 목록은 **개인 사전** 기준이다 (§6.8). 어느 항목에도 안 붙은 것과 **삭제된 항목에만 붙은 것**은 안 나온다
-- `count`는 신규 쿼리가 필요하다 (지금 `findUsedByMemberId`는 이름만 준다)
+- `count`는 신규 쿼리가 필요하다 (지금 `findUsedByMemberId`는 이름만 준다) → H-4에서 JPQL 생성자 표현식으로 구현
+- **`platformAccounts` 카운트는 취득 기준이다** (v0.2 결정). 회차에도 계정이 붙지만 의미가 다르다 —
+  취득의 계정은 "그 계정으로 가진 게임", 회차의 계정은 "그때 어느 계정으로 플레이했나"다.
+  필터의 뜻은 전자에 가깝다. 삭제된 계정은 세지 않는다 (어차피 선택지에 없다)
 
 ### 1.3 백로그 상세 (화면 2)
 
@@ -169,6 +188,9 @@ GET /api/backlog/{entryId}
   ]
 }
 ```
+
+> **쿼리 11방** (v0.2 측정). 항목+game / 태그 / 회차(ToOne join fetch) / 취득(ToOne join fetch) +
+> `@ElementCollection` 7종. 회차 수에는 비례하지 않는다.
 
 > **삭제된 플랫폼 계정도 그대로 실린다.** 과거 기록에서는 계정 이름이 계속 보여야 한다 (§6.5). 선택지 목록(§1.5)에서만 빠진다.
 
@@ -272,7 +294,29 @@ PUT    /api/me/subscriptions/{id}
 DELETE /api/me/subscriptions/{id}                물리
 ```
 
-### 2.4 관리자 (인가는 Phase 3 / I-9)
+### 2.4 마스터 게임 검색 (v0.2 신설)
+
+```
+GET /api/games?q=knight        로컬 마스터만, 이름 부분 일치, 상위 20건
+```
+
+**v0.1에 구멍이 있었다** — `POST /api/backlog`가 `gameId`를 받는데 그 id를 얻을 경로가 없었다.
+RAWG 검색은 Phase 4(J-2)다. 그때까지 이 엔드포인트가 그 자리를 메운다.
+회원 식별이 없는 유일한 조회다 (마스터는 공용 데이터).
+
+### 2.5 태그·장르 사전 (v0.2 신설)
+
+```
+PUT    /api/me/tags/{id}         이름 변경 (FR-TAG-02)
+DELETE /api/me/tags/{id}         명시적 삭제
+PUT    /api/me/genres/{id}
+DELETE /api/me/genres/{id}
+```
+
+서비스에는 있는데 v0.1에 대응 경로가 없던 것. 태그를 **붙이고 떼는** 건 `PUT /api/backlog/{id}/tags`,
+여기는 **사전 자체**를 고치는 곳이라 `/api/me` 아래다.
+
+### 2.6 관리자 (인가는 Phase 3 / I-9)
 
 ```
 PATCH /api/admin/games/{id}/name                 GameService.updateName — 전 회원 전파
@@ -290,6 +334,13 @@ PATCH /api/admin/games/{id}/name                 GameService.updateName — 전 
 | `400` | 입력값 오류 (검증 실패, 범위 위반) |
 | `404` | 대상 없음 **또는 내 것이 아님** |
 | `409` | 중복, 상태 충돌, **되살리기 필요** |
+
+### 알려진 허용 리스크 — 참조 id의 소유권 미검사 (v0.2 리뷰에서 발견, 의도적 보류)
+
+회차·취득의 `platformAccountId`는 소유권·소프트 삭제 검사 없이 연결된다
+(`PlaythroughService`·`AcquisitionService`의 참조 해석이 bare `findById`).
+**1인 사용 프로그램이라 참작하고 넘어간다.** 다중 사용자로 전환하거나 Phase 3 인증을
+붙일 때는 구독 연결(`findOwned`)과 같은 방식으로 막아야 한다.
 
 ### 404 vs 403 — 남의 것은 404다
 
@@ -313,46 +364,17 @@ PATCH /api/admin/games/{id}/name                 GameService.updateName — 전 
 
 ---
 
-## 4. 미결 — H-5에서 정할 것
+## 4. 미결 — 전부 해소됨 (v0.2)
 
-### 4.1 예외를 4갈래로 나눠야 한다
-
-지금 서비스는 표준 예외 둘만 쓴다. 그런데 상태코드는 넷이 필요하다.
-
-```
-IllegalArgumentException   못 찾음(404)  +  입력 오류(400)      ← 두 개가 섞여 있다
-IllegalStateException      소유권(404)   +  중복·상태 충돌(409)  ← 두 개가 섞여 있다
-```
-
-메시지 문자열로 갈라내는 건 불가능하다. **예외 타입을 나눠야 한다.**
-
-제안:
-
-```
-common/exception/
-  ├─ NotFoundException      → 404   (대상 없음, 남의 것)
-  ├─ InvalidInputException  → 400   (검증 실패)
-  ├─ ConflictException      → 409   (중복, 상태 충돌)
-  └─ RevivableException     → 409   (되살리기 — 이미 있음)
-```
-
-기존 서비스 전체의 `throw`를 갈아끼워야 한다. **H-5에서 예외 껍데기를 먼저 만드는 이유**가 이것이다.
-
-### 4.2 웹 Request DTO를 따로 둘지
-
-도메인에 `OverrideCommand` 등 Command record 4종이 이미 있다. 웹 Request DTO로 그대로 쓸지, 별도로 두고 변환할지.
-
-| | 그대로 씀 | 따로 둠 |
+| 항목 | 결론 | 어디에 |
 |---|---|---|
-| 코드량 | 적음 | 거의 같은 record가 두 벌 |
-| NFR-A1 (서비스는 HTTP를 모른다) | Bean Validation 애노테이션이 도메인으로 샌다 | 지켜짐 |
-| 변화 | 웹 요청 형태가 바뀌면 도메인이 흔들림 | 격리됨 |
+| 예외를 4갈래로 | **완료.** `NotFound`/`InvalidInput`/`Conflict`/`Revivable` + `@RestControllerAdvice` | `common/exception/` (H-5) |
+| 웹 Request DTO 분리 | **따로 둔다.** Request DTO가 `toCommand()`로 도메인 Command를 만든다. Bean Validation이 도메인으로 새지 않는다 | DTO 설계서 §2 (H-1) |
+| 페이징 응답 | **자체 `PageResponse<T>`.** Spring `Page`의 내부 구조를 노출하지 않는다 | `common/dto/PageResponse` (H-1) |
 
-### 4.3 페이징 응답을 Spring `Page`로 줄지 직접 만들지
-
-`Page<T>`를 그대로 직렬화하면 내부 구조(`pageable`, `sort` 등)가 응답에 노출되고 Spring 버전에 묶인다. 필요한 필드만 담은 자체 `PageResponse<T>`를 두는 쪽이 안전하다.
-
----
+H-6에서 핸들러를 둘 더 붙였다 — `HttpMessageNotReadableException`(깨진 JSON, 없는 enum 값)과
+`MethodArgumentTypeMismatchException`(경로 변수 타입 불일치). 없으면 스프링 기본 응답 형태가 나가서
+`ErrorResponse`와 형식이 갈린다.
 
 ## 5. 신규로 필요한 조회
 
@@ -364,5 +386,13 @@ Phase 1에 없어서 H-2에서 만들어야 하는 것.
 | 태그/장르 카운트 | `facets`용 집계. 현재 사전 조회는 이름만 준다 |
 | 상태별 카운트 | `facets`용 |
 | batch size 설정 | 장르 컬렉션 N+1 대응 (`default_batch_fetch_size`) |
+
+> **v0.2 진행 상황**: H-2는 **페이징·정렬만** 구현했다. 검색·필터는 L-1/L-2(Phase 6)로 미뤘다.
+> 정렬 4종은 `BacklogSort` enum이 `Sort`를 만들어 넘긴다. 2차 정렬(BR-QRY-01) 위에
+> **최종 tie-break로 `id desc`를 더했다** — 회차 없는 항목끼리 `lastPlayedOn`이 둘 다 null이면
+> 순서가 흔들려 페이징에서 행이 중복·누락된다.
+>
+> `nullsLast`는 반드시 필요하다. H2는 NULL을 가장 작게, PostgreSQL은 가장 크게 본다.
+> p6spy 로그에 `nulls last`가 안 보여도 정상이다 — 방언 기본값과 같으면 Hibernate가 생략한다.
 
 > **주의**: 목록 필터가 동적인데 QueryDSL은 L-1(Phase 6)이다. Phase 2에서는 **조건 조합을 JPQL 문자열로 만들거나**, 필터 조합을 제한한 정적 쿼리 몇 개로 시작한다. 여기서 불편을 겪는 것이 L-1의 동기가 된다.

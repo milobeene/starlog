@@ -1,16 +1,28 @@
-# 게임 백로그 — 엔티티 설계서 v0.3
+# 게임 백로그 — 엔티티 설계서 v0.4
 
 | 항목 | 내용 |
 |---|---|
-| 문서 버전 | v0.3 |
-| 최종 수정 | 2026-08-20 |
-| 상태 | **Phase 1 완료** — 서비스 계층 구현 및 테스트 106개 통과 |
+| 문서 버전 | v0.4 |
+| 최종 수정 | 2026-08-21 |
+| 상태 | **Phase 2 (H-6까지) 완료** — 웹 계층 구현 및 테스트 138개 통과 |
 | 기준 명세 | 게임백로그 기능명세서 v1.5 |
 | 검증 환경 | Spring Boot 4.1.0 / Hibernate 7.4.1 / H2 2.4.240 |
 
-> v0.1은 코드 이전의 초안, v0.2는 코드화 + DDL 검증 결과였다.
-> v0.3은 **서비스 계층을 실제로 구현하면서 드러난 것**을 반영한다. 엔티티 구조가 실사용을 견디는지 확인된 버전이다.
+> v0.1은 코드 이전의 초안, v0.2는 코드화 + DDL 검증 결과, v0.3은 서비스 계층 구현 결과였다.
+> v0.4는 **웹 계층(Phase 2)을 붙이면서 드러난 것**을 반영한다.
 > 스키마 확정은 여전히 Phase 9(Flyway 전환) 시점이다.
+
+---
+
+## 0-0. v0.3 → v0.4 변경 요약 (Phase 2)
+
+| # | 변경 | 사유 |
+|---|---|---|
+| 1 | `BacklogEntry.releasedOnResolved` **비정규화 추가** + 인덱스 `(member_id, released_on_resolved)` | 출시일 정렬(FR-QRY-04)의 대상이 오버라이드와 마스터로 흩어져 있어 `COALESCE` 조인이 되고 인덱스를 못 탔다. `displayName`과 같은 패턴 — 갱신 경로는 `refreshReleasedOn()` 하나 |
+| 2 | `default_batch_fetch_size: 100` | 목록 조회가 3항목에 8방(장르 6방)이었다. 4방으로 떨어졌고 **항목 수가 늘어도 안 늘어난다** |
+
+> **Phase 4 주의**: RAWG 재동기화로 `Game.releasedOn`이 바뀌면 오버라이드 없는 항목의
+> `releasedOnResolved`를 다시 계산해야 한다. `displayName` 전파(A-7)와 똑같은 벌크 UPDATE가 필요하다.
 
 ---
 
@@ -297,12 +309,12 @@ private Money fee;
 | 연관 | `member`(주인), `game`(주인) |
 | 오버라이드 | `nameOverride`, **`developerOverrides`(List)**, **`publisherOverrides`(List)**, `releasedOnOverride`, `listPriceOverride` |
 | 개인 기록 | `rating`(`numeric(4,1)`), `playTimeHours`, `memo`(TEXT) |
-| 비정규화 | `displayName`(not null), `status`(not null), `lastPlayedOn`, **`lastPlaythrough`**(v0.3) |
+| 비정규화 | `displayName`(not null), `status`(not null), `lastPlayedOn`, **`lastPlaythrough`**(v0.3), **`releasedOnResolved`**(v0.4) |
 | 기타 | `deletedAt` |
 | 역방향 | `playthroughs`, **`acquisitions`**, **`genreLinks`** (전부 `mappedBy = "backlogEntry"`) |
 
 - unique `(member_id, game_id)` — FR-BL-02
-- 인덱스 3개: `(member_id, status)` / `(member_id, last_played_on)` / `(member_id, display_name)`
+- 인덱스 4개: `(member_id, status)` / `(member_id, last_played_on)` / `(member_id, display_name)` / `(member_id, released_on_resolved)`(v0.4)
 - 삭제: 소프트 + revive
 
 **오버라이드 값 표현**: 리스트는 "없음"이 `null`이 아니라 **빈 리스트**다. 표시값 계산은 `overrides.isEmpty() ? master : overrides`.
@@ -531,7 +543,7 @@ TokenPurpose       EMAIL_VERIFICATION | PASSWORD_RESET                auth/
 |---|---|
 | `BacklogEntry` | `syncDerivedState()` — 회차 있으면 최신 회차가, 없으면 취득이 `status`를 정한다. `lastPlayedOn`·`lastPlaythrough`도 여기서 |
 | `BacklogEntry` | 표시값 계산 5종 — `오버라이드 ?? 마스터`를 한 곳에만 |
-| `BacklogEntry` | `refreshDisplayName()` — 비정규화 갱신 경로를 한 곳으로 |
+| `BacklogEntry` | `refreshDisplayName()` / `refreshReleasedOn()`(v0.4) — 비정규화 갱신 경로를 한 곳으로 |
 | 서비스 계층 | BR-PT-02·03 (형제 회차를 봐야 하므로 엔티티가 아님) |
 | 서비스 계층 | 태그/장르 자동 소멸 — **조회 필터 방식으로 변경** (OI-13 개정) |
 | 서비스 계층 | `GameService.updateName` — 벌크 UPDATE로 전 회원 `displayName` 전파 |

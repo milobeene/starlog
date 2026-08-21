@@ -44,5 +44,16 @@ backend/out/
 ### IDE - VS Code ###
 .vscode/
 
+### Next.js / Node (frontend) ###
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/coverage/
+frontend/.vercel
+frontend/next-env.d.ts
+*.tsbuildinfo
+npm-debug.log*
+
 ### Logs ###
 *.log

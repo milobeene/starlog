@@ -2,10 +2,14 @@ package com.milobeene.gamebacklog.backlog.repository;
 
 import com.milobeene.gamebacklog.backlog.domain.BacklogEntry;
 import com.milobeene.gamebacklog.common.repository.BaseRepository;
+import com.milobeene.gamebacklog.backlog.dto.StatusCount;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -39,6 +43,44 @@ public interface BacklogEntryRepository extends BaseRepository<BacklogEntry, Lon
     List<BacklogEntry> findByMemberIdAndDeletedAtIsNullOrderByDisplayNameAsc(Long memberId);
 
     /**
+     * 목록 카드 (H-2). 카드가 쓰는 ~ToOne을 전부 join fetch로 끌고 온다.
+     *
+     * 컬렉션은 하나도 안 붙였다 — 컬렉션 페치 조인은 DB에서 행이 뻥튀기되므로
+     * Hibernate가 limit을 못 걸고 전체를 메모리로 올린 뒤 자른다(페이징이 깨진다, §6.8).
+     * 장르는 그래서 batch size로 따로 받는다.
+     *
+     * countQuery를 직접 준 이유 — 안 주면 스프링이 join fetch가 붙은 채로 count를 만든다.
+     * 참고로 총 개수가 페이지 크기보다 작으면 스프링이 count 쿼리를 아예 생략한다.
+     *
+     * order by가 없는 이유 — 정렬은 BacklogSort가 Sort로 만들어 Pageable에 실어 보낸다
+     */
+    @Query(value = "select b from BacklogEntry b" +
+            " join fetch b.game" +
+            " left join fetch b.lastPlaythrough p" +
+            " left join fetch p.device" +
+            " left join fetch p.emulator" +
+            " where b.member.id = :memberId and b.deletedAt is null",
+            countQuery = "select count(b) from BacklogEntry b" +
+                    " where b.member.id = :memberId and b.deletedAt is null")
+    Page<BacklogEntry> findCards(@Param("memberId") Long memberId, Pageable pageable);
+
+    /**
+     * 상세 단건 (H-2). game을 join fetch 하는 이유 — 상세는 마스터 원본을 그대로 내보내므로
+     * 어차피 전부 읽는다. 프록시로 두면 첫 접근에서 한 방이 더 나간다
+     */
+    @Query("select b from BacklogEntry b join fetch b.game" +
+            " where b.id = :entryId and b.deletedAt is null")
+    Optional<BacklogEntry> findDetailById(@Param("entryId") Long entryId);
+
+    /** 상태별 항목 수 (H-4) */
+    @Query("select new com.milobeene.gamebacklog.backlog.dto.StatusCount(b.status, count(b))" +
+            " from BacklogEntry b" +
+            " where b.member.id = :memberId and b.deletedAt is null" +
+            " group by b.status" +
+            " order by b.status asc")
+    List<StatusCount> countByStatus(@Param("memberId") Long memberId);
+
+    /**
      * 마스터 이름 전파 (A-7, FR-ADM-01). 이름 오버라이드가 없는 항목만 대상이다.
      *
      * 벌크 연산은 영속성 컨텍스트를 우회하고 엔티티 생명주기 콜백도 안 거친다
@@ -56,4 +98,17 @@ public interface BacklogEntryRepository extends BaseRepository<BacklogEntry, Lon
     int updateDisplayNameByGameId(@Param("gameId") Long gameId,
                                   @Param("newName") String newName,
                                   @Param("now") LocalDateTime now);
+
+    /**
+     * 마스터 출시일 전파 — updateDisplayNameByGameId와 대칭이다.
+     * 오버라이드가 있는 항목은 건드리지 않고, 소프트 삭제된 행도 포함한다
+     * (되살렸을 때 옛 날짜로 정렬되면 안 된다).
+     * 호출 경로는 GameService.syncMasterInfo 하나뿐이어야 한다
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("update BacklogEntry b set b.releasedOnResolved = :newDate, b.updatedAt = :now" +
+            " where b.game.id = :gameId and b.releasedOnOverride is null")
+    int updateReleasedOnResolvedByGameId(@Param("gameId") Long gameId,
+                                         @Param("newDate") LocalDate newDate,
+                                         @Param("now") LocalDateTime now);
 }
