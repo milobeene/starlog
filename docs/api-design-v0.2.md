@@ -161,7 +161,8 @@ GET /api/backlog/{entryId}
     "listPrice": null,
     "genres": ["Sports"],
     "source": "MANUAL",
-    "averagePlaytimeHours": 51           // RAWG playtime. null 가능 (Steam 기준 평균)
+    "timeToBeatHours": 37,               // IGDB game_time_to_beats.normally. null 가능
+    "coverImageId": "cobfzp"             // IGDB cover.image_id. null 가능 (개인 커버가 우선)
   },
   "overrides": {                             // 편집 폼의 현재 입력값. null = 안 덮어씀
     "name": null,
@@ -258,11 +259,11 @@ GET /api/me/options
 | `PUT` | `/api/backlog/{id}/tags` | `replaceTags` |
 | `PUT` | `/api/backlog/{id}/genres` | `replaceGenres` |
 
-`POST /api/backlog` 본문 (J-3에서 `rawgId` 추가):
+`POST /api/backlog` 본문 (J-3에서 외부 id 추가):
 
 ```jsonc
-{ "gameId": 5 }        // 마스터에 이미 있음 → RAWG 호출 0회
-{ "rawgId": "3498" }   // 마스터에 없음 → 상세 1회 호출 → 마스터 저장 → 담기
+{ "gameId": 5 }           // 마스터에 이미 있음 → 외부 호출 0회
+{ "externalId": "1020" }  // 마스터에 없음 → 상세 1회 호출 → 마스터 저장 → 담기
 ```
 
 둘 중 하나는 반드시 있어야 한다(없으면 400). 프론트는 검색 응답의 두 필드를 그대로 실어 보내면 되고,
@@ -521,31 +522,32 @@ DELETE /api/me/subscriptions/{id}                물리
 ### 2.4 게임 검색 / 등록 (v0.2 신설 → Phase 4에서 확장)
 
 ```
-GET  /api/games?q=knight       로컬 수동 등록 + RAWG 검색 결과
+GET  /api/games?q=knight       로컬 수동 등록 + IGDB 검색 결과
 POST /api/games                수동 등록 (FR-GAME-04)
 ```
 
 **v0.1에 구멍이 있었다** — `POST /api/backlog`가 `gameId`를 받는데 그 id를 얻을 경로가 없었다.
-v0.2에서 로컬 마스터 검색으로 메웠고, **J-2에서 RAWG를 붙였다.**
+v0.2에서 로컬 마스터 검색으로 메웠고, **J-2에서 외부 DB를 붙였다** (J-1~J-6 RAWG → J-7 IGDB).
 회원 식별이 없는 유일한 조회다 (마스터는 공용 데이터).
 
-검색 응답 (J-2에서 `rawgId` 추가, `gameId`가 nullable이 됨):
+검색 응답 (J-2에서 `externalId` 추가, `gameId`가 nullable이 됨):
 
 ```jsonc
 [
-  { "gameId": 5,    "rawgId": null,   "name": "동네 오락실 게임", "releasedOn": "1998-05-01", "source": "MANUAL" },
-  { "gameId": 12,   "rawgId": "9767", "name": "할로우 나이트",   "releasedOn": "2017-02-24", "source": "RAWG" },
-  { "gameId": null, "rawgId": "3498", "name": "Grand Theft Auto V", "releasedOn": "2013-09-17", "source": "RAWG" }
+  { "gameId": 5,    "externalId": null,    "name": "동네 오락실 게임",  "releasedOn": "1998-05-01", "source": "MANUAL", "coverImageId": null },
+  { "gameId": 12,   "externalId": "14593", "name": "할로우 나이트",     "releasedOn": "2017-02-24", "source": "IGDB",   "coverImageId": "cobfzp" },
+  { "gameId": null, "externalId": "1020",  "name": "Grand Theft Auto V", "releasedOn": "2013-09-17", "source": "IGDB", "coverImageId": "co2lbd" }
 ]
 ```
 
-- `gameId != null` → 이미 마스터에 있다. 담을 때 RAWG 호출 0회 (FR-GAME-03)
-- `gameId == null` → RAWG에만 있다. 담는 순간 상세 1회 호출 후 마스터에 저장 (FR-GAME-02)
-- 마스터에 있는 게임은 **마스터 값이 이긴다** — 관리자가 고친 이름이 RAWG 원본으로 되돌아가면 안 된다
-- 로컬 검색은 `MANUAL`만 본다. `RAWG` 소스는 RAWG 결과에 다시 나오므로 같은 게임이 두 줄로 뜨지 않는다
-- **RAWG 장애면 502.** 로컬 결과만 조용히 주지 않는다 — 사용자가 "RAWG에 없는 게임"으로 오해한다 (FR-SYS-04)
+- `gameId != null` → 이미 마스터에 있다. 담을 때 외부 호출 0회 (FR-GAME-03)
+- `gameId == null` → 외부 DB에만 있다. 담는 순간 상세 1회 호출 후 마스터에 저장 (FR-GAME-02)
+- 마스터에 있는 게임은 **마스터 값이 이긴다** — 관리자가 고친 이름이 원본으로 되돌아가면 안 된다
+- 로컬 검색은 `MANUAL`만 본다. `IGDB` 소스는 외부 결과에 다시 나오므로 같은 게임이 두 줄로 뜨지 않는다
+- **외부 DB 장애면 502.** 로컬 결과만 조용히 주지 않는다 — 사용자가 "외부에 없는 게임"으로 오해한다 (FR-SYS-04)
+- `coverImageId`는 검색 결과 카드의 썸네일용이다. `t_cover_small`(90×120)로 조합한다
 
-수동 등록 (`POST /api/games`) — 이름만 필수, 나머지는 전부 선택. 정가는 여기에만 있다(RAWG는 가격을 안 준다).
+수동 등록 (`POST /api/games`) — 이름만 필수, 나머지는 전부 선택. 정가는 여기에만 있다(외부 DB는 가격을 안 준다).
 등록 이후 수정은 관리자만이라(AUTH-P2) `PUT /api/games/{id}`는 없다.
 
 ### 2.5 태그·장르 사전 (v0.2 신설)
@@ -564,11 +566,11 @@ DELETE /api/me/genres/{id}
 
 ```
 PATCH /api/admin/games/{id}/name                 GameService.updateName — 전 회원 전파
-POST  /api/admin/games/{id}/resync               RAWG 재동기화 (FR-GAME-05, J-5)
+POST  /api/admin/games/{id}/resync               IGDB 재동기화 (FR-GAME-05, J-5)
 ```
 
-재동기화가 `POST`인 이유 — 멱등해 보이지만 "지금 시점의 RAWG를 가져온다"는 행위고 `lastSyncedAt`이 매번 바뀐다.
-`MANUAL` 게임은 원본이 없어 400. 개인 오버라이드와 **손으로 넣은 정가는 건드리지 않는다**(RAWG가 가격을 안 주므로
+재동기화가 `POST`인 이유 — 멱등해 보이지만 "지금 시점의 외부 DB를 가져온다"는 행위고 `lastSyncedAt`이 매번 바뀐다.
+`MANUAL` 게임은 원본이 없어 400. 개인 오버라이드와 **손으로 넣은 정가는 건드리지 않는다**(외부 DB가 가격을 안 주므로
 전체 교체를 하면 매번 날아간다). 응답은 `{ nameChanged, renamedEntries, reorderedEntries }`.
 
 ---
@@ -583,7 +585,7 @@ POST  /api/admin/games/{id}/resync               RAWG 재동기화 (FR-GAME-05, 
 | `400` | 입력값 오류 (검증 실패, 범위 위반) |
 | `404` | 대상 없음 **또는 내 것이 아님** |
 | `409` | 중복, 상태 충돌, **되살리기 필요** |
-| `502` | 외부 API(RAWG) 장애. 작업을 취소하고 아무것도 저장하지 않는다 (FR-SYS-04, J-6) |
+| `502` | 외부 API(IGDB) 장애. 작업을 취소하고 아무것도 저장하지 않는다 (FR-SYS-04, J-6) |
 
 ### 알려진 허용 리스크 — 참조 id의 소유권 미검사 (v0.2 리뷰에서 발견, 의도적 보류)
 

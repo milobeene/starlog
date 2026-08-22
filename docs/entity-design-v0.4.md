@@ -21,7 +21,7 @@
 | 1 | `BacklogEntry.releasedOnResolved` **비정규화 추가** + 인덱스 `(member_id, released_on_resolved)` | 출시일 정렬(FR-QRY-04)의 대상이 오버라이드와 마스터로 흩어져 있어 `COALESCE` 조인이 되고 인덱스를 못 탔다. `displayName`과 같은 패턴 — 갱신 경로는 `refreshReleasedOn()` 하나 |
 | 2 | `default_batch_fetch_size: 100` | 목록 조회가 3항목에 8방(장르 6방)이었다. 4방으로 떨어졌고 **항목 수가 늘어도 안 늘어난다** |
 
-> **Phase 4 주의**: RAWG 재동기화로 `Game.releasedOn`이 바뀌면 오버라이드 없는 항목의
+> **Phase 4 주의**: IGDB 재동기화로 `Game.releasedOn`이 바뀌면 오버라이드 없는 항목의
 > `releasedOnResolved`를 다시 계산해야 한다. `displayName` 전파(A-7)와 똑같은 벌크 UPDATE가 필요하다.
 
 ---
@@ -36,7 +36,7 @@
 | 4 | 리포지토리를 **Spring Data JPA + 커스텀 `BaseRepository`**로 | `SimpleJpaRepository.save()`가 준영속 엔티티에 `merge()`를 돌린다. 인터페이스에서 빼면 컴파일 단계에서 막힌다 |
 | 5 | `Money` 생성자에 **검증 추가** | 음수·비 ISO 4217 통화가 그대로 저장되고 있었다. `java.util.Currency`로 판정 |
 | 6 | 유니크 제약 **이름 명시** 5개 | `unique = true`는 이름이 자동 생성된다. Phase 9 Flyway 전환 대비 (OI-16 일부 해소) |
-| 7 | `Game.masterGenres`를 `updateMasterInfo`에 포함 | 장르 폴백 테스트와 Phase 4 RAWG 동기화에 필요 |
+| 7 | `Game.masterGenres`를 `updateMasterInfo`에 포함 | 장르 폴백 테스트와 Phase 4 외부 DB 동기화에 필요 |
 | 8 | Command record 4종 신설 | 인자가 5~8개인 메서드에서 같은 타입이 나란히 붙어 순서를 바꿔도 컴파일이 통과했다 |
 | 9 | 예외 계층 신설 — `RevivableException` | 되살리기 확인이 필요한 상태를 타입으로 표현. Phase 2에서 핸들러 하나로 잡는다 |
 | 10 | 태그/장르 자동 소멸을 **조회 필터**로 | COUNT → DELETE에 경쟁 상태가 있었다. 조회에서 거르면 경쟁 대상 자체가 없다 |
@@ -263,15 +263,23 @@ private Money fee;
 | `releasedOn` | LocalDate | nullable |
 | `listPrice` | Money | nullable, `@AttributeOverride` |
 | `source` | GameSource | not null |
-| `externalId` | String | nullable, len 50 — RAWG 게임 ID |
-| `averagePlaytimeHours` | Integer | nullable — RAWG `playtime` |
+| `externalId` | String | nullable, len 50 — IGDB 게임 ID |
+| `timeToBeatHours` | Integer | nullable — IGDB `game_time_to_beats.normally` (초 → 시간) |
+| `coverImageId` | String | nullable, len 50 — IGDB `cover.image_id` |
 | `lastSyncedAt` | LocalDateTime | nullable |
 
 - unique `(source, external_id)`
 - 삭제 없음 (정리는 관리자 병합 FR-ADM-02)
 
-> `averagePlaytimeHours`는 남들의 평균이지 내 기록이 아니다. 오버라이드를 만들지 않는다.
-> RAWG의 `playtime`이 Steam 기준이라 콘솔 전용 게임은 비어 있는 게 정상이다.
+> `timeToBeatHours`는 남들의 평균이지 내 기록이 아니다. 오버라이드를 만들지 않는다.
+> **v0.5에서 이름이 바뀌었다** — `averagePlaytimeHours`(RAWG `playtime`, Steam 평균 플레이 시간)에서
+> `timeToBeatHours`(IGDB `normally`, 클리어 소요 시간)로. 지표의 의미 자체가 다르다.
+> 전체 게임의 2.4%만 값을 갖지만, 실제로 담을 만한 게임(평점 20건 이상)은 전수 보유한다 (실측).
+
+> `coverImageId`는 **URL이 아니라 id**다. 크기별 URL은 표시 시점에 조합한다 —
+> `//images.igdb.com/igdb/image/upload/{size}/{image_id}.jpg`.
+> URL을 통째로 저장하면 크기를 바꿀 때마다 전 행을 갱신해야 한다.
+> 개인 업로드 커버(`CoverImage`, Phase 5)가 우선이고 이건 폴백이다 (§6.10).
 
 > `MANUAL`은 `externalId`가 null이라 유니크 제약에 걸리지 않는다(null은 서로 다른 값). 수동 등록 중복은 관리자 병합의 몫.
 
@@ -487,7 +495,7 @@ common/exception/RevivableException          (추상, targetId 보유)
 
 ```
 MemberRole         USER | ADMIN                                       member/
-GameSource         RAWG | MANUAL                                      game/
+GameSource         IGDB | MANUAL                                      game/
 BacklogStatus      WISHLIST|BACKLOG|PLAYING|PAUSED|DROPPED|COMPLETED  backlog/
 PlaythroughStatus  PLAYING | PAUSED | DROPPED | COMPLETED             backlog/
 InputMethod        XINPUT|NINTENDO|PLAYSTATION|KEYBOARD_MOUSE         backlog/
