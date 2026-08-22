@@ -29,10 +29,12 @@ spring:
 
 # 배치 주기. 테스트에서는 절대 안 도는 값으로 덮는다 (application-test.yml)
 app:
-  # RAWG (J-1). 키는 환경변수로만 들어온다 — ${VAR:} 는 "없으면 빈 문자열"이라 키 없이도 기동한다.
-  # 나머지 값의 기본값은 RawgProperties의 compact 생성자가 들고 있다
-  rawg:
-    api-key: ${RAWG_API_KEY:}
+  # IGDB (J-7). 자격증명은 환경변수 또는 application-local.yml로만 들어온다.
+  # ${VAR:} 는 "없으면 빈 문자열"이라 자격증명 없이도 기동한다 — 호출 시점에 502로 끊긴다.
+  # 나머지 값의 기본값은 IgdbProperties의 compact 생성자가 들고 있다
+  igdb:
+    client-id: ${IGDB_CLIENT_ID:}
+    client-secret: ${IGDB_CLIENT_SECRET:}
   cleanup:
     auth-token-cron: "0 30 4 * * *"      # 매일 04:30
     audit-log-cron: "0 0 5 * * *"        # 매일 05:00

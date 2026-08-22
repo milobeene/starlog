@@ -5,11 +5,20 @@ spring:
   datasource:
     url: jdbc:h2:mem:test;DB_CLOSE_DELAY=-1
 
-# 배치는 테스트에서 절대 자동으로 돌면 안 된다 — 2월 30일은 오지 않는 날짜다.
-# 배치 로직 자체는 스케줄러를 거치지 않고 메서드를 직접 불러 검증한다
 app:
+  # 배치는 테스트에서 절대 자동으로 돌면 안 된다 — 2월 30일은 오지 않는 날짜다.
+  # 배치 로직 자체는 스케줄러를 거치지 않고 메서드를 직접 불러 검증한다
   cleanup:
     auth-token-cron: "0 0 0 30 2 *"
     audit-log-cron: "0 0 0 30 2 *"
   withdrawal:
     purge-cron: "0 0 0 30 2 *"
+
+  # 테스트는 가짜 GameCatalogClient를 쓰므로 실제 호출이 없다.
+  # 그래도 자격증명을 채워두는 건, 혹시 진짜 클라이언트가 타더라도
+  # "자격증명 없음"이 아니라 진짜 실패 이유가 드러나게 하기 위해서다.
+  # min-call-interval이 0인 이유 — 테스트에 260ms짜리 sleep이 끼면 안 된다
+  igdb:
+    client-id: test-client-id
+    client-secret: test-client-secret
+    min-call-interval: 0s

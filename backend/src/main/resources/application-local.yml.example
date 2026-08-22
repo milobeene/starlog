@@ -30,7 +30,3 @@ app:
     client-id: 여기에-Twitch-Client-ID
     client-secret: 여기에-Twitch-Client-Secret
 
-  # ── RAWG (구 구현). IGDB 전환이 끝나면 이 블록과 관련 코드를 지운다.
-  # https://rawg.io/apidocs — 단, 현재 RAWG는 가입·로그인 폼이 깨져 있어 신규 발급이 불가능하다
-#  rawg:
-#    api-key: 여기에-RAWG-키

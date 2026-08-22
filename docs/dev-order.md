@@ -168,14 +168,18 @@
 
 > 근거·실측 데이터는 `docs/igdb-survey.md`. RAWG는 API가 살아있지만 **가입·로그인이 깨져 키 재발급이 불가능**해서 옮긴다.
 
-- [ ] J-7-1. 스펙 개정 — `averagePlaytimeHours` → `timeToBeatHours` (의미 변경), 마스터에 `coverImageId` 신설, RAWG 출처 표기 조항 제거
-- [ ] J-7-2. 포트 중립화 — `RawgClient` → `GameCatalogClient` 등. `GameSource`에서 `RAWG` 빼고 `IGDB` 추가
-- [ ] J-7-3. 토큰 관리 — Twitch client_credentials, 64일 만료. 캐시 + 만료 전 갱신 + **401 시 강제 재발급 후 1회 재시도**
-- [ ] J-7-4. `HttpIgdbClient` — APIcalypse 본문, POST, `Client-ID`/`Bearer` 헤더. 검색은 가벼운 필드 세트, 담기는 `multiquery`로 `games` + `game_time_to_beats` 1회
-- [ ] J-7-5. 검색 필터 — `where version_parent = null & game_type = (0,3,4,8,9,10,11)`. **`version_parent`만으로는 모드가 안 걸러진다** (실측)
-- [ ] J-7-6. 변환 — Unix 초 → `LocalDate`(UTC), `normally` 초 → 시간. **`first_release_date == null` → `releasedOn = null`** (`game_status`는 신뢰 불가)
-- [ ] J-7-7. 커버 폴백 — 개인 업로드가 없을 때 IGDB 커버. §6.9 소유 모델은 유지, FR-MED-02의 기본값만 바뀜
-- [ ] J-7-8. RAWG 구현 제거 — 코드·설정·문서. 이력은 직전 커밋에 남는다
+- [x] J-7-1. 스펙 개정 — `averagePlaytimeHours` → `timeToBeatHours` (의미 변경), 마스터에 `coverImageId` 신설, RAWG 출처 표기 조항 제거
+- [x] J-7-2. 포트 중립화 — `RawgClient` → `GameCatalogClient` 등. `GameSource`에서 `RAWG` 빼고 `IGDB` 추가
+- [x] J-7-3. 토큰 관리 — Twitch client_credentials, 64일 만료. 캐시 + 만료 전 갱신 + **401 시 강제 재발급 후 1회 재시도**
+- [x] J-7-4. `HttpIgdbClient` — APIcalypse 본문, POST, `Client-ID`/`Bearer` 헤더. 검색은 가벼운 필드 세트, 담기는 `multiquery`로 `games` + `game_time_to_beats` 1회
+- [x] J-7-5. 검색 필터 — `where version_parent = null & game_type = (0,3,4,8,9,10,11)`. **`version_parent`만으로는 모드가 안 걸러진다** (실측)
+- [x] J-7-6. 변환 — Unix 초 → `LocalDate`(UTC), `normally` 초 → 시간. **`first_release_date == null` → `releasedOn = null`** (`game_status`는 신뢰 불가)
+- [x] J-7-7. 커버 폴백 — 개인 업로드가 없을 때 IGDB 커버. §6.9 소유 모델은 유지, FR-MED-02의 기본값만 바뀜
+- [x] J-7-8. RAWG 구현 제거 — 코드·설정·문서. 이력은 직전 커밋에 남는다
+
+**검증** — 테스트 281개 초록불 + **실제 IGDB로 전 구간 왕복 확인**:
+검색(로컬 캐시 매핑 포함) / externalId로 담기(상세 1회) / 재담기 409(외부 호출 0회) /
+없는 id 404 / 재동기화 200(`reorderedEntries: 1`) / 수동 등록 게임 재동기화 400.
 
 **남은 위험** — 초당 4회 / 동시 8건 제한. 지금 패턴(검색 1·담기 1)은 안 걸리지만
 **Phase 7 임포트에서 파일 수십~수백 개를 매칭할 때 반드시 걸린다.**

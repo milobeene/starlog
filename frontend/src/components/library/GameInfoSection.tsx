@@ -113,11 +113,12 @@ export default function GameInfoSection({ detail }: Props) {
           <InfoRow label="개발사">{formatList(resolved.developers)}</InfoRow>
           <InfoRow label="퍼블리셔">{formatList(resolved.publishers)}</InfoRow>
           <InfoRow label="출시일">{formatDate(resolved.releasedOn)}</InfoRow>
-          {/* RAWG는 가격을 주지 않는다 → 마스터 정가 힌트를 띄울 자리가 없다 */}
+          {/* IGDB는 가격을 주지 않는다 → 마스터 정가 힌트를 띄울 자리가 없다 */}
           <InfoRow label="정가">{formatMoney(resolved.listPrice)}</InfoRow>
-          <InfoRow label="평균 플레이 시간" note="RAWG 이용자 평균">
-            {master.averagePlaytimeHours != null
-              ? `${master.averagePlaytimeHours}시간`
+          {/* "평균 플레이 시간"이 아니라 "클리어 소요 시간"이다 — 지표의 의미가 다르다 (스펙 §6.2) */}
+          <InfoRow label="클리어 소요 시간" note="IGDB 이용자 평균">
+            {master.timeToBeatHours != null
+              ? `약 ${master.timeToBeatHours}시간`
               : "—"}
           </InfoRow>
           <InfoRow label="출처">{SOURCE_LABEL[master.source]}</InfoRow>

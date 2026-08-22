@@ -28,11 +28,13 @@ type Seed = {
   publishers?: string[];
   releasedOn?: string;
   price?: number;
-  /** RAWG playtime — 이용자 평균 플레이 시간 */
-  avgPlaytime?: number;
+  /** IGDB game_time_to_beats.normally — 클리어까지 걸리는 평균 시간 */
+  timeToBeatHours?: number;
   /** 정가를 내가 덮어쓴 경우에만 true. 그 외에는 마스터 정가를 그대로 쓴다 */
   priceOverridden?: boolean;
-  source?: "RAWG" | "MANUAL";
+  source?: "IGDB" | "MANUAL";
+  /** IGDB cover.image_id. 개인 커버가 없을 때의 폴백 (§6.10) */
+  coverImageId?: string;
   tags?: string[];
   genres?: string[];
   masterGenres?: string[];
@@ -101,7 +103,7 @@ const SEEDS: Seed[] = [
   {
     entryId: 1,
     name: "젤다의 전설 브레스 오브 더 와일드",
-    avgPlaytime: 51,
+    timeToBeatHours: 51,
     masterName: "The Legend of Zelda: Breath of the Wild",
     status: "COMPLETED",
     rating: 99,
@@ -137,7 +139,7 @@ const SEEDS: Seed[] = [
   {
     entryId: 2,
     name: "하데스",
-    avgPlaytime: 22,
+    timeToBeatHours: 22,
     masterName: "Hades",
     status: "PLAYING",
     rating: 93,
@@ -173,7 +175,7 @@ const SEEDS: Seed[] = [
   {
     entryId: 3,
     name: "엘든 링",
-    avgPlaytime: 60,
+    timeToBeatHours: 60,
     masterName: "Elden Ring",
     status: "PAUSED",
     rating: 97,
@@ -203,7 +205,7 @@ const SEEDS: Seed[] = [
   {
     entryId: 4,
     name: "페르소나 5 로열",
-    avgPlaytime: 96,
+    timeToBeatHours: 96,
     masterName: "Persona 5 Royal",
     status: "COMPLETED",
     rating: 86,
@@ -285,7 +287,7 @@ const SEEDS: Seed[] = [
   {
     entryId: 7,
     name: "할로우 나이트",
-    avgPlaytime: 27,
+    timeToBeatHours: 27,
     masterName: "Hollow Knight",
     status: "COMPLETED",
     rating: 95,
@@ -314,7 +316,7 @@ const SEEDS: Seed[] = [
   {
     entryId: 8,
     name: "슬레이 더 스파이어",
-    avgPlaytime: 25,
+    timeToBeatHours: 25,
     masterName: "Slay the Spire",
     status: "PLAYING",
     rating: 91,
@@ -343,7 +345,7 @@ const SEEDS: Seed[] = [
   {
     entryId: 9,
     name: "발더스 게이트 3",
-    avgPlaytime: 73,
+    timeToBeatHours: 73,
     masterName: "Baldur's Gate 3",
     status: "BACKLOG",
     developers: ["Larian Studios"],
@@ -365,7 +367,7 @@ const SEEDS: Seed[] = [
   {
     entryId: 10,
     name: "스타듀 밸리",
-    avgPlaytime: 47,
+    timeToBeatHours: 47,
     masterName: "Stardew Valley",
     status: "PAUSED",
     rating: 88,
@@ -393,7 +395,7 @@ const SEEDS: Seed[] = [
   {
     entryId: 11,
     name: "세키로",
-    avgPlaytime: 32,
+    timeToBeatHours: 32,
     masterName: "Sekiro: Shadows Die Twice",
     status: "DROPPED",
     rating: 90,
@@ -455,7 +457,7 @@ const SEEDS: Seed[] = [
   {
     entryId: 15,
     name: "저니",
-    avgPlaytime: 3,
+    timeToBeatHours: 3,
     masterName: "Journey",
     status: "COMPLETED",
     rating: 92,
@@ -563,8 +565,9 @@ function toDetail(seed: Seed): BacklogDetail & { tags: string[] } {
       releasedOn: seed.releasedOn ?? null,
       listPrice: seed.priceOverridden ? null : listPrice,
       genres: masterGenres,
-      source: seed.source ?? "RAWG",
-      averagePlaytimeHours: seed.avgPlaytime ?? null,
+      source: seed.source ?? "IGDB",
+      timeToBeatHours: seed.timeToBeatHours ?? null,
+      coverImageId: seed.coverImageId ?? null,
     },
     overrides: {
       name: overrideName,
@@ -740,11 +743,11 @@ export const MOCK_GENRE_DICTIONARY = [
 export type MockAddOutcome = "created" | "duplicated" | "revivable";
 
 export const MOCK_SEARCH_RESULTS: (GameSearchResult & { outcome: MockAddOutcome })[] = [
-  { gameId: 2001, name: "The Legend of Zelda: Tears of the Kingdom", releasedOn: "2023-05-12", source: "RAWG", outcome: "created" },
-  { gameId: 2002, name: "Hades II", releasedOn: "2024-05-06", source: "RAWG", outcome: "created" },
+  { gameId: 2001, name: "The Legend of Zelda: Tears of the Kingdom", releasedOn: "2023-05-12", source: "IGDB", outcome: "created" },
+  { gameId: 2002, name: "Hades II", releasedOn: "2024-05-06", source: "IGDB", outcome: "created" },
   { gameId: 2003, name: "Ring Fit Adventure", releasedOn: "2019-10-18", source: "MANUAL", outcome: "duplicated" },
-  { gameId: 2004, name: "Celeste", releasedOn: "2018-01-25", source: "RAWG", outcome: "revivable" },
-  { gameId: 2005, name: "Outer Wilds", releasedOn: "2019-05-28", source: "RAWG", outcome: "duplicated" },
+  { gameId: 2004, name: "Celeste", releasedOn: "2018-01-25", source: "IGDB", outcome: "revivable" },
+  { gameId: 2005, name: "Outer Wilds", releasedOn: "2019-05-28", source: "IGDB", outcome: "duplicated" },
 ];
 
 /** GET /api/me/options — 편집 폼 선택지. 기기·플랫폼은 마스터 전체 (BR-PT-05) */

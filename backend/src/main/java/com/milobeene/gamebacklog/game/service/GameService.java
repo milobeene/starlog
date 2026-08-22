@@ -44,7 +44,8 @@ public class GameService {
     }
 
     /**
-     * 마스터 정보 수정 + 전파. Phase 4 RAWG 재동기화(J-5)가 이 메서드로 들어온다.
+     * 마스터 정보 수정 + 전파 (관리자 수동 편집용).
+     * 외부 DB 재동기화(J-5)는 applyCatalogSync로 따로 들어온다 — 정가를 안 건드려야 해서다.
      *
      * Game.updateMasterInfo를 직접 부르면 안 되는 이유 — releasedOn이 바뀌어도
      * 항목들의 releasedOnResolved(정렬용 비정규화)가 갱신되지 않아 목록만 조용히
@@ -66,7 +67,7 @@ public class GameService {
     }
 
     /**
-     * 수동 등록 (FR-GAME-04, J-4). RAWG에 없는 게임을 최초 등록자가 채운다.
+     * 수동 등록 (FR-GAME-04, J-4). 외부 DB에 없는 게임을 최초 등록자가 채운다.
      *
      * 이름 중복을 막지 않는다 — 같은 이름의 다른 게임(리메이크·지역판)이 실제로 있고,
      * 진짜 중복은 관리자 병합(FR-ADM-02)이 이미 처리한다.
@@ -84,7 +85,7 @@ public class GameService {
     }
 
     /**
-     * RAWG 재동기화 반영 (FR-GAME-05, J-5). 외부 호출은 GameResyncService가 이미 끝냈고,
+     * 외부 DB 재동기화 반영 (FR-GAME-05, J-5). 외부 호출은 GameResyncService가 이미 끝냈고,
      * 여기는 DB 반영과 전파만 한다.
      *
      * **순서가 규칙이다.** 엔티티 변경을 먼저 다 하고 벌크 쿼리를 나중에 돌린다.
@@ -93,9 +94,10 @@ public class GameService {
      * 같은 이유로 벌크에 넘길 값은 미리 지역 변수로 꺼내둔다
      */
     @Transactional
-    public GameResyncResult applyRawgSync(Long gameId, String name, List<String> developers,
-                                          List<String> publishers, List<String> genres,
-                                          LocalDate releasedOn, Integer averagePlaytimeHours) {
+    public GameResyncResult applyCatalogSync(Long gameId, String name, List<String> developers,
+                                             List<String> publishers, List<String> genres,
+                                             LocalDate releasedOn, Integer timeToBeatHours,
+                                             String coverImageId) {
         Game game = gameRepository.findById(gameId)
                 .orElseThrow(() -> new NotFoundException("게임을 찾을 수 없습니다. id=" + gameId));
 
@@ -105,7 +107,8 @@ public class GameService {
         if (nameChanged) {
             game.updateName(name);
         }
-        game.syncFromRawg(developers, publishers, genres, releasedOn, averagePlaytimeHours, now);
+        game.syncFromCatalog(developers, publishers, genres, releasedOn,
+                timeToBeatHours, coverImageId, now);
 
         String resolvedName = game.getName();
         LocalDate resolvedReleasedOn = game.getReleasedOn();

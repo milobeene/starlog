@@ -34,8 +34,8 @@ public class GameController {
     private final GameService gameService;
 
     /**
-     * 검색 (FR-GAME-01). 로컬 수동 등록 게임 + RAWG 결과를 이어 붙인다.
-     * RAWG가 죽어 있으면 502로 끝난다 — 로컬 결과만 조용히 주지 않는다 (J-6)
+     * 검색 (FR-GAME-01). 로컬 수동 등록 게임 + IGDB 결과를 이어 붙인다.
+     * IGDB가 죽어 있으면 502로 끝난다 — 로컬 결과만 조용히 주지 않는다 (J-6)
      */
     @GetMapping
     public List<GameSearchResponse> search(@RequestParam(required = false) String q) {

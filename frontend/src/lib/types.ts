@@ -24,7 +24,7 @@ export type AcquisitionMethod =
 
 export type InputMethod = "XINPUT" | "NINTENDO" | "PLAYSTATION" | "KEYBOARD_MOUSE";
 export type BillingCycle = "MONTHLY" | "YEARLY";
-export type GameSource = "RAWG" | "MANUAL";
+export type GameSource = "IGDB" | "MANUAL";
 export type Currency = "KRW" | "USD" | "JPY";
 
 export interface Money {
@@ -77,8 +77,10 @@ export interface ResolvedInfo {
 export interface MasterInfo extends ResolvedInfo {
   gameId: number;
   source: GameSource;
-  /** RAWG `playtime` — 이용자 평균 플레이 시간(시간). 오버라이드 대상이 아니라 참고값이다 */
-  averagePlaytimeHours: number | null;
+  /** IGDB `game_time_to_beats.normally` — 클리어까지 걸리는 평균 시간. 참고값이라 오버라이드 대상이 아니다 */
+  timeToBeatHours: number | null;
+  /** IGDB `cover.image_id`. URL이 아니라 id다 — 크기는 표시하는 쪽이 고른다 */
+  coverImageId: string | null;
 }
 
 /** null(스칼라) 또는 [](배열) = 안 덮어씀 */

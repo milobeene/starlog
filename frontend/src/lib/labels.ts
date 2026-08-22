@@ -49,7 +49,7 @@ export const BILLING_CYCLE_LABEL: Record<BillingCycle, string> = {
 };
 
 export const SOURCE_LABEL: Record<GameSource, string> = {
-  RAWG: "RAWG",
+  IGDB: "IGDB",
   MANUAL: "직접 등록",
 };
 

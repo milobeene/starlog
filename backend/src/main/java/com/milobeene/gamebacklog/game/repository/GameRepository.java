@@ -14,7 +14,7 @@ import java.util.Optional;
 public interface GameRepository extends BaseRepository<Game, Long> {
 
     /**
-     * RAWG에서 가져온 게임이 이미 있는지 확인 (uk_game_source_external_id).
+     * 외부 DB에서 가져온 게임이 이미 있는지 확인 (uk_game_source_external_id).
      * 메서드 이름을 파싱해서 JPQL을 만들어준다 — findBy + Source + And + ExternalId
      */
     Optional<Game> findBySourceAndExternalId(GameSource source, String externalId);
@@ -31,7 +31,7 @@ public interface GameRepository extends BaseRepository<Game, Long> {
     List<Game> searchByName(@Param("keyword") String keyword, Pageable pageable);
 
     /**
-     * RAWG 검색 결과 중 이미 마스터에 있는 것들을 한 번에 가려낸다 (J-2).
+     * 외부 DB 검색 결과 중 이미 마스터에 있는 것들을 한 번에 가려낸다 (J-2).
      * 결과 20건마다 findBySourceAndExternalId를 20번 부르면 그게 곧 N+1이다.
      * **빈 컬렉션을 넘기면 `in ()`이 되어 DB에 따라 문법 오류다** — 호출부가 막는다
      */
@@ -39,7 +39,7 @@ public interface GameRepository extends BaseRepository<Game, Long> {
 
     /**
      * 수동 등록 게임만 이름으로 찾는다 (J-2).
-     * RAWG 소스는 어차피 RAWG 검색 결과에 다시 나오므로 여기서 빼야 같은 게임이 두 줄로 안 뜬다
+     * IGDB 소스는 어차피 외부 검색 결과에 다시 나오므로 여기서 빼야 같은 게임이 두 줄로 안 뜬다
      */
     @Query("select g from Game g" +
             " where g.source = :source" +

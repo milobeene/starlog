@@ -2,8 +2,8 @@ package com.milobeene.gamebacklog.game.service;
 
 import com.milobeene.gamebacklog.common.exception.InvalidInputException;
 import com.milobeene.gamebacklog.common.exception.NotFoundException;
-import com.milobeene.gamebacklog.game.client.RawgClient;
-import com.milobeene.gamebacklog.game.client.RawgGameDetail;
+import com.milobeene.gamebacklog.game.client.CatalogGameDetail;
+import com.milobeene.gamebacklog.game.client.GameCatalogClient;
 import com.milobeene.gamebacklog.game.domain.Game;
 import com.milobeene.gamebacklog.game.domain.GameSource;
 import com.milobeene.gamebacklog.game.dto.GameResyncResult;
@@ -24,7 +24,7 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class GameResyncService {
 
-    private final RawgClient rawgClient;
+    private final GameCatalogClient catalogClient;
     private final GameRepository gameRepository;
     private final GameService gameService;
 
@@ -32,15 +32,15 @@ public class GameResyncService {
         Game game = gameRepository.findById(gameId)
                 .orElseThrow(() -> new NotFoundException("게임을 찾을 수 없습니다. id=" + gameId));
 
-        if (game.getSource() != GameSource.RAWG || game.getExternalId() == null) {
+        if (game.getSource() != GameSource.IGDB || game.getExternalId() == null) {
             // 수동 등록 게임은 원본이 없다. 400으로 끊는다 — 조용히 넘어가면 "동기화됐다"로 읽힌다
-            throw new InvalidInputException("RAWG에서 가져온 게임만 재동기화할 수 있습니다. id=" + gameId);
+            throw new InvalidInputException("외부 DB에서 가져온 게임만 재동기화할 수 있습니다. id=" + gameId);
         }
 
-        RawgGameDetail detail = rawgClient.findById(game.getExternalId());
+        CatalogGameDetail detail = catalogClient.findById(game.getExternalId());
 
-        return gameService.applyRawgSync(gameId, detail.name(), detail.developers(),
+        return gameService.applyCatalogSync(gameId, detail.name(), detail.developers(),
                 detail.publishers(), detail.genres(), detail.releasedOn(),
-                detail.averagePlaytimeHours());
+                detail.timeToBeatHours(), detail.coverImageId());
     }
 }

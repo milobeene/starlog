@@ -1,8 +1,11 @@
 import styles from "./SiteFooter.module.css";
 
 /**
- * RAWG 라이선스 조건 — 데이터를 쓰는 페이지에 출처 표기와 **활성 하이퍼링크**가 필수다.
- * 권고가 아니라 조건이라 초기부터 넣는다 (스펙 §8.1).
+ * 데이터 출처 표기.
+ *
+ * v1.5까지는 RAWG 라이선스가 "데이터를 쓰는 모든 페이지에 활성 하이퍼링크 필수"를
+ * **조건으로** 걸어서 반드시 있어야 했다. IGDB(Twitch Developer Services Agreement)에는
+ * 그런 의무 조항이 없다 (스펙 §8.1). 그래도 남겨두는 이유는 예의고, 지워도 무방하다
  */
 export default function SiteFooter() {
   return (
@@ -10,12 +13,12 @@ export default function SiteFooter() {
       <p className={styles.text}>
         게임 데이터 제공:{" "}
         <a
-          href="https://rawg.io"
+          href="https://www.igdb.com"
           className={styles.link}
           target="_blank"
           rel="noreferrer"
         >
-          RAWG Video Games Database
+          IGDB
         </a>
       </p>
       <p className={styles.sub}>Game Backlog MiloBeene® — 개인 학습용 습작</p>

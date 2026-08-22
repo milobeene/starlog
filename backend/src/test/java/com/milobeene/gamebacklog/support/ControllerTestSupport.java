@@ -33,7 +33,7 @@ import org.springframework.transaction.annotation.Transactional;
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @Transactional
-@Import(FakeRawgClient.class)
+@Import(FakeGameCatalogClient.class)
 public abstract class ControllerTestSupport {
 
     protected MockMvc mockMvc;
@@ -42,11 +42,11 @@ public abstract class ControllerTestSupport {
     @Autowired protected EntityManager em;
 
     /**
-     * 모든 컨트롤러 테스트가 가짜 RAWG를 쓴다 (개별 @Import가 아니라 여기서 한 번에).
-     * 검색을 부르는 테스트가 하나라도 진짜 클라이언트를 타면 키가 없어 502가 되는데,
+     * 모든 컨트롤러 테스트가 가짜 외부 DB를 쓴다 (개별 @Import가 아니라 여기서 한 번에).
+     * 검색을 부르는 테스트가 하나라도 진짜 클라이언트를 타면 실제 IGDB로 나가는데,
      * 그게 어느 테스트인지는 미리 알 수 없다
      */
-    @Autowired protected FakeRawgClient rawg;
+    @Autowired protected FakeGameCatalogClient catalog;
 
     /**
      * 모든 요청에 CSRF 토큰을 기본으로 실어준다.
@@ -58,7 +58,7 @@ public abstract class ControllerTestSupport {
     @BeforeEach
     void setUpMockMvc() {
         // 스프링 빈은 테스트 사이에 재사용된다 — 상태를 안 지우면 앞 테스트가 심은 결과가 넘어온다
-        rawg.reset();
+        catalog.reset();
 
         mockMvc = MockMvcBuilders.webAppContextSetup(context)
                 .apply(springSecurity())

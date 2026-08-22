@@ -67,10 +67,21 @@ public class Game extends BaseEntity {
     private String externalId;
 
     /**
-     * RAWG playtime (시간). 참고값이라 오버라이드 대상이 아니다 (§6.2).
-     * Steam 기준 평균이라 콘솔 전용 게임은 자료가 없는 게 정상 — null을 허용한다
+     * 클리어 소요 시간 (IGDB game_time_to_beats.normally, 초 → 시간).
+     * 참고값이라 오버라이드 대상이 아니다 (§6.2).
+     *
+     * v0.5에서 averagePlaytimeHours(RAWG playtime, Steam 평균 플레이 시간)에서 이름이 바뀌었다 —
+     * 지표의 의미 자체가 다르다. 전체 게임의 2.4%만 값을 갖지만 실제로 담을 만한 게임은 전수 보유한다
      */
-    private Integer averagePlaytimeHours;
+    private Integer timeToBeatHours;
+
+    /**
+     * IGDB cover.image_id. **URL이 아니라 id다** — 크기별 URL은 표시 시점에 조합한다 (§6.10).
+     * URL을 통째로 저장하면 크기를 바꿀 때마다 전 행을 갱신해야 한다.
+     * 개인 업로드 커버가 우선이고 이건 폴백이다
+     */
+    @Column(length = 50)
+    private String coverImageId;
 
     private LocalDateTime lastSyncedAt;
 
@@ -80,10 +91,10 @@ public class Game extends BaseEntity {
     protected Game() {}
 
     /** 시각을 인자로 받는 이유 — 엔티티가 시계를 들면 테스트에서 고정할 수 없다 */
-    public static Game fromRawg(String name, String externalId, LocalDateTime syncedAt) {
+    public static Game fromCatalog(String name, String externalId, LocalDateTime syncedAt) {
         Game game = new Game();
         game.name = name;
-        game.source = GameSource.RAWG;
+        game.source = GameSource.IGDB;
         game.externalId = externalId;
         game.lastSyncedAt = syncedAt;
         return game;
@@ -142,21 +153,23 @@ public class Game extends BaseEntity {
     }
 
     /**
-     * RAWG 응답으로 마스터를 채운다 (J-3 최초 캐시, J-5 재동기화 공용).
+     * 외부 DB 응답으로 마스터를 채운다 (J-3 최초 캐시, J-5 재동기화 공용).
      *
-     * **listPrice를 건드리지 않는 게 핵심이다.** RAWG는 가격을 주지 않으므로(§6.2)
+     * **listPrice를 건드리지 않는 게 핵심이다.** 외부 DB는 가격을 주지 않으므로(§6.2)
      * updateMasterInfo처럼 전체 교체를 하면 누군가 손으로 넣은 정가가 재동기화 때마다 날아간다.
      * name도 여기서 안 바꾼다 — 이름 변경은 담긴 항목의 displayName 전파가 딸려 있어
      * updateName 경로로만 들어가야 한다 (§7.2)
      */
-    public void syncFromRawg(List<String> developers, List<String> publishers,
-                             List<String> masterGenres, LocalDate releasedOn,
-                             Integer averagePlaytimeHours, LocalDateTime syncedAt) {
+    public void syncFromCatalog(List<String> developers, List<String> publishers,
+                                List<String> masterGenres, LocalDate releasedOn,
+                                Integer timeToBeatHours, String coverImageId,
+                                LocalDateTime syncedAt) {
         TextValues.replaceAll(this.developers, developers);
         TextValues.replaceAll(this.publishers, publishers);
         TextValues.replaceAll(this.masterGenres, masterGenres);
         this.releasedOn = releasedOn;
-        this.averagePlaytimeHours = averagePlaytimeHours;
+        this.timeToBeatHours = timeToBeatHours;
+        this.coverImageId = coverImageId;
         this.lastSyncedAt = syncedAt;
     }
 }

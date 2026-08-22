@@ -109,9 +109,11 @@ public class DataInitializer implements ApplicationRunner {
             Tag masterpiece = persistTag(member, "명작");   // 두 항목이 같은 태그를 공유한다
 
             // 1) 오버라이드 + 개인 장르 + 진행 중 회차 — 카드가 가장 꽉 찬 경우
-            Game ringFit = Game.fromRawg("Ring Fit Adventure", "rawg-42", LocalDateTime.now());
-            ringFit.updateMasterInfo(List.of("Nintendo"), List.of("Nintendo"),
-                    List.of("Sports"), LocalDate.of(2019, 10, 18), null);
+            // externalId는 진짜 IGDB id다 — 가짜를 넣으면 재동기화(J-5)를 시드로 눌러볼 수 없다
+            Game ringFit = Game.fromCatalog("Ring Fit Adventure", "122338", LocalDateTime.now());
+            ringFit.syncFromCatalog(List.of("Nintendo"), List.of("Nintendo"),
+                    List.of("Sports"), LocalDate.of(2019, 10, 18), 25, "cobcnq",
+                    LocalDateTime.now());
             em.persist(ringFit);
 
             BacklogEntry fit = BacklogEntry.of(member, ringFit);
@@ -131,9 +133,10 @@ public class DataInitializer implements ApplicationRunner {
                     new BigDecimal("89800"), LocalDate.of(2022, 1, 1));
 
             // 2) 개인 장르 없음 → 마스터 장르로 폴백되는지 확인용
-            Game hollowKnight = Game.fromRawg("Hollow Knight", "rawg-9", LocalDateTime.now());
-            hollowKnight.updateMasterInfo(List.of("Team Cherry"), List.of("Team Cherry"),
-                    List.of("Action", "Indie"), LocalDate.of(2017, 2, 24), null);
+            Game hollowKnight = Game.fromCatalog("Hollow Knight", "14593", LocalDateTime.now());
+            hollowKnight.syncFromCatalog(List.of("Team Cherry"), List.of("Team Cherry"),
+                    List.of("Platform", "Adventure", "Indie"), LocalDate.of(2017, 2, 24), 37, "cobfzp",
+                    LocalDateTime.now());
             em.persist(hollowKnight);
 
             BacklogEntry hollow = BacklogEntry.of(member, hollowKnight);

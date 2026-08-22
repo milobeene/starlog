@@ -55,8 +55,9 @@ public record BacklogDetailResponse(
             MoneyResponse listPrice,
             List<String> genres,
             GameSource source,
-            // RAWG playtime. 오버라이드가 없어서 resolved에는 대응 필드가 없다 (§6.2)
-            Integer averagePlaytimeHours
+            // 클리어 소요 시간·커버. 오버라이드가 없어서 resolved에는 대응 필드가 없다 (§6.2)
+            Integer timeToBeatHours,
+            String coverImageId
     ) {}
 
     public record Overrides(
@@ -170,7 +171,7 @@ public record BacklogDetailResponse(
                         game.getDevelopers(), game.getPublishers(),
                         game.getReleasedOn(), MoneyResponse.from(game.getListPrice()),
                         game.getMasterGenres(), game.getSource(),
-                        game.getAveragePlaytimeHours()),
+                        game.getTimeToBeatHours(), game.getCoverImageId()),
                 new Overrides(
                         entry.getNameOverride(),
                         entry.getDeveloperOverrides(), entry.getPublisherOverrides(),

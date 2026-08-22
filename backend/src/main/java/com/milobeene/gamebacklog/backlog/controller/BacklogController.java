@@ -78,15 +78,15 @@ public class BacklogController {
      * 삭제된 항목이 이미 있으면 서비스가 RevivableEntryException을 던지고,
      * 전역 핸들러가 409 + reviveUrl로 바꾼다. 컨트롤러는 그 분기를 몰라도 된다.
      *
-     * 두 서비스를 여기서 이어 붙이는 이유 (J-3) — resolve는 RAWG를 부를 수 있어
+     * 두 서비스를 여기서 이어 붙이는 이유 (J-3) — resolve는 외부 DB를 부를 수 있어
      * 트랜잭션 밖에 있어야 하고, addToBacklog는 트랜잭션 안이어야 한다.
      * 한 서비스로 합치면 HTTP 왕복 내내 DB 커넥션을 붙잡는다.
-     * RAWG가 죽으면 resolve에서 502로 끝나므로 백로그 쪽은 아무것도 쓰지 않는다 (FR-SYS-04)
+     * 외부 DB가 죽으면 resolve에서 502로 끝나므로 백로그 쪽은 아무것도 쓰지 않는다 (FR-SYS-04)
      */
     @PostMapping
     public ResponseEntity<IdResponse> add(@LoginMember Long memberId,
                                           @Valid @RequestBody BacklogAddRequest request) {
-        Long gameId = gameResolver.resolve(request.gameId(), request.rawgId());
+        Long gameId = gameResolver.resolve(request.gameId(), request.externalId());
         Long entryId = backlogService.addToBacklog(memberId, gameId);
 
         return ResponseEntity.created(URI.create("/api/backlog/" + entryId))

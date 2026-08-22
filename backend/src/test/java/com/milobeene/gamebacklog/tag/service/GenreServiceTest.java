@@ -30,7 +30,7 @@ class GenreServiceTest {
 
     @Test
     public void 개인_장르가_없으면_마스터_장르를_쓴다() {
-        //given — RAWG가 준 마스터 장르만 있는 상태
+        //given — 외부 DB가 준 마스터 장르만 있는 상태
         Long entryId = givenEntry("Hollow Knight", List.of("Action", "Platformer"));
 
         //when & then — §6.7 폴백
