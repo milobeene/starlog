@@ -1,0 +1,137 @@
+package com.milobeene.gamebacklog.auth.web;
+
+import com.milobeene.gamebacklog.auth.security.MemberPrincipal;
+import com.milobeene.gamebacklog.auth.service.GoogleAccountService;
+import com.milobeene.gamebacklog.common.exception.ConflictException;
+import com.milobeene.gamebacklog.member.domain.Member;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.core.user.OAuth2User;
+import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+import org.springframework.security.web.context.SecurityContextRepository;
+import org.springframework.stereotype.Component;
+
+import java.io.IOException;
+import java.util.Optional;
+
+/**
+ * 구글에서 돌아왔을 때의 분기 (FR-AUTH-06, 07).
+ *
+ * 세 갈래가 같은 콜백으로 들어온다.
+ *  · 세션에 연결 요청자가 있다        → **연결**
+ *  · 이 sub로 연결된 회원이 있다      → **로그인**
+ *  · 둘 다 아니다                    → **가입** (FR-AUTH-12)
+ *
+ * 가입에서 이메일이 이미 있으면 **이어붙이지 않고 409로 거부한다** — 자동 연결은
+ * 계정 탈취 경로다 (§6.1). "로그인 후 설정에서 연결하라"고 안내한다.
+ *
+ * 끝에서 SecurityContext를 우리 `MemberPrincipal`로 **갈아끼우는 게 핵심**이다.
+ * OAuth2User를 그대로 두면 `@LoginMember` 리졸버가 회원 id를 못 꺼낸다.
+ */
+@Component
+@RequiredArgsConstructor
+public class GoogleOAuth2SuccessHandler implements AuthenticationSuccessHandler {
+
+    private final GoogleAccountService googleAccountService;
+    private final CsrfTokenIssuer csrfTokenIssuer;
+
+    private final SecurityContextRepository securityContextRepository =
+            new HttpSessionSecurityContextRepository();
+
+    @Override
+    public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
+                                        Authentication authentication) throws IOException {
+
+        String googleSubject = ((OAuth2User) authentication.getPrincipal()).getName();
+        Long linkMemberId = popLinkRequester(request);
+
+        if (linkMemberId != null) {
+            googleAccountService.link(linkMemberId, googleSubject);
+            csrfTokenIssuer.issueFresh(request, response);
+            JsonErrors.write(response, HttpStatus.OK.value(), "LINKED", "구글 계정을 연결했습니다");
+            return;
+        }
+
+        OAuth2User user = (OAuth2User) authentication.getPrincipal();
+        Optional<Member> linked = googleAccountService.findLinked(googleSubject);
+
+        Member member = linked.orElse(null);
+        if (member == null) {
+            member = signUpOrReject(request, response, user, googleSubject);
+            if (member == null) {
+                return;   // 이미 응답을 썼다
+            }
+        }
+
+        if (!member.isEmailVerified()) {
+            // 이메일 가입과 같은 규칙이다 (FR-AUTH-02). 구글이 email_verified: false를 준 경우
+            SecurityContextHolder.clearContext();
+            csrfTokenIssuer.issueFresh(request, response);
+            JsonErrors.write(response, HttpStatus.FORBIDDEN.value(),
+                    "EMAIL_NOT_VERIFIED", "이메일 인증이 필요합니다");
+            return;
+        }
+
+        authenticateAsMember(request, response, MemberPrincipal.from(member));
+    }
+
+    /** 가입 시도. 거부하면 응답을 직접 쓰고 null을 돌려준다 */
+    private Member signUpOrReject(HttpServletRequest request, HttpServletResponse response,
+                                  OAuth2User user, String googleSubject) throws IOException {
+        String email = user.getAttribute("email");
+        if (email == null || email.isBlank()) {
+            SecurityContextHolder.clearContext();
+            JsonErrors.write(response, HttpStatus.FORBIDDEN.value(),
+                    "GOOGLE_EMAIL_REQUIRED", "구글 계정의 이메일 제공에 동의해야 가입할 수 있습니다");
+            return null;
+        }
+
+        try {
+            return googleAccountService.signUp(
+                    googleSubject,
+                    email,
+                    Boolean.TRUE.equals(user.getAttribute("email_verified")),
+                    user.getAttribute("name"));
+        } catch (ConflictException e) {
+            SecurityContextHolder.clearContext();
+            csrfTokenIssuer.issueFresh(request, response);
+            JsonErrors.write(response, HttpStatus.CONFLICT.value(), "EMAIL_ALREADY_REGISTERED",
+                    e.getMessage());
+            return null;
+        }
+    }
+
+    private Long popLinkRequester(HttpServletRequest request) {
+        HttpSession session = request.getSession(false);
+        if (session == null) {
+            return null;
+        }
+        Object memberId = session.getAttribute(GoogleLinkSessionFilter.LINK_MEMBER_ID);
+        session.removeAttribute(GoogleLinkSessionFilter.LINK_MEMBER_ID);   // 1회용
+        return (Long) memberId;
+    }
+
+    private void authenticateAsMember(HttpServletRequest request, HttpServletResponse response,
+                                      MemberPrincipal principal) throws IOException {
+        SecurityContext context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(
+                principal, null, principal.getAuthorities()));
+        SecurityContextHolder.setContext(context);
+        securityContextRepository.saveContext(context, request, response);
+
+        csrfTokenIssuer.issueFresh(request, response);
+        response.setStatus(HttpStatus.OK.value());
+        response.setContentType("application/json;charset=UTF-8");
+        response.getWriter().write("{\"id\":%d,\"email\":\"%s\",\"role\":\"%s\",\"withdrawalPending\":%b}"
+                .formatted(principal.getMemberId(), principal.getEmail(),
+                        principal.getRole().name(), principal.isWithdrawalPending()));
+    }
+}

@@ -1,0 +1,130 @@
+.detail {
+  padding-bottom: var(--sp-8);
+}
+
+/* 헤더 */
+.gameHeader {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-5);
+  padding: var(--sp-2) 0 var(--sp-6);
+}
+
+.cover {
+  width: 148px;
+  flex-shrink: 0;
+}
+
+.gameHeaderText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding-bottom: var(--sp-2);
+}
+
+.gameName {
+  font-size: var(--fs-xl);
+  line-height: 1.25;
+}
+
+.gameMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.rating {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* 섹션 공통 */
+.section {
+  padding: var(--sp-5) 0;
+  border-top: 1px solid var(--border);
+}
+
+.infoList {
+  padding-top: var(--sp-3);
+}
+
+.muted {
+  color: var(--text-faint);
+}
+
+/* 태그·장르 칩 */
+.chipRow {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: var(--sp-4);
+  padding: var(--sp-2) 0;
+}
+
+.chipLabel {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.chip {
+  padding: 2px var(--sp-3);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  border-radius: var(--r-full);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
+.chipQuiet {
+  background: var(--surface-alt);
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* 표 */
+.tableWrap {
+  margin-top: var(--sp-3);
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.table {
+  min-width: 720px;
+  font-size: var(--fs-sm);
+}
+
+.table th {
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface-alt);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.table td {
+  padding: var(--sp-2) var(--sp-3);
+  border-top: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.table th.right,
+.table td.right {
+  text-align: right;
+}
+
+.dangerZone {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: var(--sp-5);
+  border-top: 1px solid var(--border);
+}

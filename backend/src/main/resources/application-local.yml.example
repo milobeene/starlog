@@ -1,0 +1,36 @@
+# 이 파일을 application-local.yml 로 복사하고 값을 채운다.
+# application-local.yml 은 .gitignore에 있어 커밋되지 않는다.
+#
+# 실행:  ./gradlew bootRun --args='--spring.profiles.active=dev,local'
+#
+# 프로필을 dev와 함께 쓰는 이유 — local은 자격증명만 얹는 파일이고,
+# 시드·H2 설정 같은 개발 환경은 dev가 계속 담당해야 한다.
+spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: 여기에-클라이언트-ID
+            client-secret: 여기에-클라이언트-시크릿
+
+app:
+  # ── IGDB (Phase 4). 게임 마스터 데이터 출처.
+  #
+  # 키 하나가 아니라 둘인 이유 — IGDB는 Twitch OAuth2 client_credentials로 인증한다.
+  # 이 둘로 액세스 토큰을 받아오고, 토큰은 약 60일 뒤 만료돼서 갱신이 필요하다.
+  #
+  # 발급 순서:
+  #   1. Twitch 계정 생성 + 2단계 인증(2FA) 활성화 ← 2FA 없으면 앱 등록이 막힌다
+  #   2. https://dev.twitch.tv/console/apps 에서 애플리케이션 등록
+  #      - OAuth Redirect URL: IGDB는 안 쓰지만 필수 입력이라 `localhost`
+  #      - Client Type: **Confidential** ← 이래야 시크릿을 만들 수 있다
+  #   3. [New Secret] 눌러 시크릿 생성. 시크릿은 이때 한 번만 보여준다
+  igdb:
+    client-id: 여기에-Twitch-Client-ID
+    client-secret: 여기에-Twitch-Client-Secret
+
+  # ── RAWG (구 구현). IGDB 전환이 끝나면 이 블록과 관련 코드를 지운다.
+  # https://rawg.io/apidocs — 단, 현재 RAWG는 가입·로그인 폼이 깨져 있어 신규 발급이 불가능하다
+#  rawg:
+#    api-key: 여기에-RAWG-키

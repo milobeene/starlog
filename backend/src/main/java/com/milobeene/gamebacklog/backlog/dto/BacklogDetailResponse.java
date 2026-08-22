@@ -54,7 +54,9 @@ public record BacklogDetailResponse(
             LocalDate releasedOn,
             MoneyResponse listPrice,
             List<String> genres,
-            GameSource source
+            GameSource source,
+            // RAWG playtime. 오버라이드가 없어서 resolved에는 대응 필드가 없다 (§6.2)
+            Integer averagePlaytimeHours
     ) {}
 
     public record Overrides(
@@ -167,7 +169,8 @@ public record BacklogDetailResponse(
                         game.getId(), game.getName(),
                         game.getDevelopers(), game.getPublishers(),
                         game.getReleasedOn(), MoneyResponse.from(game.getListPrice()),
-                        game.getMasterGenres(), game.getSource()),
+                        game.getMasterGenres(), game.getSource(),
+                        game.getAveragePlaytimeHours()),
                 new Overrides(
                         entry.getNameOverride(),
                         entry.getDeveloperOverrides(), entry.getPublisherOverrides(),

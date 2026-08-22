@@ -39,4 +39,22 @@ public class AuditLog extends BaseEntity {
         this.actor = actor;
         this.action = action;
     }
+
+    /** 요청 정보까지 담아 기록한다 (NFR-S8). 컬럼 길이를 넘기면 잘라 넣는다 — 로그 때문에 요청이 실패하면 안 된다 */
+    public static AuditLog of(Member actor, String action, String targetType, Long targetId,
+                              String requestIp, String userAgent) {
+        AuditLog log = new AuditLog(actor, cut(action, 50));
+        log.targetType = cut(targetType, 50);
+        log.targetId = targetId;
+        log.requestIp = cut(requestIp, 50);
+        log.userAgent = cut(userAgent, 500);
+        return log;
+    }
+
+    private static String cut(String value, int max) {
+        if (value == null) {
+            return null;
+        }
+        return value.length() <= max ? value : value.substring(0, max);
+    }
 }

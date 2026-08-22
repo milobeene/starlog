@@ -264,10 +264,14 @@ private Money fee;
 | `listPrice` | Money | nullable, `@AttributeOverride` |
 | `source` | GameSource | not null |
 | `externalId` | String | nullable, len 50 — RAWG 게임 ID |
+| `averagePlaytimeHours` | Integer | nullable — RAWG `playtime` |
 | `lastSyncedAt` | LocalDateTime | nullable |
 
 - unique `(source, external_id)`
 - 삭제 없음 (정리는 관리자 병합 FR-ADM-02)
+
+> `averagePlaytimeHours`는 남들의 평균이지 내 기록이 아니다. 오버라이드를 만들지 않는다.
+> RAWG의 `playtime`이 Steam 기준이라 콘솔 전용 게임은 비어 있는 게 정상이다.
 
 > `MANUAL`은 `externalId`가 null이라 유니크 제약에 걸리지 않는다(null은 서로 다른 값). 수동 등록 중복은 관리자 병합의 몫.
 

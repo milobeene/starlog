@@ -2,6 +2,7 @@ package com.milobeene.gamebacklog.common.exception;
 
 import com.milobeene.gamebacklog.backlog.exception.RevivableEntryException;
 import com.milobeene.gamebacklog.platform.exception.RevivableAccountException;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -22,6 +23,7 @@ import java.util.stream.Collectors;
  * **더 구체적인 타입의 핸들러가 이긴다** — RevivableException은 ConflictException을
  * 상속하지만 전용 핸들러가 있으므로 그쪽으로 간다
  */
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -105,6 +107,22 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleUnreadable(HttpMessageNotReadableException e) {
         return ResponseEntity.badRequest()
                 .body(new ErrorResponse("INVALID_INPUT", "요청 본문을 읽을 수 없습니다"));
+    }
+
+    /**
+     * 502 — 외부 API 장애 (FR-SYS-04, J-6).
+     *
+     * 서버 로그에 남기는 건 여기가 아니라 HttpRawgClient다 — 원인(URL·상태코드·스택)을
+     * 아는 건 호출한 쪽이고, 여기까지 오면 이미 원인이 지워진 메시지뿐이다.
+     * 대신 "어떤 요청이 502로 끝났는지"를 한 줄 남긴다
+     */
+    @ExceptionHandler(ExternalApiException.class)
+    public ResponseEntity<ErrorResponse> handleExternalApi(ExternalApiException e) {
+        log.warn("외부 API 실패로 요청을 취소했습니다: {}", e.getMessage());
+
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(new ErrorResponse("EXTERNAL_API_ERROR",
+                        "외부 게임 정보 서비스에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요"));
     }
 
     /** 400 — 경로 변수·쿼리 파라미터의 타입이 안 맞는다 (/api/backlog/abc) */

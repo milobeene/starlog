@@ -1,0 +1,53 @@
+.section {
+  padding: var(--sp-5) 0;
+}
+
+.heading {
+  font-size: var(--fs-xs);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: var(--sp-3);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--sp-4);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-4) var(--sp-5);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.card[data-status="PLAYING"] {
+  border-left-color: var(--accent);
+}
+
+.card[data-status="COMPLETED"] {
+  border-left-color: var(--st-completed-fg);
+}
+
+.card[data-status="WISHLIST"] {
+  border-left-color: var(--brown);
+}
+
+.label {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.value {
+  font-size: var(--fs-2xl);
+  font-weight: 700;
+  color: var(--brown-deep);
+  line-height: 1.1;
+}

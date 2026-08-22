@@ -7,8 +7,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
-
 import java.util.Optional;
 
 public interface GameRepository extends BaseRepository<Game, Long> {
@@ -29,4 +29,23 @@ public interface GameRepository extends BaseRepository<Game, Long> {
             " where lower(g.name) like lower(concat('%', :keyword, '%'))" +
             " order by g.name asc")
     List<Game> searchByName(@Param("keyword") String keyword, Pageable pageable);
+
+    /**
+     * RAWG 검색 결과 중 이미 마스터에 있는 것들을 한 번에 가려낸다 (J-2).
+     * 결과 20건마다 findBySourceAndExternalId를 20번 부르면 그게 곧 N+1이다.
+     * **빈 컬렉션을 넘기면 `in ()`이 되어 DB에 따라 문법 오류다** — 호출부가 막는다
+     */
+    List<Game> findBySourceAndExternalIdIn(GameSource source, Collection<String> externalIds);
+
+    /**
+     * 수동 등록 게임만 이름으로 찾는다 (J-2).
+     * RAWG 소스는 어차피 RAWG 검색 결과에 다시 나오므로 여기서 빼야 같은 게임이 두 줄로 안 뜬다
+     */
+    @Query("select g from Game g" +
+            " where g.source = :source" +
+            " and lower(g.name) like lower(concat('%', :keyword, '%'))" +
+            " order by g.name asc")
+    List<Game> searchByNameAndSource(@Param("keyword") String keyword,
+                                     @Param("source") GameSource source,
+                                     Pageable pageable);
 }

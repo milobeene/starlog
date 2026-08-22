@@ -1,9 +1,11 @@
 package com.milobeene.gamebacklog.common.config;
 
+import com.milobeene.gamebacklog.admin.web.AuditLogInterceptor;
 import com.milobeene.gamebacklog.common.web.LoginMemberArgumentResolver;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.method.support.HandlerMethodArgumentResolver;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import java.util.List;
@@ -21,9 +23,16 @@ import java.util.List;
 public class WebConfig implements WebMvcConfigurer {
 
     private final LoginMemberArgumentResolver loginMemberArgumentResolver;
+    private final AuditLogInterceptor auditLogInterceptor;
 
     @Override
     public void addArgumentResolvers(List<HandlerMethodArgumentResolver> resolvers) {
         resolvers.add(loginMemberArgumentResolver);
+    }
+
+    /** 관리자 경로에만 건다. 전 경로에 걸면 감사 로그가 아니라 액세스 로그가 된다 */
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(auditLogInterceptor).addPathPatterns("/api/admin/**");
     }
 }

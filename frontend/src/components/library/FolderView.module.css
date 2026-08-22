@@ -1,0 +1,61 @@
+.folders {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--sp-4);
+  padding: var(--sp-2) 0 var(--sp-8);
+}
+
+.folder {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-height: 108px;
+  padding: var(--sp-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-sm);
+  text-align: left;
+  justify-content: flex-end;
+}
+
+.folder:hover {
+  border-color: var(--accent);
+}
+
+.folderName {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--brown-deep);
+}
+
+.folderCount {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.inside {
+  padding-bottom: var(--sp-8);
+}
+
+.insideHead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0 var(--sp-5);
+}
+
+.folderTitle {
+  font-size: var(--fs-lg);
+}
+
+.count {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--sp-5) var(--sp-4);
+}

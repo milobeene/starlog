@@ -30,4 +30,9 @@ public class Emulator extends BaseEntity {
     public static Emulator of(String name) {
         return new Emulator(name);
     }
+
+    /** 이름 수정 (FR-ADM-04). 마스터는 삭제하지 않으므로 오타 정정은 이 경로뿐이다 */
+    public void rename(String newName) {
+        this.name = newName;
+    }
 }

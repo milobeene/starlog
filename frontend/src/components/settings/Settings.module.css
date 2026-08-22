@@ -1,0 +1,87 @@
+.section {
+  padding: var(--sp-5) 0;
+  border-top: 1px solid var(--border);
+}
+
+.sectionBody {
+  padding-top: var(--sp-4);
+}
+
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.table {
+  min-width: 560px;
+  font-size: var(--fs-sm);
+}
+
+.table th {
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface-alt);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.table td {
+  padding: var(--sp-2) var(--sp-3);
+  border-top: 1px solid var(--border);
+}
+
+.table th.right,
+.table td.right {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.muted {
+  color: var(--text-faint);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-2) var(--sp-1) var(--sp-3);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-full);
+  font-size: var(--fs-xs);
+}
+
+.chipName {
+  font-weight: 600;
+}
+
+.chipCount {
+  color: var(--text-faint);
+}
+
+.chipBtn {
+  padding: 0 var(--sp-1);
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+}
+
+.chipBtn:hover {
+  color: var(--accent-strong);
+}
+
+.dictNote {
+  margin-top: var(--sp-3);
+  font-size: var(--fs-xs);
+  color: var(--text-faint);
+  line-height: 1.6;
+}

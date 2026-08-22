@@ -1,0 +1,24 @@
+.footer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-6) 0 var(--sp-7);
+  border-top: 1px solid var(--border);
+}
+
+.text {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.link {
+  color: var(--accent-strong);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.sub {
+  font-size: var(--fs-xs);
+  color: var(--text-faint);
+}

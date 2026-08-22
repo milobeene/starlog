@@ -28,6 +28,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Profile;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -54,6 +55,7 @@ public class DataInitializer implements ApplicationRunner {
     static class InitService {
 
         private final EntityManager em;
+        private final PasswordEncoder passwordEncoder;
 
         @Transactional
         public void initMasters() {
@@ -79,7 +81,11 @@ public class DataInitializer implements ApplicationRunner {
                     .getSingleResult() > 0) {
                 return;
             }
-            em.persist(Member.signUpWithEmail("milo.beene@gmail.com", "1111", "Milo Beene"));
+            // 원문 저장 금지 (AUTH-P3). 시드도 예외가 아니다 — dev DB를 그대로 덤프해도 원문이 안 남는다
+            Member member = Member.signUpWithEmail(
+                    "milo.beene@gmail.com", passwordEncoder.encode("1111"), "Milo Beene");
+            member.verifyEmail();   // 시드 계정은 바로 로그인되게 (I-4 이후 미인증은 로그인 403)
+            em.persist(member);
         }
 
         /**

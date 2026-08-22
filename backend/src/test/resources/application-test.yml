@@ -4,3 +4,12 @@
 spring:
   datasource:
     url: jdbc:h2:mem:test;DB_CLOSE_DELAY=-1
+
+# 배치는 테스트에서 절대 자동으로 돌면 안 된다 — 2월 30일은 오지 않는 날짜다.
+# 배치 로직 자체는 스케줄러를 거치지 않고 메서드를 직접 불러 검증한다
+app:
+  cleanup:
+    auth-token-cron: "0 0 0 30 2 *"
+    audit-log-cron: "0 0 0 30 2 *"
+  withdrawal:
+    purge-cron: "0 0 0 30 2 *"

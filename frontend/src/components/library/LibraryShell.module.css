@@ -1,0 +1,23 @@
+.layout {
+  display: flex;
+  align-items: flex-start;
+  min-height: calc(100vh - var(--header-h));
+}
+
+.main {
+  flex: 1;
+  min-width: 0;
+  padding: 0 var(--sp-6);
+}
+
+.viewBar {
+  display: flex;
+  justify-content: center;
+  padding: var(--sp-2) 0 var(--sp-4);
+  border-top: 1px solid var(--border);
+}
+
+.viewport {
+  border-top: 1px solid var(--border);
+  padding-top: var(--sp-4);
+}

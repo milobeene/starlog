@@ -2,6 +2,7 @@ package com.milobeene.gamebacklog.game.service;
 
 import com.milobeene.gamebacklog.backlog.repository.BacklogEntryRepository;
 import com.milobeene.gamebacklog.common.exception.NotFoundException;
+import com.milobeene.gamebacklog.game.dto.GameResyncResult;
 import com.milobeene.gamebacklog.game.domain.Game;
 import com.milobeene.gamebacklog.common.util.TextValues;
 import com.milobeene.gamebacklog.game.dto.GameSearchResponse;
@@ -62,6 +63,60 @@ public class GameService {
 
         return backlogEntryRepository.updateReleasedOnResolvedByGameId(
                 gameId, game.getReleasedOn(), LocalDateTime.now());
+    }
+
+    /**
+     * 수동 등록 (FR-GAME-04, J-4). RAWG에 없는 게임을 최초 등록자가 채운다.
+     *
+     * 이름 중복을 막지 않는다 — 같은 이름의 다른 게임(리메이크·지역판)이 실제로 있고,
+     * 진짜 중복은 관리자 병합(FR-ADM-02)이 이미 처리한다.
+     * 등록 이후 수정은 관리자만이다 (AUTH-P2) — 그래서 여기엔 수정 경로가 없다
+     */
+    @Transactional
+    public Long registerManual(String name, List<String> developers, List<String> publishers,
+                               List<String> genres, LocalDate releasedOn, Money listPrice) {
+        Game game = Game.manual(name);
+        game.updateMasterInfo(developers, publishers, genres, releasedOn, listPrice);
+
+        gameRepository.persist(game);
+
+        return game.getId();
+    }
+
+    /**
+     * RAWG 재동기화 반영 (FR-GAME-05, J-5). 외부 호출은 GameResyncService가 이미 끝냈고,
+     * 여기는 DB 반영과 전파만 한다.
+     *
+     * **순서가 규칙이다.** 엔티티 변경을 먼저 다 하고 벌크 쿼리를 나중에 돌린다.
+     * 벌크는 clearAutomatically = true라서 실행 직후 game이 준영속이 된다 —
+     * 순서를 뒤집으면 뒤에 한 변경이 변경 감지에 안 잡혀 조용히 사라진다 (JPA 13번).
+     * 같은 이유로 벌크에 넘길 값은 미리 지역 변수로 꺼내둔다
+     */
+    @Transactional
+    public GameResyncResult applyRawgSync(Long gameId, String name, List<String> developers,
+                                          List<String> publishers, List<String> genres,
+                                          LocalDate releasedOn, Integer averagePlaytimeHours) {
+        Game game = gameRepository.findById(gameId)
+                .orElseThrow(() -> new NotFoundException("게임을 찾을 수 없습니다. id=" + gameId));
+
+        LocalDateTime now = LocalDateTime.now();
+
+        boolean nameChanged = name != null && !name.equals(game.getName());
+        if (nameChanged) {
+            game.updateName(name);
+        }
+        game.syncFromRawg(developers, publishers, genres, releasedOn, averagePlaytimeHours, now);
+
+        String resolvedName = game.getName();
+        LocalDate resolvedReleasedOn = game.getReleasedOn();
+
+        int renamedEntries = nameChanged
+                ? backlogEntryRepository.updateDisplayNameByGameId(gameId, resolvedName, now)
+                : 0;
+        int reorderedEntries =
+                backlogEntryRepository.updateReleasedOnResolvedByGameId(gameId, resolvedReleasedOn, now);
+
+        return new GameResyncResult(nameChanged, renamedEntries, reorderedEntries);
     }
 
     /**

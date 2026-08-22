@@ -194,7 +194,8 @@ class BacklogWriteControllerTest extends ControllerTestSupport {
         saveGame("Celeste");
 
         //when //then
-        mockMvc.perform(get("/api/games").param("q", "knight"))
+        mockMvc.perform(get("/api/games").param("q", "knight")
+                        .header("X-Member-Id", saveMember().getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].name").value("Hollow Knight"));
@@ -206,7 +207,8 @@ class BacklogWriteControllerTest extends ControllerTestSupport {
         saveGame("Hollow Knight");
 
         //when //then — 전체를 퍼주지 않는다
-        mockMvc.perform(get("/api/games").param("q", "   "))
+        mockMvc.perform(get("/api/games").param("q", "   ")
+                        .header("X-Member-Id", saveMember().getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(0));
     }

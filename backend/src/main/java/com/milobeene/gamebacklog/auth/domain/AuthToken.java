@@ -48,4 +48,15 @@ public class AuthToken extends BaseEntity {
         this.tokenHash = tokenHash;
         this.expiresAt = expiresAt;
     }
+
+    public boolean isUsable(TokenPurpose expected, LocalDateTime now) {
+        return this.purpose == expected && this.usedAt == null && now.isBefore(this.expiresAt);
+    }
+
+    /** 1회용. 두 번째 호출은 아무 일도 하지 않는다 — 재사용 판정은 isUsable이 한다 */
+    public void markUsed(LocalDateTime now) {
+        if (this.usedAt == null) {
+            this.usedAt = now;
+        }
+    }
 }

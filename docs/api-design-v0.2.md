@@ -160,7 +160,8 @@ GET /api/backlog/{entryId}
     "releasedOn": "2019-10-18",
     "listPrice": null,
     "genres": ["Sports"],
-    "source": "MANUAL"
+    "source": "MANUAL",
+    "averagePlaytimeHours": 51           // RAWG playtime. null 가능 (Steam 기준 평균)
   },
   "overrides": {                             // 편집 폼의 현재 입력값. null = 안 덮어씀
     "name": null,
@@ -257,6 +258,16 @@ GET /api/me/options
 | `PUT` | `/api/backlog/{id}/tags` | `replaceTags` |
 | `PUT` | `/api/backlog/{id}/genres` | `replaceGenres` |
 
+`POST /api/backlog` 본문 (J-3에서 `rawgId` 추가):
+
+```jsonc
+{ "gameId": 5 }        // 마스터에 이미 있음 → RAWG 호출 0회
+{ "rawgId": "3498" }   // 마스터에 없음 → 상세 1회 호출 → 마스터 저장 → 담기
+```
+
+둘 중 하나는 반드시 있어야 한다(없으면 400). 프론트는 검색 응답의 두 필드를 그대로 실어 보내면 되고,
+캐시 여부를 판단하지 않는다 — 그건 `GameResolver`가 한다.
+
 **전부 `PUT`인 이유** — 서비스가 전부 전체 교체다. 부분 수정 의미론이 없으므로 `PATCH`가 아니다.
 
 `revive`가 `POST`인 이유 — 멱등하지 않고(이미 살아있으면 예외) 리소스 상태를 바꾸는 **행위**다.
@@ -274,6 +285,219 @@ DELETE /api/acquisitions/{id}
 ```
 
 **수정·삭제는 부모 경로를 붙이지 않는다.** id가 전역 유니크라 필요 없고, `/backlog/{eid}/playthroughs/{pid}`로 두면 둘이 안 맞을 때를 검사해야 한다. 소유권은 어차피 서버가 `BacklogEntryFinder`로 확인한다.
+
+### 2.4 인증 (Phase 3)
+
+```
+POST /api/auth/signup      가입 (FR-AUTH-01)
+```
+
+```jsonc
+// 요청
+{ "email": "milo@example.com", "password": "********", "nickname": "밀로" }
+// 201 + Location: /api/me
+{ "id": 1 }
+```
+
+| 상태 | 언제 |
+|---|---|
+| `400 INVALID_INPUT` | 이메일 형식·비밀번호 길이(8~64)·닉네임 누락 |
+| `409 CONFLICT` | 이미 가입된 이메일 (앱 검증) |
+| `409 CONSTRAINT_VIOLATION` | 동시 요청이 앱 검증을 통과한 경우 (DB 유니크) |
+
+- 이메일은 **소문자로 정규화**해 저장한다. 유니크 제약이 대소문자를 구분하기 때문
+- 비밀번호 상한 64자 — BCrypt가 72바이트 초과분을 조용히 버린다
+- 중복 검사는 `deletedAt`을 보지 않는다. 탈퇴 유예 중인 이메일도 재사용 불가 (BR-AUTH-02)
+- **가입 직후 `emailVerified = false`.** 로그인 제한은 I-4에서 붙는다
+
+```
+POST /api/auth/login       로그인 (FR-AUTH-03)
+POST /api/auth/logout      로그아웃 (FR-AUTH-04)
+```
+
+**컨트롤러 메서드가 없다.** 시큐리티 필터가 이 두 경로를 가로채 처리한다. 코드에서 찾으면 `SecurityConfig`에 있다.
+
+로그인은 **JSON이 아니라 form 형식**이다 (`application/x-www-form-urlencoded`):
+
+```
+email=milo@example.com&password=********
+```
+
+| 상태 | 응답 |
+|---|---|
+| `200` | `{ "id": 1, "email": "...", "role": "USER", "withdrawalPending": false }` + `JSESSIONID` 쿠키 |
+| `401 AUTHENTICATION_FAILED` | 비밀번호 오류·없는 계정 **동일 응답** (NFR-S3) |
+
+로그아웃은 성공 시 `204`. 세션을 무효화하고 `JSESSIONID`를 지운다.
+
+```
+POST /api/auth/email-verification           인증 확인 (FR-AUTH-02)
+POST /api/auth/email-verification/resend    재발송
+```
+
+```jsonc
+// 인증 확인 — 메일 링크의 토큰을 프론트가 읽어 보낸다
+{ "token": "sVm1Ljuscn1epis2rZudpgVv..." }   // → 204
+
+// 재발송
+{ "email": "milo@example.com" }              // → 202 (항상)
+```
+
+| 상태 | 언제 |
+|---|---|
+| `204` | 인증 완료 |
+| `400 INVALID_INPUT` | 없는 토큰 / 만료 / **이미 사용됨** — 세 경우를 구분해 알려주지 않는다 |
+| `202` | 재발송. 가입 여부·인증 여부·스로틀 여부와 **무관하게 항상 같은 응답** (NFR-S3) |
+
+- 토큰은 256비트 난수, 유효 24시간, **1회용**. DB에는 **SHA-256 해시만** 저장한다 (NFR-S2)
+- 비밀번호와 달리 BCrypt를 쓰지 않는다 — salt 때문에 해시로 조회가 불가능하고, 고엔트로피라 느릴 이유도 없다
+- 재발송 최소 간격 60초 (NFR-S9)
+- **미인증 계정의 로그인은 `403 EMAIL_NOT_VERIFIED`.** 비밀번호를 대조한 **뒤에** 막는다 —
+  먼저 막으면 아무 비밀번호나 넣어보는 것만으로 "가입돼 있고 미인증"이 새어나간다
+- 이 두 경로는 인증 없이 열려 있다. 토큰 자체가 신분증이다
+
+#### 인증이 없는 요청
+
+```jsonc
+// 401 — 302 리다이렉트가 아니라 항상 JSON
+{ "code": "UNAUTHORIZED", "message": "로그인이 필요합니다" }
+```
+
+#### CSRF (OI-14 — 로컬 기준 결론)
+
+세션 쿠키는 브라우저가 자동으로 실어 보내므로, 다른 사이트가 우리 API로 쓰기 요청을 유도할 수 있다.
+그래서 **쿠키로 받은 토큰을 헤더로 되보내는** 방식으로 막는다.
+
+```
+1. 아무 GET 요청     → 응답에 XSRF-TOKEN 쿠키
+2. 쓰기 요청          → X-XSRF-TOKEN 헤더에 그 값을 실어 보냄
+```
+
+- 토큰 없는 `POST`/`PUT`/`DELETE`는 **403**. `GET`은 대상이 아니다
+- **로그인에 성공하면 토큰이 새로 발급된다.** 응답의 `XSRF-TOKEN` 쿠키로 갱신해야 한다 —
+  안 하면 로그인 직후 모든 쓰기가 403이 된다
+- 크로스 도메인 배포(`vercel.app` ↔ `onrender.com`, `SameSite=None`) 재검토는 Phase 9
+
+```
+POST /api/auth/password-reset/request       재설정 요청 (FR-AUTH-05)
+POST /api/auth/password-reset               재설정 확정
+```
+
+```jsonc
+{ "email": "milo@example.com" }                              // → 202 (항상)
+{ "token": "...", "newPassword": "********" }                // → 204
+```
+
+- 토큰 유효 **30분** (인증 토큰 24시간보다 짧다). 계정을 통째로 넘기는 열쇠라 노출 창을 좁힌다
+- 비밀번호 규칙은 가입과 같다(8~64자). 여기만 느슨하면 재설정이 우회로가 된다
+- 성공하면 **그 회원의 기존 세션이 전부 끊기고**, 남아 있던 다른 재설정 링크도 함께 폐기된다
+- ⚠️ 세션 무효화는 `SessionRegistry`(JVM 메모리) 기반이라 **단일 인스턴스 전제**다.
+  다중화하면 Phase 9의 Spring Session(JDBC)로 갈아타야 한다 (NFR-O3)
+
+### 2.5 탈퇴 / 복구 (Phase 3)
+
+```
+DELETE /api/me            탈퇴 요청 — 30일 유예 (FR-AUTH-09)
+POST   /api/me/restore    유예 중 복구 (FR-AUTH-10)
+```
+
+- 탈퇴 요청 즉시 **세션이 끊긴다**. 세션에 실린 권한은 로그인 시점에 굳기 때문에,
+  안 끊으면 유예 상태인데도 기존 탭에서는 계속 정상 회원으로 돌아다닌다
+- 유예 중 계정은 **인증은 통과하고 인가만 제한**된다 — 권한이 `ROLE_USER` 대신
+  `ROLE_PENDING_DELETION`이 되어 `/api/me/restore` 외에는 전부 403
+- 로그인 응답이 상태를 알려준다: `{ "id": 1, "email": "...", "withdrawalPending": true }`
+- 유예 중 이메일은 재사용할 수 없다 (BR-AUTH-02)
+- 30일이 지나면 배치가 물리 삭제한다 (FR-SYS-06)
+
+### 2.6 관리자 (Phase 3)
+
+```
+GET  /api/admin/members                                  회원 목록 (FR-ADM-03)
+GET  /api/admin/audit-logs                               감사 로그 조회 (FR-ADM-05)
+PUT  /api/admin/games/{gameId}/name                      마스터 게임명 수정 + 전파 (FR-ADM-01)
+PUT  /api/admin/games/{gameId}                           마스터 정보 수정 + 전파 (FR-ADM-01)
+POST /api/admin/games/{sourceId}/merge-into/{targetId}   중복 마스터 병합 (FR-ADM-02)
+POST /api/admin/platforms  ·  PUT /api/admin/platforms/{id}     플랫폼 마스터 (FR-ADM-04)
+POST /api/admin/devices    ·  PUT /api/admin/devices/{id}       기기 마스터
+POST /api/admin/emulators  ·  PUT /api/admin/emulators/{id}     에뮬레이터 마스터
+```
+
+**병합(FR-ADM-02)** — source의 항목을 target으로 옮기고 source를 지운다. 마스터는 원래 삭제하지
+않지만(§7.4) 병합은 그 예외다. 옮길 때 `displayName`·`releasedOnResolved`를 다시 계산하되
+**개인 오버라이드가 있는 항목은 표시값이 안 바뀐다**.
+
+| 상태 | 언제 |
+|---|---|
+| `409 CONFLICT` | 양쪽을 모두 담은 회원이 있다 — `(member, game)` 유니크 제약에 걸린다. 어느 기록을 살릴지 서버가 정할 수 없어 관리자가 먼저 정리해야 한다 |
+| `400 INVALID_INPUT` | 같은 게임끼리 병합 |
+
+**마스터 관리(FR-ADM-04)** — 추가와 이름 수정만. **삭제는 없다** — 회차·취득이 참조하고 있어
+지우면 과거 기록이 깨진다. 오타 정정 경로가 이름 수정뿐인 이유다.
+
+### 2.7 구글 계정 연동 (Phase 3, I-6)
+
+```
+GET    /oauth2/authorization/google    연동 시작 (연결·로그인 공용, 시큐리티 필터가 처리)
+DELETE /api/me/google                  연결 해제 (FR-AUTH-08)
+```
+
+**같은 콜백이 두 가지로 갈린다.**
+
+| 상황 | 결과 |
+|---|---|
+| 로그인한 상태에서 시작 | **연결** → `200 { "code": "LINKED" }` |
+| 로그인 안 한 상태 + 연결된 회원 있음 | **로그인** → `200 { id, email, role, withdrawalPending }` |
+| 로그인 안 한 상태 + 연결된 회원 없음 + 이메일 미가입 | **가입** (FR-AUTH-12) → 로그인 응답과 동일 |
+| 로그인 안 한 상태 + **이메일이 이미 가입됨** | `409 EMAIL_ALREADY_REGISTERED` — 이어붙이지 않는다 |
+| 구글이 이메일을 안 줌 | `403 GOOGLE_EMAIL_REQUIRED` |
+| 이메일 미인증 상태 | `403 EMAIL_NOT_VERIFIED` (이메일 가입과 같은 규칙) |
+| 이미 다른 회원에 연결된 구글 계정 | `409 CONFLICT` |
+
+- 저장하는 값은 이메일이 아니라 구글의 **`sub`**. 이메일은 바뀌고 재사용되지만 sub는 영구적이다
+- **이메일이 같다고 자동 연결하지 않는다** — 공격자가 남의 이메일로 선점 가입해두면 계정을 통째로 넘겨받는다 (§6.1).
+  가입은 허용하되 이메일이 겹치면 거부하고 "로그인 후 연결"로 안내한다
+- 가입 시 비밀번호는 `null`이다. **비밀번호 재설정 경로로 나중에 만들 수 있고**,
+  만들고 나면 구글 연결 해제도 가능해진다 (BR-AUTH-01)
+- 해제는 **비밀번호가 있어야** 가능하다 (BR-AUTH-01). 없으면 로그인 수단이 하나도 안 남는다
+- 자격증명(환경변수)이 없으면 **oauth2Login이 체인에 아예 안 붙는다.** 로컬·CI가 구글 설정 없이 돌아야 하기 때문
+
+필요한 환경변수:
+```
+SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_ID
+SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_SECRET
+```
+리다이렉트 URI: `{서버주소}/login/oauth2/code/google`
+
+**게임명만 경로가 따로인 이유** — 이름 변경은 그 게임을 담은 **모든 항목의 `displayName`**을
+갱신해야 해서 전파 경로가 다르고, 전체 교체 요청에 실려 실수로 바뀔 때의 피해도 크다.
+
+**관리자 범위는 "조회 + 마스터 수정"으로 확정** (Phase 3 논의). 회원 정지·강제 탈퇴·비밀번호
+초기화·권한 부여는 **만들지 않는다** — 스펙에 없는 기능이고, 단일 관리자 습작에서 강한 권한을
+먼저 만들면 되돌리기·감사 요구만 무거워진다. 필요해지면 그때 FR을 추가한다.
+
+- `/api/admin/**`는 `ROLE_ADMIN`. 인가는 컨트롤러 애노테이션이 아니라 `SecurityConfig`
+  경로 규칙 한 곳에 모여 있다
+- **이 경로의 모든 요청은 조회를 포함해 감사 로그에 남는다** (NFR-S8).
+  거부된 시도(`DENIED GET /api/admin/members`)도 남는다 — 오히려 더 중요한 신호다
+- 관리자 계정은 `ADMIN_EMAIL` / `ADMIN_PASSWORD` 환경변수로 기동 시 생성·승격한다 (OI-07)
+- 회원 목록에 비밀번호 해시는 실리지 않는다
+
+#### CSRF 토큰이 새로 발급되는 순간
+
+시큐리티는 다음 세 순간에 **기존 토큰을 폐기한다.** 프론트는 응답의 `XSRF-TOKEN` 쿠키로 매번 갱신해야 한다.
+
+| 순간 | 이유 |
+|---|---|
+| 로그인 성공 | 세션 고정 공격 방어의 일부로 토큰 회전 |
+| 로그아웃 | 쿠키 삭제 |
+| 세션 강제 만료 | 비밀번호 재설정·탈퇴로 서버가 세션을 끊었을 때 |
+
+갱신을 놓치면 **다음 쓰기 요청이 전부 403**이 된다. 로그아웃 직후 로그인조차 안 되는 상태가 된다.
+
+#### 회원 식별 — `X-Member-Id`는 dev·test 전용으로 격리됐다
+
+세션이 있으면 헤더는 필요 없다. 헤더 경로는 **dev·test 프로필에만 존재하는 필터**가 처리하며
+운영 프로필에는 그 빈 자체가 만들어지지 않는다.
 
 ### 2.3 프로필 / 설정
 
@@ -294,15 +518,35 @@ PUT    /api/me/subscriptions/{id}
 DELETE /api/me/subscriptions/{id}                물리
 ```
 
-### 2.4 마스터 게임 검색 (v0.2 신설)
+### 2.4 게임 검색 / 등록 (v0.2 신설 → Phase 4에서 확장)
 
 ```
-GET /api/games?q=knight        로컬 마스터만, 이름 부분 일치, 상위 20건
+GET  /api/games?q=knight       로컬 수동 등록 + RAWG 검색 결과
+POST /api/games                수동 등록 (FR-GAME-04)
 ```
 
 **v0.1에 구멍이 있었다** — `POST /api/backlog`가 `gameId`를 받는데 그 id를 얻을 경로가 없었다.
-RAWG 검색은 Phase 4(J-2)다. 그때까지 이 엔드포인트가 그 자리를 메운다.
+v0.2에서 로컬 마스터 검색으로 메웠고, **J-2에서 RAWG를 붙였다.**
 회원 식별이 없는 유일한 조회다 (마스터는 공용 데이터).
+
+검색 응답 (J-2에서 `rawgId` 추가, `gameId`가 nullable이 됨):
+
+```jsonc
+[
+  { "gameId": 5,    "rawgId": null,   "name": "동네 오락실 게임", "releasedOn": "1998-05-01", "source": "MANUAL" },
+  { "gameId": 12,   "rawgId": "9767", "name": "할로우 나이트",   "releasedOn": "2017-02-24", "source": "RAWG" },
+  { "gameId": null, "rawgId": "3498", "name": "Grand Theft Auto V", "releasedOn": "2013-09-17", "source": "RAWG" }
+]
+```
+
+- `gameId != null` → 이미 마스터에 있다. 담을 때 RAWG 호출 0회 (FR-GAME-03)
+- `gameId == null` → RAWG에만 있다. 담는 순간 상세 1회 호출 후 마스터에 저장 (FR-GAME-02)
+- 마스터에 있는 게임은 **마스터 값이 이긴다** — 관리자가 고친 이름이 RAWG 원본으로 되돌아가면 안 된다
+- 로컬 검색은 `MANUAL`만 본다. `RAWG` 소스는 RAWG 결과에 다시 나오므로 같은 게임이 두 줄로 뜨지 않는다
+- **RAWG 장애면 502.** 로컬 결과만 조용히 주지 않는다 — 사용자가 "RAWG에 없는 게임"으로 오해한다 (FR-SYS-04)
+
+수동 등록 (`POST /api/games`) — 이름만 필수, 나머지는 전부 선택. 정가는 여기에만 있다(RAWG는 가격을 안 준다).
+등록 이후 수정은 관리자만이라(AUTH-P2) `PUT /api/games/{id}`는 없다.
 
 ### 2.5 태그·장르 사전 (v0.2 신설)
 
@@ -320,7 +564,12 @@ DELETE /api/me/genres/{id}
 
 ```
 PATCH /api/admin/games/{id}/name                 GameService.updateName — 전 회원 전파
+POST  /api/admin/games/{id}/resync               RAWG 재동기화 (FR-GAME-05, J-5)
 ```
+
+재동기화가 `POST`인 이유 — 멱등해 보이지만 "지금 시점의 RAWG를 가져온다"는 행위고 `lastSyncedAt`이 매번 바뀐다.
+`MANUAL` 게임은 원본이 없어 400. 개인 오버라이드와 **손으로 넣은 정가는 건드리지 않는다**(RAWG가 가격을 안 주므로
+전체 교체를 하면 매번 날아간다). 응답은 `{ nameChanged, renamedEntries, reorderedEntries }`.
 
 ---
 
@@ -334,6 +583,7 @@ PATCH /api/admin/games/{id}/name                 GameService.updateName — 전 
 | `400` | 입력값 오류 (검증 실패, 범위 위반) |
 | `404` | 대상 없음 **또는 내 것이 아님** |
 | `409` | 중복, 상태 충돌, **되살리기 필요** |
+| `502` | 외부 API(RAWG) 장애. 작업을 취소하고 아무것도 저장하지 않는다 (FR-SYS-04, J-6) |
 
 ### 알려진 허용 리스크 — 참조 id의 소유권 미검사 (v0.2 리뷰에서 발견, 의도적 보류)
 

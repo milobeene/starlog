@@ -1,0 +1,58 @@
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  height: var(--header-h);
+  background: var(--brown-deep);
+  color: var(--text-on-dark);
+  border-bottom: 1px solid var(--brown);
+}
+
+.inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  height: 100%;
+  padding: 0 var(--sp-5);
+}
+
+.user {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 140px;
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-full);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.nickname {
+  font-size: var(--fs-sm);
+  color: var(--text-on-dark);
+}
+
+.logo {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.logoMark {
+  color: var(--accent-soft);
+}
+
+.inner > :last-child {
+  min-width: 140px;
+  display: flex;
+  justify-content: flex-end;
+}

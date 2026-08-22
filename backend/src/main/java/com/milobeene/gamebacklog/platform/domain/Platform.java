@@ -29,4 +29,9 @@ public class Platform extends BaseEntity {
     public static Platform of(String name) {
         return new Platform(name);
     }
+
+    /** 이름 수정 (FR-ADM-04). 마스터는 삭제하지 않으므로 오타 정정은 이 경로뿐이다 */
+    public void rename(String newName) {
+        this.name = newName;
+    }
 }

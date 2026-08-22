@@ -1,6 +1,7 @@
 package com.milobeene.gamebacklog.backlog.repository;
 
 import com.milobeene.gamebacklog.backlog.domain.BacklogEntry;
+import com.milobeene.gamebacklog.game.domain.Game;
 import com.milobeene.gamebacklog.common.repository.BaseRepository;
 import com.milobeene.gamebacklog.backlog.dto.StatusCount;
 import org.springframework.data.domain.Page;
@@ -111,4 +112,38 @@ public interface BacklogEntryRepository extends BaseRepository<BacklogEntry, Lon
     int updateReleasedOnResolvedByGameId(@Param("gameId") Long gameId,
                                          @Param("newDate") LocalDate newDate,
                                          @Param("now") LocalDateTime now);
+
+    /**
+     * 병합 충돌 검사 (FR-ADM-02) — 같은 회원이 두 마스터를 **둘 다** 담고 있는 경우.
+     * 그대로 옮기면 `(member, game)` 유니크 제약에 걸린다.
+     * 소프트 삭제된 행도 센다 — 제약이 그것까지 보기 때문이다
+     */
+    @Query("""
+            select b.member.id from BacklogEntry b
+             where b.game.id in (:sourceGameId, :targetGameId)
+             group by b.member.id
+            having count(distinct b.game.id) = 2
+            """)
+    List<Long> findMemberIdsHavingBoth(@Param("sourceGameId") Long sourceGameId,
+                                       @Param("targetGameId") Long targetGameId);
+
+    /**
+     * 마스터 병합 (FR-ADM-02) — 항목이 가리키는 게임을 갈아끼우고 비정규화를 다시 계산한다.
+     * 오버라이드가 있는 항목은 표시값이 안 바뀌어야 하므로 coalesce·case로 분기한다
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+            update BacklogEntry b
+               set b.game = :target,
+                   b.displayName = coalesce(b.nameOverride, :targetName),
+                   b.releasedOnResolved = case when b.releasedOnOverride is null
+                                               then :targetReleasedOn else b.releasedOnOverride end,
+                   b.updatedAt = :now
+             where b.game.id = :sourceGameId
+            """)
+    int repointGame(@Param("sourceGameId") Long sourceGameId,
+                    @Param("target") Game target,
+                    @Param("targetName") String targetName,
+                    @Param("targetReleasedOn") LocalDate targetReleasedOn,
+                    @Param("now") LocalDateTime now);
 }

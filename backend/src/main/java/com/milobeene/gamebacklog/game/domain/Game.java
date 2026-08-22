@@ -66,6 +66,12 @@ public class Game extends BaseEntity {
     @Column(name = "external_id", length = 50)
     private String externalId;
 
+    /**
+     * RAWG playtime (시간). 참고값이라 오버라이드 대상이 아니다 (§6.2).
+     * Steam 기준 평균이라 콘솔 전용 게임은 자료가 없는 게 정상 — null을 허용한다
+     */
+    private Integer averagePlaytimeHours;
+
     private LocalDateTime lastSyncedAt;
 
     /**
@@ -83,10 +89,11 @@ public class Game extends BaseEntity {
         return game;
     }
 
+    /** 수동 등록 (FR-GAME-04). 이름 정규화·빈 값 검증은 updateName이 이미 들고 있다 */
     public static Game manual(String name) {
         Game game = new Game();
-        game.name = name;
         game.source = GameSource.MANUAL;
+        game.updateName(name);
         return game;
     }
 
@@ -132,5 +139,24 @@ public class Game extends BaseEntity {
         TextValues.replaceAll(this.masterGenres, masterGenres);
         this.releasedOn = releasedOn;
         this.listPrice = listPrice;
+    }
+
+    /**
+     * RAWG 응답으로 마스터를 채운다 (J-3 최초 캐시, J-5 재동기화 공용).
+     *
+     * **listPrice를 건드리지 않는 게 핵심이다.** RAWG는 가격을 주지 않으므로(§6.2)
+     * updateMasterInfo처럼 전체 교체를 하면 누군가 손으로 넣은 정가가 재동기화 때마다 날아간다.
+     * name도 여기서 안 바꾼다 — 이름 변경은 담긴 항목의 displayName 전파가 딸려 있어
+     * updateName 경로로만 들어가야 한다 (§7.2)
+     */
+    public void syncFromRawg(List<String> developers, List<String> publishers,
+                             List<String> masterGenres, LocalDate releasedOn,
+                             Integer averagePlaytimeHours, LocalDateTime syncedAt) {
+        TextValues.replaceAll(this.developers, developers);
+        TextValues.replaceAll(this.publishers, publishers);
+        TextValues.replaceAll(this.masterGenres, masterGenres);
+        this.releasedOn = releasedOn;
+        this.averagePlaytimeHours = averagePlaytimeHours;
+        this.lastSyncedAt = syncedAt;
     }
 }

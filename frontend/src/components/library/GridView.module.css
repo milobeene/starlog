@@ -1,0 +1,33 @@
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--sp-5) var(--sp-4);
+  padding: var(--sp-2) 0 var(--sp-8);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  text-align: left;
+}
+
+.card:hover .name {
+  color: var(--accent-strong);
+}
+
+.name {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.rating {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}

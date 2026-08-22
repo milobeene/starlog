@@ -2,7 +2,7 @@ spring:
   # 프로필을 안 정하면 dev로 간주한다. 시드(DataInitializer)가 dev에서만 돌게 하기 위한 안전판 —
   # 배포(Phase 9)는 SPRING_PROFILES_ACTIVE=prod를 명시하므로 이 기본값이 적용되지 않는다
   profiles:
-    default: dev
+    default: dev,local
 
   datasource:
     url: jdbc:h2:tcp://localhost/~/dev-tools/h2-data/gamebacklog
@@ -27,6 +27,20 @@ spring:
     console:
       enabled: true
 
+# 배치 주기. 테스트에서는 절대 안 도는 값으로 덮는다 (application-test.yml)
+app:
+  # RAWG (J-1). 키는 환경변수로만 들어온다 — ${VAR:} 는 "없으면 빈 문자열"이라 키 없이도 기동한다.
+  # 나머지 값의 기본값은 RawgProperties의 compact 생성자가 들고 있다
+  rawg:
+    api-key: ${RAWG_API_KEY:}
+  cleanup:
+    auth-token-cron: "0 30 4 * * *"      # 매일 04:30
+    audit-log-cron: "0 0 5 * * *"        # 매일 05:00
+  withdrawal:
+    purge-cron: "0 0 3 * * *"            # 매일 03:00
+
 logging:
   level:
     org.hibernate.SQL: debug
+    # 필터 체인을 눈으로 보려면 아래를 켠다 (I-1~I-3에서 사용)
+    # org.springframework.security: debug
