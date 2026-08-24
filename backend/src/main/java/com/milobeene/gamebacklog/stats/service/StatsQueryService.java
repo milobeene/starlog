@@ -356,7 +356,9 @@ public class StatsQueryService {
 
     private long billingCount(BillingCycle cycle, LocalDate from, LocalDate to) {
         if (cycle == BillingCycle.YEARLY) {
-            return ChronoUnit.YEARS.between(from.withDayOfYear(1), to.withDayOfYear(1)) + 1;
+            // 달력 연도 경계(YEARS.between)가 아니라 **시작월 기준 12개월 간격**이다 —
+            // spreadSubscriptions(월별 추이)가 이 규칙이라, 갈라지면 두 통계의 구독 총액이 어긋난다
+            return ChronoUnit.MONTHS.between(from.withDayOfMonth(1), to.withDayOfMonth(1)) / 12 + 1;
         }
         return ChronoUnit.MONTHS.between(from.withDayOfMonth(1), to.withDayOfMonth(1)) + 1;
     }

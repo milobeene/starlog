@@ -27,6 +27,13 @@ public class AuthTokenCleaner {
 
     private final AuthTokenRepository authTokenRepository;
 
+    /*
+     * @Transactional이 여기에도 있는 이유 — 스케줄러는 프록시를 통해 이 메서드를 부르지만,
+     * 안의 this.purge()는 자기호출이라 프록시를 안 거친다(원칙 11번). purge의 @Transactional은
+     * 이 경로에서 무효이고, 트랜잭션 없이 @Modifying 벌크를 돌리면 TransactionRequiredException이다.
+     * 테스트가 purge()를 직접 부를 때는 프록시를 거치므로 그쪽 애노테이션이 살아 있다
+     */
+    @Transactional
     @Scheduled(cron = "${app.cleanup.auth-token-cron}")
     public void cleanUp() {
         int deleted = purge(LocalDateTime.now().minus(GRACE));

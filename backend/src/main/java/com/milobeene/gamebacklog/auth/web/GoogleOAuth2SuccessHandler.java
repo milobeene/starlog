@@ -40,6 +40,11 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class GoogleOAuth2SuccessHandler implements AuthenticationSuccessHandler {
 
+    /*
+     * MemberService가 아니라 GoogleAccountService로 회원을 읽는 이유 — MemberService는
+     * passwordEncoder를 물고, 그 빈은 이 핸들러를 주입받는 SecurityConfig가 정의한다.
+     * MemberService를 넣으면 순환 참조로 기동이 실패한다
+     */
     private final GoogleAccountService googleAccountService;
     private final CsrfTokenIssuer csrfTokenIssuer;
 
@@ -54,7 +59,27 @@ public class GoogleOAuth2SuccessHandler implements AuthenticationSuccessHandler 
         Long linkMemberId = popLinkRequester(request);
 
         if (linkMemberId != null) {
-            googleAccountService.link(linkMemberId, googleSubject);
+            /*
+             * 이 시점의 세션에는 시큐리티가 방금 저장한 **OAuth2 인증**이 들어 있다
+             * (필터가 성공 핸들러를 부르기 전에 세션에 저장한다). 그대로 두면 연결에
+             * 성공하고도 이후 모든 /api/** 요청이 ROLE_USER가 없어 403이 된다.
+             * 성공이든 충돌이든 원래 회원의 세션으로 되돌려야 한다.
+             *
+             * ConflictException(이미 다른 계정에 연결된 구글 계정)을 여기서 잡는 이유 —
+             * 성공 핸들러는 필터 계층이라 @RestControllerAdvice가 못 잡는다. 안 잡으면 500이다
+             */
+            try {
+                googleAccountService.link(linkMemberId, googleSubject);
+            } catch (ConflictException e) {
+                establishSession(request, response,
+                        MemberPrincipal.from(googleAccountService.findOne(linkMemberId)));
+                csrfTokenIssuer.issueFresh(request, response);
+                JsonErrors.write(response, HttpStatus.CONFLICT.value(),
+                        "GOOGLE_ALREADY_LINKED", e.getMessage());
+                return;
+            }
+            establishSession(request, response,
+                    MemberPrincipal.from(googleAccountService.findOne(linkMemberId)));
             csrfTokenIssuer.issueFresh(request, response);
             JsonErrors.write(response, HttpStatus.OK.value(), "LINKED", "구글 계정을 연결했습니다");
             return;
@@ -109,6 +134,16 @@ public class GoogleOAuth2SuccessHandler implements AuthenticationSuccessHandler 
         }
     }
 
+    /** 세션의 인증을 우리 MemberPrincipal로 갈아끼운다. 로그인·연결 두 브랜치가 공유한다 */
+    private void establishSession(HttpServletRequest request, HttpServletResponse response,
+                                  MemberPrincipal principal) {
+        SecurityContext context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(
+                principal, null, principal.getAuthorities()));
+        SecurityContextHolder.setContext(context);
+        securityContextRepository.saveContext(context, request, response);
+    }
+
     private Long popLinkRequester(HttpServletRequest request) {
         HttpSession session = request.getSession(false);
         if (session == null) {
@@ -121,11 +156,7 @@ public class GoogleOAuth2SuccessHandler implements AuthenticationSuccessHandler 
 
     private void authenticateAsMember(HttpServletRequest request, HttpServletResponse response,
                                       MemberPrincipal principal) throws IOException {
-        SecurityContext context = SecurityContextHolder.createEmptyContext();
-        context.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(
-                principal, null, principal.getAuthorities()));
-        SecurityContextHolder.setContext(context);
-        securityContextRepository.saveContext(context, request, response);
+        establishSession(request, response, principal);
 
         csrfTokenIssuer.issueFresh(request, response);
         response.setStatus(HttpStatus.OK.value());

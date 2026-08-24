@@ -330,6 +330,17 @@ class StatsApiTest extends ControllerTestSupport {
     }
 
     @Test
+    public void 해를_넘긴_연간_구독의_결제_횟수는_시작월_기준이다() throws Exception {
+        //given — 12월 시작 연간 구독. 달력 연도로 세면 결제 1번이 2번으로 부풀려진다
+        Member member = saveMember();
+        addSubscription(member, "PS Plus", "120000", "KRW", "YEARLY", "2025-12-01", "2026-08-31");
+
+        //when //then — 월별 추이(2025-12 한 번)와 같은 횟수여야 두 통계가 맞는다
+        mockMvc.perform(get("/api/stats/spending").header("X-Member-Id", member.getId()))
+                .andExpect(jsonPath("$.subscriptions[0].total").value(120000));
+    }
+
+    @Test
     public void 취득과_구독이_같은_달이면_합쳐진다() throws Exception {
         //given — 꺾은선은 "그 달에 쓴 돈" 하나다. 두 축 분리는 /spending이 한다
         Member member = saveMember();

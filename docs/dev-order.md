@@ -312,15 +312,16 @@ QueryDSL 경로는 기존 목록 테스트가 전부 통과하며 회귀를 막�
 
 ---
 
-## Phase 7 — Obsidian 임포트 ★ 졸업선
+## Phase 7 — Obsidian 임포트 ★ 졸업선 → **기능 미구현으로 종결 (2026-08-24)**
 
-- [ ] M-1. 파일 업로드 + YAML frontmatter 파싱 (FR-IMP-01, BR-IMP-01: 본문 무시, **OI-09 결정**)
-- [ ] M-2. 필드 매핑 (§6.11 표) — developer→오버라이드, genre→개인 사전, price→취득(KRW), replays→2회차 이후, `~` 뒤 공백=진행 중
-- [ ] M-3. 건별 트랜잭션 (BR-IMP-02) — **프록시 자기호출 함정 지점.** 별도 빈 분리
-- [ ] M-4. 예외 케이스 (BR-IMP-03~06) — replays만 있음/매칭 실패/검증 위반/파싱 불가 → 파일 단위 격리
-- [ ] M-5. 실패 리포트 (FR-IMP-02) — 파일명 + 사유 + 위반 규칙 ID
-- [ ] M-6. RAWG 매칭 실패 → 수동 등록 안내 (FR-IMP-03), **OI-10 확인**: BR-PT-03 위반 실데이터
-- [ ] M-7. 실데이터 투입 — Phase 6 성능 대응의 실전 검증
+임포트 기능(FR-IMP-01~03)을 만들지 않기로 결정. 대신 일회성 러너(VaultLoader, 투입 후 삭제됨)로
+vault 76건을 Neon에 직접 투입했다. IGDB 한글 매칭 문제(77건 중 76건 한글 제목)가 사라지고
+레이트리밋·건별 트랜잭션 설계도 러너 안에서 소화됐다. **리뷰 시 "임포트 미구현"은 결함이 아니라 결정이다.**
+
+- ~~M-1~M-6~~ 기능 종결로 불필요
+- [x] M-7. 실데이터 투입 — 76건 (COMPLETED 39·BACKLOG 25·PAUSED 8·PLAYING 4, 회차 63·취득 76·장르 38종).
+      파생 상태 §7.6·회차 규칙 BR-PT가 실데이터에서 검증됨. 도중 잡힌 것: IGDB가 번들·시즌패스를
+      물어오는 문제(이름 정확 일치 1순위로 해소)
 
 ---
 
@@ -339,7 +340,9 @@ QueryDSL 경로는 기존 목록 테스트가 전부 통과하며 회귀를 막�
       H2 TCP 서버 1.4.200 → 2.3.232 교체 (드라이버와 버전 불일치로 Flyway 메타데이터 조회가 깨졌음)
 - [ ] O-2. 설계서 §9 체크리스트 — 부분 유니크 인덱스 재검토 (BR-PT-03), 실제 PostgreSQL에서 실행계획·FK 인덱스 재확인.
       V1에서 선반영: TEXT 동작 (OI-15, summary/storyline text 교정), FK 이름 (OI-16), enum check 명시, FK 컬럼 인덱스
-- [ ] O-3. Neon/Render/Vercel 배포 + 환경변수
+- [ ] O-3. Neon/Render/Vercel 배포 + 환경변수 — **Neon 완료 (2026-08-24)**: PostgreSQL 17.11 싱가포르,
+      V1 적용 + 실데이터 76건 투입, prod 프로필·PostgreSQL 드라이버·flyway-database-postgresql 추가됨.
+      Render/Vercel 남음. ⚠️ LoggingAuthMailSender의 prod 임시 개방(토큰이 로그에 찍힘)을 배포 전에 닫을 것
 - [ ] O-4. Spring Session + JDBC (재시작 대비)
 - [ ] O-5. HikariCP 튜닝 (DB idle sleep 대응)
 

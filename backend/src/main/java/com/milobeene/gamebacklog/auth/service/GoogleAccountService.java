@@ -71,6 +71,12 @@ public class GoogleAccountService {
         return candidate.length() <= NICKNAME_MAX ? candidate : candidate.substring(0, NICKNAME_MAX);
     }
 
+    /** 연결 직후 세션을 회원 인증으로 복원할 때 쓴다 (성공 핸들러 전용) */
+    @Transactional(readOnly = true)
+    public Member findOne(Long memberId) {
+        return findMember(memberId);
+    }
+
     @Transactional
     public void link(Long memberId, String googleSubject) {
         memberRepository.findByGoogleSubject(googleSubject)

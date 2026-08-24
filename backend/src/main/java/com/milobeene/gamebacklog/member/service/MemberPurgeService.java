@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -46,9 +47,15 @@ public class MemberPurgeService {
             "delete from Genre g where g.member.id = :memberId",
             "delete from Member m where m.id = :memberId");
 
+    /**
+     * DB 삭제 결과. coverStorageKeys는 **호출자가 트랜잭션 밖에서** 스토리지에서 지워야 한다 —
+     * DB 커밋 전에 파일부터 지우면 롤백 시 "DB엔 있는데 파일이 없는" 최악이 나온다 (K-4와 같은 순서)
+     */
+    public record PurgeResult(int purgedMembers, List<String> coverStorageKeys) {}
+
     /** 유예가 끝난 회원을 전부 지운다 */
     @Transactional
-    public int purgeExpired(LocalDateTime threshold) {
+    public PurgeResult purgeExpired(LocalDateTime threshold) {
         List<Long> targets = em.createQuery("""
                         select m.id from Member m
                          where m.deletedAt is not null
@@ -57,16 +64,30 @@ public class MemberPurgeService {
                 .setParameter("threshold", threshold)
                 .getResultList();
 
-        targets.forEach(this::purge);
+        List<String> coverKeys = new ArrayList<>();
+        targets.forEach(memberId -> coverKeys.addAll(purge(memberId)));
 
         if (!targets.isEmpty()) {
-            log.info("유예 만료 회원 {}명 물리 삭제", targets.size());
+            log.info("유예 만료 회원 {}명 물리 삭제 (커버 파일 {}건 정리 대상)",
+                    targets.size(), coverKeys.size());
         }
-        return targets.size();
+        return new PurgeResult(targets.size(), coverKeys);
     }
 
     @Transactional
-    public void purge(Long memberId) {
+    public List<String> purge(Long memberId) {
+        /*
+         * 스토리지 key를 **행을 지우기 전에** 모아둔다. CoverImage 행이 사라지면
+         * 어떤 파일이 이 회원 것이었는지 알 길이 없다 — 그러면 R2에 탈퇴 회원의
+         * 이미지가 영구히 남는다. 삭제 자체는 호출자가 커밋 뒤에 한다
+         */
+        List<String> coverKeys = em.createQuery("""
+                        select c.storageKey from CoverImage c
+                         where c.backlogEntry.member.id = :memberId
+                        """, String.class)
+                .setParameter("memberId", memberId)
+                .getResultList();
+
         // 항목 → 회차 순환 참조를 먼저 끊는다. 벌크는 콜백이 안 도니 updatedAt을 직접 쓴다 (원칙 13번)
         em.createQuery("""
                         update BacklogEntry b
@@ -83,5 +104,7 @@ public class MemberPurgeService {
 
         // 벌크는 영속성 컨텍스트를 우회한다 → 남아있는 1차 캐시가 이미 지워진 행을 가리키지 않게 비운다
         em.clear();
+
+        return coverKeys;
     }
 }

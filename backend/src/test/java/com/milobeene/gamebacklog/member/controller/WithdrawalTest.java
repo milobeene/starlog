@@ -7,9 +7,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.milobeene.gamebacklog.backlog.domain.BacklogEntry;
+import com.milobeene.gamebacklog.backlog.domain.CoverImage;
 import com.milobeene.gamebacklog.game.domain.Game;
 import com.milobeene.gamebacklog.member.domain.Member;
 import com.milobeene.gamebacklog.member.service.MemberPurgeService;
+import com.milobeene.gamebacklog.member.service.WithdrawalService;
 import com.milobeene.gamebacklog.support.ControllerTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,6 +24,7 @@ import java.time.LocalDateTime;
 class WithdrawalTest extends ControllerTestSupport {
 
     @Autowired MemberPurgeService memberPurgeService;
+    @Autowired WithdrawalService withdrawalService;
 
     @Test
     public void 탈퇴를_요청하면_소프트_삭제된다() throws Exception {
@@ -127,7 +131,7 @@ class WithdrawalTest extends ControllerTestSupport {
         em.flush();
 
         //when
-        int purged = memberPurgeService.purgeExpired(LocalDateTime.now().minusDays(30));
+        int purged = memberPurgeService.purgeExpired(LocalDateTime.now().minusDays(30)).purgedMembers();
 
         //then
         assertThat(purged).isEqualTo(1);
@@ -138,6 +142,26 @@ class WithdrawalTest extends ControllerTestSupport {
     }
 
     @Test
+    public void 유예_만료_퍼지는_커버_실물_파일까지_스토리지에서_지운다() throws Exception {
+        //given — 커버가 붙은 항목을 가진 탈퇴 회원
+        Member member = saveMember();
+        Game game = saveGame("Hollow Knight");
+        BacklogEntry entry = BacklogEntry.of(member, game);
+        em.persist(entry);
+        String storageKey = "covers/%d/%d/abc.jpg".formatted(member.getId(), entry.getId());
+        em.persist(CoverImage.of(entry, storageKey, "image/jpeg", 100L));
+        member.withdraw(LocalDateTime.now().minusDays(31));
+        em.flush();
+
+        //when — 스케줄러가 부르는 경로 그대로 (DB 퍼지 → 커밋 뒤 파일 삭제 순서)
+        withdrawalService.purgeExpired();
+
+        //then — DB 행과 스토리지 실물이 함께 사라진다. 파일이 남으면 탈퇴가 탈퇴가 아니다
+        assertThat(em.find(Member.class, member.getId())).isNull();
+        assertThat(storage.deleted).contains(storageKey);
+    }
+
+    @Test
     public void 유예가_안_끝난_회원은_남는다() throws Exception {
         //given
         Member member = saveMember();
@@ -145,7 +169,7 @@ class WithdrawalTest extends ControllerTestSupport {
         em.flush();
 
         //when
-        int purged = memberPurgeService.purgeExpired(LocalDateTime.now().minusDays(30));
+        int purged = memberPurgeService.purgeExpired(LocalDateTime.now().minusDays(30)).purgedMembers();
 
         //then
         assertThat(purged).isZero();

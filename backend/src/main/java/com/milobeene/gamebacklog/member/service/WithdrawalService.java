@@ -1,6 +1,7 @@
 package com.milobeene.gamebacklog.member.service;
 
 import com.milobeene.gamebacklog.auth.security.SessionInvalidator;
+import com.milobeene.gamebacklog.common.storage.FileStoragePort;
 import com.milobeene.gamebacklog.common.exception.ConflictException;
 import com.milobeene.gamebacklog.common.exception.NotFoundException;
 import com.milobeene.gamebacklog.member.domain.Member;
@@ -32,6 +33,7 @@ public class WithdrawalService {
     private final MemberRepository memberRepository;
     private final MemberPurgeService memberPurgeService;
     private final SessionInvalidator sessionInvalidator;
+    private final FileStoragePort fileStorage;
 
     @Transactional
     public void withdraw(Long memberId) {
@@ -58,10 +60,15 @@ public class WithdrawalService {
         sessionInvalidator.expireAllSessionsOf(memberId);   // 권한을 다시 굳히려면 재로그인해야 한다
     }
 
-    /** 유예 만료 배치 (I-8) */
+    /** 유예 만료 배치 (I-8). 이 메서드에 @Transactional이 없어야 한다 — 파일 삭제가 DB 커밋 뒤여야 하므로 */
     @Scheduled(cron = "${app.withdrawal.purge-cron}")
     public void purgeExpired() {
-        memberPurgeService.purgeExpired(LocalDateTime.now().minus(GRACE_PERIOD));
+        MemberPurgeService.PurgeResult result =
+                memberPurgeService.purgeExpired(LocalDateTime.now().minus(GRACE_PERIOD));
+
+        // DB 커밋이 끝난 뒤 커버 실물을 지운다 (K-4와 같은 순서).
+        // delete는 실패를 삼키고 로그만 남긴다 — 최악이 고아 파일이고 그건 감수한다
+        result.coverStorageKeys().forEach(fileStorage::delete);
     }
 
     private Member findMember(Long memberId) {

@@ -31,10 +31,10 @@ import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
  * `SecurityFilterChain` 빈이 컨테이너에 **하나라도 있으면** 부트는 기본 체인을 만들지 않는다.
  * 그래서 이 파일 하나가 곧 필터 체인 전체 정의가 된다.
  *
+ * I-4(미인증 로그인 차단)는 LoginResultHandlers, I-7(유예 인가 제한)은 ROLE_PENDING_DELETION,
+ * I-9(관리자)는 아래 /api/admin/** 규칙으로 전부 구현됐다.
+ *
  * 남은 것:
- *   - I-4  이메일 미인증 계정의 로그인 차단 (지금은 MemberPrincipal.isEnabled가 탈퇴 여부만 본다)
- *   - I-7  탈퇴 유예 중 계정 — 인증은 통과하되 인가만 제한
- *   - I-9  관리자 경로에 ROLE_ADMIN
  *   - P9   크로스 도메인 배포 시 CSRF·SameSite 재검토, /h2-console 노출 확인
  */
 @Configuration
