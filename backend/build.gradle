@@ -20,16 +20,33 @@ repositories {
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-h2console'
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	// 스키마 주인 교체 (O-1). 부트 4는 자동설정이 모듈별로 쪼개져서 flyway-core만으론 안 돈다 (h2console과 같은 패턴).
+	// H2 지원은 내장, PostgreSQL은 별도 모듈이 필요하다 (O-3)
+	implementation 'org.springframework.boot:spring-boot-flyway'
+	implementation 'org.flywaydb:flyway-database-postgresql'
 	// RestClient 자동 설정(RestClient.Builder 빈). 부트 4에서 HTTP 클라이언트가 모듈로 분리돼
 	// starter-webmvc만으로는 안 딸려온다 — 서버(webmvc)와 클라이언트(restclient)가 별개다
 	implementation 'org.springframework.boot:spring-boot-starter-restclient'
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
+	// 동적 쿼리 (L-1). 원본 com.querydsl은 5.1.0에서 멈췄고 Jakarta EE 11 대응이 불확실해
+	// 활발히 유지되는 OpenFeign 포크를 쓴다. Boot 4 / Hibernate 7에서 도는 것을 스파이크로 확인했다
+	implementation 'io.github.openfeign.querydsl:querydsl-jpa:7.0'
+	annotationProcessor 'io.github.openfeign.querydsl:querydsl-apt:7.0:jakarta'
+	annotationProcessor 'jakarta.annotation:jakarta.annotation-api'
+	annotationProcessor 'jakarta.persistence:jakarta.persistence-api'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
 	implementation 'com.github.gavlyukovskiy:p6spy-spring-boot-starter:2.0.0'
+	// 커버 업로드(Phase 5). R2가 S3 호환이라 AWS SDK를 그대로 쓴다 —
+	// 나중에 S3·MinIO로 옮겨도 엔드포인트 설정만 바뀐다.
+	// S3Presigner도 이 아티팩트에 들어 있다 (v2에서는 별도 모듈이 아니다)
+	implementation platform('software.amazon.awssdk:bom:2.30.16')
+	implementation 'software.amazon.awssdk:s3'
 	compileOnly 'org.projectlombok:lombok'
 	runtimeOnly 'com.h2database:h2'
+	// prod(Neon). dev는 계속 H2라 둘 다 클래스패스에 있고, 프로필이 URL로 가른다
+	runtimeOnly 'org.postgresql:postgresql'
 	annotationProcessor 'org.projectlombok:lombok'
 	testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-security-test'

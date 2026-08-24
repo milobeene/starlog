@@ -77,8 +77,14 @@ export function formatPeriod(startedOn: string, finishedOn: string | null): stri
   return finishedOn ? `${startedOn} ~ ${finishedOn}` : `${startedOn} ~ 진행 중`;
 }
 
+/**
+ * 평점은 0.0 ~ 100.0, 소수점 첫째 자리까지다 (스펙 §6.3).
+ *
+ * String()을 쓰면 안 되는 이유 — 서버가 보낸 83.0이 JS number로 오는 순간 83이 되고,
+ * String(83)은 "83"이다. 0.1 단위 설계가 화면에서 정수로 뭉개진다
+ */
 export function formatRating(rating: number | null): string {
-  return rating == null ? "—" : String(rating);
+  return rating == null ? "—" : rating.toFixed(1);
 }
 
 export function formatList(items: string[]): string {

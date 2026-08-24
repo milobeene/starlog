@@ -11,7 +11,7 @@ import com.milobeene.gamebacklog.platform.domain.Emulator;
 import com.milobeene.gamebacklog.platform.domain.PlatformAccount;
 import com.milobeene.gamebacklog.platform.repository.DeviceRepository;
 import com.milobeene.gamebacklog.platform.repository.EmulatorRepository;
-import com.milobeene.gamebacklog.platform.repository.PlatformAccountRepository;
+import com.milobeene.gamebacklog.platform.service.PlatformAccountService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,7 +26,7 @@ public class PlaythroughService {
     private final PlaythroughRepository playthroughRepository;
     private final DeviceRepository deviceRepository;
     private final EmulatorRepository emulatorRepository;
-    private final PlatformAccountRepository platformAccountRepository;
+    private final PlatformAccountService platformAccountService;
     private final BacklogEntryFinder entryFinder;
 
     /** 회차 추가 (FR-PT-01~07). 번호는 1부터 순차, 구멍은 메우지 않는다 */
@@ -120,9 +120,18 @@ public class PlaythroughService {
                 : deviceRepository.findById(command.deviceId())
                 .orElseThrow(() -> new NotFoundException("기기를 찾을 수 없습니다. id=" + command.deviceId()));
 
+        /*
+         * **남의 계정을 붙일 수 없다.** API 설계서 v0.2가 "1인 사용이라 참작하고 넘어가되
+         * Phase 3 인증을 붙일 때는 막아야 한다"고 보류해둔 지점인데, Phase 3이 끝났으므로 해제한다.
+         * 안 막으면 남의 계정 id를 넣어 상세 응답에 그 라벨을 실을 수 있다 (NFR-S7).
+         *
+         * findOne은 삭제된 계정도 돌려준다 — 삭제한 계정으로 플레이했던 **과거 회차를 수정할 때**
+         * 실패하면 안 되기 때문이다. 새로 고를 때 삭제된 것이 안 보이는 건 findSelectable이 맡는다.
+         * Device·Emulator는 마스터라(회원 소유가 아님) 이 검사가 없는 게 맞다 (BR-PT-05)
+         */
+        Long ownerId = playthrough.getBacklogEntry().getMember().getId();
         PlatformAccount account = (command.platformAccountId() == null) ? null
-                : platformAccountRepository.findById(command.platformAccountId())
-                .orElseThrow(() -> new NotFoundException("플랫폼 계정을 찾을 수 없습니다. id=" + command.platformAccountId()));
+                : platformAccountService.findOne(ownerId, command.platformAccountId());
 
         Emulator emulator = (command.emulatorId() == null) ? null
                 : emulatorRepository.findById(command.emulatorId())

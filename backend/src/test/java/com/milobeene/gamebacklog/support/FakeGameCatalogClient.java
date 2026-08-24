@@ -43,9 +43,9 @@ public class FakeGameCatalogClient implements GameCatalogClient {
     /** 검색 결과를 심고, 같은 게임의 상세도 자동으로 같이 심는다 (담기 테스트가 편해진다) */
     public FakeGameCatalogClient willFind(String externalId, String name, LocalDate releasedOn) {
         searchResults.add(new CatalogGameSummary(externalId, name, releasedOn, "cover-" + externalId));
-        details.put(externalId, new CatalogGameDetail(externalId, name,
+        details.put(externalId, CatalogGameDetail.basic(externalId, name,
                 List.of("개발사"), List.of("퍼블리셔"), List.of("Action"),
-                releasedOn, 12, "cover-" + externalId));
+                releasedOn, "cover-" + externalId, 12));
         return this;
     }
 

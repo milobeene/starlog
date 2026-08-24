@@ -118,11 +118,12 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(ExternalApiException.class)
     public ResponseEntity<ErrorResponse> handleExternalApi(ExternalApiException e) {
-        log.warn("외부 API 실패로 요청을 취소했습니다: {}", e.getMessage());
+        log.warn("외부 API 실패로 요청을 취소했습니다 — service={}, {}", e.getService(), e.getMessage());
 
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
                 .body(new ErrorResponse("EXTERNAL_API_ERROR",
-                        "외부 게임 정보 서비스에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요"));
+                        "%s에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요"
+                                .formatted(e.getService().label())));
     }
 
     /** 400 — 경로 변수·쿼리 파라미터의 타입이 안 맞는다 (/api/backlog/abc) */

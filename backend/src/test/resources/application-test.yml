@@ -5,6 +5,20 @@ spring:
   datasource:
     url: jdbc:h2:mem:test;DB_CLOSE_DELAY=-1
 
+  # 일반 테스트는 종전대로 엔티티 → 스키마 자동 생성. 마이그레이션과 엔티티의 일치는
+  # FlywayMigrationTest 하나가 전담한다 — 여기서 Flyway를 돌리면 383개가 전부 느려진다
+  flyway:
+    enabled: false
+
+  # 쿼리 수를 세기 위한 스위치 (L-3). QueryCountTest가 이걸로 N+1을 감시한다.
+  # 통계 수집은 공짜가 아니라서 운영에서는 켜지 않는다
+  jpa:
+    hibernate:
+      ddl-auto: create
+    properties:
+      hibernate:
+        generate_statistics: true
+
 app:
   # 배치는 테스트에서 절대 자동으로 돌면 안 된다 — 2월 30일은 오지 않는 날짜다.
   # 배치 로직 자체는 스케줄러를 거치지 않고 메서드를 직접 불러 검증한다

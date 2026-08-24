@@ -1,9 +1,15 @@
 package com.milobeene.gamebacklog.backlog.controller;
 
+import com.milobeene.gamebacklog.backlog.domain.BacklogStatus;
 import com.milobeene.gamebacklog.backlog.dto.BacklogAddRequest;
 import com.milobeene.gamebacklog.backlog.dto.BacklogCardResponse;
 import com.milobeene.gamebacklog.backlog.dto.BacklogDetailResponse;
+import com.milobeene.gamebacklog.backlog.dto.BacklogSearchCondition;
 import com.milobeene.gamebacklog.backlog.dto.BacklogSort;
+import com.milobeene.gamebacklog.backlog.dto.CoverConfirmRequest;
+import com.milobeene.gamebacklog.backlog.dto.CoverUploadUrlRequest;
+import com.milobeene.gamebacklog.backlog.dto.CoverUploadUrlResponse;
+import com.milobeene.gamebacklog.backlog.service.CoverImageService;
 import com.milobeene.gamebacklog.backlog.dto.FacetsResponse;
 import com.milobeene.gamebacklog.backlog.dto.NameListRequest;
 import com.milobeene.gamebacklog.backlog.dto.OverrideUpdateRequest;
@@ -20,6 +26,7 @@ import com.milobeene.gamebacklog.common.web.LoginMember;
 import lombok.RequiredArgsConstructor;
 
 import java.net.URI;
+import java.util.List;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -41,23 +48,36 @@ public class BacklogController {
     private final BacklogFacetQueryService backlogFacetQueryService;
     private final BacklogService backlogService;
     private final GameResolver gameResolver;
+    private final CoverImageService coverImageService;
     private final TagService tagService;
     private final GenreService genreService;
 
     /**
-     * 백로그 목록 (화면 1). 검색·필터는 L-1(QueryDSL) 몫이라 지금은 페이징·정렬만이다.
+     * 백로그 목록 (화면 1). 검색·필터·정렬·페이징 (FR-QRY-01~04).
      *
      * memberId를 @RequestParam으로 받지 않는 이유 — URL 설계가 오염되고
-     * Phase 3에서 전 경로를 고쳐야 한다. 리졸버가 헤더에서 꺼내 넣는다
+     * Phase 3에서 전 경로를 고쳐야 한다. 리졸버가 헤더에서 꺼내 넣는다.
+     *
+     * status가 List인 이유 — `?status=PLAYING&status=BACKLOG`로 복수 선택이 온다.
+     * 없는 enum 값이 오면 스프링이 변환에서 막고 전역 핸들러가 400으로 바꾼다
      */
     @GetMapping
     public PageResponse<BacklogCardResponse> list(
             @LoginMember Long memberId,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) List<BacklogStatus> status,
+            @RequestParam(required = false) Long tagId,
+            @RequestParam(required = false) Long genreId,
+            @RequestParam(required = false) Long deviceId,
+            @RequestParam(required = false) Long platformAccountId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "lastPlayed") String sort) {
 
-        return backlogQueryService.findCards(memberId, page, size, BacklogSort.from(sort));
+        BacklogSearchCondition condition = new BacklogSearchCondition(
+                q, status, tagId, genreId, deviceId, platformAccountId);
+
+        return backlogQueryService.findCards(memberId, condition, page, size, BacklogSort.from(sort));
     }
 
     /** 필터 사이드바 (화면 1 부속). 목록과 분리해서 페이지를 넘겨도 다시 안 센다 */
@@ -91,6 +111,42 @@ public class BacklogController {
 
         return ResponseEntity.created(URI.create("/api/backlog/" + entryId))
                 .body(IdResponse.of(entryId));
+    }
+
+    /**
+     * 커버 업로드 1단계 — 허가증 발급 (FR-MED-01, K-2).
+     *
+     * 파일이 서버를 거치지 않는다. 무료 티어 메모리(512MB)와 요청 점유 시간 때문이다 (§6.10).
+     * 프론트는 받은 uploadUrl로 직접 PUT하고, Content-Type은 **응답의 contentType 그대로** 써야 한다 —
+     * 서명에 포함된 값이라 다르면 스토리지가 403을 준다
+     */
+    @PostMapping("/{entryId}/cover/upload-url")
+    public CoverUploadUrlResponse issueCoverUploadUrl(
+            @LoginMember Long memberId, @PathVariable Long entryId,
+            @Valid @RequestBody CoverUploadUrlRequest request) {
+
+        return coverImageService.issueUploadUrl(
+                memberId, entryId, request.fileName(), request.sizeBytes());
+    }
+
+    /**
+     * 커버 업로드 2단계 — 확정 (K-2, K-3).
+     *
+     * PUT인 이유 — 같은 storageKey로 여러 번 불러도 결과가 같다. 교체도 이 경로다.
+     * 서버는 클라이언트의 "올렸어요"를 믿지 않고 HEAD와 매직 넘버로 실물을 확인한다
+     */
+    @PutMapping("/{entryId}/cover")
+    public void confirmCover(@LoginMember Long memberId, @PathVariable Long entryId,
+                             @Valid @RequestBody CoverConfirmRequest request) {
+        coverImageService.confirm(memberId, entryId, request.storageKey());
+    }
+
+    /** 커버 삭제 (FR-MED-03). 마스터 커버로 폴백된다 */
+    @DeleteMapping("/{entryId}/cover")
+    public ResponseEntity<Void> deleteCover(@LoginMember Long memberId, @PathVariable Long entryId) {
+        coverImageService.delete(memberId, entryId);
+
+        return ResponseEntity.noContent().build();
     }
 
     /** 되살리기 (§7.4). 멱등하지 않아서(이미 살아있으면 409) PUT이 아니라 POST다 */

@@ -127,7 +127,7 @@ class GameSearchServiceTest {
     public void IGDB가_죽으면_로컬_결과만_주지_않고_실패한다() {
         //given — 로컬에도 걸리는 게 있지만
         saveManualGame("Hollow Knight");
-        catalog.willFail(new ExternalApiException("타임아웃"));
+        catalog.willFail(new ExternalApiException(ExternalApiException.Service.GAME_CATALOG, "타임아웃"));
 
         //when //then — 부분 결과는 "IGDB에 없는 게임"으로 오해된다 (FR-SYS-04)
         assertThatThrownBy(() -> gameSearchService.search("hollow"))

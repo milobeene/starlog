@@ -15,6 +15,7 @@ import com.milobeene.gamebacklog.subscription.domain.Subscription;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -26,7 +27,8 @@ import java.util.List;
 public record BacklogDetailResponse(
         Long entryId,
         BacklogStatus status,
-        String coverUrl,
+        /** 담은 날짜. 상세 타임라인의 기점이다 (§1.3) */
+        LocalDateTime createdAt,
         Resolved resolved,
         Master master,
         Overrides overrides,
@@ -37,14 +39,43 @@ public record BacklogDetailResponse(
         List<AcquisitionItem> acquisitions
 ) {
 
+    /**
+     * 표시값 규칙(§7.1) 7개가 전부 여기 모인다.
+     *
+     * **v1.7에서 커버가 여기로 들어왔다.** 그전에는 coverUrl만 밖에 따로 있고 마스터 커버는
+     * master.coverImageId에 있어서, 장르는 서버가 합성하는데 커버만 화면이 합성하는 비대칭이 있었다
+     */
     public record Resolved(
             String name,
             List<String> developers,
             List<String> publishers,
             LocalDate releasedOn,
             MoneyResponse listPrice,
-            List<String> genres
+            List<String> genres,
+            Cover cover
     ) {}
+
+    /**
+     * 커버 표시값.
+     *
+     * URL을 서버가 확정하지 않는 이유 — 마스터 커버는 자리마다 크기가 달라야 한다
+     * (목록 t_cover_small, 상세 t_cover_big_2x, 좁은 자리 t_micro, §6.10).
+     * **어느 쪽이 이겼는지는 서버가 알려주고 크기 선택만 화면에 남긴다**
+     */
+    public record Cover(Source source, String url, String imageId) {
+
+        public enum Source { PERSONAL, MASTER, NONE }
+
+        static Cover of(String personalUrl, String masterImageId) {
+            if (personalUrl != null) {
+                return new Cover(Source.PERSONAL, personalUrl, null);
+            }
+            if (masterImageId != null) {
+                return new Cover(Source.MASTER, null, masterImageId);
+            }
+            return new Cover(Source.NONE, null, null);
+        }
+    }
 
     public record Master(
             Long gameId,
@@ -55,9 +86,19 @@ public record BacklogDetailResponse(
             MoneyResponse listPrice,
             List<String> genres,
             GameSource source,
-            // 클리어 소요 시간·커버. 오버라이드가 없어서 resolved에는 대응 필드가 없다 (§6.2)
-            Integer timeToBeatHours,
-            String coverImageId
+
+            // ── v1.7 상세 화면용. 전부 표시값 규칙 밖이라 resolved에 대응 필드가 없다 (§6.2)
+            String coverImageId,
+            String bannerImageId,
+            String summary,
+            String storyline,
+            BigDecimal igdbRating,
+            Integer igdbRatingCount,
+            List<String> releasePlatforms,
+            Integer mainStoryHours,
+            Integer mainExtraHours,
+            Integer completionistHours,
+            Integer timeToBeatSamples
     ) {}
 
     public record Overrides(
@@ -149,7 +190,7 @@ public record BacklogDetailResponse(
      *
      * 컬렉션 복사는 엔티티의 resolved*·getter가 책임진다 — DTO는 감쌀 필요가 없다
      */
-    public static BacklogDetailResponse from(BacklogEntry entry,
+    public static BacklogDetailResponse from(BacklogEntry entry, String coverUrl,
                                              List<String> tagNames,
                                              List<Playthrough> playthroughs,
                                              List<Acquisition> acquisitions) {
@@ -158,20 +199,26 @@ public record BacklogDetailResponse(
         return new BacklogDetailResponse(
                 entry.getId(),
                 entry.getStatus(),
-                null,   // 커버는 Phase 5 (K)
+                entry.getCreatedAt(),
                 new Resolved(
                         entry.getDisplayName(),
                         entry.resolvedDevelopers(),
                         entry.resolvedPublishers(),
                         entry.resolvedReleasedOn(),
                         MoneyResponse.from(entry.resolvedListPrice()),
-                        entry.resolvedGenres()),
+                        entry.resolvedGenres(),
+                        Cover.of(coverUrl, game.getCoverImageId())),
                 new Master(
                         game.getId(), game.getName(),
                         game.getDevelopers(), game.getPublishers(),
                         game.getReleasedOn(), MoneyResponse.from(game.getListPrice()),
                         game.getMasterGenres(), game.getSource(),
-                        game.getTimeToBeatHours(), game.getCoverImageId()),
+                        game.getCoverImageId(), game.getBannerImageId(),
+                        game.getSummary(), game.getStoryline(),
+                        game.getIgdbRating(), game.getIgdbRatingCount(),
+                        game.getReleasePlatforms(),
+                        game.getMainStoryHours(), game.getMainExtraHours(),
+                        game.getCompletionistHours(), game.getTimeToBeatSamples()),
                 new Overrides(
                         entry.getNameOverride(),
                         entry.getDeveloperOverrides(), entry.getPublisherOverrides(),

@@ -1,6 +1,7 @@
 package com.milobeene.gamebacklog.game.service;
 
 import com.milobeene.gamebacklog.game.client.CatalogGameDetail;
+import com.milobeene.gamebacklog.game.domain.CatalogSyncCommand;
 import com.milobeene.gamebacklog.game.domain.Game;
 import com.milobeene.gamebacklog.game.domain.GameSource;
 import com.milobeene.gamebacklog.game.repository.GameRepository;
@@ -38,13 +39,23 @@ public class GameCacheService {
      * 동시에 담는 경우. 그 처리는 이 트랜잭션 안에서 못 한다(이미 롤백 표시가 붙는다).
      * 트랜잭션이 끝난 뒤인 GameResolver가 잡아서 재조회한다
      */
+    /** 포트 DTO → 도메인 Command. 필드가 16개라 평평하게 넘기면 순서 실수를 못 잡는다 */
+    public static CatalogSyncCommand toCommand(CatalogGameDetail detail) {
+        return new CatalogSyncCommand(
+                detail.developers(), detail.publishers(), detail.genres(), detail.releasedOn(),
+                detail.coverImageId(), detail.bannerImageId(),
+                detail.summary(), detail.storyline(),
+                detail.igdbRating(), detail.igdbRatingCount(), detail.releasePlatforms(),
+                detail.mainStoryHours(), detail.mainExtraHours(),
+                detail.completionistHours(), detail.timeToBeatSamples());
+    }
+
     @Transactional
     public Long save(CatalogGameDetail detail) {
         LocalDateTime now = LocalDateTime.now();
 
         Game game = Game.fromCatalog(detail.name(), detail.externalId(), now);
-        game.syncFromCatalog(detail.developers(), detail.publishers(), detail.genres(),
-                detail.releasedOn(), detail.timeToBeatHours(), detail.coverImageId(), now);
+        game.syncFromCatalog(toCommand(detail), now);
 
         gameRepository.persist(game);
 

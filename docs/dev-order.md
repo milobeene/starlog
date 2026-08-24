@@ -189,22 +189,126 @@ J-7에서는 호출 간 최소 간격만 두고, 본격적인 스로틀링·백�
 
 ## Phase 5 — 커버 이미지
 
-- [ ] K-1. **OI-01 결정**: 스토리지 벤더 (R2/S3/기타)
-- [ ] K-2. presigned URL 발급 (FR-MED-01) — 파일은 브라우저→스토리지 직접
-- [ ] K-3. 검증 — 확장자·MIME·용량, 위장 파일 차단
-- [ ] K-4. 교체·삭제 + 스토리지 파일 정리 (FR-MED-03)
-- [ ] K-5. 기본 이미지 폴백 (FR-MED-02)
+- [x] K-1. **OI-01 결정: Cloudflare R2.** egress 무료가 이미지 서빙에 결정적이고 S3 호환이라 AWS SDK를 그대로 쓴다
+  - 구현체 이름은 `S3CompatibleFileStorage` — 프로토콜이 S3고 R2는 그 구현 중 하나다. MinIO 로컬 검증에도 같은 클래스가 돈다
+- [x] K-2. presigned URL 발급 (FR-MED-01) — 파일은 브라우저→스토리지 직접
+  - `FileStoragePort` 포트 + `S3CompatibleFileStorage` / `UnconfiguredFileStorage`(자격증명 없을 때)
+  - 2단계 흐름: 허가증 발급 → 브라우저 PUT → 확정. 서버는 업로드 성공 여부를 모른다
+  - `CoverImageService`(트랜잭션 없음, 스토리지) ↔ `CoverRecordService`(트랜잭션, DB) 2빈 분리
+- [x] K-3. 검증 — 확장자·MIME·용량, 위장 파일 차단
+  - 세 겹: 발급 화이트리스트 / **Content-Type·Length를 서명에 포함** / 확정 시 앞 12바이트 매직 넘버
+  - `storageKey` prefix 검사로 **남의 경로 파일 확정 차단**
+- [x] K-4. 교체·삭제 + 스토리지 파일 정리 (FR-MED-03)
+  - **DB 커밋 → 스토리지 삭제 순서.** 뒤집으면 DB엔 있는데 파일이 없는 상태가 생긴다
+- [x] K-5. 기본 이미지 폴백 (FR-MED-02)
+  - 응답에 `coverUrl`(개인) + `coverImageId`(마스터) **둘 다** 내린다. 서버가 합치면 마스터 커버 크기가 고정된다
+  - 목록은 `findByBacklogEntryIdIn`으로 페이지 단위 한 방 (N+1 차단)
+
+**검증** — 테스트 302개 초록불 (K 관련 21개 신설). **실제 R2 왕복은 미검증** — 자격증명이 없어도
+전 구간이 가짜 포트로 돌아간다. Docker로 MinIO를 띄우거나 R2를 등록하면 코드 변경 없이 실물 검증 가능.
 
 ---
 
 ## Phase 6 — 조회 성능과 통계
 
-- [ ] L-1. 검색 (FR-QRY-02) — `displayName` 대상. 필터 (FR-QRY-03) — 상태·태그·장르·기기·계정
-- [ ] L-2. 정렬 (FR-QRY-04) — 기본 최근 플레이순, 2차 정렬 고정 (BR-QRY-01)
-- [ ] L-3. N+1 대응 (§6.8) — ToOne fetch join, 컬렉션 batch size. **먼저 터뜨리고 고친다**
-- [ ] L-4. 인덱스 검증 — 비정규화 컬럼 3종이 실제로 타는지 실행계획 확인
-- [ ] L-5. 통계 — 장르별 (FR-STAT-01), 기간별 완료 (FR-STAT-02), 플레이타임 (FR-STAT-03), 지출 2축 분리 (FR-STAT-04, BR-ACQ-01)
-- [ ] L-6. (COULD) 기기·플랫폼·계정별 (FR-STAT-05), 상태별 (FR-STAT-06)
+- [x] L-1. 검색 (FR-QRY-02) — `displayName` 대상. 필터 (FR-QRY-03) — 상태·태그·장르·기기·계정
+  - **QueryDSL `io.github.openfeign.querydsl:7.0`** (원본 `com.querydsl`은 5.1.0에서 멈춤). Boot 4 / Hibernate 7 호환은 스파이크로 먼저 확인
+  - ⚠️ 포크는 `sum()`을 `sumLong()`·`sumBigDecimal()`·`sumAggregate()`로 쪼갰다. 5.x 예제를 그대로 쓰면 컴파일이 안 된다
+  - **필터 4종을 `exists` 서브쿼리로.** join은 행이 증폭되고, distinct로 덮으면 count가 틀어져 페이징이 깨진다
+  - `BacklogEntryRepositoryImpl` — 이름이 `<인터페이스명>Impl`이어야 Spring Data가 붙인다
+- [x] L-2. 정렬 (FR-QRY-04) — 기본 최근 플레이순, 2차 정렬 고정 (BR-QRY-01)
+  - Phase 2에 이미 있었다. QueryDSL 전환 후에도 4종·2차·tie-break·nullsLast가 유지되는지 테스트로 고정
+  - `BacklogSort`가 Spring `Sort`와 `OrderSpecifier`를 **한 enum 안에** 나란히 든다. 갈라지면 정렬이 조용히 달라진다
+- [x] L-3. N+1 대응 (§6.8) — ToOne fetch join, 컬렉션 batch size
+  - **실측: 목록 5방 / 상세 12방.** 항목·회차 수가 늘어도 안 는다. 필터를 걸어도 그대로(exists라 where 절)
+  - `QueryCountTest`가 Hibernate 통계로 감시한다. 절대값이 아니라 **"비례하지 않는다"** 를 단언
+  - 🐛 **여기서 실제 버그를 찾았다** — `Playthrough.overlaps`가 `other.startedOn`을 **필드로** 읽어
+    `other`가 하이버네이트 프록시일 때 항상 null. `BacklogEntry.lastPlaythrough`가 LAZY라
+    실제 앱에서 **2회차 추가가 매번 500**이었다. getter로 고치고 `em.clear()` 재현 테스트 2개 추가
+- [x] L-4. 인덱스 검증 — 비정규화 컬럼 3종이 실제로 타는지 실행계획 확인
+  - **H2는 우리 복합 인덱스를 정렬에 쓰지 않는다** (실측). 하이버네이트가 FK마다 자동 생성한
+    `member_id` 단일 인덱스로 필터만 하고 정렬은 메모리에서 한다
+  - **PostgreSQL은 FK에 인덱스를 자동 생성하지 않는다** → 그쪽에선 복합 인덱스가 유일한 후보다.
+    실행계획 확인은 **Phase 9(O-2)에서 Neon으로** 다시 한다
+  - `IndexDefinitionTest`는 계획이 아니라 **정의**를 지킨다 — `@Index`를 실수로 지우면 빨개진다
+  - ⚠️ `CoverImage`의 명명된 unique는 무시됐다. `@OneToOne`이 스스로 만든 것과 중복 판정 (설계서 v0.3이 예고).
+    **제약 자체는 걸려 있고** 이름만 자동 생성 — Phase 9 숙제
+- [x] L-5. 통계 — 장르별 (FR-STAT-01), 기간별 완료 (FR-STAT-02), 플레이타임 (FR-STAT-03), 지출 2축 분리 (FR-STAT-04, BR-ACQ-01)
+  - 엔드포인트 4개로 분리 (`/api/stats/{genres,completions,playtime,spending}`)
+  - 장르별은 **쿼리 2방** — §6.7 폴백이 항목마다 분기라 `group by` 하나로 안 나온다
+  - 완료는 **회차 기준** — 항목 상태로 세면 3회차까지 깬 게임이 1로 잡힌다
+  - **통화를 합치지 않는다.** 환산은 환율이 필요해 범위 밖. 구독료 결제 횟수 규칙은 스펙에 없어 여기서 정함
+- [x] L-6. (COULD) 기기·플랫폼·계정별 (FR-STAT-05), 상태별 (FR-STAT-06) — **건너뜀**
+  - `GET /api/backlog/facets`가 **이미 상태별·기기별·계정별 count를 준다.** 다시 만들면 같은 숫자를 두 곳에서 관리하게 된다
+  - 신규 가치는 "플랫폼별"(계정이 아닌 Platform 단위) 하나뿐이고, 완료율·중단율은 facets의 statuses로 화면이 계산할 수 있다
+  - COULD 항목이라 여기서 멈춘다. 필요해지면 facets를 확장하는 쪽이 맞다
+
+### L-11 — 스펙 대조 테스트 감사 (BR·FR 전수)
+
+`docs/spec-v1.5.md`의 BR 16개 / FR MUST·SHOULD 전수를 테스트와 대조했다. 테스트 383개 (감사 전 356 → +27).
+
+- [x] 🔒 **소유권 미검사 보류 해제** — v0.2가 "Phase 3에서 막아야 한다"고 적어둔 항목이
+  Phase 3이 끝난 뒤에도 살아 있었다. 남의 `platformAccountId`를 회차·취득에 붙일 수 있었다 (NFR-S7).
+  `platformAccountService.findOne`으로 막고 테스트 3개 추가 (남의 것 404 / 삭제된 내 것은 허용 / 없는 기기 404)
+- [x] **BR-PT-02 무한대 점유** — v1.5 신설 조항인데 테스트 0건이었다.
+  진행 중 회차는 시작일부터 무한대를 점유하는데 그 경로를 타는 테스트가 없어,
+  `occupiedUntil()`의 `LocalDate.MAX`를 `startedOn`으로 바꿔도 전부 통과했다. 경계 4건 추가
+- [x] **BR-PT-06 닫힌 상태의 종료일** — 불변식 절반(`mustBeClosed`)이 미검증이었다.
+  항상 false를 반환해도 통과했다. 상태 4종 × 2메서드 규칙표를 통째로 고정
+- [x] **BR-QRY-01 2차 정렬** — 1차 키가 동점인 데이터가 하나도 없어 `SECONDARY`를 지워도 통과했다
+- [x] **FR-QRY-03/04 필터·정렬 절반** — `genreId`·`platformAccountId` 필터, `rating`·`releasedOn` 정렬이 0건이었다
+- [x] BR-PT-05 — 보유하지 않은 기기 지정이 우연히 통과하던 것을 의도로 고정
+
+**변이 테스트로 검증했다.** 로직을 일부러 망가뜨려 테스트가 잡는지 확인:
+
+| 변이 | 결과 |
+|---|---|
+| `mustBeClosed()` → 항상 false | 3개 잡음 ✅ |
+| `occupiedUntil()` MAX → startedOn | 처음엔 **0개** → 경로를 잘못 짚은 걸 알고 테스트 보강 |
+| `BacklogSort` 2차 정렬 제거 | 1개 잡음 ✅ |
+| `BacklogSort` tie-break 제거 | 처음엔 **0개** — H2가 우연히 안정적인 순서를 줬다 |
+
+**tie-break는 DB 동작으로 검증할 수 없다.** 순서가 우연히 맞을 수 있어서다.
+`BacklogSortTest`를 만들어 **order by 절의 계약**(단계 수·컬럼·방향·nullsLast)을 직접 단언했고,
+그러자 tie-break 제거가 3개 테스트에 잡혔다.
+
+> **남은 것** — FR-BL-09(변경 이력 조회·되돌리기, SHOULD)는 `EntitySnapshot` 엔티티만 있고
+> 기록·조회·복원 경로가 전혀 없다. 감사가 찾은 **미구현 요구사항**이며 별도 슬라이스가 필요하다.
+
+---
+
+### L-7~L-10 — 상세 화면 데이터 확장 (화면 요구에서 역산)
+
+- [x] L-7. `Game` 마스터를 IGDB 미러로 확장 (9필드 → 20필드)
+  - 배너·소개·스토리라인·유저 평점(+표본)·출시 플랫폼·클리어 소요 3종(+표본)
+  - `timeToBeatHours` → `mainStory/mainExtra/completionist` 3개로 분리. **v1.6에서 개명한 자리를 또 고친 것**이라 이력을 문서에 남김
+  - 인자가 16개라 `CatalogSyncCommand`로 묶음 — 평평하게 넘기면 `Integer` 5개가 나란히 붙어 순서를 바꿔도 컴파일이 통과한다
+  - 🐛 **`summary`/`storyline`을 varchar(2000)으로 잡았다가 실측으로 잡았다.** IGDB 2,000건을 훑으니
+    summary 최대 3,254자, **storyline 최대 20,764자**. LONGTEXT로 바꾸고 2만 1천 자 삽입까지 테스트로 고정
+  - ⚠️ `releasePlatforms`(PS5·Switch)는 `Platform` 엔티티(Steam·PSN)와 **다른 개념**. 이름을 갈랐다
+- [x] L-8. 상세 응답 확장 + **커버를 `resolved`로 통합**
+  - 그전엔 장르는 서버가 합성하는데 커버만 화면이 합성하는 비대칭이 있었다
+  - `resolved.cover.source`(PERSONAL/MASTER/NONE)로 승자를 알려주고 **크기 선택만 화면 몫**
+  - `createdAt`(담은 날짜) 추가 — 상세 타임라인의 기점. 나머지 시점은 프론트가 계산
+  - `listPrice`는 응답에서 제외 (자리만 두고 출력 안 함)
+- [x] L-9. 대시보드 지원
+  - `BacklogSort`에 `playtime` 추가 — 나머지 타일은 **기존 목록 API를 size로 자르면 된다**
+  - `GET /api/stats/spending/monthly` — 구독료를 월별로 펼치고(연간은 결제월에만), 연도별 월평균 분모는 **12개월 고정**
+- [x] L-10. 문서 개정 — §6.2 마스터 필드 전면 재작성, §7.1 "오버라이드 규칙" → **"표시값 규칙"**(7개 통일), §8.1에 ITAD 범위 밖 명시, FR-STAT-07 신설
+
+**검증** — 테스트 356개 초록불. **앱을 띄워 전 구간 실왕복 확인:**
+IGDB 검색 → `externalId`로 담기 → 상세에 마스터 20필드 전부 실데이터로 채워짐(Witcher 3: 배너 `ar3lze`,
+평점 93.79/표본 5427, 플랫폼 6종, 클리어 37/71/162h) → `resolved.cover.source = MASTER` →
+playtime 정렬 → 월별 지출(2026-03이 취득 29,800 + 구독 16,700 = 46,500으로 합산, 연평균 분모 12개월) →
+통계 4종 → 재동기화 200 → 필터 조합.
+
+🐛 **왕복에서 버그를 하나 더 잡았다** — 커버 업로드가 실패할 때 **"게임 정보 서비스에 연결하지 못했습니다"** 가
+나갔다. 외부 의존이 둘(게임 DB·이미지 저장소)인데 `ExternalApiException`을 공유하면서
+전역 핸들러가 메시지를 하나로 뭉갠 것. `Service` enum을 들려 보내 갈랐고, 재기동해 실제 응답으로 확인했다.
+**테스트만으로는 안 드러났다** — 응답이 200/502로는 맞았기 때문이다.
+
+이전 상태 —
+QueryDSL 경로는 기존 목록 테스트가 전부 통과하며 회귀를 막았고, 통계는 신규라 컨트롤러 테스트로 덮었다.
 
 ---
 
@@ -230,8 +334,11 @@ J-7에서는 호출 간 최소 간격만 두고, 본격적인 스로틀링·백�
 
 ## Phase 9 — 배포 (보너스)
 
-- [ ] O-1. Flyway 전환 — `V1__init.sql` 작성, `ddl-auto: validate` (NFR-O2)
-- [ ] O-2. 설계서 §9 체크리스트 — TEXT 동작 (OI-15), FK 이름 (OI-16), 부분 유니크 인덱스 재검토 (BR-PT-03), enum check 제약 명시 관리
+- [x] O-1. Flyway 전환 — `V1__init.sql` 작성, `ddl-auto: validate` (NFR-O2). Phase 7 선행 조건이라 앞당김.
+      dev H2는 `MODE=PostgreSQL`, 일반 테스트는 `create` 유지 + FlywayMigrationTest가 드리프트 감시.
+      H2 TCP 서버 1.4.200 → 2.3.232 교체 (드라이버와 버전 불일치로 Flyway 메타데이터 조회가 깨졌음)
+- [ ] O-2. 설계서 §9 체크리스트 — 부분 유니크 인덱스 재검토 (BR-PT-03), 실제 PostgreSQL에서 실행계획·FK 인덱스 재확인.
+      V1에서 선반영: TEXT 동작 (OI-15, summary/storyline text 교정), FK 이름 (OI-16), enum check 명시, FK 컬럼 인덱스
 - [ ] O-3. Neon/Render/Vercel 배포 + 환경변수
 - [ ] O-4. Spring Session + JDBC (재시작 대비)
 - [ ] O-5. HikariCP 튜닝 (DB idle sleep 대응)

@@ -85,14 +85,26 @@ GET /api/backlog
 
 **태그는 카드에 넣지 않는다.** 폴더/모음집처럼 묶는 탐색 수단이다 (§6.7).
 
-#### 쿼리 예산 — 4방 (v0.2에서 측정 후 정정)
+#### 쿼리 예산 — 5방 (Phase 6 L-3에서 재측정)
 
 ```
 1방  항목 + game + lastPlaythrough + device + emulator   전부 ~ToOne → join fetch (페이징 유지)
 1방  개인 장르 연결 (backlog_entry_genre, batch size)
 1방  장르 본체     (genre, batch size)          ← v0.1이 빠뜨린 자리
 1방  마스터 장르   (game_master_genre, batch size)
+1방  개인 커버     (cover_image, entryId IN)    ← Phase 5(K-5)에서 추가
 ```
+
+**커버가 1방을 더한다.** `CoverImage`가 FK를 가진 `@OneToOne` 주인이라 `BacklogEntry`에 역방향이 없고,
+`mappedBy @OneToOne`은 지연 로딩이 안 되어 두면 항목마다 SELECT가 나간다.
+그래서 페이지의 entryId를 모아 `IN`으로 한 번에 읽는다.
+
+**검색·필터를 걸어도 5방 그대로다** — 태그·장르·기기·계정 필터가 전부 `exists` 서브쿼리라
+별도 쿼리가 아니라 `where` 절에 들어간다. 상세는 12방이고, **회차 수가 늘어도 안 는다.**
+
+이 숫자는 `QueryCountTest`가 Hibernate 통계로 감시한다 — 절대값이 아니라
+**"항목 수에 비례하지 않는다"** 를 단언한다. 조인 구조가 바뀌면 절대값은 달라져도 되지만,
+비례하기 시작하면 그건 언제나 버그다.
 
 **v0.1은 3방으로 잡았는데 실제로는 4방이다.** `BacklogEntryGenre.genre`가 LAZY `@ManyToOne`이라
 조인 테이블에서 장르 본체로 가는 hop이 한 단계 더 있다. batch size가 없으면 이게 항목 수만큼 터진다
@@ -105,6 +117,61 @@ GET /api/backlog
 
 > **커버 이미지는 아직 응답에서 항상 `null`이다.** `CoverImage`가 FK를 가진 주인이라 역참조가 없고,
 > 무엇보다 Phase 5(K) 전까지 행이 생길 경로가 없다. 죽은 조인을 미리 붙이지 않았다.
+
+### 1.1.1 통계 (화면 3, Phase 6 L-5 신설)
+
+```
+GET /api/stats/genres                        장르별 분포          FR-STAT-01
+GET /api/stats/completions?unit=month|year   기간별 완료 수       FR-STAT-02
+GET /api/stats/playtime?limit=10             총합 + 게임별 순위   FR-STAT-03
+GET /api/stats/spending                      지출 2축             FR-STAT-04
+GET /api/stats/spending/monthly              월별 지출 추이       FR-STAT-07
+```
+
+**대시보드가 필요로 하는 것 대부분은 이미 있는 API로 된다** (v1.7 확인):
+
+| 타일 | 어떻게 |
+|---|---|
+| 최근 플레이 5 / 최고 별점 5 | `GET /api/backlog?sort=lastPlayed\|rating&size=5` |
+| **최다 플레이 5** | `?sort=playtime&size=5` — **정렬 1종 신설** |
+| "더 보기" → 라이브러리 그리드 | 같은 `sort`를 그대로 넘긴다. 프론트 라우팅만 |
+| 총 게임 수 / 완료 수 / 플레이 중 수 | `GET /api/backlog/facets` 의 `statuses` |
+| 플레이 중 이름 리스트 | `?status=PLAYING` |
+| 총 플레이 시간 | `GET /api/stats/playtime` |
+| 월별 지출 꺾은선 | **신설** (아래) |
+
+```jsonc
+// GET /api/stats/spending/monthly
+{ "currencies": ["KRW", "USD"],
+  "months": [{ "period": "2026-01", "amounts": { "KRW": 89800, "USD": 19.99 } }],
+  "yearlyAverages": [{ "year": 2026, "amounts": { "KRW": 45000, "USD": 12.50 } }] }
+```
+
+- **구독료는 날짜가 없어 기간을 월별로 펼친다.** 취득은 `acquiredOn`으로 바로 묶인다
+- **연도별 월평균의 분모는 12개월 고정**이다. 데이터 있는 달만으로 나누면
+  연초에 몰아 산 해가 실제보다 높게 나와 해끼리 비교가 안 된다
+
+**한 엔드포인트로 묶지 않은 이유**는 facets와 같다 — 화면이 필요한 타일만 부른다.
+대시보드 상단의 전체·상태별 수치는 **`/api/backlog/facets`가 이미 준다.** 여기서 또 세지 않는다.
+
+```jsonc
+// GET /api/stats/playtime
+{ "totalHours": 105, "recordedEntries": 2,
+  "top": [{ "entryId": 12, "displayName": "링 피트 어드벤처", "hours": 100 }] }
+
+// GET /api/stats/spending — 두 축도, 통화도 합치지 않는다
+{ "purchases":     [{ "currency": "KRW", "total": 16500.00 }, { "currency": "USD", "total": 19.99 }],
+  "subscriptions": [{ "currency": "KRW", "total": 50100.00 }] }
+```
+
+- **장르별은 쿼리 2방이다.** §6.7의 폴백이 "개인 장르가 1개라도 있으면 개인 것만, 없으면 마스터 것"이라
+  항목마다 분기가 갈린다. SQL `group by`로는 표현이 안 돼 두 집합을 따로 세고 합친다
+- **완료는 회차 기준이다.** 항목 상태로 세면 3회차까지 깬 게임이 1로만 잡혀
+  "그 해에 몇 번 끝냈나"가 틀린다
+- **지출의 통화를 합치지 않는다** (BR-ACQ-01 + Money가 ISO 4217). 환산에는 환율이 필요하고 범위 밖이다.
+  더해버리면 조용히 틀린 숫자가 나간다
+- **구독료 결제 횟수 규칙은 스펙에 없어 여기서 정했다** — `시작월(연) 포함, 종료일(없으면 오늘)까지의 주기 수`.
+  6월 시작·8월 종료 월간 구독은 6·7·8 세 번
 
 ### 1.2 필터 사이드바 (화면 1 부속)
 
@@ -138,31 +205,62 @@ GET /api/backlog/{entryId}
 
 **표시값과 마스터 원본값을 둘 다 준다.** 편집 화면이 "내가 뭘 덮어썼는지"를 보여줘야 하고, 정보가 많은 편이 프론트에서 자르기 쉽다.
 
+**v1.7 — 커버가 `resolved` 안으로 들어왔다.** 그전에는 `coverUrl`만 밖에 따로 있고
+마스터 커버는 `master.coverImageId`에 있어서, 장르는 서버가 합성하는데 커버만 화면이 합성하는
+비대칭이 있었다. `source`로 어느 쪽이 이겼는지 서버가 알려주고 **크기 선택만 화면 몫**으로 남긴다
+(마스터 커버는 자리마다 크기가 달라야 해서 서버가 URL을 확정하면 안 된다, §6.10).
+
+**정가는 자리만 두고 화면에 출력하지 않는다 (v1.7).** IGDB가 가격을 주지 않아 `master.listPrice`는
+사실상 항상 null이고, `listPriceOverride`는 **덮을 대상이 없는 오버라이드**로 떠 있다.
+응답에는 계약 유지를 위해 남기되, **화면이 보여주는 금액은 취득 섹션의 `acquisitions[].price`뿐이다** —
+할인가로 산 경우가 많아 정가보다 그쪽이 실제 정보다.
+
+**상세 타임라인은 프론트가 계산한다.** 서버는 원자료만 준다:
+`createdAt`(담은 날짜) → `acquisitions[].acquiredOn`(취득) →
+`min(playthroughs[].startedOn)`(첫 플레이) → `min(finishedOn where COMPLETED)`(첫 완주) →
+`max(COALESCE(finishedOn, startedOn))`(마지막 플레이).
+마지막 값은 서버의 `lastPlayedOn`(§7.6)과 같은 식이라 결과가 일치한다 — 그래서 따로 안 내린다.
+
 ```jsonc
 {
   "entryId": 12,
   "status": "PLAYING",
-  "coverUrl": "...",
+  "createdAt": "2025-12-13T10:22:00",        // 담은 날짜. 상세 타임라인의 기점
 
-  "resolved": {                              // 화면에 뿌리는 값
+  "resolved": {                              // 화면에 뿌리는 값 — 표시값 규칙 7개가 전부 여기 모인다
     "name": "링 피트 어드벤처",
     "developers": ["Nintendo"],
     "publishers": ["Nintendo"],
     "releasedOn": "2019-10-18",
-    "listPrice": { "amount": 89800, "currency": "KRW" },
-    "genres": ["피트니스", "기능성"]
+    "listPrice": { "amount": 89800, "currency": "KRW" },   // **화면에는 출력하지 않는다** (아래)
+    "genres": ["피트니스", "기능성"],
+    "cover": {                               // v1.7 — 밖에 나가 있던 coverUrl을 여기로 합쳤다
+      "source": "PERSONAL",                  // PERSONAL | MASTER | NONE
+      "url": "https://cdn/covers/1/12/....jpg",   // 개인 업로드일 때만
+      "imageId": null                        // 마스터일 때만. 크기는 화면이 고른다
+    }
   },
-  "master": {                                // 편집 화면의 "마스터: ~" 힌트
+  "master": {                                // 편집 화면의 "마스터: ~" 힌트 + 상세 화면의 게임 정보
     "gameId": 5,
     "name": "Ring Fit Adventure",
     "developers": ["Nintendo"],
     "publishers": ["Nintendo"],
     "releasedOn": "2019-10-18",
-    "listPrice": null,
     "genres": ["Sports"],
-    "source": "MANUAL",
-    "timeToBeatHours": 37,               // IGDB game_time_to_beats.normally. null 가능
-    "coverImageId": "cobfzp"             // IGDB cover.image_id. null 가능 (개인 커버가 우선)
+    "source": "IGDB",
+
+    "coverImageId": "cobcnq",                // 세로 박스아트 (t_cover_* 로 조합)
+    "bannerImageId": "ar584c",               // 가로 키아트 (상세 상단)
+    "summary": "Ring Fit Adventure is ...",  // 영문 원문
+    "storyline": null,
+    "igdbRating": 78.4,                      // 유저 평점 0~100
+    "igdbRatingCount": 312,
+    "releasePlatforms": ["Switch"],          // ⚠️ 하드웨어 기종. Platform 엔티티와 다름
+    "mainStoryHours": 25,                    // Main Story
+    "mainExtraHours": 37,                    // Main + Extra
+    "completionistHours": 61,                // Completionist
+    "timeToBeatSamples": 41,                 // 퍼센트로 환산하지 않는다
+    "listPrice": null                        // IGDB가 안 주므로 사실상 항상 null
   },
   "overrides": {                             // 편집 폼의 현재 입력값. null = 안 덮어씀
     "name": null,
@@ -587,12 +685,22 @@ POST  /api/admin/games/{id}/resync               IGDB 재동기화 (FR-GAME-05, 
 | `409` | 중복, 상태 충돌, **되살리기 필요** |
 | `502` | 외부 API(IGDB) 장애. 작업을 취소하고 아무것도 저장하지 않는다 (FR-SYS-04, J-6) |
 
-### 알려진 허용 리스크 — 참조 id의 소유권 미검사 (v0.2 리뷰에서 발견, 의도적 보류)
+### ~~알려진 허용 리스크 — 참조 id의 소유권 미검사~~ → **해소됨 (v1.7)**
 
-회차·취득의 `platformAccountId`는 소유권·소프트 삭제 검사 없이 연결된다
-(`PlaythroughService`·`AcquisitionService`의 참조 해석이 bare `findById`).
-**1인 사용 프로그램이라 참작하고 넘어간다.** 다중 사용자로 전환하거나 Phase 3 인증을
-붙일 때는 구독 연결(`findOwned`)과 같은 방식으로 막아야 한다.
+v0.2에서 "회차·취득의 `platformAccountId`가 소유권 검사 없이 연결된다.
+1인 사용이라 참작하되 **Phase 3 인증을 붙일 때는 막아야 한다**"고 보류해둔 항목이다.
+
+**Phase 3이 끝난 뒤에도 보류가 해제되지 않은 채 남아 있었고, 테스트 감사에서 드러났다.**
+남의 계정 id를 넣으면 상세 응답에 그 라벨이 실릴 수 있었다 (NFR-S7 위반).
+
+- `PlaythroughService`·`AcquisitionService`가 `platformAccountService.findOne(ownerId, id)`를 쓴다.
+  남의 것이면 **404** — 403을 주면 "그 id는 존재한다"가 새어나간다
+- **소프트 삭제된 계정은 통과시킨다.** 계정을 지웠다고 그 계정으로 플레이했던 과거 회차를
+  못 고치게 되면 안 된다. 새로 고를 때 안 보이는 건 `findSelectable`이 맡는다
+- `Device`·`Emulator`·`Platform`은 **마스터**라 이 검사가 없는 게 맞다 (BR-PT-05)
+
+> **교훈** — "나중에 막는다"고 문서에 적어둔 보류는 그 시점이 와도 저절로 해제되지 않는다.
+> 조건이 만료되는 항목은 해당 페이즈의 체크리스트에 넣어야 한다.
 
 ### 404 vs 403 — 남의 것은 404다
 

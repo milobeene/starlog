@@ -264,14 +264,34 @@ private Money fee;
 | `listPrice` | Money | nullable, `@AttributeOverride` |
 | `source` | GameSource | not null |
 | `externalId` | String | nullable, len 50 — IGDB 게임 ID |
-| `timeToBeatHours` | Integer | nullable — IGDB `game_time_to_beats.normally` (초 → 시간) |
-| `coverImageId` | String | nullable, len 50 — IGDB `cover.image_id` |
+| `coverImageId` | String | nullable, len 50 — IGDB `cover.image_id` (세로 박스아트) |
+| `bannerImageId` | String | nullable, len 50 — IGDB `artworks[].image_id` (가로 키아트) |
+| `summary` | String | nullable, **LONGTEXT** — About. 영문 원문. 실측 최대 3,254자 |
+| `storyline` | String | nullable, **LONGTEXT** — 실측 최대 **20,764자**. `varchar(2000)`이면 터진다 |
+| `igdbRating` | BigDecimal | nullable, precision 5 scale 2 — 유저 평점 0~100 |
+| `igdbRatingCount` | Integer | nullable — 표본 수 |
+| `releasePlatforms` | List\<String\> | `@ElementCollection` — 하드웨어 기종 ⚠️`Platform`과 다름 |
+| `mainStoryHours` | Integer | nullable — `hastily` |
+| `mainExtraHours` | Integer | nullable — `normally` (v1.6 `timeToBeatHours`가 여기로) |
+| `completionistHours` | Integer | nullable — `completely` |
+| `timeToBeatSamples` | Integer | nullable — `count` |
 | `lastSyncedAt` | LocalDateTime | nullable |
 
 - unique `(source, external_id)`
 - 삭제 없음 (정리는 관리자 병합 FR-ADM-02)
 
-> `timeToBeatHours`는 남들의 평균이지 내 기록이 아니다. 오버라이드를 만들지 않는다.
+> **v0.6에서 Game이 9필드 → 20필드가 됐다.** 상세 화면이 IGDB를 거의 그대로 보여주기로 하면서
+> 마스터의 성격이 "식별 최소"에서 "IGDB 미러"로 바뀌었다 (스펙 §6.2).
+> **늘어난 필드는 전부 표시값 규칙(§7.1) 밖이다** — 덮을 수단도, 이유도 없다.
+>
+> `summary`·`storyline`이 TEXT급이라 목록 조회(`join fetch b.game`)에 딸려온다.
+> 개인 규모에서는 페이지당 20KB 수준이라 감수하고 한 테이블로 둔다.
+> 무거워지면 `GameDetail` 1:1 분리가 탈출구다 — 되돌리기 어려운 결정이 아니다.
+>
+> ⚠️ `releasePlatforms`(PS5·Switch)와 `Platform` 엔티티(Steam·PSN)는 **다른 개념이다.**
+> `Device`(내 보유 기기)와도 겹쳐 보이지만 엮지 않는다.
+
+> 클리어 소요 시간 3종은 남들의 평균이지 내 기록이 아니다. 오버라이드를 만들지 않는다.
 > **v0.5에서 이름이 바뀌었다** — `averagePlaytimeHours`(RAWG `playtime`, Steam 평균 플레이 시간)에서
 > `timeToBeatHours`(IGDB `normally`, 클리어 소요 시간)로. 지표의 의미 자체가 다르다.
 > 전체 게임의 2.4%만 값을 갖지만, 실제로 담을 만한 게임(평점 20건 이상)은 전수 보유한다 (실측).
@@ -393,8 +413,15 @@ BR-PT-03(동시 1개)과 BR-PT-02(겹침)의 판정 기준도 **상태가 아니
 
 #### `CoverImage`
 
-`backlogEntry`(**`@OneToOne` 주인**, unique), `storageKey`, `url`, `contentType`, `sizeBytes`
+`backlogEntry`(**`@OneToOne` 주인**, `uk_cover_image_backlog_entry`), `storageKey`, `contentType`, `sizeBytes`
 - 삭제: 물리 (스토리지 파일 포함)
+
+> **v0.5에서 `url` 필드를 뺐다.** `publicBaseUrl + storageKey`로 조합 가능한데 저장해두면
+> 도메인·CDN이 바뀔 때 전 행을 갱신해야 한다. `Game.coverImageId`와 같은 판단이다.
+
+> **BacklogEntry에 역방향 필드를 두지 않는다.** `mappedBy` 쪽 `@OneToOne`은 지연 로딩이 안 되어
+> 목록 조회마다 커버 SELECT가 항목 수만큼 나간다. 커버가 필요하면 리포지토리로 읽고,
+> 목록은 `findByBacklogEntryIdIn`으로 페이지 단위 한 방에 가져온다.
 
 > ⚠️5 **FK를 가진 쪽이 주인이어야 한다.** `mappedBy` 쪽 `@OneToOne`은 지연 로딩이 동작하지 않는다(값 유무를 알아야 프록시를 만들지 결정할 수 있는데, FK가 없는 쪽은 그걸 모른다).
 

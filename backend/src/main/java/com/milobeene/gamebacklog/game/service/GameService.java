@@ -3,6 +3,7 @@ package com.milobeene.gamebacklog.game.service;
 import com.milobeene.gamebacklog.backlog.repository.BacklogEntryRepository;
 import com.milobeene.gamebacklog.common.exception.NotFoundException;
 import com.milobeene.gamebacklog.game.dto.GameResyncResult;
+import com.milobeene.gamebacklog.game.domain.CatalogSyncCommand;
 import com.milobeene.gamebacklog.game.domain.Game;
 import com.milobeene.gamebacklog.common.util.TextValues;
 import com.milobeene.gamebacklog.game.dto.GameSearchResponse;
@@ -94,10 +95,7 @@ public class GameService {
      * 같은 이유로 벌크에 넘길 값은 미리 지역 변수로 꺼내둔다
      */
     @Transactional
-    public GameResyncResult applyCatalogSync(Long gameId, String name, List<String> developers,
-                                             List<String> publishers, List<String> genres,
-                                             LocalDate releasedOn, Integer timeToBeatHours,
-                                             String coverImageId) {
+    public GameResyncResult applyCatalogSync(Long gameId, String name, CatalogSyncCommand command) {
         Game game = gameRepository.findById(gameId)
                 .orElseThrow(() -> new NotFoundException("게임을 찾을 수 없습니다. id=" + gameId));
 
@@ -107,8 +105,7 @@ public class GameService {
         if (nameChanged) {
             game.updateName(name);
         }
-        game.syncFromCatalog(developers, publishers, genres, releasedOn,
-                timeToBeatHours, coverImageId, now);
+        game.syncFromCatalog(command, now);
 
         String resolvedName = game.getName();
         LocalDate resolvedReleasedOn = game.getReleasedOn();

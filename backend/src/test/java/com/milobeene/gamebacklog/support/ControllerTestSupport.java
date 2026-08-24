@@ -33,7 +33,7 @@ import org.springframework.transaction.annotation.Transactional;
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @Transactional
-@Import(FakeGameCatalogClient.class)
+@Import({FakeGameCatalogClient.class, FakeFileStorage.class})
 public abstract class ControllerTestSupport {
 
     protected MockMvc mockMvc;
@@ -48,6 +48,9 @@ public abstract class ControllerTestSupport {
      */
     @Autowired protected FakeGameCatalogClient catalog;
 
+    /** 커버 업로드도 같은 이유로 전 테스트가 가짜를 쓴다 (K-2) */
+    @Autowired protected FakeFileStorage storage;
+
     /**
      * 모든 요청에 CSRF 토큰을 기본으로 실어준다.
      *
@@ -59,6 +62,7 @@ public abstract class ControllerTestSupport {
     void setUpMockMvc() {
         // 스프링 빈은 테스트 사이에 재사용된다 — 상태를 안 지우면 앞 테스트가 심은 결과가 넘어온다
         catalog.reset();
+        storage.reset();
 
         mockMvc = MockMvcBuilders.webAppContextSetup(context)
                 .apply(springSecurity())

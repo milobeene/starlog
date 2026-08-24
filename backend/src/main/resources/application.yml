@@ -5,14 +5,16 @@ spring:
     default: dev,local
 
   datasource:
-    url: jdbc:h2:tcp://localhost/~/dev-tools/h2-data/gamebacklog
+    # MODE=PostgreSQL: 마이그레이션 SQL 하나가 H2(dev)와 PostgreSQL(prod) 양쪽에서 돌게 한다
+    url: jdbc:h2:tcp://localhost/~/dev-tools/h2-data/gamebacklog;MODE=PostgreSQL
     username: sa
     password:
     driver-class-name: org.h2.Driver
 
   jpa:
     hibernate:
-      ddl-auto: create
+      # 스키마 주인은 Flyway. Hibernate는 기동 때 엔티티와 실제 스키마가 맞는지 대조만 한다
+      ddl-auto: validate
     properties:
       hibernate:
         format_sql: true
@@ -35,6 +37,16 @@ app:
   igdb:
     client-id: ${IGDB_CLIENT_ID:}
     client-secret: ${IGDB_CLIENT_SECRET:}
+
+  # 커버 스토리지 (Phase 5). R2가 기본이지만 S3 호환이면 뭐든 된다 —
+  # MinIO로 로컬 검증할 때는 endpoint만 바꾼다.
+  # 자격증명이 없으면 UnconfiguredFileStorage로 대체되어 기동은 되고 업로드만 502가 된다
+  storage:
+    endpoint: ${STORAGE_ENDPOINT:}
+    bucket: ${STORAGE_BUCKET:}
+    access-key: ${STORAGE_ACCESS_KEY:}
+    secret-key: ${STORAGE_SECRET_KEY:}
+    public-base-url: ${STORAGE_PUBLIC_BASE_URL:}
   cleanup:
     auth-token-cron: "0 30 4 * * *"      # 매일 04:30
     audit-log-cron: "0 0 5 * * *"        # 매일 05:00

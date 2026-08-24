@@ -3,11 +3,14 @@ package com.milobeene.gamebacklog.backlog.service;
 import com.milobeene.gamebacklog.backlog.domain.BacklogEntry;
 import com.milobeene.gamebacklog.backlog.dto.BacklogCardResponse;
 import com.milobeene.gamebacklog.backlog.dto.BacklogDetailResponse;
+import com.milobeene.gamebacklog.backlog.dto.BacklogSearchCondition;
 import com.milobeene.gamebacklog.backlog.dto.BacklogSort;
 import com.milobeene.gamebacklog.backlog.repository.AcquisitionRepository;
 import com.milobeene.gamebacklog.backlog.repository.BacklogEntryRepository;
 import com.milobeene.gamebacklog.backlog.repository.BacklogEntryTagRepository;
+import com.milobeene.gamebacklog.backlog.repository.CoverImageRepository;
 import com.milobeene.gamebacklog.backlog.repository.PlaythroughRepository;
+import com.milobeene.gamebacklog.common.storage.FileStoragePort;
 import com.milobeene.gamebacklog.common.dto.PageResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -15,6 +18,10 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * 화면 단위 조회 전용 서비스 (API 설계서 §0). 쓰기는 BacklogService가 그대로 맡는다.
@@ -34,14 +41,28 @@ public class BacklogQueryService {
     private final PlaythroughRepository playthroughRepository;
     private final AcquisitionRepository acquisitionRepository;
     private final BacklogEntryFinder backlogEntryFinder;
+    private final CoverImageRepository coverImageRepository;
+    private final FileStoragePort fileStorage;
 
-    public PageResponse<BacklogCardResponse> findCards(Long memberId, int page, int size, BacklogSort sort) {
-        Pageable pageable = PageRequest.of(normalizePage(page), normalizeSize(size), sort.toSort());
+    /**
+     * 목록 (화면 1). L-1에서 검색·필터가 붙으며 QueryDSL 경로로 옮겼다.
+     *
+     * Pageable에 Sort를 싣지 않는 이유 — 정렬은 QueryDSL이 OrderSpecifier로 직접 건다.
+     * 둘 다 넣으면 order by가 중복으로 나간다
+     */
+    public PageResponse<BacklogCardResponse> findCards(Long memberId, BacklogSearchCondition condition,
+                                                       int page, int size, BacklogSort sort) {
+        Pageable pageable = PageRequest.of(normalizePage(page), normalizeSize(size));
 
-        Page<BacklogEntry> entries = backlogEntryRepository.findCards(memberId, pageable);
+        Page<BacklogEntry> entries = backlogEntryRepository.search(memberId, condition, sort, pageable);
+
+        // 이 페이지에 실린 항목의 커버만 한 방에 읽는다 (K-5).
+        // 카드마다 findByBacklogEntryId를 부르면 그게 N+1이다
+        Map<Long, String> coverUrls = coverUrlsOf(entries.getContent());
 
         // Page.map()이 여기(트랜잭션 안)서 돌아야 장르 LAZY 로딩이 살아있다
-        return PageResponse.from(entries.map(BacklogCardResponse::from));
+        return PageResponse.from(entries.map(
+                entry -> BacklogCardResponse.from(entry, coverUrls.get(entry.getId()))));
     }
 
     /**
@@ -51,11 +72,30 @@ public class BacklogQueryService {
     public BacklogDetailResponse findDetail(Long memberId, Long entryId) {
         BacklogEntry entry = backlogEntryFinder.findOwnedWithGame(memberId, entryId);
 
+        String coverUrl = coverImageRepository.findByBacklogEntryId(entryId)
+                .map(cover -> fileStorage.publicUrl(cover.getStorageKey()))
+                .orElse(null);
+
         return BacklogDetailResponse.from(
                 entry,
+                coverUrl,
                 backlogEntryTagRepository.findTagNames(entryId),
                 playthroughRepository.findAllWithReferences(entryId),
                 acquisitionRepository.findAllWithReferences(entryId));
+    }
+
+    /** 빈 목록에 IN을 던지면 `in ()`이 되어 DB에 따라 문법 오류다 */
+    private Map<Long, String> coverUrlsOf(List<BacklogEntry> entries) {
+        List<Long> entryIds = entries.stream().map(BacklogEntry::getId).toList();
+        if (entryIds.isEmpty()) {
+            return Map.of();
+        }
+
+        return coverImageRepository.findByBacklogEntryIdIn(entryIds).stream()
+                .collect(Collectors.toMap(
+                        cover -> cover.getBacklogEntry().getId(),
+                        cover -> fileStorage.publicUrl(cover.getStorageKey()),
+                        (first, second) -> first));
     }
 
     /** 서버는 클라이언트를 믿지 않는다. size=100000이 오면 그대로 실행하지 않는다 */

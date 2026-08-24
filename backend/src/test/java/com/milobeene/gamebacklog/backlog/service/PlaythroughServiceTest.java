@@ -1,6 +1,7 @@
 package com.milobeene.gamebacklog.backlog.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.milobeene.gamebacklog.backlog.domain.BacklogEntry;
@@ -18,6 +19,7 @@ import com.milobeene.gamebacklog.game.repository.GameRepository;
 import com.milobeene.gamebacklog.member.domain.Member;
 import com.milobeene.gamebacklog.platform.domain.Device;
 import com.milobeene.gamebacklog.platform.domain.Platform;
+import com.milobeene.gamebacklog.platform.domain.PlatformAccount;
 import com.milobeene.gamebacklog.platform.repository.DeviceRepository;
 import com.milobeene.gamebacklog.platform.repository.PlatformRepository;
 import com.milobeene.gamebacklog.platform.service.PlatformAccountService;
@@ -451,6 +453,204 @@ class PlaythroughServiceTest {
                 .isInstanceOf(NotFoundException.class);   // 남의 것은 404
     }
 
+    // ── 소유권 (API 설계서 v0.2가 "Phase 3에서 막아야 한다"고 보류해둔 지점. 해제했다)
+
+    @Test
+    public void 남의_플랫폼_계정은_회차에_지정할_수_없다() {
+        /*
+         * given — 안 막으면 남의 계정 id를 넣어 상세 응답에 그 라벨을 실을 수 있다 (NFR-S7).
+         * 404인 이유 — 403을 주면 "그 id는 존재한다"가 새어나간다
+         */
+        Member other = saveMember("other-owner@example.com");
+        Platform steam = savePlatform("Steam");
+        PlatformAccount othersAccount = new PlatformAccount(other, steam, "남의 계정");
+        em.persist(othersAccount);
+        em.flush();
+
+        Long entryId = givenEntry("Hollow Knight");
+
+        //when //then
+        assertThatThrownBy(() -> playthroughService.add(memberId, entryId,
+                new PlaythroughCommand(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 5),
+                        PlaythroughStatus.COMPLETED, null, othersAccount.getId(), null, null, null)))
+                .isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    public void 삭제한_계정으로_플레이했던_회차도_수정할_수_있다() {
+        /*
+         * given — 소유권만 보고 소프트 삭제는 통과시키는 이유.
+         * 계정을 지웠다고 그 계정으로 플레이했던 과거 기록을 못 고치게 되면 안 된다
+         */
+        Long entryId = givenEntry("Celeste");
+        Platform steam = savePlatform("Steam");
+        Member me = em.find(Member.class, memberId);
+        PlatformAccount account = new PlatformAccount(me, steam, "본계정");
+        em.persist(account);
+        em.flush();
+
+        Long playthroughId = playthroughService.add(memberId, entryId,
+                new PlaythroughCommand(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 5),
+                        PlaythroughStatus.COMPLETED, null, account.getId(), null, null, null));
+
+        account.softDelete(java.time.LocalDateTime.now());
+        em.flush();
+
+        //when //then
+        assertThatCode(() -> playthroughService.update(memberId, playthroughId,
+                new PlaythroughCommand(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 8),
+                        PlaythroughStatus.COMPLETED, null, account.getId(), null, null, null)))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    public void 없는_기기_id면_404다() {
+        //given — 기기는 마스터라 소유권 검사는 없지만 존재 확인은 해야 한다
+        Long entryId = givenEntry("Hollow Knight");
+
+        //when //then
+        assertThatThrownBy(() -> playthroughService.add(memberId, entryId,
+                new PlaythroughCommand(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 5),
+                        PlaythroughStatus.COMPLETED, 999999L, null, null, null, null)))
+                .isInstanceOf(NotFoundException.class);
+    }
+
+    // ── BR-PT-02 무한대 점유 (v1.5 신설 조항. 감사에서 테스트 0건으로 드러남)
+
+    @Test
+    public void 진행_중_회차_이후_기간은_닫힌_회차로도_못_넣는다() {
+        /*
+         * given — BR-PT-02의 알맹이. 진행 중 회차는 **시작일부터 무한대까지** 점유한다.
+         * BR-PT-03(열린 회차 2개 금지)은 둘 다 열려야 발동하므로,
+         * 이 조합(열림 + 닫힘)을 막는 건 오직 occupiedUntil()의 LocalDate.MAX뿐이다.
+         * 그 반환을 startedOn으로 바꿔도 기존 테스트는 전부 통과했다
+         */
+        Long entryId = givenEntry("Hollow Knight");
+        playthroughService.add(memberId, entryId, playing(LocalDate.of(2026, 1, 1)));
+
+        //when //then
+        assertThatThrownBy(() -> playthroughService.add(memberId, entryId,
+                finished(LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 10))))
+                .isInstanceOf(ConflictException.class);
+    }
+
+    @Test
+    public void 진행_중_회차보다_앞선_과거_회차는_넣을_수_있다() {
+        //given — 점유는 시작일부터다. 그 이전은 비어 있다 (경계 반대편)
+        Long entryId = givenEntry("Hollow Knight");
+        playthroughService.add(memberId, entryId, playing(LocalDate.of(2026, 6, 1)));
+
+        //when //then
+        assertThatCode(() -> playthroughService.add(memberId, entryId,
+                finished(LocalDate.of(2025, 1, 1), LocalDate.of(2025, 2, 1))))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    public void 진행_중_회차의_시작일_하루_전까지만_허용된다() {
+        //given — 하루 차이로 갈리는 경계
+        Long entryId = givenEntry("Hollow Knight");
+        playthroughService.add(memberId, entryId, playing(LocalDate.of(2026, 6, 1)));
+
+        //when //then — 5/31에 끝나면 통과
+        assertThatCode(() -> playthroughService.add(memberId, entryId,
+                finished(LocalDate.of(2026, 5, 1), LocalDate.of(2026, 5, 31))))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    public void 진행_중_회차의_시작일에_닿으면_겹침이다() {
+        //given — 닫힌 구간이라 하루라도 닿으면 겹친 것으로 본다
+        Long entryId = givenEntry("Celeste");
+        playthroughService.add(memberId, entryId, playing(LocalDate.of(2026, 6, 1)));
+
+        //when //then
+        assertThatThrownBy(() -> playthroughService.add(memberId, entryId,
+                finished(LocalDate.of(2026, 5, 1), LocalDate.of(2026, 6, 1))))
+                .isInstanceOf(ConflictException.class);
+    }
+
+    @Test
+    public void 미래에_닫힌_회차가_있으면_그보다_앞선_진행_중_회차를_못_넣는다() {
+        /*
+         * given — occupiedUntil()의 MAX가 **this가 열린 회차일 때** 타는 유일한 경로다.
+         * 위 테스트들은 전부 other(sibling)가 열린 경우라 overlaps 안의 인라인 MAX만 탄다.
+         * 변이 테스트로 확인했다: occupiedUntil()의 MAX를 startedOn으로 바꿔도
+         * 이 테스트가 없으면 전부 통과한다
+         */
+        Long entryId = givenEntry("Hollow Knight");
+        playthroughService.add(memberId, entryId,
+                finished(LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 10)));
+
+        //when //then — 1/1에 시작한 진행 중 회차는 무한대까지 점유하므로 3월과 겹친다
+        assertThatThrownBy(() -> playthroughService.add(memberId, entryId,
+                playing(LocalDate.of(2026, 1, 1))))
+                .isInstanceOf(ConflictException.class);
+    }
+
+    // ── BR-PT-06 닫힌 상태의 종료일 필수 (불변식 절반이 미검증이었음)
+
+    @Test
+    public void 완료_회차에_종료일이_없으면_예외가_발생한다() {
+        //given — mustBeClosed()가 항상 false를 반환해도 기존 테스트는 전부 통과했다
+        Long entryId = givenEntry("Hollow Knight");
+
+        //when //then
+        assertThatThrownBy(() -> playthroughService.add(memberId, entryId,
+                inProgress(LocalDate.of(2026, 1, 1), PlaythroughStatus.COMPLETED)))
+                .isInstanceOf(InvalidInputException.class);
+    }
+
+    @Test
+    public void 중단_회차에_종료일이_없으면_예외가_발생한다() {
+        //given
+        Long entryId = givenEntry("Celeste");
+
+        //when //then
+        assertThatThrownBy(() -> playthroughService.add(memberId, entryId,
+                inProgress(LocalDate.of(2026, 1, 1), PlaythroughStatus.DROPPED)))
+                .isInstanceOf(InvalidInputException.class);
+    }
+
+    @Test
+    public void 상태별_종료일_규칙표가_그대로다() {
+        //given — BR-PT-06 표 전체를 한 번에 고정한다. enum이 늘거나 규칙이 뒤집히면 여기서 걸린다
+
+        //when //then
+        assertThat(PlaythroughStatus.PLAYING.mustBeOpen()).isTrue();
+        assertThat(PlaythroughStatus.PLAYING.mustBeClosed()).isFalse();
+
+        // PAUSED만 양쪽이 자유다 — "6/3~6/11 하다 멈춤"과 "시작하고 멈춤"을 둘 다 담아야 한다
+        assertThat(PlaythroughStatus.PAUSED.mustBeOpen()).isFalse();
+        assertThat(PlaythroughStatus.PAUSED.mustBeClosed()).isFalse();
+
+        assertThat(PlaythroughStatus.DROPPED.mustBeOpen()).isFalse();
+        assertThat(PlaythroughStatus.DROPPED.mustBeClosed()).isTrue();
+
+        assertThat(PlaythroughStatus.COMPLETED.mustBeOpen()).isFalse();
+        assertThat(PlaythroughStatus.COMPLETED.mustBeClosed()).isTrue();
+    }
+
+    // ── BR-PT-05 기기는 마스터 전체에서 선택 (우연히 통과하던 것을 의도로 고정)
+
+    @Test
+    public void 보유하지_않은_기기로도_회차를_남길_수_있다() {
+        //given — 친구 집에서 빌려 플레이한 기록을 남길 수 있어야 한다 (BR-PT-05 근거)
+        Long entryId = givenEntry("Hollow Knight");
+        Device myDevice = saveDevice("내 스위치");
+        Device friendsDevice = saveDevice("친구 PS5");
+        em.flush();
+
+        //when — 보유 목록에 없는 기기를 쓴다
+        Long playthroughId = playthroughService.add(memberId, entryId,
+                new PlaythroughCommand(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 5),
+                        PlaythroughStatus.COMPLETED, friendsDevice.getId(), null, null, null, null));
+
+        //then
+        assertThat(em.find(Playthrough.class, playthroughId).getDevice().getId())
+                .isEqualTo(friendsDevice.getId());
+    }
+
     // ── 헬퍼
 
     private Long memberId;
@@ -465,6 +665,44 @@ class PlaythroughServiceTest {
 
     private PlaythroughCommand playing(LocalDate startedOn) {
         return inProgress(startedOn, PlaythroughStatus.PLAYING);
+    }
+
+    @Test
+    public void 영속성_컨텍스트가_비워진_뒤에도_기간_겹침_검증이_돈다() {
+        //given — 실제 앱의 매 요청이 이 상태다 (새 컨텍스트에서 시작)
+        Long entryId = givenEntry("Hollow Knight");
+        playthroughService.add(memberId, entryId,
+                finished(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 5)));
+
+        em.flush();
+        em.clear();
+
+        /*
+         * 회귀 방지 — Playthrough.overlaps가 other의 값을 **필드로** 읽으면 여기서 NPE가 난다.
+         * findOwned가 BacklogEntry.lastPlaythrough(LAZY)를 프록시로 만들고,
+         * 뒤이은 형제 조회가 같은 id의 그 프록시를 돌려주는데,
+         * 프록시는 메서드 호출만 가로채고 자기 필드는 null로 둔다
+         */
+        //when //then — 안 겹치는 기간이라 통과해야 한다
+        assertThatCode(() -> playthroughService.add(memberId, entryId,
+                finished(LocalDate.of(2026, 2, 1), LocalDate.of(2026, 2, 5))))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    public void 컨텍스트가_비워져도_겹치는_기간은_잡아낸다() {
+        //given — 위 테스트가 "예외 안 남"만 보므로, 검증이 실제로 도는지도 확인한다
+        Long entryId = givenEntry("Celeste");
+        playthroughService.add(memberId, entryId,
+                finished(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 20)));
+
+        em.flush();
+        em.clear();
+
+        //when //then
+        assertThatThrownBy(() -> playthroughService.add(memberId, entryId,
+                finished(LocalDate.of(2026, 1, 10), LocalDate.of(2026, 1, 25))))
+                .isInstanceOf(ConflictException.class);
     }
 
     private PlaythroughCommand inProgress(LocalDate startedOn, PlaythroughStatus status) {

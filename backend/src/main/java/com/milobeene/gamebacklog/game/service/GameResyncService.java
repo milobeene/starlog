@@ -39,8 +39,7 @@ public class GameResyncService {
 
         CatalogGameDetail detail = catalogClient.findById(game.getExternalId());
 
-        return gameService.applyCatalogSync(gameId, detail.name(), detail.developers(),
-                detail.publishers(), detail.genres(), detail.releasedOn(),
-                detail.timeToBeatHours(), detail.coverImageId());
+        return gameService.applyCatalogSync(gameId, detail.name(),
+                GameCacheService.toCommand(detail));
     }
 }

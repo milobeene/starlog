@@ -86,6 +86,8 @@ public class HttpIgdbClient implements GameCatalogClient {
         String query = """
                 query games "game" {
                   fields name, first_release_date, cover.image_id,
+                         artworks.image_id, summary, storyline,
+                         rating, rating_count, platforms.abbreviation, platforms.name,
                          involved_companies.company.name,
                          involved_companies.developer,
                          involved_companies.publisher,
@@ -93,7 +95,7 @@ public class HttpIgdbClient implements GameCatalogClient {
                   where id = %d;
                 };
                 query game_time_to_beats "timeToBeat" {
-                  fields normally;
+                  fields hastily, normally, completely, count;
                   where game_id = %d;
                 };""".formatted(id, id);
 
@@ -115,8 +117,19 @@ public class HttpIgdbClient implements GameCatalogClient {
                 companyNames(game, InvolvedCompanyNode::isPublisher),
                 names(game.genres()),
                 toLocalDate(game.firstReleaseDate()),
+                game.coverImageId(),
+
+                game.bannerImageId(),
+                game.summary(),
+                game.storyline(),
+                toRating(game.rating()),
+                game.ratingCount(),
+                platformNames(game.platforms()),
+
+                toHours(timeToBeat == null ? null : timeToBeat.hastily()),
                 toHours(timeToBeat == null ? null : timeToBeat.normally()),
-                game.coverImageId());
+                toHours(timeToBeat == null ? null : timeToBeat.completely()),
+                timeToBeat == null ? null : timeToBeat.count());
     }
 
     /**
@@ -153,7 +166,7 @@ public class HttpIgdbClient implements GameCatalogClient {
         } catch (RestClientException e) {
             // 타임아웃·연결 실패·429·5xx·역직렬화 실패가 전부 여기로 모인다 (FR-SYS-04)
             log.error("IGDB 호출 실패 — endpoint={}", endpoint, e);
-            throw new ExternalApiException("게임 정보를 가져오지 못했습니다", e);
+            throw new ExternalApiException(ExternalApiException.Service.GAME_CATALOG, "게임 정보를 가져오지 못했습니다", e);
         }
     }
 
@@ -176,7 +189,7 @@ public class HttpIgdbClient implements GameCatalogClient {
                     Thread.sleep(waitMillis);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
-                    throw new ExternalApiException("게임 정보 호출 대기 중 중단되었습니다", e);
+                    throw new ExternalApiException(ExternalApiException.Service.GAME_CATALOG, "게임 정보 호출 대기 중 중단되었습니다", e);
                 }
             }
             lastCallAtMillis = System.currentTimeMillis();
@@ -222,6 +235,25 @@ public class HttpIgdbClient implements GameCatalogClient {
                 .map(InvolvedCompanyNode::company)
                 .filter(Objects::nonNull)
                 .map(NamedNode::name)
+                .filter(Objects::nonNull)
+                .toList();
+    }
+
+    /** IGDB rating은 Double이고 0~100 스케일이다. 우리 BigDecimal(5,2)에 맞춰 반올림한다 */
+    private static java.math.BigDecimal toRating(Double rating) {
+        if (rating == null || rating <= 0) {
+            return null;
+        }
+        return java.math.BigDecimal.valueOf(rating)
+                .setScale(2, java.math.RoundingMode.HALF_UP);
+    }
+
+    private static List<String> platformNames(List<PlatformNode> nodes) {
+        if (nodes == null) {
+            return List.of();
+        }
+        return nodes.stream()
+                .map(PlatformNode::label)
                 .filter(Objects::nonNull)
                 .toList();
     }
@@ -277,12 +309,38 @@ public class HttpIgdbClient implements GameCatalogClient {
             String name,
             @JsonProperty("first_release_date") Long firstReleaseDate,
             CoverNode cover,
+            List<CoverNode> artworks,
+            String summary,
+            String storyline,
+            Double rating,
+            @JsonProperty("rating_count") Integer ratingCount,
+            List<PlatformNode> platforms,
             @JsonProperty("involved_companies") List<InvolvedCompanyNode> involvedCompanies,
             List<NamedNode> genres,
-            Integer normally) {
+            Integer hastily,
+            Integer normally,
+            Integer completely,
+            Integer count) {
 
         String coverImageId() {
             return cover == null ? null : cover.imageId();
+        }
+
+        /** 배너는 첫 번째 아트워크를 쓴다. IGDB가 대표를 지정해주지 않아 순서를 신뢰한다 */
+        String bannerImageId() {
+            if (artworks == null || artworks.isEmpty()) {
+                return null;
+            }
+            return artworks.getFirst().imageId();
+        }
+    }
+
+    /** abbreviation이 없는 플랫폼이 있어 name으로 떨어진다 (예: 일부 레트로 기종) */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record PlatformNode(String abbreviation, String name) {
+
+        String label() {
+            return (abbreviation != null && !abbreviation.isBlank()) ? abbreviation : name;
         }
     }
 

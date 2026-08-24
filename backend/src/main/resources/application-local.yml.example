@@ -30,3 +30,13 @@ app:
     client-id: 여기에-Twitch-Client-ID
     client-secret: 여기에-Twitch-Client-Secret
 
+  # ── 커버 스토리지 (Phase 5). Cloudflare R2 기준.
+  #   endpoint: https://<account-id>.r2.cloudflarestorage.com
+  #   public-base-url: 버킷 공개 도메인 또는 연결한 커스텀 도메인
+  # MinIO로 로컬 검증하려면 endpoint를 http://localhost:9000 으로 바꾸면 된다
+#  storage:
+#    endpoint: https://여기에-계정ID.r2.cloudflarestorage.com
+#    bucket: game-backlog-covers
+#    access-key: 여기에-액세스-키
+#    secret-key: 여기에-시크릿-키
+#    public-base-url: https://여기에-공개-도메인

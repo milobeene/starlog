@@ -64,7 +64,7 @@ public class IgdbTokenProvider {
         }
 
         if (!properties.hasCredentials()) {
-            throw new ExternalApiException(
+            throw new ExternalApiException(ExternalApiException.Service.GAME_CATALOG, 
                     "IGDB 자격증명이 없습니다 (app.igdb.client-id / client-secret)");
         }
 
@@ -79,11 +79,11 @@ public class IgdbTokenProvider {
                     .body(TokenResponse.class);
         } catch (RestClientException e) {
             log.error("Twitch 토큰 발급 실패", e);
-            throw new ExternalApiException("게임 정보 서비스 인증에 실패했습니다", e);
+            throw new ExternalApiException(ExternalApiException.Service.GAME_CATALOG, "게임 정보 서비스 인증에 실패했습니다", e);
         }
 
         if (response == null || response.accessToken() == null) {
-            throw new ExternalApiException("Twitch 토큰 응답이 비어 있습니다");
+            throw new ExternalApiException(ExternalApiException.Service.GAME_CATALOG, "Twitch 토큰 응답이 비어 있습니다");
         }
 
         Instant expiresAt = Instant.now().plusSeconds(response.expiresIn());

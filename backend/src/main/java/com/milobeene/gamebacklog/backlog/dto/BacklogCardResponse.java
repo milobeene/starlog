@@ -20,7 +20,9 @@ public record BacklogCardResponse(
         List<String> genres,
         BigDecimal rating,
         BacklogStatus status,
-        LastPlaythrough lastPlaythrough
+        LastPlaythrough lastPlaythrough,
+        /** 마스터 커버 id (IGDB). 개인 커버가 없을 때의 폴백 (§6.10) */
+        String coverImageId
 ) {
 
     /** 회차가 0개면 통째로 null이다 */
@@ -51,18 +53,23 @@ public record BacklogCardResponse(
      * 개인 장르(genreLinks)와 마스터 장르(game.masterGenres).
      * 컬렉션 복사는 엔티티의 resolved*·getter가 책임진다 (BacklogEntry 주석 참고)
      *
-     * coverUrl이 항상 null인 이유 — CoverImage는 Phase 5(K)에서 업로드 경로가 생긴다.
-     * 지금 조인을 붙여도 행이 없다. 기본 이미지 폴백도 K-5에서 채운다
+     * **커버를 서버가 하나로 합치지 않는 이유** (K-5) — 마스터 커버는 자리마다 크기가 달라야 해서
+     * (목록은 t_cover_small, 상세는 t_cover_big_2x) 서버가 URL을 박으면 크기가 고정된다.
+     * 개인 URL과 마스터 id를 둘 다 내리고 `개인 ?? 마스터 ?? 기본` 폴백은 화면이 한다 (§6.10).
+     *
+     * coverUrl을 인자로 받는 이유 — CoverImage는 엔티티에 역방향 필드가 없다.
+     * 목록은 entryId를 모아 한 번에 읽고(N+1 차단) 그 결과를 여기로 넘긴다
      */
-    public static BacklogCardResponse from(BacklogEntry entry) {
+    public static BacklogCardResponse from(BacklogEntry entry, String coverUrl) {
         return new BacklogCardResponse(
                 entry.getId(),
-                null,
+                coverUrl,
                 entry.getDisplayName(),
                 entry.resolvedGenres(),
                 entry.getRating(),
                 entry.getStatus(),
-                LastPlaythrough.from(entry.getLastPlaythrough())
+                LastPlaythrough.from(entry.getLastPlaythrough()),
+                entry.getGame().getCoverImageId()
         );
     }
 }

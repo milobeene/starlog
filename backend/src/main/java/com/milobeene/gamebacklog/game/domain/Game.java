@@ -9,6 +9,7 @@ import lombok.Getter;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -67,21 +68,67 @@ public class Game extends BaseEntity {
     private String externalId;
 
     /**
-     * 클리어 소요 시간 (IGDB game_time_to_beats.normally, 초 → 시간).
-     * 참고값이라 오버라이드 대상이 아니다 (§6.2).
-     *
-     * v0.5에서 averagePlaytimeHours(RAWG playtime, Steam 평균 플레이 시간)에서 이름이 바뀌었다 —
-     * 지표의 의미 자체가 다르다. 전체 게임의 2.4%만 값을 갖지만 실제로 담을 만한 게임은 전수 보유한다
-     */
-    private Integer timeToBeatHours;
-
-    /**
-     * IGDB cover.image_id. **URL이 아니라 id다** — 크기별 URL은 표시 시점에 조합한다 (§6.10).
+     * IGDB cover.image_id (세로 박스아트). **URL이 아니라 id다** — 크기별 URL은 표시 시점에 조합한다 (§6.10).
      * URL을 통째로 저장하면 크기를 바꿀 때마다 전 행을 갱신해야 한다.
      * 개인 업로드 커버가 우선이고 이건 폴백이다
      */
     @Column(length = 50)
     private String coverImageId;
+
+    /** IGDB artworks[].image_id (가로 키아트). 상세 화면 상단용. 개인 배너는 두지 않는다 */
+    @Column(length = 50)
+    private String bannerImageId;
+
+    /**
+     * About / Storyline. 영문 원문 그대로 둔다 — 번역·수정하지 않는다 (§6.2).
+     *
+     * **TEXT인 이유는 실측이다.** IGDB 2,000건을 훑어보니
+     * summary는 최대 3,254자, **storyline은 20,764자**였다. 2000자로 잡았다가
+     * 인기 게임을 담는 순간 저장이 터진다.
+     *
+     * 목록 조회가 join fetch b.game이라 이 둘이 카드마다 딸려온다.
+     * 개인 규모라 감수하고 한 테이블로 뒀다 — 무거워지면 GameDetail 1:1 분리가 탈출구다
+     */
+    @Column(columnDefinition = "TEXT")
+    private String summary;
+
+    @Column(columnDefinition = "TEXT")
+    private String storyline;
+
+    /** IGDB 유저 평점 0~100. 평론가 평점(aggregated_rating)은 쓰지 않기로 했다 (§6.2) */
+    @Column(precision = 5, scale = 2)
+    private BigDecimal igdbRating;
+
+    /** 표본 수. 수천 단위라 신뢰도 판단에 쓴다 */
+    private Integer igdbRatingCount;
+
+    /**
+     * 출시 하드웨어 기종 (PS5, Switch, PC).
+     *
+     * ⚠️ **`Platform` 엔티티와 다른 개념이다.** 그쪽은 Steam·PSN 같은 유통·계정 체계다 (§2 용어).
+     * `Device`(내 보유 기기)와도 겹쳐 보이지만 엮지 않는다
+     */
+    @ElementCollection
+    @CollectionTable(name = "game_release_platform",
+            joinColumns = @JoinColumn(name = "game_id"))
+    @Column(name = "platform_name", length = 100)
+    private List<String> releasePlatforms = new ArrayList<>();
+
+    /**
+     * 클리어 소요 시간 3종 (IGDB game_time_to_beats, 초 → 시간). 참고값이라 오버라이드 대상이 아니다.
+     *
+     * v1.6에서 `timeToBeatHours` 하나였는데 상세 화면이 세 축을 요구해 쪼갰다 —
+     * `normally`가 곧 mainExtraHours라 옛 값은 그 자리로 이어진다.
+     * **All Styles는 IGDB에 없어 만들지 않는다** (§6.2)
+     */
+    private Integer mainStoryHours;
+
+    private Integer mainExtraHours;
+
+    private Integer completionistHours;
+
+    /** 표본 수. 퍼센트(Confidence)로 환산하지 않는다 — 환산 공식이 없다 */
+    private Integer timeToBeatSamples;
 
     private LocalDateTime lastSyncedAt;
 
@@ -160,16 +207,28 @@ public class Game extends BaseEntity {
      * name도 여기서 안 바꾼다 — 이름 변경은 담긴 항목의 displayName 전파가 딸려 있어
      * updateName 경로로만 들어가야 한다 (§7.2)
      */
-    public void syncFromCatalog(List<String> developers, List<String> publishers,
-                                List<String> masterGenres, LocalDate releasedOn,
-                                Integer timeToBeatHours, String coverImageId,
-                                LocalDateTime syncedAt) {
-        TextValues.replaceAll(this.developers, developers);
-        TextValues.replaceAll(this.publishers, publishers);
-        TextValues.replaceAll(this.masterGenres, masterGenres);
-        this.releasedOn = releasedOn;
-        this.timeToBeatHours = timeToBeatHours;
-        this.coverImageId = coverImageId;
+    public void syncFromCatalog(CatalogSyncCommand command, LocalDateTime syncedAt) {
+        TextValues.replaceAll(this.developers, command.developers());
+        TextValues.replaceAll(this.publishers, command.publishers());
+        TextValues.replaceAll(this.masterGenres, command.masterGenres());
+        TextValues.replaceAll(this.releasePlatforms, command.releasePlatforms());
+
+        this.releasedOn = command.releasedOn();
+        this.coverImageId = command.coverImageId();
+        this.bannerImageId = command.bannerImageId();
+        this.summary = command.summary();
+        this.storyline = command.storyline();
+        this.igdbRating = command.igdbRating();
+        this.igdbRatingCount = command.igdbRatingCount();
+        this.mainStoryHours = command.mainStoryHours();
+        this.mainExtraHours = command.mainExtraHours();
+        this.completionistHours = command.completionistHours();
+        this.timeToBeatSamples = command.timeToBeatSamples();
+
         this.lastSyncedAt = syncedAt;
+    }
+
+    public List<String> getReleasePlatforms() {
+        return List.copyOf(releasePlatforms);
     }
 }

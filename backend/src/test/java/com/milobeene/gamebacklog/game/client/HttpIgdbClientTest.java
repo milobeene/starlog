@@ -136,7 +136,7 @@ class HttpIgdbClientTest {
         assertThat(detail.releasedOn()).isEqualTo(LocalDate.of(2017, 2, 24));
         assertThat(detail.coverImageId()).isEqualTo("cobfzp");
         // 132982초 = 36.9시간 → 37
-        assertThat(detail.timeToBeatHours()).isEqualTo(37);
+        assertThat(detail.mainExtraHours()).isEqualTo(37);
     }
 
     @Test
@@ -153,7 +153,7 @@ class HttpIgdbClientTest {
 
         //then
         assertThat(detail.releasedOn()).isNull();
-        assertThat(detail.timeToBeatHours()).isNull();
+        assertThat(detail.mainExtraHours()).isNull();
         assertThat(detail.coverImageId()).isNull();
         assertThat(detail.developers()).isEmpty();
     }

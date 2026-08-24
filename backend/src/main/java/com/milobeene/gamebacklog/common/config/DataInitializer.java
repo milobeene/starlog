@@ -12,6 +12,7 @@ import com.milobeene.gamebacklog.backlog.domain.Playthrough;
 import com.milobeene.gamebacklog.backlog.domain.PlaythroughCommand;
 import com.milobeene.gamebacklog.backlog.domain.PlaythroughStatus;
 import com.milobeene.gamebacklog.common.entity.Money;
+import com.milobeene.gamebacklog.game.domain.CatalogSyncCommand;
 import com.milobeene.gamebacklog.game.domain.Game;
 import com.milobeene.gamebacklog.member.domain.Member;
 import com.milobeene.gamebacklog.tag.domain.Genre;
@@ -111,9 +112,12 @@ public class DataInitializer implements ApplicationRunner {
             // 1) 오버라이드 + 개인 장르 + 진행 중 회차 — 카드가 가장 꽉 찬 경우
             // externalId는 진짜 IGDB id다 — 가짜를 넣으면 재동기화(J-5)를 시드로 눌러볼 수 없다
             Game ringFit = Game.fromCatalog("Ring Fit Adventure", "122338", LocalDateTime.now());
-            ringFit.syncFromCatalog(List.of("Nintendo"), List.of("Nintendo"),
-                    List.of("Sports"), LocalDate.of(2019, 10, 18), 25, "cobcnq",
-                    LocalDateTime.now());
+            ringFit.syncFromCatalog(new CatalogSyncCommand(
+                    List.of("Nintendo"), List.of("Nintendo"), List.of("Sports"),
+                    LocalDate.of(2019, 10, 18), "cobcnq", null,
+                    "A fitness adventure game for Nintendo Switch.", null,
+                    new BigDecimal("78.40"), 312, List.of("Switch"),
+                    25, 37, 61, 41), LocalDateTime.now());
             em.persist(ringFit);
 
             BacklogEntry fit = BacklogEntry.of(member, ringFit);
@@ -134,9 +138,13 @@ public class DataInitializer implements ApplicationRunner {
 
             // 2) 개인 장르 없음 → 마스터 장르로 폴백되는지 확인용
             Game hollowKnight = Game.fromCatalog("Hollow Knight", "14593", LocalDateTime.now());
-            hollowKnight.syncFromCatalog(List.of("Team Cherry"), List.of("Team Cherry"),
-                    List.of("Platform", "Adventure", "Indie"), LocalDate.of(2017, 2, 24), 37, "cobfzp",
-                    LocalDateTime.now());
+            hollowKnight.syncFromCatalog(new CatalogSyncCommand(
+                    List.of("Team Cherry"), List.of("Team Cherry"),
+                    List.of("Platform", "Adventure", "Indie"), LocalDate.of(2017, 2, 24),
+                    "cobfzp", "ar584c",
+                    "Forge your own path in Hollow Knight!", null,
+                    new BigDecimal("90.15"), 1834, List.of("PC", "Switch", "PS4"),
+                    22, 37, 63, 29), LocalDateTime.now());
             em.persist(hollowKnight);
 
             BacklogEntry hollow = BacklogEntry.of(member, hollowKnight);

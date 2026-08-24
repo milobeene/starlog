@@ -7,7 +7,7 @@ import com.milobeene.gamebacklog.backlog.repository.AcquisitionRepository;
 import com.milobeene.gamebacklog.common.exception.NotFoundException;
 import com.milobeene.gamebacklog.platform.domain.Platform;
 import com.milobeene.gamebacklog.platform.domain.PlatformAccount;
-import com.milobeene.gamebacklog.platform.repository.PlatformAccountRepository;
+import com.milobeene.gamebacklog.platform.service.PlatformAccountService;
 import com.milobeene.gamebacklog.platform.repository.PlatformRepository;
 import com.milobeene.gamebacklog.subscription.service.SubscriptionService;
 import lombok.RequiredArgsConstructor;
@@ -23,7 +23,7 @@ public class AcquisitionService {
 
     private final AcquisitionRepository acquisitionRepository;
     private final PlatformRepository platformRepository;
-    private final PlatformAccountRepository platformAccountRepository;
+    private final PlatformAccountService platformAccountService;
     private final BacklogEntryFinder entryFinder;
     private final SubscriptionService subscriptionService;
 
@@ -81,9 +81,10 @@ public class AcquisitionService {
                 : platformRepository.findById(command.platformId())
                 .orElseThrow(() -> new NotFoundException("플랫폼을 찾을 수 없습니다. id=" + command.platformId()));
 
+        // 남의 계정은 붙일 수 없다 (PlaythroughService와 같은 이유. v0.2의 보류를 해제했다)
+        Long ownerId = acquisition.getBacklogEntry().getMember().getId();
         PlatformAccount account = (command.platformAccountId() == null) ? null
-                : platformAccountRepository.findById(command.platformAccountId())
-                .orElseThrow(() -> new NotFoundException("플랫폼 계정을 찾을 수 없습니다. id=" + command.platformAccountId()));
+                : platformAccountService.findOne(ownerId, command.platformAccountId());
 
         acquisition.assignReferences(platform, account);
 

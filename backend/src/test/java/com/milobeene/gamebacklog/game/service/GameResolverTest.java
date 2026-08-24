@@ -69,9 +69,9 @@ class GameResolverTest {
     @Test
     public void 캐시에_없으면_상세를_한_번_부르고_마스터에_저장한다() {
         //given — FR-GAME-02
-        catalog.willHaveDetail(new CatalogGameDetail("9767", "Hollow Knight",
+        catalog.willHaveDetail(CatalogGameDetail.basic("9767", "Hollow Knight",
                 List.of("Team Cherry"), List.of("Team Cherry"), List.of("Action", "Indie"),
-                LocalDate.of(2017, 2, 24), 30, "cobfzp"));
+                LocalDate.of(2017, 2, 24), "cobfzp", 30));
 
         //when
         Long gameId = gameResolver.resolve(null, "9767");
@@ -85,7 +85,7 @@ class GameResolverTest {
         assertThat(saved.getDevelopers()).containsExactly("Team Cherry");
         assertThat(saved.getMasterGenres()).containsExactly("Action", "Indie");
         assertThat(saved.getReleasedOn()).isEqualTo(LocalDate.of(2017, 2, 24));
-        assertThat(saved.getTimeToBeatHours()).isEqualTo(30);
+        assertThat(saved.getMainExtraHours()).isEqualTo(30);
         assertThat(saved.getLastSyncedAt()).isNotNull();
     }
 
@@ -122,7 +122,7 @@ class GameResolverTest {
     public void IGDB가_죽으면_아무것도_저장하지_않는다() {
         //given — FR-SYS-04 부분 저장 금지
         long before = gameRepository.findAll().size();
-        catalog.willFail(new ExternalApiException("타임아웃"));
+        catalog.willFail(new ExternalApiException(ExternalApiException.Service.GAME_CATALOG, "타임아웃"));
 
         //when //then
         assertThatThrownBy(() -> gameResolver.resolve(null, "9767"))

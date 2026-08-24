@@ -103,13 +103,24 @@ public class Playthrough extends BaseEntity {
 
     /**
      * BR-PT-02 기간 겹침. 닫힌 구간이라 하루라도 닿으면 겹친 것으로 본다.
-     * 진행 중 회차는 종료일이 없으므로 시작일부터 무한대까지 점유한다
+     * 진행 중 회차는 종료일이 없으므로 시작일부터 무한대까지 점유한다.
+     *
+     * ⚠️ **other의 값은 반드시 getter로 읽는다.** 필드로 직접 읽으면(`other.startedOn`)
+     * 같은 클래스라 컴파일은 되지만, other가 하이버네이트 **프록시일 때 항상 null이 나온다** —
+     * 프록시는 메서드 호출만 가로채고 자기 필드는 채우지 않는다.
+     * `BacklogEntry.lastPlaythrough`가 LAZY라 실제로 이 자리에 프록시가 들어온다:
+     * findOwned가 프록시를 만들고, 뒤이은 형제 조회가 같은 id의 그 프록시를 그대로 돌려준다
      */
     public boolean overlaps(Playthrough other) {
-        return !startedOn.isAfter(other.occupiedUntil())
-                && !other.startedOn.isAfter(this.occupiedUntil());
+        LocalDate otherStartedOn = other.getStartedOn();
+        LocalDate otherFinishedOn = other.getFinishedOn();
+        LocalDate otherOccupiedUntil = (otherFinishedOn != null) ? otherFinishedOn : LocalDate.MAX;
+
+        return !startedOn.isAfter(otherOccupiedUntil)
+                && !otherStartedOn.isAfter(this.occupiedUntil());
     }
 
+    /** this 전용이다. 다른 인스턴스에 대고 부르면 위 프록시 함정에 걸린다 */
     private LocalDate occupiedUntil() {
         return (finishedOn != null) ? finishedOn : LocalDate.MAX;
     }

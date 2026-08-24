@@ -15,7 +15,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
-public interface BacklogEntryRepository extends BaseRepository<BacklogEntry, Long> {
+public interface BacklogEntryRepository
+        extends BaseRepository<BacklogEntry, Long>, BacklogEntryRepositoryCustom {
 
     /**
      * 이미 담은 게임인지 확인 (FR-BL-02, uk_backlog_entry_member_game).

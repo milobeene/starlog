@@ -34,7 +34,7 @@ export default function PersonalRecordSection({ record }: Props) {
         <div className={form.stack}>
           <div className={form.grid2}>
             <label className={form.field}>
-              <span className={form.label}>평점 (0 ~ 100)</span>
+              <span className={form.label}>평점 (0.0 ~ 100.0)</span>
               <input
                 type="number"
                 min={0}

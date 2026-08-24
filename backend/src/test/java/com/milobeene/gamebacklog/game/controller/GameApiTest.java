@@ -44,7 +44,7 @@ class GameApiTest extends ControllerTestSupport {
     @Test
     public void IGDB_장애면_검색이_502다() throws Exception {
         //given — FR-SYS-04
-        catalog.willFail(new ExternalApiException("타임아웃"));
+        catalog.willFail(new ExternalApiException(ExternalApiException.Service.GAME_CATALOG, "타임아웃"));
 
         //when //then
         mockMvc.perform(get("/api/games").param("q", "hollow")
@@ -57,9 +57,9 @@ class GameApiTest extends ControllerTestSupport {
     public void externalId로_담으면_마스터에_저장되고_항목이_생긴다() throws Exception {
         //given — FR-GAME-02
         Member member = saveMember();
-        catalog.willHaveDetail(new CatalogGameDetail("9767", "Hollow Knight",
+        catalog.willHaveDetail(CatalogGameDetail.basic("9767", "Hollow Knight",
                 List.of("Team Cherry"), List.of("Team Cherry"), List.of("Action"),
-                LocalDate.of(2017, 2, 24), 30, "cobfzp"));
+                LocalDate.of(2017, 2, 24), "cobfzp", 30));
 
         //when
         mockMvc.perform(post("/api/backlog")
@@ -72,7 +72,7 @@ class GameApiTest extends ControllerTestSupport {
         em.flush();
         Game cached = gameRepository.findBySourceAndExternalId(GameSource.IGDB, "9767").orElseThrow();
         assertThat(cached.getName()).isEqualTo("Hollow Knight");
-        assertThat(cached.getTimeToBeatHours()).isEqualTo(30);
+        assertThat(cached.getMainExtraHours()).isEqualTo(30);
         assertThat(catalog.detailCalls).containsExactly("9767");
     }
 
@@ -102,7 +102,7 @@ class GameApiTest extends ControllerTestSupport {
     public void IGDB_장애면_백로그도_마스터도_남지_않는다() throws Exception {
         //given — FR-SYS-04 부분 저장 금지
         Member member = saveMember();
-        catalog.willFail(new ExternalApiException("타임아웃"));
+        catalog.willFail(new ExternalApiException(ExternalApiException.Service.GAME_CATALOG, "타임아웃"));
 
         //when
         mockMvc.perform(post("/api/backlog")
@@ -175,9 +175,9 @@ class GameApiTest extends ControllerTestSupport {
         Game game = saveCatalogGame("Holow Knight", "9767");
         addEntry(member, game);
 
-        catalog.willHaveDetail(new CatalogGameDetail("9767", "Hollow Knight",
+        catalog.willHaveDetail(CatalogGameDetail.basic("9767", "Hollow Knight",
                 List.of("Team Cherry"), List.of("Team Cherry"), List.of("Action"),
-                LocalDate.of(2017, 2, 24), 30, "cobfzp"));
+                LocalDate.of(2017, 2, 24), "cobfzp", 30));
 
         //when
         mockMvc.perform(post("/api/admin/games/{gameId}/resync", game.getId())
@@ -191,7 +191,7 @@ class GameApiTest extends ControllerTestSupport {
         em.clear();
         Game synced = em.find(Game.class, game.getId());
         assertThat(synced.getName()).isEqualTo("Hollow Knight");
-        assertThat(synced.getTimeToBeatHours()).isEqualTo(30);
+        assertThat(synced.getMainExtraHours()).isEqualTo(30);
         assertThat(synced.getReleasedOn()).isEqualTo(LocalDate.of(2017, 2, 24));
     }
 
