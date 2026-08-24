@@ -327,8 +327,15 @@ vault 76건을 Neon에 직접 투입했다. IGDB 한글 매칭 문제(77건 중 
 
 ## Phase 8 — 프론트엔드 (보너스)
 
-- [ ] N-1. Next.js 프로젝트 + 화면 설계 (**OI-11**)
-- [ ] N-2. CORS/쿠키 크로스 도메인 처리
+- [x] N-1. Next.js 프로젝트 + 화면 설계 (**OI-11**) — **골격까지 완료 (2026-08-24)**.
+      목업(5,239줄)을 걷어내고 라우트 그룹 `(public)`/`(app)` + 스텁 14개만 남겼다.
+      화면 구성은 `docs/frontend-brief.md`(디자인용), API·함정은 `docs/frontend-impl-notes.md`.
+      디자인 시안 수령 후 N-3 착수.
+      확정: ① 정적 export 안 씀(데이터는 전부 클라이언트에서) ② 상세는 `/library/[entryId]` 별도 라우트
+      ③ 프로필+설정을 `/settings` 하나로 합침
+- [ ] N-2. CORS/쿠키 크로스 도메인 처리 — **미구현. Phase 8의 첫 관문**.
+      `allowCredentials=true` + 명시적 origin이어야 세션 쿠키가 실린다
+- [ ] N-2b. `src/lib/api.ts` — fetch 래퍼 + `credentials: 'include'` + CSRF 헤더 + 에러 코드 분기
 - [ ] N-3. 주요 화면 — 목록/상세/입력, 정가 통화 UX (**OI-12**)
 
 ---

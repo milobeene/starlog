@@ -1,83 +1,7 @@
-/* 디자인 토큰 — 채도를 뺀 뉴트럴 베이지 바탕 / 포인트만 과감한 민트그린 */
-:root {
-  /* 면 */
-  --bg: #efece6;
-  --surface: #faf8f4;
-  --surface-alt: #e5e1da;
-  --surface-sunken: #dbd6cd;
-
-  /* 선 */
-  --border: #d9d4cb;
-  --border-strong: #bdb7ac;
-
-  /* 글자 */
-  --text: #35322d;
-  --text-muted: #736e66;
-  --text-faint: #a19b92;
-  --text-on-dark: #f2efe9;
-
-  /* 진한 뉴트럴 (제목·헤더) */
-  --brown: #4e4a44;
-  --brown-deep: #2b2823;
-
-  /* 포인트 — 여기만 채도를 살린다 */
-  --accent: #21c98a;
-  --accent-strong: #0e7a54;
-  --accent-soft: #d8f1e6;
-  --accent-ink: #05301f;
-
-  /* 디폴트 커버 배경 — 이미지가 뜨기 전/여백을 메운다 */
-  --cover-bg: #1b1b1b;
-
-  /* 상태 배지 */
-  --st-playing-bg: #d8f1e6;
-  --st-playing-fg: #0e7a54;
-  --st-completed-bg: #e1e5db;
-  --st-completed-fg: #4f5945;
-  --st-backlog-bg: #e5e1da;
-  --st-backlog-fg: #5e5951;
-  --st-paused-bg: #ebe4d6;
-  --st-paused-fg: #786443;
-  --st-dropped-bg: #eaddda;
-  --st-dropped-fg: #78544c;
-  --st-wishlist-bg: #efece6;
-  --st-wishlist-fg: #736e66;
-
-  /* 간격 */
-  --sp-1: 4px;
-  --sp-2: 8px;
-  --sp-3: 12px;
-  --sp-4: 16px;
-  --sp-5: 24px;
-  --sp-6: 32px;
-  --sp-7: 48px;
-  --sp-8: 64px;
-
-  /* 모서리 */
-  --r-sm: 4px;
-  --r-md: 8px;
-  --r-lg: 14px;
-  --r-full: 999px;
-
-  /* 그림자 */
-  --shadow-sm: 0 1px 2px rgba(43, 40, 35, 0.07);
-  --shadow-md: 0 4px 12px rgba(43, 40, 35, 0.1);
-  --shadow-lg: 0 12px 32px rgba(43, 40, 35, 0.16);
-
-  /* 글자 크기 */
-  --fs-xs: 0.75rem;
-  --fs-sm: 0.8125rem;
-  --fs-base: 0.9375rem;
-  --fs-md: 1.0625rem;
-  --fs-lg: 1.375rem;
-  --fs-xl: 1.75rem;
-  --fs-2xl: 2.25rem;
-
-  /* 레이아웃 */
-  --header-h: 60px;
-  --sidebar-w: 264px;
-  --content-max: 1180px;
-}
+/*
+ * 리셋만 남긴다. 색·간격·타이포 토큰은 디자인 확정 후 :root 에 채운다.
+ * 이전 베이지/민트 팔레트는 목업 전용이었으므로 제거했다.
+ */
 
 * {
   box-sizing: border-box;
@@ -91,14 +15,7 @@ body {
 }
 
 body {
-  color: var(--text);
-  background: var(--bg);
-  font-family:
-    system-ui,
-    -apple-system,
-    "Apple SD Gothic Neo",
-    sans-serif;
-  font-size: var(--fs-base);
+  font-family: system-ui, -apple-system, "Apple SD Gothic Neo", sans-serif;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
@@ -128,13 +45,9 @@ ol {
   list-style: none;
 }
 
-h1,
-h2,
-h3,
-h4 {
-  font-weight: 600;
-  line-height: 1.3;
-  color: var(--brown-deep);
+img {
+  max-width: 100%;
+  display: block;
 }
 
 table {
@@ -143,6 +56,6 @@ table {
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid currentColor;
   outline-offset: 2px;
 }

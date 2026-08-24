@@ -8,6 +8,8 @@
 - `docs/entity-design-v0.4.md` — 엔티티 설계서 (Phase 2 H-6까지 반영)
 - `docs/api-design-v0.2.md` — API 설계서 (Phase 2). 화면에서 역산한 엔드포인트
 - `docs/dto-design-v0.1.md` — DTO 설계 원칙 (H-1). 변환 위치·null 규약·검증 두 겹
+- `docs/frontend-brief.md` — **화면 브리프 (Phase 8, 디자인용)**. 페이지별로 어떤 섹션이 들어가는지
+- `docs/frontend-impl-notes.md` — 프론트 구현 메모. 화면별 API·함정
 - `docs/dev-order.md` — 개발 순서. 슬라이스 A~P 단위로 진행
 - `docs/스프링_어플리케이션_개발시_체크리스트.md`
 

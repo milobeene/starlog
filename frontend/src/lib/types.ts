@@ -1,6 +1,6 @@
 /**
  * 백엔드 DTO 미러링. docs/api-design-v0.2.md 기준.
- * 껍데기 단계라 실제 호출은 없고, 목데이터의 모양을 강제하는 용도다.
+ * 아직 호출부가 없다. api.ts(N-2 이후)가 이 타입으로 응답을 받는다.
  */
 
 export type EntryStatus =
@@ -61,6 +61,8 @@ export interface BacklogCard {
   rating: number | null;
   status: EntryStatus;
   lastPlaythrough: LastPlaythroughSummary | null;
+  /** 마스터 커버 id (IGDB). coverUrl(개인 업로드)이 null일 때의 폴백 (§6.10) */
+  coverImageId: string | null;
 }
 
 /* ── 상세 (GET /api/backlog/{entryId}) ────────────────────── */
@@ -189,14 +191,4 @@ export interface GameSearchResult {
   name: string;
   releasedOn: string | null;
   source: GameSource;
-}
-
-/**
- * 사이드바 전용 — 전체 항목 + 태그.
- * ⚠️ 대응하는 엔드포인트가 아직 없다. 목록 API는 페이징(20건)이고 카드에 태그가 안 실린다.
- */
-export interface SidebarEntry {
-  entryId: number;
-  displayName: string;
-  tags: string[];
 }
