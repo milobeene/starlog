@@ -55,8 +55,10 @@ create table auth_token (
     constraint fk_auth_token_member foreign key (member_id) references member (id)
 );
 
--- 정리 배치가 만료·사용분을 expires_at으로 지운다 (04:30 크론)
+-- 정리 배치(04:30 크론)의 술어는 OR 두 팔이다: 만료분은 expires_at, 사용분은 used_at.
+-- PG가 OR을 인덱스로 풀려면(BitmapOr) 양팔 모두 인덱스가 있어야 한다 — 한쪽만 있으면 전체 스캔
 create index idx_auth_token_expires_at on auth_token (expires_at);
+create index idx_auth_token_used_at on auth_token (used_at);
 -- 회원 탈퇴 물리 삭제가 member_id로 지운다
 create index idx_auth_token_member on auth_token (member_id);
 
@@ -272,11 +274,19 @@ create table backlog_entry (
     constraint fk_backlog_entry_game foreign key (game_id) references game (id)
 );
 
--- 목록 정렬 4경로와 1:1 대응 (상태 필터 / 최근 플레이 / 이름순 / 출시일순)
+-- 상태 필터(FR-QRY-03) 1개 + 정렬 4종(FR-QRY-04: 최근 플레이·평점·이름·출시일)
+-- + 대시보드 최다 플레이 타일(play_time_hours). BacklogSort와 1:1 대응이다.
+--
+-- 방향을 명시하는 이유 — 쿼리가 전부 desc nulls last인데(BacklogSort), PG의 방향 무지정
+-- btree는 역방향 스캔 시 desc nulls FIRST 순서라 정렬을 못 태우고 매번 다시 정렬한다.
+-- H2 dev에서는 방언 기본값이 nulls last라 이 괴리가 관측되지 않는다 — prod에서만 물리는 지점.
+-- 이름순(display_name)만 asc라 방향 무지정으로 둔다
 create index idx_backlog_member_status on backlog_entry (member_id, status);
-create index idx_backlog_member_last_played on backlog_entry (member_id, last_played_on);
+create index idx_backlog_member_last_played on backlog_entry (member_id, last_played_on desc nulls last);
 create index idx_backlog_member_display_name on backlog_entry (member_id, display_name);
-create index idx_backlog_member_released_on on backlog_entry (member_id, released_on_resolved);
+create index idx_backlog_member_released_on on backlog_entry (member_id, released_on_resolved desc nulls last);
+create index idx_backlog_member_rating on backlog_entry (member_id, rating desc nulls last);
+create index idx_backlog_member_play_time on backlog_entry (member_id, play_time_hours desc nulls last);
 -- 관리자 병합이 game_id로 항목을 옮긴다 (FR-ADM-02)
 create index idx_backlog_entry_game on backlog_entry (game_id);
 -- 회차 삭제 시 이 회차를 비정규화로 문 항목을 찾는다
