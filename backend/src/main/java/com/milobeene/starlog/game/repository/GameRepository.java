@@ -44,7 +44,8 @@ public interface GameRepository extends BaseRepository<Game, Long> {
      * 총 건수를 안 센다. 관리자 화면은 페이지네이션을 그려야 해서 Page가 필요하다
      */
     @Query("select g from Game g"
-            + " where (:keyword is null or lower(g.name) like lower(concat('%', :keyword, '%')))"
+            // keyword는 null이 아니라 ''로 온다 — concat 안의 null은 PG가 bytea로 잡아 죽는다 (MemberRepository.search 참고)
+            + " where lower(g.name) like lower(concat('%', :keyword, '%'))"
             + " order by g.name asc")
     org.springframework.data.domain.Page<Game> searchPage(@Param("keyword") String keyword,
                                                           Pageable pageable);

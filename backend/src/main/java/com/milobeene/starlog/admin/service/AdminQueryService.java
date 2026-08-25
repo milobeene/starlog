@@ -6,6 +6,8 @@ import com.milobeene.starlog.admin.dto.AuditLogResponse;
 import com.milobeene.starlog.admin.repository.AuditLogRepository;
 import com.milobeene.starlog.common.dto.PageResponse;
 import com.milobeene.starlog.common.util.TextValues;
+
+import java.util.Objects;
 import com.milobeene.starlog.game.repository.GameRepository;
 import com.milobeene.starlog.member.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
@@ -38,18 +40,27 @@ public class AdminQueryService {
     public PageResponse<AdminMemberResponse> findMembers(
             String email, LocalDate joinedFrom, LocalDate joinedTo, int page, int size) {
 
-        LocalDateTime from = (joinedFrom == null) ? null : joinedFrom.atStartOfDay();
-        LocalDateTime to = (joinedTo == null) ? null : joinedTo.plusDays(1).atStartOfDay();
+        // null 대신 경계값 — PG는 타입 문맥 없는 null 파라미터를 거부한다 (리포지토리 주석 참고).
+        // LocalDateTime.MIN/MAX는 PG timestamp 범위(4713 BC ~ 294276 AD)를 넘어서 못 쓴다
+        LocalDateTime from = (joinedFrom == null)
+                ? LocalDateTime.of(1970, 1, 1, 0, 0) : joinedFrom.atStartOfDay();
+        LocalDateTime to = (joinedTo == null)
+                ? LocalDateTime.of(9999, 1, 1, 0, 0) : joinedTo.plusDays(1).atStartOfDay();
+
+        // 빈 검색어는 null이 아니라 ''로 바인딩한다 — PG bytea 함정 (리포지토리 주석 참고)
+        String normalizedEmail = Objects.requireNonNullElse(TextValues.normalize(email), "");
 
         return PageResponse.from(
-                memberRepository.search(TextValues.normalize(email), from, to, pageRequest(page, size))
+                memberRepository.search(normalizedEmail, from, to, pageRequest(page, size))
                         .map(AdminMemberResponse::from));
     }
 
     /** 마스터 게임 목록 (FR-ADM-01). 검색어가 없으면 전체를 이름순으로 준다 */
     public PageResponse<AdminGameResponse> findGames(String keyword, int page, int size) {
+        String normalizedKeyword = Objects.requireNonNullElse(TextValues.normalize(keyword), "");
+
         return PageResponse.from(
-                gameRepository.searchPage(TextValues.normalize(keyword), pageRequest(page, size))
+                gameRepository.searchPage(normalizedKeyword, pageRequest(page, size))
                         .map(AdminGameResponse::from));
     }
 
