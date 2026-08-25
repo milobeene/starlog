@@ -83,7 +83,7 @@
 **패키지 바이 피처(package-by-feature).** 강의(활용 1편)의 `domain/`·`repository/` 평면 구조와 다르다.
 
 ```
-com.milobeene.gamebacklog
+com.milobeene.starlog
 ├─ GamebacklogApplication
 ├─ common/
 │  ├─ entity/      BaseEntity, Money
@@ -469,7 +469,7 @@ common/repository/BaseRepository<T, ID>      findById · findAll · delete · pe
 **근거**: `SimpleJpaRepository.save()`는 내부가 `if (새 엔티티) persist else merge`다. 준영속 엔티티에 부르면 조용히 `merge()`가 돌아 설계 원칙(변경 감지 우선, `merge()` 금지)을 어긴다. **인터페이스에서 `save()`를 빼면 컴파일 단계에서 막힌다.** 실제로 `repo.save(detached)`가 `cannot find symbol`로 거부되는 것을 확인했다.
 
 - 신규 저장은 `persist()`, 수정은 **변경 감지**, 벌크는 `@Modifying` + `@Query`
-- `@EnableJpaRepositories(basePackages = "com.milobeene.gamebacklog", repositoryBaseClass = BaseRepositoryImpl.class)` — 이 애노테이션을 직접 달면 부트 자동 설정이 꺼지므로 `basePackages`를 반드시 명시한다
+- `@EnableJpaRepositories(basePackages = "com.milobeene.starlog", repositoryBaseClass = BaseRepositoryImpl.class)` — 이 애노테이션을 직접 달면 부트 자동 설정이 꺼지므로 `basePackages`를 반드시 명시한다
 
 > **시행착오**: 처음에 커스텀 조각(fragment) 방식(`EntityPersister` + `EntityPersisterImpl`)으로 시도했으나 스프링이 조각 구현을 못 찾아 `persist`를 **메서드 이름 쿼리**로 해석하려다 실패했다. 조각은 리포지토리마다 **다른** 기능을 붙일 때 쓰는 것이고, **모든 리포지토리가 공유하는** 기능은 `repositoryBaseClass`가 정석이다.
 

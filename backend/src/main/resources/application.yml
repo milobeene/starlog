@@ -6,7 +6,7 @@ spring:
 
   datasource:
     # MODE=PostgreSQL: 마이그레이션 SQL 하나가 H2(dev)와 PostgreSQL(prod) 양쪽에서 돌게 한다
-    url: jdbc:h2:tcp://localhost/~/dev-tools/h2-data/gamebacklog;MODE=PostgreSQL
+    url: jdbc:h2:tcp://localhost/~/dev-tools/h2-data/starlog;MODE=PostgreSQL
     username: sa
     password:
     driver-class-name: org.h2.Driver

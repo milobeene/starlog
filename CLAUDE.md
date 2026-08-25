@@ -1,4 +1,4 @@
-# game-backlog
+# STARLOG
 
 게임 백로그 관리 서비스. Spring Boot REST API + Next.js. 개인 학습용 습작 프로젝트.
 
@@ -23,7 +23,7 @@
 - Spring Data JPA — `JpaRepository` 직접 상속 금지, `BaseRepository` 사용 (아래 JPA 12번)
 - QueryDSL은 L-1(Phase 6)에서 도입. 그전까지 동적 쿼리 없음
 - p6spy, Lombok, Spring Security(Phase 3), RestClient + RAWG API(Phase 4)
-- 패키지: `com.milobeene.gamebacklog`
+- 패키지: `com.milobeene.starlog`
 - 프론트: Next.js 16 / React 19 / **Tailwind v4** / react-markdown. 서비스명 **STARLOG**
 - 배포: Render(백엔드) / Vercel(프론트) / Neon(DB)
 

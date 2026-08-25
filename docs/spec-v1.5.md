@@ -1324,8 +1324,8 @@ Render 무료 티어는 인스턴스가 자주 재시작되어 **메모리 세�
 | 항목 | 값 |
 |---|---|
 | Group | `com.milobeene` |
-| Artifact | `gamebacklog` |
-| 루트 패키지 | `com.milobeene.gamebacklog` |
+| Artifact | `starlog` |
+| 루트 패키지 | `com.milobeene.starlog` |
 | 리포지토리 구조 | 모노레포 — `docs/`, `backend/`, `frontend/`(Phase 8) |
 
 #### 현재 의존성
@@ -1346,7 +1346,7 @@ BaseRepository<T, ID>          findById · findAll · delete · persist  (save()
 
 - **근거**: `SimpleJpaRepository.save()`는 내부가 `if (새 엔티티) persist else merge`다. 준영속 엔티티에 `save()`를 부르면 조용히 `merge()`가 돌아 §설계 원칙(변경 감지 우선, `merge()` 금지)을 어긴다. 인터페이스에서 `save()`를 빼면 **컴파일 단계에서** 막힌다
 - 신규 저장은 `persist()`, 수정은 **변경 감지**, 벌크는 `@Modifying` + `@Query`
-- `@EnableJpaRepositories(basePackages = "com.milobeene.gamebacklog", repositoryBaseClass = BaseRepositoryImpl.class)` — 이 애노테이션을 직접 달면 부트 자동 설정이 꺼지므로 `basePackages`를 반드시 명시한다
+- `@EnableJpaRepositories(basePackages = "com.milobeene.starlog", repositoryBaseClass = BaseRepositoryImpl.class)` — 이 애노테이션을 직접 달면 부트 자동 설정이 꺼지므로 `basePackages`를 반드시 명시한다
 
 #### Spring Boot 4 주의사항 (v1.4 추가)
 
