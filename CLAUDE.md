@@ -8,6 +8,9 @@
 - `docs/entity-design-v0.4.md` — 엔티티 설계서 (Phase 2 H-6까지 반영)
 - `docs/api-design-v0.2.md` — API 설계서 (Phase 2). 화면에서 역산한 엔드포인트
 - `docs/dto-design-v0.1.md` — DTO 설계 원칙 (H-1). 변환 위치·null 규약·검증 두 겹
+- `docs/design-system.md` — **디자인 시스템 (Phase 8). 모든 화면이 이걸 따른다.** 색·타이포·공통 컴포넌트
+- `docs/phase8-handoff.md` — **⚠️ 이어서 작업할 때 여기부터 읽을 것.** 진행 중이던 항목·함정·미결
+- `docs/design-request.md` — **디자인 요청서**. 입구·대시보드·라이브러리 3화면의 확정 구성. 서비스명 **STARLOG**
 - `docs/frontend-brief.md` — **화면 브리프 (Phase 8, 디자인용)**. 페이지별로 어떤 섹션이 들어가는지
 - `docs/frontend-impl-notes.md` — 프론트 구현 메모. 화면별 API·함정
 - `docs/dev-order.md` — 개발 순서. 슬라이스 A~P 단위로 진행
@@ -21,6 +24,7 @@
 - QueryDSL은 L-1(Phase 6)에서 도입. 그전까지 동적 쿼리 없음
 - p6spy, Lombok, Spring Security(Phase 3), RestClient + RAWG API(Phase 4)
 - 패키지: `com.milobeene.gamebacklog`
+- 프론트: Next.js 16 / React 19 / **Tailwind v4** / react-markdown. 서비스명 **STARLOG**
 - 배포: Render(백엔드) / Vercel(프론트) / Neon(DB)
 
 ### Spring Boot 4 주의
@@ -61,6 +65,35 @@
 - 예외는 `@RestControllerAdvice`로 일관된 상태코드
 - BigDecimal: `setScale` 후 범위 검증, 비교는 `compareTo` (`equals` 아님)
 - String: `trim()` 대신 `strip()`, 빈 문자열은 null로 수렴
+
+## 로컬 실행
+
+```bash
+# 백엔드 — local의 자격증명(IGDB·구글)만 쓰고 DB는 인메모리로. Neon을 안 건드린다
+cd backend && ./gradlew bootRun --args="--spring.profiles.active=dev,local \
+  --spring.datasource.url=jdbc:h2:mem:verify;DB_CLOSE_DELAY=-1;MODE=PostgreSQL \
+  --spring.datasource.driver-class-name=org.h2.Driver \
+  --spring.datasource.username=sa --spring.datasource.password="
+```
+
+`driver-class-name`까지 덮어야 한다 — `application-local.yml`이 PostgreSQL 드라이버를 지정한다.
+
+시드 계정: `milo.beene@gmail.com` / `1111`
+
+⚠️ **`NEXT_PUBLIC_DEV_MEMBER_ID`는 기본으로 꺼져 있다.** 켜면 로그인 없이 들어가지지만
+헤더 인증이 매 요청을 다시 통과시켜 **로그아웃이 먹지 않는다**(세션은 실제로 끊긴다).
+
+## 프론트 ↔ 백엔드 계약 검사
+
+프론트에는 테스트가 없어 DTO가 바뀌면 **조용히 어긋난다.** 실제로 네 번 겪었다.
+
+```bash
+python3 tools/contract-check.py
+```
+
+백엔드를 dev 프로필로 띄운 채 돌린다. 실제 JSON을 받아 `frontend/src/lib/types.ts`의
+인터페이스와 키를 대조한다 — 정적 파싱이 아니라 응답 기준이라 Jackson 직렬화까지 잡힌다.
+**백엔드 DTO를 만지면 이걸 돌릴 것.**
 
 ## 코드 컨벤션
 

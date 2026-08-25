@@ -41,14 +41,15 @@ class GoogleLinkFlowTest extends ControllerTestSupport {
         //when — 구글에서 돌아온 순간
         handler.onAuthenticationSuccess(request, response, googleAuthentication("sub-123"));
 
-        //then — 연결됐고, 세션 인증이 OAuth2User가 아니라 우리 회원이다
-        assertThat(response.getStatus()).isEqualTo(200);
+        //then — 설정 화면으로 돌려보내고, 세션 인증이 OAuth2User가 아니라 우리 회원이다
+        assertThat(response.getStatus()).isEqualTo(302);
+        assertThat(response.getRedirectedUrl()).contains("/settings").contains("LINKED");
         assertThat(reload(member).getGoogleSubject()).isEqualTo("sub-123");
         assertThat(sessionPrincipal(request).getMemberId()).isEqualTo(member.getId());
     }
 
     @Test
-    public void 이미_연결된_구글_계정이면_409를_주고_원래_로그인은_유지된다() throws Exception {
+    public void 이미_연결된_구글_계정이면_안내와_함께_돌려보내고_원래_로그인은_유지된다() throws Exception {
         //given — 같은 sub가 이미 다른 회원에 연결돼 있다
         Member owner = saveMember();
         owner.linkGoogle("sub-dup");
@@ -62,8 +63,12 @@ class GoogleLinkFlowTest extends ControllerTestSupport {
         //when
         handler.onAuthenticationSuccess(request, response, googleAuthentication("sub-dup"));
 
-        //then — 500이 아니라 409. 시도한 회원의 세션은 깨지지 않는다
-        assertThat(response.getStatus()).isEqualTo(409);
+        /*
+         * then — 500이 아니라 설정 화면으로 되돌려 보낸다 (OAuth는 브라우저 이동이라
+         * JSON을 쓰면 원문이 그대로 보인다). 시도한 회원의 세션은 깨지지 않는다
+         */
+        assertThat(response.getStatus()).isEqualTo(302);
+        assertThat(response.getRedirectedUrl()).contains("/settings").contains("ALREADY_LINKED");
         assertThat(reload(requester).getGoogleSubject()).isNull();
         assertThat(sessionPrincipal(request).getMemberId()).isEqualTo(requester.getId());
     }

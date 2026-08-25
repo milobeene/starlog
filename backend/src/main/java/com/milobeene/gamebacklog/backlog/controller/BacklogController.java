@@ -4,6 +4,8 @@ import com.milobeene.gamebacklog.backlog.domain.BacklogStatus;
 import com.milobeene.gamebacklog.backlog.dto.BacklogAddRequest;
 import com.milobeene.gamebacklog.backlog.dto.BacklogCardResponse;
 import com.milobeene.gamebacklog.backlog.dto.BacklogDetailResponse;
+import com.milobeene.gamebacklog.backlog.dto.BacklogNameResponse;
+import com.milobeene.gamebacklog.backlog.dto.CompanyDictionary;
 import com.milobeene.gamebacklog.backlog.dto.BacklogSearchCondition;
 import com.milobeene.gamebacklog.backlog.dto.BacklogSort;
 import com.milobeene.gamebacklog.backlog.dto.CoverConfirmRequest;
@@ -68,14 +70,19 @@ public class BacklogController {
             @RequestParam(required = false) List<BacklogStatus> status,
             @RequestParam(required = false) Long tagId,
             @RequestParam(required = false) Long genreId,
+            @RequestParam(required = false) String genreName,
+            @RequestParam(required = false) String developer,
+            @RequestParam(required = false) Integer releaseYear,
             @RequestParam(required = false) Long deviceId,
+            @RequestParam(required = false) Long platformId,
             @RequestParam(required = false) Long platformAccountId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "lastPlayed") String sort) {
 
         BacklogSearchCondition condition = new BacklogSearchCondition(
-                q, status, tagId, genreId, deviceId, platformAccountId);
+                q, status, tagId, genreId, genreName, developer, releaseYear,
+                deviceId, platformId, platformAccountId);
 
         return backlogQueryService.findCards(memberId, condition, page, size, BacklogSort.from(sort));
     }
@@ -84,6 +91,21 @@ public class BacklogController {
     @GetMapping("/facets")
     public FacetsResponse facets(@LoginMember Long memberId) {
         return backlogFacetQueryService.findFacets(memberId);
+    }
+
+    /**
+     * 사이드바 전체 목록 (Phase 8). 이름순, 페이징 없음.
+     * "/names"가 "/{entryId}"보다 먼저 매칭된다 — 리터럴 경로가 패스 변수보다 우선이다
+     */
+    @GetMapping("/names")
+    public List<BacklogNameResponse> names(@LoginMember Long memberId) {
+        return backlogQueryService.findNames(memberId);
+    }
+
+    /** 개발사·유통사 사전 (Phase 8) — 필터·편집 폼의 자동완성 선택지 */
+    @GetMapping("/companies")
+    public CompanyDictionary companies(@LoginMember Long memberId) {
+        return backlogQueryService.findCompanies(memberId);
     }
 
     /** 상세 (화면 2). 없거나 남의 것이면 404 — 403을 주면 id의 존재가 새어나간다 */

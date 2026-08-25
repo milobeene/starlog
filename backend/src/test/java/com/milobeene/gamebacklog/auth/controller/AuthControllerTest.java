@@ -84,8 +84,8 @@ class AuthControllerTest extends ControllerTestSupport {
     }
 
     @Test
-    public void 비밀번호가_8자_미만이면_400() throws Exception {
-        mockMvc.perform(signUp("short@example.com", "1234567", "밀로"))
+    public void 비밀번호가_4자_미만이면_400() throws Exception {
+        mockMvc.perform(signUp("short@example.com", "123", "밀로"))
                 .andExpect(status().isBadRequest());
     }
 

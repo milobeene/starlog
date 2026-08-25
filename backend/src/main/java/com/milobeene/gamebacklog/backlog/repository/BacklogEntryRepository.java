@@ -3,6 +3,7 @@ package com.milobeene.gamebacklog.backlog.repository;
 import com.milobeene.gamebacklog.backlog.domain.BacklogEntry;
 import com.milobeene.gamebacklog.game.domain.Game;
 import com.milobeene.gamebacklog.common.repository.BaseRepository;
+import com.milobeene.gamebacklog.backlog.dto.BacklogNameResponse;
 import com.milobeene.gamebacklog.backlog.dto.StatusCount;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -43,6 +44,44 @@ public interface BacklogEntryRepository
      * lastPlayedOn이 슬라이스 B 전까지 전부 null이라 의미가 없다
      */
     List<BacklogEntry> findByMemberIdAndDeletedAtIsNullOrderByDisplayNameAsc(Long memberId);
+
+    /**
+     * 사이드바 전체 목록 (Phase 8) — id와 이름만 뽑는다.
+     *
+     * 생성자 표현식이라 엔티티를 영속성 컨텍스트에 올리지 않는다 — select 절의
+     * 두 컬럼만 읽고 끝이라 76건이든 수백 건이든 스냅샷 비용이 없다.
+     * lower()는 영문 대소문자 정렬 때문 ('alba'가 'Baba' 뒤로 밀리면 안 된다),
+     * id asc는 같은 이름을 지웠다 다시 담았을 때 순서 고정용이다
+     */
+    @Query("select new com.milobeene.gamebacklog.backlog.dto.BacklogNameResponse(b.id, b.displayName)" +
+            " from BacklogEntry b" +
+            " where b.member.id = :memberId and b.deletedAt is null" +
+            " order by lower(b.displayName) asc, b.id asc")
+    List<BacklogNameResponse> findNames(@Param("memberId") Long memberId);
+
+    /**
+     * 개발사 사전 (Phase 8) — 자동완성 선택지용. **표시값 기준**이라 두 방으로 나뉜다.
+     *
+     * 오버라이드가 있으면 그것만, 비어 있으면 마스터 것 (§7.1). 한 쿼리로 합치려면
+     * 항목마다 분기가 갈려 SQL로 표현이 안 된다 — stats의 장르 분포가 두 방인 것과 같은 이유다
+     */
+    @Query("select distinct d from BacklogEntry b join b.developerOverrides d" +
+            " where b.member.id = :memberId and b.deletedAt is null")
+    List<String> findDeveloperOverrides(@Param("memberId") Long memberId);
+
+    @Query("select distinct d from BacklogEntry b join b.game g join g.developers d" +
+            " where b.member.id = :memberId and b.deletedAt is null" +
+            " and b.developerOverrides is empty")
+    List<String> findMasterDevelopers(@Param("memberId") Long memberId);
+
+    @Query("select distinct p from BacklogEntry b join b.publisherOverrides p" +
+            " where b.member.id = :memberId and b.deletedAt is null")
+    List<String> findPublisherOverrides(@Param("memberId") Long memberId);
+
+    @Query("select distinct p from BacklogEntry b join b.game g join g.publishers p" +
+            " where b.member.id = :memberId and b.deletedAt is null" +
+            " and b.publisherOverrides is empty")
+    List<String> findMasterPublishers(@Param("memberId") Long memberId);
 
     /**
      * 목록 카드 (H-2). 카드가 쓰는 ~ToOne을 전부 join fetch로 끌고 온다.

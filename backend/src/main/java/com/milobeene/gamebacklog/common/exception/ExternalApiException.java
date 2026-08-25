@@ -16,7 +16,8 @@ public class ExternalApiException extends RuntimeException {
     /** 사용자에게 보여줄 서비스 이름. 내부 벤더명(IGDB·R2)을 노출하지 않는다 */
     public enum Service {
         GAME_CATALOG("게임 정보 서비스"),
-        FILE_STORAGE("이미지 저장소");
+        FILE_STORAGE("이미지 저장소"),
+        MAIL("메일 발송 서비스");
 
         private final String label;
 

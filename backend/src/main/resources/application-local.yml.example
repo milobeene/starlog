@@ -36,7 +36,7 @@ app:
   # MinIO로 로컬 검증하려면 endpoint를 http://localhost:9000 으로 바꾸면 된다
 #  storage:
 #    endpoint: https://여기에-계정ID.r2.cloudflarestorage.com
-#    bucket: game-backlog-covers
+#    bucket: game-backlog-imgs
 #    access-key: 여기에-액세스-키
 #    secret-key: 여기에-시크릿-키
 #    public-base-url: https://여기에-공개-도메인

@@ -31,6 +31,18 @@ spring:
 
 # 배치 주기. 테스트에서는 절대 안 도는 값으로 덮는다 (application-test.yml)
 app:
+  # 인증 메일 (OI-02 — Resend). 키가 없으면 콘솔에만 찍힌다.
+  # SMTP가 아니라 HTTP API를 쓴다 — 배포처가 25/587 아웃바운드를 막아도 나간다
+  mail:
+    api-key: ${RESEND_API_KEY:}
+    from: ${MAIL_FROM:onboarding@resend.dev}
+    frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
+
+  # 크로스 도메인 허용 오리진 (N-2). 배포 때 CORS_ALLOWED_ORIGINS로 vercel 도메인을 더한다.
+  # allowCredentials=true라 와일드카드를 못 쓴다 — 반드시 명시 목록
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+
   # IGDB (J-7). 자격증명은 환경변수 또는 application-local.yml로만 들어온다.
   # ${VAR:} 는 "없으면 빈 문자열"이라 자격증명 없이도 기동한다 — 호출 시점에 502로 끊긴다.
   # 나머지 값의 기본값은 IgdbProperties의 compact 생성자가 들고 있다

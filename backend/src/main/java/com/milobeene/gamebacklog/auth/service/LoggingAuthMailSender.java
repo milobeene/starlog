@@ -1,8 +1,6 @@
 package com.milobeene.gamebacklog.auth.service;
 
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.annotation.Profile;
-import org.springframework.stereotype.Component;
 
 /**
  * dev·test용 구현. 콘솔에 토큰을 찍는다.
@@ -10,15 +8,12 @@ import org.springframework.stereotype.Component;
  * **원래 prod에는 구현체를 두지 않았다** — 조용히 아무 메일도 안 보내는 것보다
  * 못 뜨는 편이 낫다는 판단이었다.
  *
- * O-3에서 Neon 투입을 막아 prod를 임시로 열었다. 인증 메일이 필요한 건 **비밀번호 가입 경로뿐**이고
- * 실사용은 구글 OAuth라 실질 영향은 없다. 다만 **토큰이 로그에 찍힌다** —
- * 배포 전에 반드시 둘 중 하나로 닫는다:
- *   (a) 실제 SMTP 구현을 붙이고 여기서 prod를 뺀다
- *   (b) 비밀번호 가입을 막고 구글 OAuth만 남긴다 (인증 메일 경로 자체가 사라진다)
+ * **폴백 구현이다.** `app.mail.api-key`가 없을 때만 MailConfig가 이걸 고른다.
+ * 키가 있으면 ResendAuthMailSender가 실제로 발송한다 (OI-02 해소).
+ *
+ * ⚠️ 여기로 떨어지면 **토큰이 로그에 그대로 찍힌다.** 운영에서는 키를 반드시 넣을 것
  */
 @Slf4j
-@Component
-@Profile({"dev", "test", "prod"})
 public class LoggingAuthMailSender implements AuthMailSender {
 
     @Override
@@ -32,12 +27,14 @@ public class LoggingAuthMailSender implements AuthMailSender {
     }
 
     private void print(String title, String email, String rawToken) {
+        // 토큰만 찍으면 손으로 URL을 조립해야 한다. 바로 누를 수 있게 전체 링크를 준다
+        String path = title.startsWith("이메일") ? "/verify-email" : "/password-reset/confirm";
         log.info("""
 
                 ─────────────────────────────────────────────
-                 {} (dev)
+                 {} (콘솔 폴백 — 메일은 나가지 않았습니다)
                  받는 사람 : {}
-                 토큰      : {}
-                ─────────────────────────────────────────────""", title, email, rawToken);
+                 링크      : http://localhost:3000{}?token={}
+                ─────────────────────────────────────────────""", title, email, path, rawToken);
     }
 }

@@ -2,6 +2,8 @@ package com.milobeene.gamebacklog.backlog.service;
 
 import com.milobeene.gamebacklog.backlog.domain.BacklogEntry;
 import com.milobeene.gamebacklog.backlog.dto.BacklogCardResponse;
+import com.milobeene.gamebacklog.backlog.dto.BacklogNameResponse;
+import com.milobeene.gamebacklog.backlog.dto.CompanyDictionary;
 import com.milobeene.gamebacklog.backlog.dto.BacklogDetailResponse;
 import com.milobeene.gamebacklog.backlog.dto.BacklogSearchCondition;
 import com.milobeene.gamebacklog.backlog.dto.BacklogSort;
@@ -22,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * 화면 단위 조회 전용 서비스 (API 설계서 §0). 쓰기는 BacklogService가 그대로 맡는다.
@@ -82,6 +85,37 @@ public class BacklogQueryService {
                 backlogEntryTagRepository.findTagNames(entryId),
                 playthroughRepository.findAllWithReferences(entryId),
                 acquisitionRepository.findAllWithReferences(entryId));
+    }
+
+    /** 사이드바 전체 목록 (Phase 8). 페이징 없음 — 프로젝션 두 컬럼이라 전량이어도 가볍다 */
+    public List<BacklogNameResponse> findNames(Long memberId) {
+        return backlogEntryRepository.findNames(memberId);
+    }
+
+    /**
+     * 개발사·유통사 사전 (Phase 8). 오버라이드와 마스터를 합치고 이름순으로 정렬한다.
+     * 대소문자만 다른 중복은 남긴다 — 마스터가 준 표기를 임의로 고르면 안 된다
+     */
+    public CompanyDictionary findCompanies(Long memberId) {
+        List<String> devOverrides = backlogEntryRepository.findDeveloperOverrides(memberId);
+        List<String> pubOverrides = backlogEntryRepository.findPublisherOverrides(memberId);
+
+        return new CompanyDictionary(
+                merge(devOverrides, backlogEntryRepository.findMasterDevelopers(memberId)),
+                merge(pubOverrides, backlogEntryRepository.findMasterPublishers(memberId)),
+                sorted(devOverrides),
+                sorted(pubOverrides));
+    }
+
+    private List<String> sorted(List<String> names) {
+        return names.stream().distinct().sorted(String.CASE_INSENSITIVE_ORDER).toList();
+    }
+
+    private List<String> merge(List<String> overrides, List<String> master) {
+        return Stream.concat(overrides.stream(), master.stream())
+                .distinct()
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .toList();
     }
 
     /** 빈 목록에 IN을 던지면 `in ()`이 되어 DB에 따라 문법 오류다 */

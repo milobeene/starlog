@@ -436,6 +436,110 @@ class BacklogSearchTest extends ControllerTestSupport {
 
     // ── 헬퍼
 
+    @Test
+    public void 개발사로_거른다() throws Exception {
+        //given
+        Member member = saveMember();
+        addEntry(member, saveGameWithMaster("Splatoon", "Nintendo EPD", "Shooter", 2022));
+        addEntry(member, saveGameWithMaster("Hades", "Supergiant Games", "Roguelike", 2020));
+
+        //when //then — 부분 일치, 대소문자 무시
+        mockMvc.perform(get("/api/backlog").param("developer", "nintendo")
+                        .header("X-Member-Id", member.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.items[0].displayName").value("Splatoon"));
+    }
+
+    @Test
+    public void 출시년도로_거른다() throws Exception {
+        //given
+        Member member = saveMember();
+        addEntry(member, saveGameWithMaster("Splatoon", "Nintendo EPD", "Shooter", 2022));
+        addEntry(member, saveGameWithMaster("Hades", "Supergiant Games", "Roguelike", 2020));
+
+        //when //then
+        mockMvc.perform(get("/api/backlog").param("releaseYear", "2020")
+                        .header("X-Member-Id", member.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.items[0].displayName").value("Hades"));
+    }
+
+    @Test
+    public void 개인_장르가_없으면_마스터_장르로도_걸린다() throws Exception {
+        //given — 개인 장르는 마스터를 덮어쓰는 값이다 (§6.7).
+        // genreId로 거르던 예전 방식은 이 항목을 놓쳤다
+        Member member = saveMember();
+        addEntry(member, saveGameWithMaster("Hades", "Supergiant Games", "Roguelike", 2020));
+
+        //when //then
+        mockMvc.perform(get("/api/backlog").param("genreName", "roguelike")
+                        .header("X-Member-Id", member.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.items[0].displayName").value("Hades"));
+    }
+
+    @Test
+    public void 개인_장르가_있으면_마스터_장르로는_안_걸린다() throws Exception {
+        //given — 덮어쓰기다. 화면에 안 보이는 마스터 값으로 걸리면 결과와 표시가 어긋난다
+        Member member = saveMember();
+        Long entryId = addEntry(member, saveGameWithMaster("Hades", "Supergiant", "Roguelike", 2020));
+
+        mockMvc.perform(put("/api/backlog/{id}/genres", entryId)
+                        .header("X-Member-Id", member.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"names\":[\"핵앤슬래시\"]}"))
+                .andExpect(status().isOk());
+        em.flush();
+        em.clear();
+
+        //when //then — 마스터 장르로는 0건, 개인 장르로는 1건
+        mockMvc.perform(get("/api/backlog").param("genreName", "Roguelike")
+                        .header("X-Member-Id", member.getId()))
+                .andExpect(jsonPath("$.totalElements").value(0));
+
+        mockMvc.perform(get("/api/backlog").param("genreName", "핵앤슬래시")
+                        .header("X-Member-Id", member.getId()))
+                .andExpect(jsonPath("$.totalElements").value(1));
+    }
+
+    @Test
+    public void 개발사_사전은_오버라이드가_있으면_마스터를_대신한다() throws Exception {
+        //given
+        Member member = saveMember();
+        addEntry(member, saveGameWithMaster("Splatoon", "Nintendo EPD", "Shooter", 2022));
+        Long overridden = addEntry(member,
+                saveGameWithMaster("Hades", "Supergiant Games", "Roguelike", 2020));
+
+        mockMvc.perform(put("/api/backlog/{id}/overrides", overridden)
+                        .header("X-Member-Id", member.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"developers\":[\"슈퍼자이언트\"]}"))
+                .andExpect(status().isOk());
+        em.flush();
+        em.clear();
+
+        //when //then — 덮어쓴 항목의 마스터 개발사는 사전에서 빠진다
+        mockMvc.perform(get("/api/backlog/companies").header("X-Member-Id", member.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.developers.length()").value(2))
+                .andExpect(jsonPath("$.developers[?(@ == 'Nintendo EPD')]").exists())
+                .andExpect(jsonPath("$.developers[?(@ == '슈퍼자이언트')]").exists())
+                .andExpect(jsonPath("$.developers[?(@ == 'Supergiant Games')]").doesNotExist());
+    }
+
+    /** 마스터 정보(개발사·장르·출시일)를 채운 게임 */
+    private Game saveGameWithMaster(String name, String developer, String genre, int year)
+            throws Exception {
+        Game game = saveGame(name);
+        game.updateMasterInfo(java.util.List.of(developer), java.util.List.of(),
+                java.util.List.of(genre), java.time.LocalDate.of(year, 5, 1), null);
+        em.flush();
+        return game;
+    }
+
     private Long addEntry(Member member, Game game) throws Exception {
         String body = mockMvc.perform(post("/api/backlog")
                         .header("X-Member-Id", member.getId())

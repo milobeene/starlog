@@ -124,7 +124,7 @@ class PasswordResetTest extends ControllerTestSupport {
         String rawToken = mailSender.of(Kind.PASSWORD_RESET).getFirst().token();
 
         //when //then — 여기만 느슨하면 재설정이 우회로가 된다
-        mockMvc.perform(confirm(rawToken, "1234567"))
+        mockMvc.perform(confirm(rawToken, "123"))
                 .andExpect(status().isBadRequest());
     }
 

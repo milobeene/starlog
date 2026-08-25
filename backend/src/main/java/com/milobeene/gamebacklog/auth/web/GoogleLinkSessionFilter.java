@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
@@ -18,6 +19,7 @@ import java.io.IOException;
  * 그 시점에는 "원래 로그인해 있던 회원"이 이미 사라져서, 연결(link)인지 로그인(login)인지
  * 구분할 방법이 없다. 떠나기 전에 남겨두는 게 유일한 방법이다.
  */
+@Slf4j
 public class GoogleLinkSessionFilter extends OncePerRequestFilter {
 
     public static final String LINK_MEMBER_ID = "GOOGLE_LINK_MEMBER_ID";
@@ -32,6 +34,7 @@ public class GoogleLinkSessionFilter extends OncePerRequestFilter {
             if (authentication != null
                     && authentication.getPrincipal() instanceof MemberPrincipal principal) {
                 request.getSession(true).setAttribute(LINK_MEMBER_ID, principal.getMemberId());
+                log.info("구글 연결 시작 — memberId={}", principal.getMemberId());
             }
         }
 

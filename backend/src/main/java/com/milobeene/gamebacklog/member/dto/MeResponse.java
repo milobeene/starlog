@@ -18,11 +18,18 @@ public record MeResponse(
         List<SubscriptionItem> subscriptions
 ) {
 
-    public record Profile(Long memberId, String email, String nickname, String memo) {
+    /**
+     * `googleLinked`가 필요한 이유 — 화면이 "연결"과 "해제" 중 무엇을 보여줄지 정해야 한다.
+     * `googleSubject` 자체를 내리지 않는 건 구글 계정 식별자라 밖에 나갈 값이 아니기 때문
+     */
+    public record Profile(Long memberId, String email, String nickname, String memo,
+                          boolean googleLinked, boolean hasPassword) {
 
         static Profile from(Member member) {
             return new Profile(member.getId(), member.getEmail(),
-                    member.getNickname(), member.getMemo());
+                    member.getNickname(), member.getMemo(),
+                    member.getGoogleSubject() != null,
+                    member.hasPassword());
         }
     }
 

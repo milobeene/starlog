@@ -1,61 +1,251 @@
+@import "tailwindcss";
+
 /*
- * 리셋만 남긴다. 색·간격·타이포 토큰은 디자인 확정 후 :root 에 채운다.
- * 이전 베이지/민트 팔레트는 목업 전용이었으므로 제거했다.
+ * STARLOG 디자인 토큰. 규칙은 docs/design-system.md가 원본이다.
+ * @theme 안의 값은 Tailwind가 유틸리티 클래스로 만들어 준다 (bg-surface, text-muted …)
  */
+@theme {
+  --color-ink: #050505;
+  --color-line: rgba(255, 255, 255, 0.15);
+  --color-line-soft: rgba(255, 255, 255, 0.08);
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+  /* Syncopate은 700 하나만 받아온다 — 기본 굵기를 토큰에 붙여야 폴백으로 안 샌다 */
+  --font-display: var(--font-syncopate), sans-serif;
+  --font-display--font-weight: 700;
+  --font-sans: var(--font-inter), "Apple SD Gothic Neo", sans-serif;
+
+  /* 숫자 전용. 나중에 폭이 균일한 모노 폰트로 갈아끼운다 — 이 한 줄만 바꾸면 된다 */
+  --font-num: var(--font-inter), ui-monospace, monospace;
 }
 
-html,
-body {
-  height: 100%;
+:root {
+  --border-color: rgba(255, 255, 255, 0.15);
+  --glass-bg: rgba(10, 10, 10, 0.4);
+  --glass-border: rgba(255, 255, 255, 0.08);
 }
 
-body {
-  font-family: system-ui, -apple-system, "Apple SD Gothic Neo", sans-serif;
-  line-height: 1.6;
-  -webkit-font-smoothing: antialiased;
+/*
+ * 엘리먼트 리셋은 반드시 @layer base 안에 둔다.
+ * 레이어 밖에 있으면 캐스케이드 레이어 규칙상 **모든 레이어를 이겨서**
+ * `button { background: none }` 하나가 bg-white 같은 유틸리티를 전부 무력화한다
+ */
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
+    background-color: #050505;
+    color: #ffffff;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    font-family: var(--font-sans);
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  button {
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: none;
+    cursor: pointer;
+  }
+
+  input,
+  textarea,
+  select {
+    font: inherit;
+    color: inherit;
+  }
+
+  ul,
+  ol {
+    list-style: none;
+  }
+
+  img {
+    max-width: 100%;
+    display: block;
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+
+  :focus-visible {
+    outline: 1px solid rgba(255, 255, 255, 0.6);
+    outline-offset: 2px;
+  }
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
+/*
+ * 숫자에는 전부 `.num`을 붙인다 — 통계·평점·금액·날짜·카운트.
+ * tabular-nums가 자릿수 폭을 고정해서 값이 바뀌어도 자리가 안 흔들린다.
+ * 모노 폰트로 바꿀 때 --font-num 하나만 갈면 전 화면에 적용된다
+ */
+.num {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
 }
 
-button {
-  font: inherit;
-  color: inherit;
-  background: none;
-  border: none;
-  cursor: pointer;
+/* ── 선 ────────────────────────────────────────────────── */
+.border-line { border-color: var(--border-color); }
+.border-b-line { border-bottom: 1px solid var(--border-color); }
+.border-t-line { border-top: 1px solid var(--border-color); }
+.border-l-line { border-left: 1px solid var(--border-color); }
+.border-r-line { border-right: 1px solid var(--border-color); }
+.divide-y-line > * + * { border-top: 1px solid var(--border-color); }
+.divide-x-line > * + * { border-left: 1px solid var(--border-color); }
+
+/* ── 유리 판넬 — 사이드바·드롭다운 ─────────────────────────── */
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
 }
 
-input,
-textarea,
-select {
-  font: inherit;
-  color: inherit;
+/* ── 상태 배지 6종 ─────────────────────────────────────── */
+.badge-wishlist  { background: #475569; color: #f8fafc; }
+.badge-backlog   { background: #7e22ce; color: #faf5ff; }
+.badge-playing   { background: #15803d; color: #f0fdf4; }
+.badge-paused    { background: #a16207; color: #fefce8; }
+.badge-dropped   { background: #b91c1c; color: #fef2f2; }
+.badge-completed { background: #1d4ed8; color: #eff6ff; }
+
+/*
+ * 커버 위에 얹는 상태 글씨 — 배경 없이 텍스트만 띄운다.
+ * 그림자를 네 겹 겹쳐 어두운 테두리를 만든다: 밝은 커버 위에서도 글자가 살아남는다
+ */
+/*
+ * 팝업 메뉴 공통 — 정렬 드롭다운·자동완성·프로필 메뉴가 같은 모양을 쓴다.
+ * 패딩을 상하좌우 같은 폭으로 좁게 주고, 항목 사이에 갭을 둔다
+ */
+.menu-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
 }
 
-ul,
-ol {
-  list-style: none;
-}
-
-img {
-  max-width: 100%;
-  display: block;
-}
-
-table {
-  border-collapse: collapse;
+.menu-item {
+  display: flex;
   width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-radius: 5px;
+  padding: 6px 8px;
+  text-align: left;
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.7);
+  transition: background-color 0.12s, color 0.12s;
+}
+.menu-item:hover,
+.menu-item-active {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
 }
 
-:focus-visible {
-  outline: 2px solid currentColor;
-  outline-offset: 2px;
+/*
+ * 커버 위에 얹는 상태 — 반투명 박스 + 블러. 커버 아트를 덜 가리면서도
+ * 글자가 배경 밝기에 안 흔들린다 (글로우 그림자는 밝은 커버에서 번져 보였다)
+ */
+.badge-chip {
+  color: var(--chip-fg);
+  background: var(--chip-bg);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
 }
+
+/* 파스텔 배경 + 어두운 글씨. 흰 글씨를 얹으면 밝은 바탕에서 대비가 안 난다 */
+.chip-wishlist  { --chip-bg: rgba(203, 213, 225, 0.92); --chip-fg: #1e293b; }
+.chip-backlog   { --chip-bg: rgba(216, 180, 254, 0.92); --chip-fg: #4c1d95; }
+.chip-playing   { --chip-bg: rgba(167, 233, 190, 0.92); --chip-fg: #14532d; }
+.chip-paused    { --chip-bg: rgba(253, 230, 138, 0.92); --chip-fg: #713f12; }
+.chip-dropped   { --chip-bg: rgba(254, 189, 189, 0.92); --chip-fg: #7f1d1d; }
+.chip-completed { --chip-bg: rgba(179, 210, 253, 0.92); --chip-fg: #1e3a8a; }
+
+/* ── 커버 자리 ─────────────────────────────────────────── */
+.image-placeholder {
+  background-color: rgba(255, 255, 255, 0.05);
+  background-image: repeating-linear-gradient(
+    45deg, transparent, transparent 10px,
+    rgba(255, 255, 255, 0.02) 10px, rgba(255, 255, 255, 0.02) 20px
+  );
+}
+
+/* ── 스크롤바 ─────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.3); }
+
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ── 상세 배너 페이드 ──────────────────────────────────── */
+.banner-fade {
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 40%, rgba(0,0,0,0.55) 72%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 40%, rgba(0,0,0,0.55) 72%, transparent 100%);
+}
+
+
+/* ── 마크다운 메모 — 실데이터 42건이 헤더 + 중첩 불릿 구조다 ─────── */
+.markdown > * + * { margin-top: 0.85em; }
+.markdown h1 { font-size: 1.15rem; font-weight: 600; color: rgba(255,255,255,0.92); }
+.markdown h2 { font-size: 1.05rem; font-weight: 600; color: rgba(255,255,255,0.88); }
+.markdown h3 { font-size: 0.95rem; font-weight: 600; color: rgba(255,255,255,0.82); }
+.markdown h1, .markdown h2, .markdown h3 { margin-top: 1.1em; letter-spacing: -0.01em; }
+/* 제목 바로 아래 본문은 붙여 쓴다 — 제목이 자기 문단과 떨어져 보이면 안 된다 */
+.markdown h1 + *, .markdown h2 + *, .markdown h3 + * { margin-top: 0.35em; }
+/* 첫 요소의 위 여백은 없앤다. `# 총평`으로 시작하는 메모가 위로 붕 떠 보인다 */
+.markdown > :first-child { margin-top: 0; }
+.markdown p { color: rgba(255,255,255,0.75); }
+.markdown ul { list-style: disc; padding-left: 1.15rem; }
+.markdown ol { list-style: decimal; padding-left: 1.35rem; }
+.markdown li { margin-top: 0.3em; color: rgba(255,255,255,0.75); }
+.markdown li > ul, .markdown li > ol { margin-top: 0.3em; }
+.markdown strong { font-weight: 600; color: rgba(255,255,255,0.95); }
+.markdown em { font-style: italic; }
+.markdown a { text-decoration: underline; text-underline-offset: 2px; color: #93c5fd; }
+.markdown code {
+  border-radius: 3px; background: rgba(255,255,255,0.08);
+  padding: 0.1em 0.35em; font-size: 0.875em;
+}
+.markdown pre {
+  overflow-x: auto; border-radius: 6px;
+  background: rgba(0,0,0,0.4); padding: 0.9rem;
+}
+.markdown pre code { background: none; padding: 0; }
+.markdown blockquote {
+  border-left: 2px solid rgba(255,255,255,0.2);
+  padding-left: 0.9rem; color: rgba(255,255,255,0.55);
+}
+.markdown hr { border: 0; border-top: 1px solid rgba(255,255,255,0.12); margin: 1.4em 0; }
+.markdown table { width: 100%; font-size: 0.875em; }
+.markdown th, .markdown td {
+  border: 1px solid rgba(255,255,255,0.1); padding: 0.4rem 0.6rem; text-align: left;
+}
+.markdown th { background: rgba(255,255,255,0.05); font-weight: 600; }

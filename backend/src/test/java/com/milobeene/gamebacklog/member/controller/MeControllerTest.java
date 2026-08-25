@@ -7,6 +7,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.milobeene.gamebacklog.member.domain.Member;
 import com.milobeene.gamebacklog.support.ControllerTestSupport;
 import com.milobeene.gamebacklog.platform.domain.Device;
@@ -136,6 +138,69 @@ class MeControllerTest extends ControllerTestSupport {
                 .andExpect(jsonPath("$.subscriptions.length()").value(0));
     }
 
+
+    @Test
+    public void 현재_비밀번호가_틀리면_변경되지_않는다() throws Exception {
+        //given
+        Member member = saveMember();   // 비밀번호 1111
+
+        //when //then — 세션 탈취만으로 계정을 가져가는 경로를 막는다
+        mockMvc.perform(changePassword(member, "\"wrong\"", "9999"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    public void 현재_비밀번호가_맞으면_변경된다() throws Exception {
+        //given
+        Member member = saveMember();
+
+        //when
+        mockMvc.perform(changePassword(member, "\"1111\"", "9999"))
+                .andExpect(status().isNoContent());
+        em.flush();
+        em.clear();
+
+        //then — 새 비밀번호로 로그인된다
+        assertThat(passwordEncoder.matches("9999", reloadMember(member).getPassword())).isTrue();
+    }
+
+    @Test
+    public void 구글_전용_계정은_현재_비밀번호_없이_설정한다() throws Exception {
+        //given — 비밀번호가 null인 계정 (BR-AUTH-01)
+        Member member = Member.signUpWithGoogle(
+                "g" + System.nanoTime() + "@example.com", "구글러",
+                "sub-" + System.nanoTime(), true);
+        em.persist(member);
+        em.flush();
+
+        //when — currentPassword를 안 보낸다
+        mockMvc.perform(changePassword(member, "null", "9999"))
+                .andExpect(status().isNoContent());
+        em.flush();
+        em.clear();
+
+        //then — 이제 비밀번호가 생겨 구글 연결도 해제할 수 있다
+        assertThat(reloadMember(member).hasPassword()).isTrue();
+    }
+
+    @Test
+    public void 새_비밀번호가_4자_미만이면_400() throws Exception {
+        Member member = saveMember();
+        mockMvc.perform(changePassword(member, "\"1111\"", "123"))
+                .andExpect(status().isBadRequest());
+    }
+
+    private org.springframework.test.web.servlet.RequestBuilder changePassword(
+            Member member, String currentJson, String next) {
+        return put("/api/me/password")
+                .header("X-Member-Id", member.getId())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"currentPassword\":" + currentJson + ",\"newPassword\":\"" + next + "\"}");
+    }
+
+    private Member reloadMember(Member member) {
+        return em.find(Member.class, member.getId());
+    }
 
     private Platform savePlatform(String name) {
         Platform platform = Platform.of(name);

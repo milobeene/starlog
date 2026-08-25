@@ -13,6 +13,7 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.cors.CorsConfigurationSource;
 import com.milobeene.gamebacklog.auth.web.CsrfTokenIssuer;
 import com.milobeene.gamebacklog.auth.web.GoogleLinkSessionFilter;
 import com.milobeene.gamebacklog.auth.web.GoogleOAuth2FailureHandler;
@@ -20,6 +21,7 @@ import com.milobeene.gamebacklog.auth.web.GoogleOAuth2SuccessHandler;
 import com.milobeene.gamebacklog.auth.web.JsonErrors;
 import org.springframework.security.core.session.SessionRegistry;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestRedirectFilter;
 import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfFilter;
@@ -62,6 +64,8 @@ public class SecurityConfig {
      */
     private final ObjectProvider<ClientRegistrationRepository> clientRegistrations;
 
+    private final CorsConfigurationSource corsConfigurationSource;
+
     /** 인증 없이 열어두는 경로. 로그인 자체를 막으면 로그인할 방법이 없다 */
     private static final String[] PUBLIC_PATHS = {
             "/api/auth/signup",
@@ -77,7 +81,16 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
+                /*
+                 * CORS를 시큐리티 체인 안에서 켠다 (N-2). WebMvcConfigurer의 addCorsMappings로는
+                 * 부족하다 — 그건 MVC 핸들러 단계라 시큐리티 필터가 먼저 401로 끊어버리면
+                 * CORS 헤더가 안 붙고, 브라우저에는 네트워크 오류로만 보인다.
+                 *
+                 * preflight(OPTIONS)는 쿠키를 안 싣고 오므로 인증 대상에서 빼야 한다
+                 */
+                .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(PUBLIC_PATHS).permitAll()
                         // 탈퇴 유예 중에는 복구만 가능하다 (FR-AUTH-10)
                         .requestMatchers("/api/me/restore").hasRole("PENDING_DELETION")
@@ -151,7 +164,14 @@ public class SecurityConfig {
                     .successHandler(googleOAuth2SuccessHandler)
                     .failureHandler(googleOAuth2FailureHandler));
             // 떠나기 전에 "누가 연결을 시작했는지"를 세션에 남긴다
-            http.addFilterBefore(new GoogleLinkSessionFilter(), AuthorizationFilter.class);
+            /*
+             * **OAuth2AuthorizationRequestRedirectFilter보다 앞이어야 한다.**
+             * 그 필터가 /oauth2/authorization/google에서 곧바로 구글로 리다이렉트하고 체인을 끝내므로,
+             * AuthorizationFilter 앞에 두면 우리 필터는 아예 실행되지 않는다.
+             * 그러면 "누가 연결을 시작했는지"가 세션에 안 남아 연결이 로그인/가입으로 처리된다
+             */
+            http.addFilterBefore(new GoogleLinkSessionFilter(),
+                    OAuth2AuthorizationRequestRedirectFilter.class);
         }
 
         // 토큰을 강제로 만들어 쿠키로 내린다. CsrfFilter 바로 뒤여야 토큰 속성이 이미 실려 있다

@@ -72,9 +72,9 @@ export function formatDate(date: string | null): string {
   return date ?? "—";
 }
 
-/** 종료일 null = 진행 중 */
+/** 종료일 null이면 물결로 끝낸다 — 진행 중이라는 건 상태 배지가 말한다 */
 export function formatPeriod(startedOn: string, finishedOn: string | null): string {
-  return finishedOn ? `${startedOn} ~ ${finishedOn}` : `${startedOn} ~ 진행 중`;
+  return `${startedOn} ~ ${finishedOn ?? ""}`;
 }
 
 /**
@@ -89,4 +89,45 @@ export function formatRating(rating: number | null): string {
 
 export function formatList(items: string[]): string {
   return items.length > 0 ? items.join(", ") : "—";
+}
+
+/**
+ * UI 라벨은 영문이다 (디자인 요청서 §표시 규칙). 데이터는 원래 언어를 유지한다.
+ * 위의 한국어 라벨은 나중에 로케일 전환이 필요해질 때를 위해 남겨둔다
+ */
+export const STATUS_LABEL_EN: Record<EntryStatus, string> = {
+  WISHLIST: "Wishlist",
+  BACKLOG: "Backlog",
+  PLAYING: "Playing",
+  PAUSED: "Paused",
+  DROPPED: "Dropped",
+  COMPLETED: "Completed",
+};
+
+export const SORT_LABEL: Record<string, string> = {
+  lastPlayed: "최근 플레이",
+  rating: "평점",
+  releasedOn: "출시일",
+  name: "이름",
+  playtime: "플레이 시간",
+};
+
+/** 드롭다운에 나오는 순서. Record는 키 순서를 보장하지 않아 따로 둔다 */
+export const SORT_ORDER = ["lastPlayed", "rating", "name", "playtime", "releasedOn"] as const;
+
+/** 카드 마지막 줄 — `3회차 · 2024-01-02~2024-02-11 · Switch`. 회차가 없으면 null */
+export function formatLastPlaythrough(
+  last: {
+    sequenceNo: number;
+    startedOn: string;
+    finishedOn: string | null;
+    deviceName: string | null;
+    emulatorName: string | null;
+  } | null,
+): string | null {
+  if (!last) return null;
+  // 종료일이 없으면 물결로 끝낸다 — "진행 중"은 상태 배지가 이미 말한다
+  const period = `${last.startedOn}~${last.finishedOn ?? ""}`;
+  const device = last.emulatorName ?? last.deviceName;
+  return [`${last.sequenceNo}회차`, period, device].filter(Boolean).join(" · ");
 }

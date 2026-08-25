@@ -123,7 +123,13 @@
   - 지금은 `CsrfTest` 하나가 쿠키 왕복을 흉내내지만 `@DirtiesContext`가 필요할 만큼 취약하다
 - [ ] I-11. CSRF 전략 (**OI-14 결정**) — I-3에 붙여서 **로컬 기준으로만** 결론.
   크로스 도메인(`vercel.app` ↔ `onrender.com`, `SameSite=None`)은 Phase 9에서 재검토
-- [ ] I-4. 이메일 인증 (FR-AUTH-02) — 토큰 랜덤/만료/1회용/해시 저장, 재발송 + 스로틀 (NFR-S9), **OI-02 결정**: 발송 수단
+- [x] I-4. 이메일 인증 (FR-AUTH-02) — 토큰 랜덤/만료/1회용/해시 저장, 재발송 + 스로틀 (NFR-S9).
+      **OI-02 해소 (2026-08-25) — Resend.** SMTP가 아니라 HTTP API라 배포처가 25/587
+      아웃바운드를 막아도 나간다. `app.mail.api-key`가 있으면 Resend, 없으면 콘솔 폴백 —
+      프로필이 아니라 **설정값으로** 가른다 (자격증명 없는 CI도 그대로 떠야 하므로).
+      ⚠️ `onboarding@resend.dev`는 **계정 소유자 주소로만** 발송된다. 남에게 보내려면 도메인 등록 필요.
+      **발송 실패를 던지지 않는다** — 던졌더니 메일이 가입 트랜잭션 안이라 회원 생성까지 롤백돼
+      다른 이메일로는 가입 자체가 막혔다. 실패 시 로그에 수동 링크를 남긴다
 - [ ] I-5. 비밀번호 재설정 (FR-AUTH-05) — 계정 존재 비노출, 성공 시 전 세션 무효화
 - [ ] I-12. 만료 토큰 정리 배치
 - [ ] I-7. 탈퇴 유예 (FR-AUTH-09~10) — 소프트 삭제, 유예 중 **인증 통과·인가 제한**, BR-AUTH-02(이메일 재사용 불가)
@@ -333,12 +339,27 @@ vault 76건을 Neon에 직접 투입했다. IGDB 한글 매칭 문제(77건 중 
       디자인 시안 수령 후 N-3 착수.
       확정: ① 정적 export 안 씀(데이터는 전부 클라이언트에서) ② 상세는 `/library/[entryId]` 별도 라우트
       ③ 프로필+설정을 `/settings` 하나로 합침
-- [ ] N-2. CORS/쿠키 크로스 도메인 처리 — **미구현. Phase 8의 첫 관문**.
-      `allowCredentials=true` + 명시적 origin이어야 세션 쿠키가 실린다
-- [ ] N-2b. `src/lib/api.ts` — fetch 래퍼 + `credentials: 'include'` + CSRF 헤더 + 에러 코드 분기
-- [ ] N-3. 주요 화면 — 목록/상세/입력, 정가 통화 UX (**OI-12**)
+- [x] N-2. CORS/쿠키 크로스 도메인 처리 — **완료 (2026-08-25)**. `CorsConfig` + 시큐리티 체인에 `.cors()`,
+      OPTIONS permitAll. `allowCredentials=true`라 와일드카드 불가 → `app.cors.allowed-origins` 명시 목록
+- [x] N-2b. `src/lib/api.ts` — fetch 래퍼 + `credentials: 'include'` + CSRF 헤더 + 에러 코드 분기. **완료**
+- [x] N-2c. 사이드바 전용 `GET /api/backlog/names` 신설 (전 항목 이름순, 페이징 없음)
+- [ ] N-3. 주요 화면 — **입구·대시보드·라이브러리·상세 완료 (2026-08-25)**.
+      Tailwind v4 + `docs/design-system.md` 신설. 유체 WebGL 배경, 공통 컴포넌트 12종.
+      **상세 편집 완료 (2026-08-25)** — 개인기록·오버라이드·태그·장르·회차·취득·커버·삭제 8경로.
+      **전 화면 완료 (2026-08-25)** — 로그인·회원가입·이메일 인증·비밀번호 재설정 2종·계정 복구·
+      담기(IGDB 검색 + 되살리기 + 수동 등록)·설정 6섹션·관리자(회원/감사 로그).
+      정가 통화 UX (**OI-12**)는 정가를 화면에 안 내보내기로 해서(§8.1) 대상이 없다
+
+  ⚠️ **H2 버전 고정 (2026-08-25)** — 부트 BOM의 2.4.240에서 `insert ... values (..., default)` 형태에
+  check 제약이 잘못 걸려 회차 추가가 전부 409로 막혔다 (UPDATE는 정상). `2.3.232`로 핀.
+  dev의 H2 TCP 서버도 2.3.232라 드라이버를 맞춰야 한다 — O-1에서 겪은 불일치와 같은 계열
 
 ---
+
+> ⚠️ **`GoogleLinkSessionFilter`는 `OAuth2AuthorizationRequestRedirectFilter`보다 앞에 등록한다.**
+> 뒤에 두면 리다이렉트 필터가 먼저 체인을 끝내 **아예 실행되지 않는다** —
+> 연결 시도가 조용히 로그인/가입으로 처리돼 "이미 가입된 이메일"로 튕기고 로그아웃된다.
+> 실행 여부는 `구글 연결 시작 — memberId=` 로그로 확인한다 (2026-08-25 수정).
 
 ## Phase 9 — 배포 (보너스)
 
@@ -347,9 +368,12 @@ vault 76건을 Neon에 직접 투입했다. IGDB 한글 매칭 문제(77건 중 
       H2 TCP 서버 1.4.200 → 2.3.232 교체 (드라이버와 버전 불일치로 Flyway 메타데이터 조회가 깨졌음)
 - [ ] O-2. 설계서 §9 체크리스트 — 부분 유니크 인덱스 재검토 (BR-PT-03), 실제 PostgreSQL에서 실행계획·FK 인덱스 재확인.
       V1에서 선반영: TEXT 동작 (OI-15, summary/storyline text 교정), FK 이름 (OI-16), enum check 명시, FK 컬럼 인덱스
-- [ ] O-3. Neon/Render/Vercel 배포 + 환경변수 — **Neon 완료 (2026-08-24)**: PostgreSQL 17.11 싱가포르,
+- [ ] O-3. Neon/Render/Vercel 배포 + 환경변수 — **Neon 완료 (2026-08-24)**,
+      **R2 커버 업로드 3단계 왕복 검증 완료 (2026-08-25)** — presigned URL → 직접 PUT → 확정.
+      ⚠️ presigned 서명에 `content-length`가 들어간다: 신고한 `sizeBytes`와 실제 파일 크기가
+      다르면 R2가 `SignatureDoesNotMatch`로 403을 준다: PostgreSQL 17.11 싱가포르,
       V1 적용 + 실데이터 76건 투입, prod 프로필·PostgreSQL 드라이버·flyway-database-postgresql 추가됨.
-      Render/Vercel 남음. ⚠️ LoggingAuthMailSender의 prod 임시 개방(토큰이 로그에 찍힘)을 배포 전에 닫을 것
+      Render/Vercel 남음. ~~LoggingAuthMailSender prod 개방~~ → I-4에서 Resend로 해소됨
 - [ ] O-4. Spring Session + JDBC (재시작 대비)
 - [ ] O-5. HikariCP 튜닝 (DB idle sleep 대응)
 

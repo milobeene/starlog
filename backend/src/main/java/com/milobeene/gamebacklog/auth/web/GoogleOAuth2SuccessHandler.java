@@ -2,6 +2,7 @@ package com.milobeene.gamebacklog.auth.web;
 
 import com.milobeene.gamebacklog.auth.security.MemberPrincipal;
 import com.milobeene.gamebacklog.auth.service.GoogleAccountService;
+import com.milobeene.gamebacklog.auth.service.MailProperties;
 import com.milobeene.gamebacklog.common.exception.ConflictException;
 import com.milobeene.gamebacklog.member.domain.Member;
 import jakarta.servlet.http.HttpServletRequest;
@@ -47,6 +48,7 @@ public class GoogleOAuth2SuccessHandler implements AuthenticationSuccessHandler 
      */
     private final GoogleAccountService googleAccountService;
     private final CsrfTokenIssuer csrfTokenIssuer;
+    private final MailProperties mailProperties;   // frontendBaseUrl을 재사용한다
 
     private final SecurityContextRepository securityContextRepository =
             new HttpSessionSecurityContextRepository();
@@ -74,14 +76,15 @@ public class GoogleOAuth2SuccessHandler implements AuthenticationSuccessHandler 
                 establishSession(request, response,
                         MemberPrincipal.from(googleAccountService.findOne(linkMemberId)));
                 csrfTokenIssuer.issueFresh(request, response);
-                JsonErrors.write(response, HttpStatus.CONFLICT.value(),
-                        "GOOGLE_ALREADY_LINKED", e.getMessage());
+                OAuthRedirects.withResult(response, mailProperties.frontendBaseUrl(),
+                        "/settings", "ALREADY_LINKED");
                 return;
             }
             establishSession(request, response,
                     MemberPrincipal.from(googleAccountService.findOne(linkMemberId)));
             csrfTokenIssuer.issueFresh(request, response);
-            JsonErrors.write(response, HttpStatus.OK.value(), "LINKED", "구글 계정을 연결했습니다");
+            OAuthRedirects.withResult(response, mailProperties.frontendBaseUrl(),
+                    "/settings", "LINKED");
             return;
         }
 
@@ -100,8 +103,8 @@ public class GoogleOAuth2SuccessHandler implements AuthenticationSuccessHandler 
             // 이메일 가입과 같은 규칙이다 (FR-AUTH-02). 구글이 email_verified: false를 준 경우
             SecurityContextHolder.clearContext();
             csrfTokenIssuer.issueFresh(request, response);
-            JsonErrors.write(response, HttpStatus.FORBIDDEN.value(),
-                    "EMAIL_NOT_VERIFIED", "이메일 인증이 필요합니다");
+            OAuthRedirects.withResult(response, mailProperties.frontendBaseUrl(),
+                    "/login", "EMAIL_NOT_VERIFIED");
             return;
         }
 
@@ -114,8 +117,8 @@ public class GoogleOAuth2SuccessHandler implements AuthenticationSuccessHandler 
         String email = user.getAttribute("email");
         if (email == null || email.isBlank()) {
             SecurityContextHolder.clearContext();
-            JsonErrors.write(response, HttpStatus.FORBIDDEN.value(),
-                    "GOOGLE_EMAIL_REQUIRED", "구글 계정의 이메일 제공에 동의해야 가입할 수 있습니다");
+            OAuthRedirects.withResult(response, mailProperties.frontendBaseUrl(),
+                    "/login", "EMAIL_REQUIRED");
             return null;
         }
 
@@ -128,8 +131,8 @@ public class GoogleOAuth2SuccessHandler implements AuthenticationSuccessHandler 
         } catch (ConflictException e) {
             SecurityContextHolder.clearContext();
             csrfTokenIssuer.issueFresh(request, response);
-            JsonErrors.write(response, HttpStatus.CONFLICT.value(), "EMAIL_ALREADY_REGISTERED",
-                    e.getMessage());
+            OAuthRedirects.withResult(response, mailProperties.frontendBaseUrl(),
+                    "/login", "EMAIL_ALREADY_REGISTERED");
             return null;
         }
     }
@@ -159,10 +162,9 @@ public class GoogleOAuth2SuccessHandler implements AuthenticationSuccessHandler 
         establishSession(request, response, principal);
 
         csrfTokenIssuer.issueFresh(request, response);
-        response.setStatus(HttpStatus.OK.value());
-        response.setContentType("application/json;charset=UTF-8");
-        response.getWriter().write("{\"id\":%d,\"email\":\"%s\",\"role\":\"%s\",\"withdrawalPending\":%b}"
-                .formatted(principal.getMemberId(), principal.getEmail(),
-                        principal.getRole().name(), principal.isWithdrawalPending()));
+
+        // 유예 중 계정은 복구 화면 말고는 전부 403이라 다른 데로 보내면 막힌다 (FR-AUTH-10)
+        OAuthRedirects.toApp(response, mailProperties.frontendBaseUrl(),
+                principal.isWithdrawalPending() ? "/restore" : "/dashboard");
     }
 }

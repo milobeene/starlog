@@ -99,7 +99,7 @@ public class Member extends BaseEntity {
      * BR-AUTH-01 — 비밀번호가 없으면 해제할 수 없다. 로그인 수단이 하나도 안 남는다
      */
     public void unlinkGoogle() {
-        if (this.password == null || this.password.isBlank()) {
+        if (!hasPassword()) {
             throw new InvalidInputException("비밀번호를 먼저 설정해야 구글 연결을 해제할 수 있습니다");
         }
         this.googleSubject = null;
@@ -123,6 +123,14 @@ public class Member extends BaseEntity {
     /** 비밀번호 변경 (FR-AUTH-05). 인코딩은 서비스가 끝내고 넘긴다 */
     public void changePassword(String encodedPassword) {
         this.password = encodedPassword;
+    }
+
+    /**
+     * 비밀번호가 있는 계정인가. 구글로 가입하면 null이다 (BR-AUTH-01).
+     * 필드를 밖으로 내주는 대신 판단을 여기서 끝낸다 — 해시가 서비스로 새어나갈 이유가 없다
+     */
+    public boolean hasPassword() {
+        return this.password != null && !this.password.isBlank();
     }
 
     /** 이메일 인증 완료 (FR-AUTH-02). 이미 인증된 계정에 다시 불러도 무해하다 */

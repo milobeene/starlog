@@ -67,6 +67,16 @@ export interface BacklogCard {
 
 /* ── 상세 (GET /api/backlog/{entryId}) ────────────────────── */
 
+/**
+ * 커버 표시값 — **어느 쪽이 이겼는지 서버가 알려준다** (v1.7).
+ * 크기 선택만 화면 몫이라 url이 아니라 imageId가 온다
+ */
+export interface CoverInfo {
+  source: "PERSONAL" | "MASTER" | "NONE";
+  url: string | null;
+  imageId: string | null;
+}
+
 export interface ResolvedInfo {
   name: string;
   developers: string[];
@@ -74,15 +84,30 @@ export interface ResolvedInfo {
   releasedOn: string | null;
   listPrice: Money | null;
   genres: string[];
+  cover: CoverInfo;
 }
 
-export interface MasterInfo extends ResolvedInfo {
+export interface MasterInfo {
   gameId: number;
+  name: string;
+  developers: string[];
+  publishers: string[];
+  releasedOn: string | null;
+  listPrice: Money | null;
+  genres: string[];
   source: GameSource;
-  /** IGDB `game_time_to_beats.normally` — 클리어까지 걸리는 평균 시간. 참고값이라 오버라이드 대상이 아니다 */
-  timeToBeatHours: number | null;
-  /** IGDB `cover.image_id`. URL이 아니라 id다 — 크기는 표시하는 쪽이 고른다 */
+  /** 아래는 상세 화면 전용. 표시값 규칙 밖이라 resolved에 대응 필드가 없다 (§6.2) */
   coverImageId: string | null;
+  bannerImageId: string | null;
+  summary: string | null;
+  storyline: string | null;
+  igdbRating: number | null;
+  igdbRatingCount: number | null;
+  releasePlatforms: string[];
+  mainStoryHours: number | null;
+  mainExtraHours: number | null;
+  completionistHours: number | null;
+  timeToBeatSamples: number | null;
 }
 
 /** null(스칼라) 또는 [](배열) = 안 덮어씀 */
@@ -100,6 +125,27 @@ export interface PersonalRecord {
   memo: string | null;
 }
 
+export interface DeviceRef {
+  deviceId: number;
+  name: string;
+}
+
+export interface EmulatorRef {
+  emulatorId: number;
+  name: string;
+}
+
+export interface PlatformRef {
+  platformId: number;
+  name: string;
+}
+
+/** 삭제된 계정도 그대로 실린다 — 과거 기록에서는 이름이 계속 보여야 한다 (§6.5) */
+export interface AccountRef {
+  accountId: number;
+  label: string;
+}
+
 export interface Playthrough {
   playthroughId: number;
   sequenceNo: number;
@@ -107,17 +153,17 @@ export interface Playthrough {
   finishedOn: string | null;
   status: PlaythroughStatus;
   label: string | null;
-  device: NamedRef | null;
-  emulator: NamedRef | null;
-  platformAccount: PlatformAccountRef | null;
+  device: DeviceRef | null;
+  platformAccount: AccountRef | null;
+  emulator: EmulatorRef | null;
   inputMethod: InputMethod | null;
 }
 
 export interface Acquisition {
   acquisitionId: number;
   method: AcquisitionMethod;
-  platform: NamedRef | null;
-  platformAccount: PlatformAccountRef | null;
+  platform: PlatformRef | null;
+  platformAccount: AccountRef | null;
   subscription: { subscriptionId: number; serviceName: string } | null;
   price: Money | null;
   acquiredOn: string | null;
@@ -127,12 +173,14 @@ export interface Acquisition {
 export interface BacklogDetail {
   entryId: number;
   status: EntryStatus;
-  coverUrl: string | null;
+  /** 담은 날짜. 상세 타임라인의 기점 */
+  createdAt: string;
   resolved: ResolvedInfo;
   master: MasterInfo;
   overrides: OverrideInfo;
   personalRecord: PersonalRecord;
   tags: string[];
+  /** 개인 장르 원본. 폴백 전 값이라 resolved.genres와 다를 수 있다 */
   genres: string[];
   playthroughs: Playthrough[];
   acquisitions: Acquisition[];
@@ -145,6 +193,10 @@ export interface Profile {
   email: string;
   nickname: string;
   memo: string | null;
+  /** 구글 sub 자체는 안 내려온다 — 화면은 연결 여부만 알면 된다 */
+  googleLinked: boolean;
+  /** 비밀번호가 없으면 구글 연결을 해제할 수 없다 (BR-AUTH-01) */
+  hasPassword: boolean;
 }
 
 export interface MemberDevice {
@@ -184,11 +236,111 @@ export interface StatusCount {
   count: number;
 }
 
+/* ── 사이드바 전체 목록 (GET /api/backlog/names) ──────────── */
+
+/** 전 항목, 이름순(대소문자 무시), 페이징 없음 */
+export interface BacklogName {
+  entryId: number;
+  displayName: string;
+}
+
 /* ── 게임 검색 (GET /api/games?q=) ────────────────────────── */
 
+/**
+ * 검색 결과. **마스터에 없는 게임은 `gameId`가 null이고 `externalId`만 있다** —
+ * 담을 때 서버가 그 id로 IGDB에서 받아와 마스터를 만든다 (GameResolver)
+ */
 export interface GameSearchResult {
-  gameId: number;
+  gameId: number | null;
+  externalId: string | null;
   name: string;
   releasedOn: string | null;
   source: GameSource;
+  coverImageId: string | null;
+}
+
+/* ── 집계 응답 (GET /api/backlog/facets) ──────────────────── */
+
+export interface FacetsResponse {
+  tags: FacetCount[];
+  genres: FacetCount[];
+  statuses: StatusCount[];
+  devices: FacetCount[];
+  platformAccounts: FacetCount[];
+}
+
+/* ── 통계 (GET /api/stats/**) ─────────────────────────────── */
+
+export interface PlaytimeStats {
+  totalHours: number;
+  recordedEntries: number;
+  top: { entryId: number; displayName: string; hours: number }[];
+}
+
+/** period는 `2026-01`. **통화를 합치지 않는다** — 환산은 범위 밖이라 축이 통화별로 갈린다 */
+export interface MonthlySpending {
+  currencies: string[];
+  months: { period: string; amounts: Record<string, number> }[];
+  yearlyAverages: { year: number; amounts: Record<string, number> }[];
+}
+
+export interface PageResponse<T> {
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+  items: T[];
+}
+
+/* ── 필터 선택지 ──────────────────────────────────────────── */
+
+/** GET /api/backlog/companies — 편집·필터 자동완성 사전 */
+export interface CompanyDictionary {
+  /** 오버라이드 + 마스터 전부 — 필터 자동완성용 */
+  developers: string[];
+  publishers: string[];
+  /** 내가 직접 적어 넣은 것만 — 설정의 사전 목록용 */
+  overriddenDevelopers: string[];
+  overriddenPublishers: string[];
+}
+
+/** GET /api/stats/genres — **표시값 기준** 장르 분포. 개인 장르가 마스터를 덮은 결과다 */
+export interface GenreDistribution {
+  genre: string;
+  count: number;
+}
+
+/** GET /api/me/options — 폼 선택지. 백엔드가 전부 `Ref(id, name)` 한 모양으로 준다 */
+export interface OptionsResponse {
+  platforms: NamedRef[];
+  devices: NamedRef[];
+  emulators: NamedRef[];
+  platformAccounts: NamedRef[];
+  subscriptions: NamedRef[];
+  tagDictionary: string[];
+  genreDictionary: string[];
+}
+
+/* ── 관리자 (GET /api/admin/**) ────────────────────────────── */
+
+export interface AdminMember {
+  memberId: number;
+  email: string;
+  nickname: string;
+  role: string;
+  emailVerified: boolean;
+  deletedAt: string | null;
+  createdAt: string;
+}
+
+export interface AuditLog {
+  auditLogId: number;
+  actorId: number;
+  actorEmail: string;
+  action: string;
+  targetType: string | null;
+  targetId: number | null;
+  requestIp: string | null;
+  userAgent: string | null;
+  occurredAt: string;
 }

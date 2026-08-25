@@ -143,7 +143,9 @@
 - 정렬 **5종**: `lastPlayed`(기본) `rating` `releasedOn` `name` `playtime`
 - 뷰 전환(그리드/폴더)을 둘지는 디자인 판단
 
-**사이드바 — `GET /api/backlog/facets` 한 방** (목록과 분리돼 있어 페이지 넘길 때 재호출 불필요)
+**사이드바 게임 목록 — `GET /api/backlog/names`** (전 항목 이름순, 페이징 없음, 신설)
+
+**facets — `GET /api/backlog/facets` 한 방** (목록과 분리돼 있어 페이지 넘길 때 재호출 불필요)
 ```
 tags[]  genres[]  statuses[]  devices[]  platformAccounts[]     ← 전부 count 포함
 ```

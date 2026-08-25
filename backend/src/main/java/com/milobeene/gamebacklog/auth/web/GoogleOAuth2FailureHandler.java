@@ -2,6 +2,7 @@ package com.milobeene.gamebacklog.auth.web;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import com.milobeene.gamebacklog.auth.service.MailProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -31,6 +32,7 @@ import java.io.IOException;
 public class GoogleOAuth2FailureHandler implements AuthenticationFailureHandler {
 
     private final CsrfTokenIssuer csrfTokenIssuer;
+    private final MailProperties mailProperties;   // frontendBaseUrl을 재사용한다
 
     @Override
     public void onAuthenticationFailure(HttpServletRequest request, HttpServletResponse response,
@@ -40,8 +42,8 @@ public class GoogleOAuth2FailureHandler implements AuthenticationFailureHandler 
         // 실패해도 토큰은 회전됐을 수 있다. 안 주면 다음 시도가 403이 된다 (I-3~I-7에서 세 번 겪은 함정)
         csrfTokenIssuer.issueFresh(request, response);
 
-        JsonErrors.write(response, HttpStatus.UNAUTHORIZED.value(),
-                "GOOGLE_AUTH_FAILED", "구글 인증에 실패했습니다");
+        // JSON을 쓰면 브라우저에 원문이 그대로 보인다 — 화면으로 되돌려 보내고 문구는 거기서 고른다
+        OAuthRedirects.withResult(response, mailProperties.frontendBaseUrl(), "/login", "FAILED");
     }
 
     private void logReason(AuthenticationException exception) {

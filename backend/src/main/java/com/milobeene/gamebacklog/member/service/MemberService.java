@@ -62,6 +62,28 @@ public class MemberService {
         findMember(memberId).updateProfile(nickname, memo);
     }
 
+    /**
+     * 비밀번호 변경·설정 (BR-AUTH-01).
+     *
+     * **구글로 가입한 계정은 현재 비밀번호가 없다** — 확인할 대상이 없으므로 건너뛴다.
+     * 이미 로그인된 세션에서만 부를 수 있으니 신원은 그 시점에 확인된 것으로 본다.
+     * 비밀번호가 있는 계정은 현재 값을 반드시 대조한다 — 세션 탈취만으로 비밀번호를
+     * 갈아치우고 계정을 통째로 가져가는 경로가 생기면 안 된다
+     */
+    @Transactional
+    public void changePassword(Long memberId, String currentPassword, String newPassword) {
+        Member member = findMember(memberId);
+
+        if (member.hasPassword()) {
+            if (currentPassword == null
+                    || !passwordEncoder.matches(currentPassword, member.getPassword())) {
+                throw new InvalidInputException("현재 비밀번호가 올바르지 않습니다");
+            }
+        }
+
+        member.changePassword(passwordEncoder.encode(newPassword));
+    }
+
     public Member findOne(Long memberId) {
         return findMember(memberId);
     }

@@ -44,7 +44,18 @@ dependencies {
 	implementation platform('software.amazon.awssdk:bom:2.30.16')
 	implementation 'software.amazon.awssdk:s3'
 	compileOnly 'org.projectlombok:lombok'
-	runtimeOnly 'com.h2database:h2'
+	/*
+	 * H2 버전을 고정한다. 부트 BOM이 끌어오는 2.4.240에서 **check 제약이 INSERT를 잘못 막는다** —
+	 * `insert ... values (..., default)` 형태에서 chk_playthrough_status가 유효한 값에도 터진다.
+	 * (UPDATE는 정상, 2.3.232에서는 INSERT도 정상. 2026-08-25 확인)
+	 *
+	 * dev의 H2 TCP 서버도 2.3.232라 드라이버를 맞춰야 한다 —
+	 * 예전에 같은 불일치로 Flyway 메타데이터 조회가 깨진 적이 있다 (O-1)
+	 */
+	// 인증 메일 발송 (OI-02 결정 — Resend). SMTP 대신 HTTP API라 아웃바운드 25번 포트가 막혀도 나간다
+	implementation 'com.resend:resend-java:3.1.0'
+
+	runtimeOnly 'com.h2database:h2:2.3.232'
 	// prod(Neon). dev는 계속 H2라 둘 다 클래스패스에 있고, 프로필이 URL로 가른다
 	runtimeOnly 'org.postgresql:postgresql'
 	annotationProcessor 'org.projectlombok:lombok'

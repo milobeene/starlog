@@ -8,6 +8,9 @@ import com.milobeene.gamebacklog.backlog.domain.QBacklogEntryTag;
 import com.milobeene.gamebacklog.backlog.domain.QPlaythrough;
 import com.milobeene.gamebacklog.backlog.dto.BacklogSearchCondition;
 import com.milobeene.gamebacklog.backlog.dto.BacklogSort;
+import com.milobeene.gamebacklog.game.domain.QGame;
+import com.querydsl.core.types.dsl.Expressions;
+import com.querydsl.core.types.dsl.StringPath;
 import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQuery;
@@ -80,7 +83,11 @@ public class BacklogEntryRepositoryImpl implements BacklogEntryRepositoryCustom 
                 statusIn(entry, condition),
                 hasTag(entry, condition),
                 hasGenre(entry, condition),
+                hasResolvedGenre(entry, condition),
+                developedBy(entry, condition),
+                releasedInYear(entry, condition),
                 playedOnDevice(entry, condition),
+                acquiredOnPlatform(entry, condition),
                 acquiredWithAccount(entry, condition)
         };
     }
@@ -124,6 +131,87 @@ public class BacklogEntryRepositoryImpl implements BacklogEntryRepositoryCustom 
                 .exists();
     }
 
+    /**
+     * 장르 필터 — **표시값(resolved) 기준**이다 (Phase 8).
+     *
+     * 개인 장르는 마스터를 덮어쓴다: 개인 장르가 하나라도 있으면 그것만, 없으면 마스터 것(§6.7).
+     * 그래서 조건도 두 갈래다 — 개인 장르에서 이름이 맞거나, **개인 장르가 아예 없으면서**
+     * 마스터 장르에서 맞거나. 뒤쪽의 "개인 장르가 없을 때"를 빼면 덮어쓰기 규칙이 깨져
+     * 화면에 안 보이는 마스터 장르로도 항목이 걸린다
+     */
+    private BooleanExpression hasResolvedGenre(QBacklogEntry entry, BacklogSearchCondition condition) {
+        if (condition.genreName() == null) {
+            return null;
+        }
+        QBacklogEntryGenre link = QBacklogEntryGenre.backlogEntryGenre;
+
+        BooleanExpression personalMatch = JPAExpressions.selectOne()
+                .from(link)
+                .where(link.backlogEntry.eq(entry),
+                        link.genre.name.equalsIgnoreCase(condition.genreName()))
+                .exists();
+
+        BooleanExpression hasNoPersonal = JPAExpressions.selectOne()
+                .from(link)
+                .where(link.backlogEntry.eq(entry))
+                .notExists();
+
+        return personalMatch.or(hasNoPersonal.and(masterGenreMatches(entry, condition.genreName())));
+    }
+
+    /** 마스터 장르는 Game의 @ElementCollection이라 별도 서브쿼리로 훑는다 */
+    private BooleanExpression masterGenreMatches(QBacklogEntry entry, String genreName) {
+        QGame game = new QGame("gameForGenre");
+        StringPath masterGenre = Expressions.stringPath("masterGenre");
+
+        return JPAExpressions.selectOne()
+                .from(game)
+                .join(game.masterGenres, masterGenre)
+                .where(game.eq(entry.game), masterGenre.equalsIgnoreCase(genreName))
+                .exists();
+    }
+
+    /**
+     * 개발사 필터 — 장르와 같은 덮어쓰기 규칙을 탄다.
+     * 개인 오버라이드가 있으면 거기서, 비어 있으면 마스터에서 찾는다 (§7.1)
+     */
+    private BooleanExpression developedBy(QBacklogEntry entry, BacklogSearchCondition condition) {
+        if (condition.developer() == null) {
+            return null;
+        }
+        String keyword = condition.developer();
+
+        QBacklogEntry self = new QBacklogEntry("entryForDeveloper");
+        StringPath override = Expressions.stringPath("developerOverride");
+
+        BooleanExpression overrideMatch = JPAExpressions.selectOne()
+                .from(self)
+                .join(self.developerOverrides, override)
+                .where(self.eq(entry), override.containsIgnoreCase(keyword))
+                .exists();
+
+        QGame game = new QGame("gameForDeveloper");
+        StringPath masterDeveloper = Expressions.stringPath("masterDeveloper");
+
+        BooleanExpression masterMatch = JPAExpressions.selectOne()
+                .from(game)
+                .join(game.developers, masterDeveloper)
+                .where(game.eq(entry.game), masterDeveloper.containsIgnoreCase(keyword))
+                .exists();
+
+        return overrideMatch.or(entry.developerOverrides.isEmpty().and(masterMatch));
+    }
+
+    /**
+     * 출시 연도 — 비정규화 컬럼을 쓴다.
+     * `releasedOnResolved`는 오버라이드가 이미 반영된 값이라 여기서 다시 합성할 필요가 없다.
+     * 함수(year)를 씌우면 인덱스를 못 타지만, 범위 조건으로 바꿀 만큼 데이터가 크지 않다
+     */
+    private BooleanExpression releasedInYear(QBacklogEntry entry, BacklogSearchCondition condition) {
+        return condition.releaseYear() == null ? null
+                : entry.releasedOnResolved.year().eq(condition.releaseYear());
+    }
+
     /** 기기는 **회차** 기준이다 — "그때 무엇으로 플레이했나" */
     private BooleanExpression playedOnDevice(QBacklogEntry entry, BacklogSearchCondition condition) {
         if (condition.deviceId() == null) {
@@ -135,6 +223,21 @@ public class BacklogEntryRepositoryImpl implements BacklogEntryRepositoryCustom 
                 .from(playthrough)
                 .where(playthrough.backlogEntry.eq(entry),
                         playthrough.device.id.eq(condition.deviceId()))
+                .exists();
+    }
+
+    /** 플랫폼(Steam·Nintendo…)도 취득 기준이다. 계정과 달리 마스터 값이라 여러 계정에 걸친다 */
+    private BooleanExpression acquiredOnPlatform(QBacklogEntry entry,
+                                                 BacklogSearchCondition condition) {
+        if (condition.platformId() == null) {
+            return null;
+        }
+        QAcquisition acquisition = new QAcquisition("acquisitionForPlatform");
+
+        return JPAExpressions.selectOne()
+                .from(acquisition)
+                .where(acquisition.backlogEntry.eq(entry),
+                        acquisition.platform.id.eq(condition.platformId()))
                 .exists();
     }
 

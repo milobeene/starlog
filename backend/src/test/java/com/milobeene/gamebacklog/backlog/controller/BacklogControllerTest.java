@@ -176,6 +176,38 @@ class BacklogControllerTest extends ControllerTestSupport {
         return backlogService.addToBacklog(member.getId(), game.getId());
     }
 
+    @Test
+    public void 사이드바_이름_목록은_대소문자_무시하고_이름순이다() throws Exception {
+        //given
+        Member member = saveMember();
+        addEntry(member, "Baba Is You");
+        addEntry(member, "alba");
+
+        //when //then — 바이너리 정렬이면 'B'(0x42) < 'a'(0x61)라 Baba가 먼저 온다.
+        // lower()가 있어야 alba가 앞이다 — 이 순서가 갈리는 데이터여야 변이가 잡힌다
+        mockMvc.perform(get("/api/backlog/names").header("X-Member-Id", member.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].displayName").value("alba"))
+                .andExpect(jsonPath("$[1].displayName").value("Baba Is You"));
+    }
+
+    @Test
+    public void 삭제된_항목은_사이드바_이름_목록에서_빠진다() throws Exception {
+        //given
+        Member member = saveMember();
+        addEntry(member, "Hades");
+        Long deleted = addEntry(member, "Starfield");
+        backlogService.delete(member.getId(), deleted);
+
+        //when //then
+        mockMvc.perform(get("/api/backlog/names").header("X-Member-Id", member.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].displayName").value("Hades"))
+                .andExpect(jsonPath("$[0].entryId").isNumber());
+    }
+
     private void addPlaythrough(Member member, Long entryId, LocalDate startedOn, LocalDate finishedOn) {
         playthroughService.add(member.getId(), entryId,
                 new PlaythroughCommand(startedOn, finishedOn, PlaythroughStatus.COMPLETED,

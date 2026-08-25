@@ -3,6 +3,7 @@ package com.milobeene.gamebacklog.member.controller;
 import com.milobeene.gamebacklog.common.web.LoginMember;
 import com.milobeene.gamebacklog.member.dto.MeResponse;
 import com.milobeene.gamebacklog.member.dto.OptionsResponse;
+import com.milobeene.gamebacklog.member.dto.PasswordChangeRequest;
 import com.milobeene.gamebacklog.member.dto.ProfileUpdateRequest;
 import com.milobeene.gamebacklog.member.service.MeQueryService;
 import com.milobeene.gamebacklog.auth.service.GoogleAccountService;
@@ -52,6 +53,14 @@ public class MeController {
      * 구글 연결 해제 (FR-AUTH-08).
      * 비밀번호가 없으면 거부된다 — 로그인 수단이 하나도 안 남는다 (BR-AUTH-01)
      */
+    /** 비밀번호 변경·설정 (BR-AUTH-01). 구글 전용 계정이 비밀번호를 만드는 경로이기도 하다 */
+    @PutMapping("/password")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void changePassword(@LoginMember Long memberId,
+                               @Valid @RequestBody PasswordChangeRequest request) {
+        memberService.changePassword(memberId, request.currentPassword(), request.newPassword());
+    }
+
     @DeleteMapping("/google")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void unlinkGoogle(@LoginMember Long memberId) {
