@@ -2,7 +2,10 @@ package com.milobeene.gamebacklog.member.dto;
 
 import com.milobeene.gamebacklog.common.dto.MoneyResponse;
 import com.milobeene.gamebacklog.member.domain.Member;
-import com.milobeene.gamebacklog.platform.domain.MemberDevice;
+import com.milobeene.gamebacklog.platform.domain.Device;
+import com.milobeene.gamebacklog.platform.domain.Emulator;
+import com.milobeene.gamebacklog.platform.domain.InputMethod;
+import com.milobeene.gamebacklog.platform.domain.Platform;
 import com.milobeene.gamebacklog.platform.domain.PlatformAccount;
 import com.milobeene.gamebacklog.subscription.domain.BillingCycle;
 import com.milobeene.gamebacklog.subscription.domain.Subscription;
@@ -10,11 +13,19 @@ import com.milobeene.gamebacklog.subscription.domain.Subscription;
 import java.time.LocalDate;
 import java.util.List;
 
-/** 프로필 / 설정 화면 (화면 4, API 설계서 §1.4) */
+/**
+ * 프로필 / 설정 화면 (화면 4, API 설계서 §1.4).
+ *
+ * 선택지 다섯 종이 전부 여기 실린다 — 화면 하나에서 다 고칠 수 있어야 하기 때문이다.
+ * 삭제된 것은 빠진다
+ */
 public record MeResponse(
         Profile profile,
+        List<PlatformItem> platforms,
         List<PlatformAccountItem> platformAccounts,
         List<DeviceItem> devices,
+        List<EmulatorItem> emulators,
+        List<InputMethodItem> inputMethods,
         List<SubscriptionItem> subscriptions
 ) {
 
@@ -35,7 +46,12 @@ public record MeResponse(
 
     public record PlatformRef(Long platformId, String name) {}
 
-    public record DeviceRef(Long deviceId, String name) {}
+    public record PlatformItem(Long platformId, String name) {
+
+        static PlatformItem from(Platform platform) {
+            return new PlatformItem(platform.getId(), platform.getName());
+        }
+    }
 
     public record PlatformAccountItem(Long accountId, String label, PlatformRef platform) {
 
@@ -45,11 +61,26 @@ public record MeResponse(
         }
     }
 
-    public record DeviceItem(Long memberDeviceId, String label, String memo, DeviceRef device) {
+    /** deviceType은 "Windows PC" 같은 유형, label은 "메인 윈도우" 같은 내 별칭 */
+    public record DeviceItem(Long deviceId, String deviceType, String label, String memo) {
 
-        static DeviceItem from(MemberDevice memberDevice) {
-            return new DeviceItem(memberDevice.getId(), memberDevice.getLabel(), memberDevice.getMemo(),
-                    new DeviceRef(memberDevice.getDevice().getId(), memberDevice.getDevice().getName()));
+        static DeviceItem from(Device device) {
+            return new DeviceItem(device.getId(), device.getDeviceType(),
+                    device.getLabel(), device.getMemo());
+        }
+    }
+
+    public record EmulatorItem(Long emulatorId, String name, String memo) {
+
+        static EmulatorItem from(Emulator emulator) {
+            return new EmulatorItem(emulator.getId(), emulator.getName(), emulator.getMemo());
+        }
+    }
+
+    public record InputMethodItem(Long inputMethodId, String name) {
+
+        static InputMethodItem from(InputMethod inputMethod) {
+            return new InputMethodItem(inputMethod.getId(), inputMethod.getName());
         }
     }
 
@@ -72,13 +103,19 @@ public record MeResponse(
     }
 
     public static MeResponse of(Member member,
+                                List<Platform> platforms,
                                 List<PlatformAccount> accounts,
-                                List<MemberDevice> devices,
+                                List<Device> devices,
+                                List<Emulator> emulators,
+                                List<InputMethod> inputMethods,
                                 List<Subscription> subscriptions) {
         return new MeResponse(
                 Profile.from(member),
+                platforms.stream().map(PlatformItem::from).toList(),
                 accounts.stream().map(PlatformAccountItem::from).toList(),
                 devices.stream().map(DeviceItem::from).toList(),
+                emulators.stream().map(EmulatorItem::from).toList(),
+                inputMethods.stream().map(InputMethodItem::from).toList(),
                 subscriptions.stream().map(SubscriptionItem::from).toList());
     }
 }

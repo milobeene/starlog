@@ -9,12 +9,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.milobeene.gamebacklog.backlog.domain.BacklogEntry;
 import com.milobeene.gamebacklog.game.domain.Game;
 import com.milobeene.gamebacklog.member.domain.Member;
-import com.milobeene.gamebacklog.platform.domain.Platform;
 import com.milobeene.gamebacklog.support.ControllerTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 
-/** 마스터 병합 (FR-ADM-02) + 플랫폼·기기 마스터 관리 (FR-ADM-04) */
+/** 게임 마스터 병합 (FR-ADM-02). 플랫폼·기기·에뮬 마스터는 V2에서 회원 소유로 내려가며 사라졌다 */
 class MasterAdminTest extends ControllerTestSupport {
 
     @Test
@@ -104,58 +103,6 @@ class MasterAdminTest extends ControllerTestSupport {
         //when //then
         mockMvc.perform(post("/api/admin/games/{source}/merge-into/{target}", a.getId(), b.getId())
                         .header("X-Member-Id", member.getId()))
-                .andExpect(status().isForbidden());
-    }
-
-    @Test
-    public void 관리자는_플랫폼을_추가하고_이름을_고친다() throws Exception {
-        //given
-        Member admin = saveAdmin();
-
-        //when
-        String body = mockMvc.perform(post("/api/admin/platforms")
-                        .header("X-Member-Id", admin.getId())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"Epik Games\"}"))
-                .andExpect(status().isOk())
-                .andReturn().getResponse().getContentAsString();
-        Long platformId = Long.valueOf(body.replaceAll("\\D+", ""));
-
-        mockMvc.perform(put("/api/admin/platforms/{id}", platformId)
-                        .header("X-Member-Id", admin.getId())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"Epic Games\"}"))
-                .andExpect(status().isOk());
-
-        //then — 삭제가 없으니 오타 정정 경로는 이름 수정뿐이다
-        em.flush();
-        em.clear();
-        assertThat(em.find(Platform.class, platformId).getName()).isEqualTo("Epic Games");
-    }
-
-    @Test
-    public void 이름이_비면_400이다() throws Exception {
-        //given
-        Member admin = saveAdmin();
-
-        //when //then
-        mockMvc.perform(post("/api/admin/devices")
-                        .header("X-Member-Id", admin.getId())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"   \"}"))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    public void 일반_회원은_마스터를_추가할_수_없다() throws Exception {
-        //given
-        Member member = saveMember();
-
-        //when //then
-        mockMvc.perform(post("/api/admin/devices")
-                        .header("X-Member-Id", member.getId())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"Steam Deck\"}"))
                 .andExpect(status().isForbidden());
     }
 

@@ -4,6 +4,7 @@ import com.milobeene.gamebacklog.common.exception.ConflictException;
 import com.milobeene.gamebacklog.common.exception.NotFoundException;
 import com.milobeene.gamebacklog.member.domain.Member;
 import com.milobeene.gamebacklog.member.repository.MemberRepository;
+import com.milobeene.gamebacklog.platform.service.DefaultCatalogSeeder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +31,7 @@ public class GoogleAccountService {
 
     private final MemberRepository memberRepository;
     private final EmailVerificationService emailVerificationService;
+    private final DefaultCatalogSeeder defaultCatalogSeeder;
 
     /** 로그인용 — 연결된 회원 찾기. 없으면 가입시키지 않고 비워서 돌려준다 */
     public Optional<Member> findLinked(String googleSubject) {
@@ -55,6 +57,7 @@ public class GoogleAccountService {
         Member member = Member.signUpWithGoogle(
                 normalized, nicknameOf(name, normalized), googleSubject, emailVerified);
         memberRepository.persist(member);
+        defaultCatalogSeeder.seed(member);   // 기본 플랫폼·입력 방식을 내 것으로 복사
 
         if (!emailVerified) {
             // 구글이 소유를 확인 못 해준 경우. 드물지만 Workspace 설정에 따라 있다

@@ -67,8 +67,15 @@ function LoginForm() {
 
       <form onSubmit={submit} className="flex flex-col gap-4">
         <Field label="Email">
+          {/*
+            type="email"이 아니다 — 브라우저 형식 검증이 관리자 계정(`admin`)처럼
+            이메일 형식이 아닌 로그인 아이디를 막아버린다. 로그인 폼에서 형식 검증은
+            어차피 값어치가 거의 없다: 틀리면 서버가 같은 문구로 돌려준다.
+            모바일 키보드 힌트만 inputMode로 남긴다
+          */}
           <input
-            type="email"
+            type="text"
+            inputMode="email"
             required
             autoComplete="email"
             value={email}
@@ -88,7 +95,22 @@ function LoginForm() {
           />
         </Field>
 
-        {error && (
+        {/*
+          승인 대기는 에러라기보다 상태 안내다 — 사용자가 뭘 잘못한 게 아니라 기다리면 된다.
+          그래서 빨강이 아니라 호박색으로 띄운다
+        */}
+        {error?.code === ERROR.APPROVAL_PENDING && (
+          <div className="rounded-md border border-amber-400/25 bg-amber-400/10 px-3 py-2.5 text-xs leading-relaxed text-amber-200">
+            가입 요청이 접수되었습니다. <b className="text-amber-100">관리자 승인 후</b> 이용하실 수
+            있습니다.
+            <span className="mt-1 block text-amber-200/60">
+              무료로 운영되는 서비스라 이용 인원을 관리하고 있습니다. 승인되면 이 계정으로 바로
+              로그인하실 수 있습니다.
+            </span>
+          </div>
+        )}
+
+        {error && error.code !== ERROR.APPROVAL_PENDING && (
           <div className="rounded-md border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs text-red-300">
             {error.code === ERROR.EMAIL_NOT_VERIFIED ? (
               <>

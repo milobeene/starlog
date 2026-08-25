@@ -1,14 +1,13 @@
 package com.milobeene.gamebacklog.admin.controller;
 
+import com.milobeene.gamebacklog.admin.dto.AdminGameResponse;
 import com.milobeene.gamebacklog.admin.dto.AdminMemberResponse;
 import com.milobeene.gamebacklog.admin.dto.AuditLogResponse;
 import com.milobeene.gamebacklog.admin.dto.GameNameUpdateRequest;
 import com.milobeene.gamebacklog.admin.dto.MasterInfoUpdateRequest;
-import com.milobeene.gamebacklog.admin.dto.MasterNameRequest;
 import com.milobeene.gamebacklog.admin.service.GameMergeService;
-import com.milobeene.gamebacklog.admin.service.MasterDataService;
-import com.milobeene.gamebacklog.common.dto.IdResponse;
 import com.milobeene.gamebacklog.admin.service.AdminQueryService;
+import com.milobeene.gamebacklog.admin.service.MemberApprovalService;
 import com.milobeene.gamebacklog.common.dto.PageResponse;
 import com.milobeene.gamebacklog.game.dto.GameResyncResult;
 import com.milobeene.gamebacklog.game.service.GameResyncService;
@@ -24,7 +23,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.util.Map;
+import org.springframework.format.annotation.DateTimeFormat.ISO;
 
 /**
  * 관리자 전용 (I-9).
@@ -42,14 +43,43 @@ public class AdminController {
     private final GameService gameService;
     private final GameResyncService gameResyncService;
     private final GameMergeService gameMergeService;
-    private final MasterDataService masterDataService;
+    private final MemberApprovalService memberApprovalService;
 
-    /** 회원 목록 (FR-ADM-03) */
+    /** 회원 목록·검색 (FR-ADM-03). 이메일 부분 일치 + 가입일 범위 */
     @GetMapping("/members")
     public PageResponse<AdminMemberResponse> members(
+            @RequestParam(required = false) String email,
+            @RequestParam(required = false)
+            @org.springframework.format.annotation.DateTimeFormat(iso = ISO.DATE) LocalDate joinedFrom,
+            @RequestParam(required = false)
+            @org.springframework.format.annotation.DateTimeFormat(iso = ISO.DATE) LocalDate joinedTo,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return adminQueryService.findMembers(page, size);
+            @RequestParam(defaultValue = "30") int size) {
+        return adminQueryService.findMembers(email, joinedFrom, joinedTo, page, size);
+    }
+
+    /**
+     * 마스터 게임 목록·검색 (FR-ADM-01).
+     *
+     * `/api/games`와 갈라둔 이유 — 저쪽은 담기 화면용이라 **IGDB 결과를 섞어 준다.**
+     * 관리자는 "이미 마스터에 있는 것"만 고치므로 섞이면 방해가 되고, 페이지네이션도 안 된다.
+     * IGDB까지 보고 싶으면 화면이 `/api/games`를 대신 부른다
+     */
+    @GetMapping("/games")
+    public PageResponse<AdminGameResponse> games(
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "30") int size) {
+        return adminQueryService.findGames(q, page, size);
+    }
+
+    /**
+     * 가입 승인 (FR-ADM-06). 승인 전까지 그 계정은 로그인이 403이라 아무것도 못 한다.
+     * 거절은 별도 상태를 두지 않는다 — 대기 상태로 놔두거나 계정을 지운다
+     */
+    @PostMapping("/members/{memberId}/approve")
+    public void approveMember(@PathVariable Long memberId) {
+        memberApprovalService.approve(memberId);
     }
 
     /**
@@ -101,46 +131,11 @@ public class AdminController {
         return Map.of("movedEntries", gameMergeService.merge(sourceGameId, targetGameId));
     }
 
-    /* ── 플랫폼·기기·에뮬레이터 마스터 (FR-ADM-04). 삭제는 없다 ───────────────── */
-
-    @PostMapping("/platforms")
-    public IdResponse createPlatform(@Valid @RequestBody MasterNameRequest request) {
-        return IdResponse.of(masterDataService.createPlatform(request.name()));
-    }
-
-    @PutMapping("/platforms/{platformId}")
-    public void renamePlatform(@PathVariable Long platformId,
-                               @Valid @RequestBody MasterNameRequest request) {
-        masterDataService.renamePlatform(platformId, request.name());
-    }
-
-    @PostMapping("/devices")
-    public IdResponse createDevice(@Valid @RequestBody MasterNameRequest request) {
-        return IdResponse.of(masterDataService.createDevice(request.name()));
-    }
-
-    @PutMapping("/devices/{deviceId}")
-    public void renameDevice(@PathVariable Long deviceId,
-                             @Valid @RequestBody MasterNameRequest request) {
-        masterDataService.renameDevice(deviceId, request.name());
-    }
-
-    @PostMapping("/emulators")
-    public IdResponse createEmulator(@Valid @RequestBody MasterNameRequest request) {
-        return IdResponse.of(masterDataService.createEmulator(request.name()));
-    }
-
-    @PutMapping("/emulators/{emulatorId}")
-    public void renameEmulator(@PathVariable Long emulatorId,
-                               @Valid @RequestBody MasterNameRequest request) {
-        masterDataService.renameEmulator(emulatorId, request.name());
-    }
-
     /** 감사 로그 조회 (FR-ADM-05). 이 조회도 로그에 남는다 */
     @GetMapping("/audit-logs")
     public PageResponse<AuditLogResponse> auditLogs(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "30") int size) {
         return adminQueryService.findAuditLogs(page, size);
     }
 }

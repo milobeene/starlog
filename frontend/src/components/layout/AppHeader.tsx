@@ -53,10 +53,7 @@ export default function AppHeader() {
       <div className="flex w-1/3 justify-end">
         <Dropdown
           trigger={() => (
-            <div className="group flex items-center space-x-3 py-2 text-sm font-medium transition-colors hover:text-white/80">
-              <div className="flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-white/10 text-xs transition-colors group-hover:bg-white/20">
-                {nickname ? nickname.charAt(0).toUpperCase() : "·"}
-              </div>
+            <div className="group flex items-center space-x-2 py-2 text-sm font-medium transition-colors hover:text-white/80">
               <span>{nickname || " "}</span>
               <svg className="h-3 w-3 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />

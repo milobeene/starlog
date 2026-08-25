@@ -5,6 +5,7 @@ import com.milobeene.gamebacklog.common.exception.InvalidInputException;
 import com.milobeene.gamebacklog.common.util.TextValues;
 import com.milobeene.gamebacklog.platform.domain.Device;
 import com.milobeene.gamebacklog.platform.domain.Emulator;
+import com.milobeene.gamebacklog.platform.domain.InputMethod;
 import com.milobeene.gamebacklog.platform.domain.PlatformAccount;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -55,9 +56,8 @@ public class Playthrough extends BaseEntity {
     @JoinColumn(name = "emulator_id") //nullable: 에뮬 안 쓴 회차가 대부분
     private Emulator emulator;
 
-    @Enumerated(EnumType.STRING)
-    @JdbcTypeCode(SqlTypes.VARCHAR)
-    @Column(length = 20)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "input_method_id")
     private InputMethod inputMethod;
 
     /**
@@ -80,12 +80,14 @@ public class Playthrough extends BaseEntity {
 
     /**
      * 참조 연결. 엔티티는 리포지토리를 모르므로 서비스가 조회해서 넘긴다.
-     * 기기는 마스터 전체에서 고를 수 있다 — 보유 기기 목록은 제약이 아니다 (BR-PT-05)
+     * 넷 다 회원이 소유한 선택지라 서비스가 소유권까지 확인한 뒤 넘겨준다
      */
-    public void assignReferences(Device device, PlatformAccount platformAccount, Emulator emulator) {
+    public void assignReferences(Device device, PlatformAccount platformAccount,
+                                 Emulator emulator, InputMethod inputMethod) {
         this.device = device;
         this.platformAccount = platformAccount;
         this.emulator = emulator;
+        this.inputMethod = inputMethod;
     }
 
     /** §7.6의 "최신 회차" 판정 기준 — COALESCE(종료일, 시작일) */
@@ -153,7 +155,6 @@ public class Playthrough extends BaseEntity {
         this.startedOn = startedOn;
         this.finishedOn = finishedOn;
         this.status = status;
-        this.inputMethod = command.inputMethod();
         this.label = TextValues.normalize(command.label());
     }
 }

@@ -3,7 +3,6 @@ import type {
   BillingCycle,
   EntryStatus,
   GameSource,
-  InputMethod,
   Money,
   PlaythroughStatus,
 } from "./types";
@@ -34,13 +33,6 @@ export const ACQUISITION_METHOD_LABEL: Record<AcquisitionMethod, string> = {
   BORROWED: "대여",
   DEMO: "체험판",
   NOT_OWNED: "미보유",
-};
-
-export const INPUT_METHOD_LABEL: Record<InputMethod, string> = {
-  XINPUT: "XInput 패드",
-  NINTENDO: "닌텐도 패드",
-  PLAYSTATION: "듀얼센스",
-  KEYBOARD_MOUSE: "키보드+마우스",
 };
 
 export const BILLING_CYCLE_LABEL: Record<BillingCycle, string> = {

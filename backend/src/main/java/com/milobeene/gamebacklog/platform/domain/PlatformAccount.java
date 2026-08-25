@@ -1,21 +1,23 @@
 package com.milobeene.gamebacklog.platform.domain;
 
-import com.milobeene.gamebacklog.common.entity.BaseEntity;
-import com.milobeene.gamebacklog.common.exception.ConflictException;
-import com.milobeene.gamebacklog.common.exception.InvalidInputException;
 import com.milobeene.gamebacklog.common.util.TextValues;
 import com.milobeene.gamebacklog.member.domain.Member;
+import com.milobeene.gamebacklog.member.domain.MemberOwnedEntity;
 import jakarta.persistence.*;
 import lombok.Getter;
 
-import java.time.LocalDateTime;
-
+/**
+ * 플랫폼 계정 (FR-PLT-01, 02).
+ *
+ * 플랫폼이 있어야 존재할 수 있는 유일한 선택지다 — 나머지 넷은 이름만 있으면 선다.
+ * 플랫폼 이름이 바뀌면 여기도 따라 바뀐다 (FK라 이름을 복사해두지 않았다)
+ */
 @Getter
 @Entity
 @Table(uniqueConstraints = @UniqueConstraint(
         name = "uk_platform_account",
         columnNames = {"member_id", "platform_id", "account_label"}))
-public class PlatformAccount extends BaseEntity {
+public class PlatformAccount extends MemberOwnedEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -23,17 +25,11 @@ public class PlatformAccount extends BaseEntity {
 
     // FK를 가진 쪽 = 연관관계의 주인. LAZY를 반드시 명시 (ToOne 기본값은 EAGER)
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "member_id", nullable = false)
-    private Member member;
-
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "platform_id", nullable = false)
     private Platform platform;
 
     @Column(name = "account_label", nullable = false, length = 50)
     private String accountLabel;
-
-    private LocalDateTime deletedAt;
 
     /**
      * JPA 전용 기본 생성자
@@ -41,7 +37,7 @@ public class PlatformAccount extends BaseEntity {
     protected PlatformAccount() {}
 
     public PlatformAccount(Member member, Platform platform, String accountLabel) {
-        this.member = member;
+        super(member);
         this.platform = platform;
         this.accountLabel = requireLabel(accountLabel);
     }
@@ -51,33 +47,12 @@ public class PlatformAccount extends BaseEntity {
         this.accountLabel = requireLabel(accountLabel);
     }
 
-    /**
-     * 소프트 삭제 (§6.5, §7.4). 회차·취득이 이 계정을 참조하므로 행을 보존한다.
-     * 삭제해도 과거 기록에서는 계정 이름이 계속 보여야 한다
-     */
-    public void softDelete(LocalDateTime deletedAt) {
-        if (isDeleted()) {
-            throw new ConflictException("이미 삭제된 계정입니다. id=" + id);
-        }
-        this.deletedAt = deletedAt;
-    }
-
-    public void revive() {
-        if (!isDeleted()) {
-            throw new ConflictException("삭제되지 않은 계정입니다. id=" + id);
-        }
-        this.deletedAt = null;
-    }
-
-    public boolean isDeleted() {
-        return deletedAt != null;
+    @Override
+    public String displayName() {
+        return accountLabel;
     }
 
     private static String requireLabel(String accountLabel) {
-        String normalized = TextValues.normalize(accountLabel);
-        if (normalized == null) {
-            throw new InvalidInputException("계정 라벨은 비울 수 없습니다");
-        }
-        return normalized;
+        return TextValues.require(accountLabel, "계정 라벨은 비울 수 없습니다");
     }
 }

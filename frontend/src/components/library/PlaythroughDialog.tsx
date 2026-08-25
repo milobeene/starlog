@@ -2,14 +2,14 @@
 
 import { useState } from "react";
 import Modal from "@/components/ui/Modal";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { Button, Field, FIELD_DATE, FIELD_INPUT, FIELD_SELECT } from "@/components/ui/Field";
 import { api, errorMessage } from "@/lib/api";
-import { INPUT_METHOD_LABEL, PLAYTHROUGH_STATUS_LABEL } from "@/lib/labels";
+import { PLAYTHROUGH_STATUS_LABEL } from "@/lib/labels";
 import { withCurrent } from "@/lib/options";
-import type { InputMethod, OptionsResponse, Playthrough, PlaythroughStatus } from "@/lib/types";
+import type { OptionsResponse, Playthrough, PlaythroughStatus } from "@/lib/types";
 
 const STATUSES: PlaythroughStatus[] = ["PLAYING", "PAUSED", "DROPPED", "COMPLETED"];
-const INPUTS: InputMethod[] = ["XINPUT", "NINTENDO", "PLAYSTATION", "KEYBOARD_MOUSE"];
 
 /**
  * 회차 추가·수정.
@@ -38,10 +38,13 @@ export default function PlaythroughDialog({
   const [accountId, setAccountId] = useState(
     run?.platformAccount ? String(run.platformAccount.accountId) : "",
   );
-  const [inputMethod, setInputMethod] = useState<string>(run?.inputMethod ?? "");
+  const [inputMethodId, setInputMethodId] = useState(
+    run?.inputMethod ? String(run.inputMethod.inputMethodId) : "",
+  );
   const [label, setLabel] = useState(run?.label ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [removing, setRemoving] = useState(false);
 
   const save = async () => {
     if (!startedOn) {
@@ -58,7 +61,7 @@ export default function PlaythroughDialog({
       deviceId: numberOrNull(deviceId),
       platformAccountId: numberOrNull(accountId),
       emulatorId: numberOrNull(emulatorId),
-      inputMethod: inputMethod || null,
+      inputMethodId: numberOrNull(inputMethodId),
       label: label.trim() || null,
     };
 
@@ -79,7 +82,20 @@ export default function PlaythroughDialog({
       onClose={onClose}
       footer={
         <>
+          {/*
+            삭제는 **수정할 때만** 뜬다. 잘못 추가한 회차를 지울 방법이 여기밖에 없다 —
+            백엔드에는 진작 있었는데 화면이 없어 수정만 가능했다 (FR-PT-08)
+          */}
+          {run && (
+            <button
+              onClick={() => setRemoving(true)}
+              className="text-xs text-white/30 transition-colors hover:text-red-400"
+            >
+              삭제
+            </button>
+          )}
           {error && <span className="mr-auto text-xs text-red-400">{error}</span>}
+          {!error && run && <span className="mr-auto" />}
           <Button onClick={onClose}>취소</Button>
           <Button variant="primary" onClick={save} disabled={saving}>
             {saving ? "저장 중" : "저장"}
@@ -156,16 +172,34 @@ export default function PlaythroughDialog({
             </select>
           </Field>
           <Field label="Input">
-            <select value={inputMethod} onChange={(e) => setInputMethod(e.target.value)} className={FIELD_SELECT}>
+            <select value={inputMethodId} onChange={(e) => setInputMethodId(e.target.value)} className={FIELD_SELECT}>
               <option value="">선택 안 함</option>
-              {INPUTS.map((item) => (
-                <option key={item} value={item}>
-                  {INPUT_METHOD_LABEL[item]}
+              {withCurrent(options?.inputMethods ?? [], run?.inputMethod && { id: run.inputMethod.inputMethodId, name: run.inputMethod.name }).map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
                 </option>
               ))}
             </select>
           </Field>
         </div>
+
+        {removing && (
+          <ConfirmDialog
+            title={`${run?.sequenceNo}회차 삭제`}
+            message={
+              <>
+                <b className="text-white">{run?.sequenceNo}회차</b> 기록을 삭제합니다. 되돌릴 수
+                없으며, 남은 회차의 번호는 다시 매겨지지 않습니다.
+              </>
+            }
+            onConfirm={async () => {
+              await api.del(`/api/playthroughs/${run!.playthroughId}`);
+              onSaved();
+              onClose();
+            }}
+            onClose={() => setRemoving(false)}
+          />
+        )}
 
         <Field label="Label" hint="예) 하드 모드, 친구와 협동">
           <input

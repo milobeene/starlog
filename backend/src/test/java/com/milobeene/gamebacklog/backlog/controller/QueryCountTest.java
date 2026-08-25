@@ -134,8 +134,12 @@ class QueryCountTest extends ControllerTestSupport {
         return Long.valueOf(body.replaceAll("\\D+", ""));
     }
 
+    private Device newDevice(Member member, String label) {
+        return new Device(em.getReference(Member.class, member.getId()), label, label, null);
+    }
+
     private void addPlaythrough(Member member, Long entryId, String from, String to) throws Exception {
-        Device device = Device.of("기기 " + System.nanoTime());
+        Device device = newDevice(member, "기기 " + System.nanoTime());
         em.persist(device);
         em.flush();
 

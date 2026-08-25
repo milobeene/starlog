@@ -8,7 +8,7 @@ import com.milobeene.gamebacklog.common.exception.NotFoundException;
 import com.milobeene.gamebacklog.platform.domain.Platform;
 import com.milobeene.gamebacklog.platform.domain.PlatformAccount;
 import com.milobeene.gamebacklog.platform.service.PlatformAccountService;
-import com.milobeene.gamebacklog.platform.repository.PlatformRepository;
+import com.milobeene.gamebacklog.platform.service.PlatformService;
 import com.milobeene.gamebacklog.subscription.service.SubscriptionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -22,7 +22,7 @@ import java.util.List;
 public class AcquisitionService {
 
     private final AcquisitionRepository acquisitionRepository;
-    private final PlatformRepository platformRepository;
+    private final PlatformService platformService;
     private final PlatformAccountService platformAccountService;
     private final BacklogEntryFinder entryFinder;
     private final SubscriptionService subscriptionService;
@@ -77,12 +77,12 @@ public class AcquisitionService {
 
     /** 엔티티는 리포지토리를 모르므로 참조 조회는 서비스가 한다 */
     private void assignReferences(Acquisition acquisition, AcquisitionCommand command) {
-        Platform platform = (command.platformId() == null) ? null
-                : platformRepository.findById(command.platformId())
-                .orElseThrow(() -> new NotFoundException("플랫폼을 찾을 수 없습니다. id=" + command.platformId()));
-
-        // 남의 계정은 붙일 수 없다 (PlaythroughService와 같은 이유. v0.2의 보류를 해제했다)
+        // 남의 것은 붙일 수 없다 (PlaythroughService와 같은 이유. v0.2의 보류를 해제했다)
         Long ownerId = acquisition.getBacklogEntry().getMember().getId();
+
+        Platform platform = (command.platformId() == null) ? null
+                : platformService.findOne(ownerId, command.platformId());
+
         PlatformAccount account = (command.platformAccountId() == null) ? null
                 : platformAccountService.findOne(ownerId, command.platformAccountId());
 

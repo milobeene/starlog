@@ -10,7 +10,7 @@ public record PlaythroughCommand(
         Long deviceId,
         Long platformAccountId,
         Long emulatorId,
-        InputMethod inputMethod,
+        Long inputMethodId,
         String label
 ) {
 }

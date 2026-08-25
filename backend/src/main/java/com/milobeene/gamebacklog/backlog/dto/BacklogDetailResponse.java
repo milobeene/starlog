@@ -4,7 +4,6 @@ import com.milobeene.gamebacklog.backlog.domain.Acquisition;
 import com.milobeene.gamebacklog.backlog.domain.AcquisitionMethod;
 import com.milobeene.gamebacklog.backlog.domain.BacklogEntry;
 import com.milobeene.gamebacklog.backlog.domain.BacklogStatus;
-import com.milobeene.gamebacklog.backlog.domain.InputMethod;
 import com.milobeene.gamebacklog.backlog.domain.Playthrough;
 import com.milobeene.gamebacklog.backlog.domain.PlaythroughStatus;
 import com.milobeene.gamebacklog.common.dto.MoneyResponse;
@@ -111,9 +110,12 @@ public record BacklogDetailResponse(
 
     public record PersonalRecord(BigDecimal rating, Integer playTimeHours, String memo) {}
 
+    /** name은 "거실 스위치 (Nintendo Switch)" 꼴이다 — 선택지 목록과 같은 문구여야 짝이 맞는다 */
     public record DeviceRef(Long deviceId, String name) {}
 
     public record EmulatorRef(Long emulatorId, String name) {}
+
+    public record InputMethodRef(Long inputMethodId, String name) {}
 
     public record PlatformRef(Long platformId, String name) {}
 
@@ -144,7 +146,7 @@ public record BacklogDetailResponse(
             DeviceRef device,
             PlatformAccountRef platformAccount,
             EmulatorRef emulator,
-            InputMethod inputMethod
+            InputMethodRef inputMethod
     ) {
 
         static PlaythroughItem from(Playthrough p) {
@@ -152,11 +154,12 @@ public record BacklogDetailResponse(
                     p.getId(), p.getSequenceNo(), p.getStartedOn(), p.getFinishedOn(),
                     p.getStatus(), p.getLabel(),
                     p.getDevice() == null ? null
-                            : new DeviceRef(p.getDevice().getId(), p.getDevice().getName()),
+                            : new DeviceRef(p.getDevice().getId(), p.getDevice().optionLabel()),
                     PlatformAccountRef.from(p.getPlatformAccount()),
                     p.getEmulator() == null ? null
                             : new EmulatorRef(p.getEmulator().getId(), p.getEmulator().getName()),
-                    p.getInputMethod());
+                    p.getInputMethod() == null ? null
+                            : new InputMethodRef(p.getInputMethod().getId(), p.getInputMethod().getName()));
         }
     }
 

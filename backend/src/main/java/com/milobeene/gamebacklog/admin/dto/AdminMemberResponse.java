@@ -11,6 +11,8 @@ public record AdminMemberResponse(
         String nickname,
         String role,
         boolean emailVerified,
+        /** null이면 승인 대기 (FR-ADM-06) */
+        LocalDateTime approvedAt,
         LocalDateTime deletedAt,
         LocalDateTime createdAt) {
 
@@ -18,6 +20,6 @@ public record AdminMemberResponse(
         return new AdminMemberResponse(
                 member.getId(), member.getEmail(), member.getNickname(),
                 member.getRole().name(), member.isEmailVerified(),
-                member.getDeletedAt(), member.getCreatedAt());
+                member.getApprovedAt(), member.getDeletedAt(), member.getCreatedAt());
     }
 }

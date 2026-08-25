@@ -3,6 +3,7 @@ package com.milobeene.gamebacklog.admin.service;
 import com.milobeene.gamebacklog.member.domain.Member;
 import com.milobeene.gamebacklog.member.domain.MemberRole;
 import com.milobeene.gamebacklog.member.repository.MemberRepository;
+import com.milobeene.gamebacklog.platform.service.DefaultCatalogSeeder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
@@ -42,6 +43,7 @@ public class AdminBootstrap implements ApplicationRunner {
 
         private final MemberRepository memberRepository;
         private final PasswordEncoder passwordEncoder;
+        private final DefaultCatalogSeeder defaultCatalogSeeder;
 
         @Transactional
         public void bootstrap() {
@@ -59,6 +61,9 @@ public class AdminBootstrap implements ApplicationRunner {
         }
 
         private void promote(Member member) {
+            // 승격 대상이 승인 대기 상태일 수 있다. 관리자가 로그인 못 하면 아무도 승인할 수 없다
+            member.approve(java.time.LocalDateTime.now());
+
             if (member.getRole() == MemberRole.ADMIN) {
                 return;
             }
@@ -69,8 +74,10 @@ public class AdminBootstrap implements ApplicationRunner {
         private void create(String email, String rawPassword) {
             Member admin = Member.signUpWithEmail(email, passwordEncoder.encode(rawPassword), "관리자");
             admin.verifyEmail();          // 관리자는 메일 인증 절차를 거치지 않는다
+            admin.approve(java.time.LocalDateTime.now());   // 자기 자신을 승인할 수는 없으니 (FR-ADM-06)
             admin.promoteToAdmin();
             memberRepository.persist(admin);
+            defaultCatalogSeeder.seed(admin);
             log.info("관리자 계정 생성: {}", email);
         }
     }

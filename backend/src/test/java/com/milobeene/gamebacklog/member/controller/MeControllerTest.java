@@ -27,13 +27,12 @@ class MeControllerTest extends ControllerTestSupport {
     public void me는_프로필과_계정과_기기와_구독을_한_번에_준다() throws Exception {
         //given
         Member member = saveMember();
-        Platform steam = savePlatform("Steam");
-        Device pc = saveDevice("Windows PC");
+        Platform steam = savePlatform(member, "Steam");
         platformAccountService.register(member.getId(), steam.getId(), "본계정");
 
         mockMvc.perform(post("/api/me/devices").header("X-Member-Id", member.getId())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"deviceId\":" + pc.getId() + ",\"label\":\"거실용\"}"));
+                .content("{\"deviceType\":\"Nintendo Switch\",\"label\":\"거실용\"}"));
         mockMvc.perform(post("/api/me/subscriptions").header("X-Member-Id", member.getId())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -45,7 +44,9 @@ class MeControllerTest extends ControllerTestSupport {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.profile.memberId").value(member.getId()))
                 .andExpect(jsonPath("$.platformAccounts[0].platform.name").value("Steam"))
-                .andExpect(jsonPath("$.devices[0].device.name").value("Windows PC"))
+                .andExpect(jsonPath("$.platforms[0].name").value("Steam"))
+                .andExpect(jsonPath("$.devices[0].label").value("거실용"))
+                .andExpect(jsonPath("$.devices[0].deviceType").value("Nintendo Switch"))
                 .andExpect(jsonPath("$.subscriptions[0].active").value(true))
                 .andExpect(jsonPath("$.subscriptions[0].fee.currency").value("KRW"));
     }
@@ -67,23 +68,26 @@ class MeControllerTest extends ControllerTestSupport {
     }
 
     @Test
-    public void options는_기기_마스터_전체를_준다() throws Exception {
-        //given — 보유 기기로 등록하지 않은 기기도 선택지에 있어야 한다 (BR-PT-05)
+    public void options는_내_기기만_준다() throws Exception {
+        //given — 마스터 공유를 폐기했다. 남의 기기가 섞이면 안 된다
         Member member = saveMember();
-        saveDevice("Nintendo Switch");
-        saveDevice("Windows PC");
+        Member other = saveMember();
+        saveDevice(member, "Nintendo Switch");
+        saveDevice(member, "Windows PC");
+        saveDevice(other, "남의 PC");
 
-        //when //then
+        //when //then — 이름에 기종이 함께 붙는다
         mockMvc.perform(get("/api/me/options").header("X-Member-Id", member.getId()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.devices.length()").value(2));
+                .andExpect(jsonPath("$.devices.length()").value(2))
+                .andExpect(jsonPath("$.devices[0].name").value("Nintendo Switch"));
     }
 
     @Test
     public void 삭제한_계정은_options에서_빠진다() throws Exception {
         //given
         Member member = saveMember();
-        Platform steam = savePlatform("Steam");
+        Platform steam = savePlatform(member, "Steam");
         Long accountId = platformAccountService.register(member.getId(), steam.getId(), "부계정");
 
         //when
@@ -100,7 +104,7 @@ class MeControllerTest extends ControllerTestSupport {
     public void 삭제한_계정을_재등록하면_409에_되살리기_주소가_실린다() throws Exception {
         //given
         Member member = saveMember();
-        Platform steam = savePlatform("Steam");
+        Platform steam = savePlatform(member, "Steam");
         Long accountId = platformAccountService.register(member.getId(), steam.getId(), "본계정");
         platformAccountService.delete(member.getId(), accountId);
 
@@ -165,22 +169,20 @@ class MeControllerTest extends ControllerTestSupport {
     }
 
     @Test
-    public void 구글_전용_계정은_현재_비밀번호_없이_설정한다() throws Exception {
-        //given — 비밀번호가 null인 계정 (BR-AUTH-01)
+    public void 구글_전용_계정은_비밀번호를_설정할_수_없다() throws Exception {
+        //given — 비밀번호가 생기면 이메일 로그인 계정이 되는데, 그 경로엔 인증 메일이 필요하다.
+        // 지금은 메일을 보낼 수 없어 막아뒀다 (OI-02 후속)
         Member member = Member.signUpWithGoogle(
                 "g" + System.nanoTime() + "@example.com", "구글러",
                 "sub-" + System.nanoTime(), true);
         em.persist(member);
         em.flush();
 
-        //when — currentPassword를 안 보낸다
+        //when //then — currentPassword를 안 보내도 400이다
         mockMvc.perform(changePassword(member, "null", "9999"))
-                .andExpect(status().isNoContent());
-        em.flush();
+                .andExpect(status().isBadRequest());
         em.clear();
-
-        //then — 이제 비밀번호가 생겨 구글 연결도 해제할 수 있다
-        assertThat(reloadMember(member).hasPassword()).isTrue();
+        assertThat(reloadMember(member).hasPassword()).isFalse();
     }
 
     @Test
@@ -202,14 +204,15 @@ class MeControllerTest extends ControllerTestSupport {
         return em.find(Member.class, member.getId());
     }
 
-    private Platform savePlatform(String name) {
-        Platform platform = Platform.of(name);
+    private Platform savePlatform(Member member, String name) {
+        Platform platform = new Platform(em.getReference(Member.class, member.getId()), name);
         em.persist(platform);
         return platform;
     }
 
-    private Device saveDevice(String name) {
-        Device device = Device.of(name);
+    private Device saveDevice(Member member, String label) {
+        Device device = new Device(
+                em.getReference(Member.class, member.getId()), label, label, null);
         em.persist(device);
         return device;
     }

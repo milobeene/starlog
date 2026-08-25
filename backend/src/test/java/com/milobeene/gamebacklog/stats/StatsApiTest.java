@@ -420,7 +420,8 @@ class StatsApiTest extends ControllerTestSupport {
 
     private void completePlaythrough(Member member, Long entryId, String from, String to)
             throws Exception {
-        Device device = Device.of("기기 " + System.nanoTime());
+        Device device = new Device(em.getReference(Member.class, member.getId()),
+                "기기", "기기 " + System.nanoTime(), null);
         em.persist(device);
         em.flush();
 
@@ -434,7 +435,8 @@ class StatsApiTest extends ControllerTestSupport {
     }
 
     private void startPlaythrough(Member member, Long entryId, String from) throws Exception {
-        Device device = Device.of("기기 " + System.nanoTime());
+        Device device = new Device(em.getReference(Member.class, member.getId()),
+                "기기", "기기 " + System.nanoTime(), null);
         em.persist(device);
         em.flush();
 

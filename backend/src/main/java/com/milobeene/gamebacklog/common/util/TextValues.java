@@ -1,5 +1,7 @@
 package com.milobeene.gamebacklog.common.util;
 
+import com.milobeene.gamebacklog.common.exception.InvalidInputException;
+
 import java.util.List;
 import java.util.Objects;
 
@@ -15,6 +17,15 @@ public final class TextValues {
         }
         String stripped = value.strip();
         return stripped.isEmpty() ? null : stripped;
+    }
+
+    /** normalize 후에도 값이 남아야 하는 필수 입력. 유니크 제약이 걸린 이름에 쓴다 */
+    public static String require(String value, String message) {
+        String normalized = normalize(value);
+        if (normalized == null) {
+            throw new InvalidInputException(message);
+        }
+        return normalized;
     }
 
     /**

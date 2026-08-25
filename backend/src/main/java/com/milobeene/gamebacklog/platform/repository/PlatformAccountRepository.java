@@ -17,4 +17,7 @@ public interface PlatformAccountRepository extends BaseRepository<PlatformAccoun
 
     /** 회차·취득 입력 시 고를 수 있는 계정. 삭제된 건 선택지에서 빠진다 */
     List<PlatformAccount> findByMemberIdAndDeletedAtIsNullOrderByAccountLabelAsc(Long memberId);
+
+    /** 플랫폼을 지울 때 딸린 계정도 함께 닫기 위해 (§6.5) */
+    List<PlatformAccount> findByPlatformIdAndDeletedAtIsNull(Long platformId);
 }

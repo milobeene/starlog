@@ -20,25 +20,36 @@ import type {
   CompanyDictionary,
   FacetCount,
   FacetsResponse,
+  MemberDevice,
+  MemberEmulator,
+  MemberInputMethod,
+  MemberPlatform,
   MeResponse,
-  OptionsResponse,
+  PlatformAccountRef,
+  Subscription,
 } from "@/lib/types";
 
 type Dialog =
   | null
   | { kind: "profile" }
   | { kind: "memo" }
-  | { kind: "account" }
-  | { kind: "device" }
-  | { kind: "subscription" }
+  | { kind: "platform"; edit?: MemberPlatform }
+  | { kind: "account"; edit?: PlatformAccountRef }
+  | { kind: "device"; edit?: MemberDevice }
+  | { kind: "emulator"; edit?: MemberEmulator }
+  | { kind: "inputMethod"; edit?: MemberInputMethod }
+  | { kind: "subscription"; edit?: Subscription }
   | { kind: "password" }
   | { kind: "withdraw" };
 
 /**
- * 프로필 · 플랫폼 계정 · 보유 기기 · 구독 · 사전 · 계정.
+ * 프로필 · 선택지 다섯 종 · 구독 · 사전 · 계정.
+ *
+ * 선택지(플랫폼·계정·기기·에뮬·입력 방식)는 전부 **내 소유**라 여기서 고치고 지운다.
+ * 이름을 바꾸면 그 항목을 문 회차·취득이 전부 따라 바뀐다 — FK라 값을 복사해두지 않았다.
  *
  * 섹션마다 엔드포인트가 다르다 (쓰기는 리소스 단위, API 설계서 §0).
- * 읽기는 `/api/me` 하나가 프로필·계정·기기·구독을 통째로 준다
+ * 읽기는 `/api/me` 하나가 전부 통째로 준다
  */
 export default function SettingsPage() {
   return (
@@ -50,7 +61,6 @@ export default function SettingsPage() {
 
 function SettingsContent() {
   const me = useApi<MeResponse>("/api/me");
-  const options = useApi<OptionsResponse>("/api/me/options");
   /*
    * 사전 수정에는 id가 필요한데 /api/me/options는 이름만 준다.
    * facets가 { id, name, count }를 주므로 그쪽을 쓴다 — 게임에 적용 중인 것만 나오는데,
@@ -62,7 +72,6 @@ function SettingsContent() {
 
   const refresh = () => {
     me.reload();
-    options.reload();
     facets.reload();
     companies.reload();
   };
@@ -105,7 +114,7 @@ function SettingsContent() {
           <SettingsSection
             title="메모"
             icon="note"
-            description="자유롭게 기록하실 수 있는 공간입니다. 마크다운을 지원합니다."
+            description="게이밍 기어 스펙, 모딩 설정, 세팅값처럼 어디에도 안 들어가는 것들을 적어 두세요. 마크다운을 지원합니다."
             action={<Button onClick={() => setDialog({ kind: "memo" })}>수정</Button>}
           >
             {me.loading ? (
@@ -124,9 +133,32 @@ function SettingsContent() {
           </SettingsSection>
 
           <SettingsSection
+            title="플랫폼"
+            icon="account"
+            description="Steam·PSN 등 게임을 구매하시는 곳입니다. 계정은 이 위에 매답니다."
+            action={<Button onClick={() => setDialog({ kind: "platform" })}>추가</Button>}
+          >
+            <ul className="flex flex-col gap-2">
+              {(me.data?.platforms ?? []).map((platform) => (
+                <Row key={platform.platformId}>
+                  <span className="flex-1">{platform.name}</span>
+                  <EditButton onClick={() => setDialog({ kind: "platform", edit: platform })} />
+                  <DeleteButton
+                    path={`/api/me/platforms/${platform.platformId}`}
+                    name={platform.name}
+                    note="이 플랫폼의 계정도 함께 삭제됩니다."
+                    onDone={refresh}
+                  />
+                </Row>
+              ))}
+              {me.data?.platforms.length === 0 && <EmptyRow>등록된 항목이 없습니다</EmptyRow>}
+            </ul>
+          </SettingsSection>
+
+          <SettingsSection
             title="플랫폼 계정"
             icon="account"
-            description="Steam·PSN 등 보유하신 계정입니다. 취득 기록에서 선택하실 수 있습니다."
+            description="플랫폼별 계정입니다. 취득·회차 기록에서 선택하실 수 있습니다."
             action={<Button onClick={() => setDialog({ kind: "account" })}>추가</Button>}
           >
             <ul className="flex flex-col gap-2">
@@ -134,10 +166,10 @@ function SettingsContent() {
                 <Row key={account.accountId}>
                   <span className="flex-1">{account.label}</span>
                   <span className="text-xs text-white/40">{account.platform.name}</span>
+                  <EditButton onClick={() => setDialog({ kind: "account", edit: account })} />
                   <DeleteButton
                     path={`/api/me/platform-accounts/${account.accountId}`}
                     name={account.label}
-                    revivable
                     onDone={refresh}
                   />
                 </Row>
@@ -149,22 +181,69 @@ function SettingsContent() {
           <SettingsSection
             title="보유 기기"
             icon="device"
-            description="회차 기록에서 우선 표시됩니다. 목록에 없는 기기로도 기록하실 수 있습니다."
+            description="회차 기록에서 선택하실 수 있습니다. 같은 기종을 여러 대 두시려면 라벨로 구분해 주세요."
             action={<Button onClick={() => setDialog({ kind: "device" })}>추가</Button>}
           >
             <ul className="flex flex-col gap-2">
               {(me.data?.devices ?? []).map((device) => (
-                <Row key={device.memberDeviceId}>
+                <CatalogRow key={device.deviceId} memo={device.memo}>
                   <span className="flex-1">{device.label}</span>
-                  <span className="text-xs text-white/40">{device.device.name}</span>
+                  <span className="text-xs text-white/40">{device.deviceType}</span>
+                  <EditButton onClick={() => setDialog({ kind: "device", edit: device })} />
                   <DeleteButton
-                    path={`/api/me/devices/${device.memberDeviceId}`}
+                    path={`/api/me/devices/${device.deviceId}`}
                     name={device.label}
+                    onDone={refresh}
+                  />
+                </CatalogRow>
+              ))}
+              {me.data?.devices.length === 0 && <EmptyRow>등록된 항목이 없습니다</EmptyRow>}
+            </ul>
+          </SettingsSection>
+
+          <SettingsSection
+            title="에뮬레이터"
+            icon="device"
+            description="설정값이나 주의점을 메모로 남기실 수 있습니다."
+            action={<Button onClick={() => setDialog({ kind: "emulator" })}>추가</Button>}
+          >
+            <ul className="flex flex-col gap-2">
+              {(me.data?.emulators ?? []).map((emulator) => (
+                <CatalogRow key={emulator.emulatorId} memo={emulator.memo}>
+                  <span className="flex-1">{emulator.name}</span>
+                  <EditButton onClick={() => setDialog({ kind: "emulator", edit: emulator })} />
+                  <DeleteButton
+                    path={`/api/me/emulators/${emulator.emulatorId}`}
+                    name={emulator.name}
+                    onDone={refresh}
+                  />
+                </CatalogRow>
+              ))}
+              {me.data?.emulators.length === 0 && <EmptyRow>등록된 항목이 없습니다</EmptyRow>}
+            </ul>
+          </SettingsSection>
+
+          <SettingsSection
+            title="입력 방식"
+            icon="device"
+            description="회차 기록에서 어떤 컨트롤러로 플레이하셨는지 남기실 때 사용됩니다."
+            action={<Button onClick={() => setDialog({ kind: "inputMethod" })}>추가</Button>}
+          >
+            <ul className="flex flex-col gap-2">
+              {(me.data?.inputMethods ?? []).map((inputMethod) => (
+                <Row key={inputMethod.inputMethodId}>
+                  <span className="flex-1">{inputMethod.name}</span>
+                  <EditButton
+                    onClick={() => setDialog({ kind: "inputMethod", edit: inputMethod })}
+                  />
+                  <DeleteButton
+                    path={`/api/me/input-methods/${inputMethod.inputMethodId}`}
+                    name={inputMethod.name}
                     onDone={refresh}
                   />
                 </Row>
               ))}
-              {me.data?.devices.length === 0 && <EmptyRow>등록된 항목이 없습니다</EmptyRow>}
+              {me.data?.inputMethods.length === 0 && <EmptyRow>등록된 항목이 없습니다</EmptyRow>}
             </ul>
           </SettingsSection>
 
@@ -184,6 +263,9 @@ function SettingsContent() {
                   <span className="num text-xs text-white/30">
                     {subscription.startedOn} ~ {subscription.endedOn ?? ""}
                   </span>
+                  <EditButton
+                    onClick={() => setDialog({ kind: "subscription", edit: subscription })}
+                  />
                   <DeleteButton
                     path={`/api/me/subscriptions/${subscription.subscriptionId}`}
                     name={subscription.serviceName}
@@ -244,51 +326,42 @@ function SettingsContent() {
               </button>
 
               {/*
-                구글로 가입한 계정은 비밀번호가 없다 — 그래서 "변경"이 아니라 "설정"이다.
-                이걸 만들어야 구글 연결 해제도 열린다 (BR-AUTH-01)
+                비밀번호가 **없는** 계정(구글 전용)은 새로 만들 수 없다 — 비밀번호가 생기면
+                이메일 로그인 계정이 되는데 그 경로엔 인증 메일이 필요하고, 지금은 보낼 수 없다.
+                이미 비밀번호가 있는 계정의 변경은 그대로 열려 있다
               */}
-              <button
-                onClick={() => setDialog({ kind: "password" })}
-                className="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-left text-sm transition-colors hover:border-white/25"
-              >
-                {me.data?.profile.hasPassword ? "비밀번호 변경" : "비밀번호 설정"}
-                <span className="mt-0.5 block text-xs text-white/35">
-                  {me.data?.profile.hasPassword
-                    ? "현재 비밀번호를 확인한 뒤 변경합니다"
-                    : "구글로 가입하신 계정입니다. 비밀번호를 설정하시면 이메일로도 로그인하실 수 있습니다"}
-                </span>
-              </button>
+              {me.data?.profile.hasPassword ? (
+                <button
+                  onClick={() => setDialog({ kind: "password" })}
+                  className="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-left text-sm transition-colors hover:border-white/25"
+                >
+                  비밀번호 변경
+                  <span className="mt-0.5 block text-xs text-white/35">
+                    현재 비밀번호를 확인한 뒤 변경합니다
+                  </span>
+                </button>
+              ) : (
+                <button
+                  disabled
+                  title="자체 도메인이 없어 인증 메일을 보내 드릴 수 없습니다. Google 로그인만 이용하실 수 있습니다."
+                  className="cursor-not-allowed rounded-lg border border-white/10 px-4 py-3 text-left text-sm text-white/35"
+                >
+                  비밀번호 설정
+                  <span className="mt-0.5 block text-xs text-white/20">
+                    Google 로그인 전용 계정입니다. 인증 메일을 보내 드릴 수 없어 막혀 있습니다
+                  </span>
+                </button>
+              )}
 
               {/*
-                연결 여부에 따라 하나만 보여준다 — 둘을 늘 띄우면 구글로 가입한 계정에도
-                "연결" 버튼이 살아 있어 이미 된 걸 또 하라는 것처럼 읽힌다
+                연결 해제는 **항상 막혀 있다.** 이메일 가입과 비밀번호 설정을 둘 다 막아둔 지금
+                해제까지 열어두면 로그인 수단이 하나도 안 남는다. 정리는 탈퇴로 한다 (FR-AUTH-09/10)
               */}
               {me.data?.profile.googleLinked ? (
                 <button
-                  onClick={async () => {
-                    if (!me.data?.profile.hasPassword) return;
-                    try {
-                      await api.del("/api/me/google");
-                      refresh();
-                    } catch (caught) {
-                      alert(
-                        caught instanceof ApiError
-                          ? caught.message
-                          : "연결을 해제하지 못했습니다.",
-                      );
-                    }
-                  }}
-                  disabled={!me.data?.profile.hasPassword}
-                  title={
-                    me.data?.profile.hasPassword
-                      ? undefined
-                      : "비밀번호를 먼저 설정하셔야 해제하실 수 있습니다"
-                  }
-                  className={`rounded-lg border border-white/10 px-4 py-3 text-left text-sm transition-colors ${
-                    me.data?.profile.hasPassword
-                      ? "text-white/60 hover:border-white/25 hover:text-white"
-                      : "cursor-not-allowed text-white/25"
-                  }`}
+                  disabled
+                  title="연결을 해제하시면 로그인 수단이 남지 않습니다. 계정 정리는 회원 탈퇴를 이용해 주세요."
+                  className="cursor-not-allowed rounded-lg border border-white/10 px-4 py-3 text-left text-sm text-white/35"
                 >
                   <span className="flex items-center gap-2">
                     Google 계정 연결 해제
@@ -296,10 +369,9 @@ function SettingsContent() {
                       연결됨
                     </span>
                   </span>
-                  <span className="mt-0.5 block text-xs text-white/35">
-                    {me.data?.profile.hasPassword
-                      ? "해제하시면 이메일과 비밀번호로만 로그인하실 수 있습니다"
-                      : "로그인 수단이 구글뿐입니다. 비밀번호를 먼저 설정해 주세요"}
+                  <span className="mt-0.5 block text-xs text-white/20">
+                    해제하시면 로그인 수단이 남지 않아 막아 두었습니다. 계정 정리는 아래 회원 탈퇴로
+                    하실 수 있습니다
                   </span>
                 </button>
               ) : (
@@ -336,29 +408,45 @@ function SettingsContent() {
           onSaved={refresh}
         />
       )}
+      {dialog?.kind === "platform" && (
+        <NameDialog
+          title="플랫폼"
+          hint="예) Steam, PlayStation"
+          basePath="/api/me/platforms"
+          edit={dialog.edit && { id: dialog.edit.platformId, name: dialog.edit.name }}
+          onClose={() => setDialog(null)}
+          onSaved={refresh}
+        />
+      )}
+      {dialog?.kind === "inputMethod" && (
+        <NameDialog
+          title="입력 방식"
+          hint="예) 듀얼센스, 키보드 & 마우스"
+          basePath="/api/me/input-methods"
+          edit={dialog.edit && { id: dialog.edit.inputMethodId, name: dialog.edit.name }}
+          onClose={() => setDialog(null)}
+          onSaved={refresh}
+        />
+      )}
       {dialog?.kind === "account" && (
         <AccountDialog
-          platforms={options.data?.platforms ?? []}
+          platforms={me.data?.platforms ?? []}
+          edit={dialog.edit}
           onClose={() => setDialog(null)}
           onSaved={refresh}
         />
       )}
       {dialog?.kind === "device" && (
-        <DeviceDialog
-          devices={options.data?.devices ?? []}
-          onClose={() => setDialog(null)}
-          onSaved={refresh}
-        />
+        <DeviceDialog edit={dialog.edit} onClose={() => setDialog(null)} onSaved={refresh} />
+      )}
+      {dialog?.kind === "emulator" && (
+        <EmulatorDialog edit={dialog.edit} onClose={() => setDialog(null)} onSaved={refresh} />
       )}
       {dialog?.kind === "subscription" && (
-        <SubscriptionDialog onClose={() => setDialog(null)} onSaved={refresh} />
+        <SubscriptionDialog edit={dialog.edit} onClose={() => setDialog(null)} onSaved={refresh} />
       )}
-      {dialog?.kind === "password" && me.data && (
-        <PasswordDialog
-          hasPassword={me.data.profile.hasPassword}
-          onClose={() => setDialog(null)}
-          onSaved={refresh}
-        />
+      {dialog?.kind === "password" && (
+        <PasswordDialog onClose={() => setDialog(null)} onSaved={refresh} />
       )}
       {dialog?.kind === "withdraw" && (
         <ConfirmDialog
@@ -382,22 +470,47 @@ function SettingsContent() {
   );
 }
 
+function EditButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="shrink-0 text-xs text-white/30 transition-colors hover:text-white/70"
+    >
+      수정
+    </button>
+  );
+}
+
+/** 메모가 있는 선택지(기기·에뮬)의 행. 스펙을 접어두지 않고 그 자리에서 보여준다 */
+function CatalogRow({ memo, children }: { memo: string | null; children: React.ReactNode }) {
+  return (
+    <li className="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm">
+      <div className="flex items-center gap-3">{children}</div>
+      {memo && (
+        <div className="markdown mt-2 border-t border-white/10 pt-2 text-xs leading-relaxed font-light text-white/55">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{memo}</ReactMarkdown>
+        </div>
+      )}
+    </li>
+  );
+}
+
 /**
  * 삭제 확인. 예전에는 누르는 즉시 지워져서 되돌릴 방법도 안내도 없었다.
  *
- * 계정과 기기는 **지워지는 방식이 다르다** (§7.4) — 그래서 문구도 다르다:
- * 계정은 소프트 삭제라 같은 이름으로 다시 만들면 되살릴 수 있고,
- * 기기는 물리 삭제라 돌아오지 않는다
+ * 선택지 다섯 종은 전부 **소프트 삭제**다 (§7.4) — 회차·취득이 참조하고 있어서
+ * 행을 지우면 "무엇으로 플레이했는지"가 과거 기록에서 통째로 사라진다.
+ * 그래서 문구도 하나로 모였다: 지난 기록에는 남고, 같은 이름으로 다시 추가하면 돌아온다
  */
 function DeleteButton({
   path,
   name,
-  revivable,
+  note,
   onDone,
 }: {
   path: string;
   name: string;
-  revivable?: boolean;
+  note?: string;
   onDone: () => void;
 }) {
   const [asking, setAsking] = useState(false);
@@ -415,19 +528,19 @@ function DeleteButton({
         <ConfirmDialog
           title={`${name} 삭제`}
           message={
-            revivable ? (
-              <>
-                <b className="text-white">{name}</b>을(를) 삭제합니다. 이 계정에 연결된 과거
-                회차·취득 기록에는 이름이 그대로 남습니다.
-                <br />
-                나중에 같은 이름으로 다시 추가하시면 <b className="text-white">복원하실 수 있습니다.</b>
-              </>
-            ) : (
-              <>
-                <b className="text-white">{name}</b>을(를) 삭제합니다. 이 항목은{" "}
-                <b className="text-white">복원되지 않습니다.</b>
-              </>
-            )
+            <>
+              <b className="text-white">{name}</b>을(를) 목록에서 뺍니다. 과거 회차·취득 기록에는
+              이름이 그대로 남습니다.
+              {note && (
+                <>
+                  <br />
+                  {note}
+                </>
+              )}
+              <br />
+              나중에 같은 이름으로 다시 추가하시면{" "}
+              <b className="text-white">그대로 돌아옵니다.</b>
+            </>
           }
           onConfirm={async () => {
             await api.del(path);
@@ -679,12 +792,17 @@ function ProfileDialog({
  * 비밀번호가 없는 계정(구글 가입)은 **현재 비밀번호 칸 자체를 안 보여준다** —
  * 없는 값을 물으면 뭘 넣어야 할지 알 수 없다. 서버도 그 경우엔 대조를 건너뛴다
  */
+/**
+ * 비밀번호 **변경** 전용이다.
+ *
+ * 예전엔 "설정"(구글 전용 계정이 비밀번호를 새로 만드는 경로)도 겸했는데, 인증 메일을 보낼 수
+ * 없어 그 경로를 닫으면서 함께 걷어냈다 — 비밀번호가 없는 계정은 버튼 자체가 비활성이라
+ * 여기까지 오지 못한다
+ */
 function PasswordDialog({
-  hasPassword,
   onClose,
   onSaved,
 }: {
-  hasPassword: boolean;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -694,36 +812,24 @@ function PasswordDialog({
 
   return (
     <FormDialog
-      title={hasPassword ? "비밀번호 변경" : "비밀번호 설정"}
+      title="비밀번호 변경"
       onClose={onClose}
       onSubmit={async () => {
         if (next !== confirm) throw new Error("새 비밀번호가 서로 다릅니다");
         if (next.length < 4 || next.length > 64) throw new Error("비밀번호는 4~64자로 입력해 주세요");
-        await api.put("/api/me/password", {
-          currentPassword: hasPassword ? current : null,
-          newPassword: next,
-        });
+        await api.put("/api/me/password", { currentPassword: current, newPassword: next });
         onSaved();
       }}
     >
-      {!hasPassword && (
-        <p className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-[11px] leading-relaxed text-white/45">
-          구글로 가입하신 계정이라 비밀번호가 없습니다. 설정하시면 이메일로도 로그인하실 수 있고,
-          구글 연결도 해제하실 수 있습니다.
-        </p>
-      )}
-
-      {hasPassword && (
-        <Field label="Current Password">
-          <input
-            type="password"
-            autoComplete="current-password"
-            value={current}
-            onChange={(event) => setCurrent(event.target.value)}
-            className={FIELD_INPUT}
-          />
-        </Field>
-      )}
+      <Field label="Current Password">
+        <input
+          type="password"
+          autoComplete="current-password"
+          value={current}
+          onChange={(event) => setCurrent(event.target.value)}
+          className={FIELD_INPUT}
+        />
+      </Field>
 
       <Field label="New Password" hint="4~64자">
         <input
@@ -748,24 +854,76 @@ function PasswordDialog({
   );
 }
 
+/** 이름 하나뿐인 선택지(플랫폼·입력 방식)의 추가·수정 */
+function NameDialog({
+  title,
+  hint,
+  basePath,
+  edit,
+  onClose,
+  onSaved,
+}: {
+  title: string;
+  hint: string;
+  basePath: string;
+  edit?: { id: number; name: string };
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState(edit?.name ?? "");
+
+  return (
+    <FormDialog
+      title={edit ? `${title} 수정` : `${title} 추가`}
+      onClose={onClose}
+      onSubmit={async () => {
+        if (edit) await api.put(`${basePath}/${edit.id}`, { name });
+        else await api.post(basePath, { name });
+        onSaved();
+      }}
+    >
+      {edit && <BulkChangeNotice />}
+      <Field label="Name" hint={hint}>
+        <input
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          maxLength={50}
+          className={FIELD_INPUT}
+        />
+      </Field>
+    </FormDialog>
+  );
+}
+
+/** 이름을 바꾸면 FK를 타고 과거 기록까지 전부 따라 바뀐다. 그걸 미리 알려준다 */
+function BulkChangeNotice() {
+  return (
+    <p className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-[11px] leading-relaxed text-white/45">
+      이름을 바꾸시면 이 항목을 사용한 <b className="text-white/75">모든 기록에 함께 반영</b>됩니다.
+    </p>
+  );
+}
+
 /**
- * 플랫폼 계정 추가.
+ * 플랫폼 계정 추가·수정.
  *
- * 같은 (플랫폼, 라벨)로 삭제된 계정이 있으면 서버가 `409 REVIVABLE`에 대상 id를 실어 준다 —
- * **되살리면 그 계정에 매달린 회차·취득 기록이 함께 돌아온다** (§7.4).
+ * 되살리기를 **되묻는 유일한 선택지다.** 나머지 넷은 같은 이름으로 다시 추가하면 조용히
+ * 되살아나는데, 계정은 취득 기록(구매 이력)까지 물고 있어서 사용자가 알고 되살리는 편이 낫다 (§7.4).
  * 예전에는 안내만 하고 버튼이 없어 아무것도 할 수 없었다
  */
 function AccountDialog({
   platforms,
+  edit,
   onClose,
   onSaved,
 }: {
-  platforms: { id: number; name: string }[];
+  platforms: MemberPlatform[];
+  edit?: PlatformAccountRef;
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [platformId, setPlatformId] = useState("");
-  const [label, setLabel] = useState("");
+  const [platformId, setPlatformId] = useState(edit ? String(edit.platform.id) : "");
+  const [label, setLabel] = useState(edit?.label ?? "");
   const [revivable, setRevivable] = useState<number | null>(null);
 
   if (revivable !== null) {
@@ -791,9 +949,14 @@ function AccountDialog({
 
   return (
     <FormDialog
-      title="플랫폼 계정 추가"
+      title={edit ? "플랫폼 계정 수정" : "플랫폼 계정 추가"}
       onClose={onClose}
       onSubmit={async () => {
+        if (edit) {
+          await api.put(`/api/me/platform-accounts/${edit.accountId}`, { accountLabel: label });
+          onSaved();
+          return;
+        }
         try {
           await api.post("/api/me/platform-accounts", {
             platformId: Number(platformId),
@@ -813,15 +976,20 @@ function AccountDialog({
         onSaved();
       }}
     >
-      <Field label="Platform">
+      {edit && <BulkChangeNotice />}
+      <Field
+        label="Platform"
+        hint={edit ? "플랫폼은 바꿀 수 없습니다. 새 계정을 추가해 주세요" : undefined}
+      >
         <select
           value={platformId}
           onChange={(event) => setPlatformId(event.target.value)}
+          disabled={Boolean(edit)}
           className={FIELD_SELECT}
         >
           <option value="">선택</option>
           {platforms.map((platform) => (
-            <option key={platform.id} value={platform.id}>
+            <option key={platform.platformId} value={platform.platformId}>
               {platform.name}
             </option>
           ))}
@@ -839,46 +1007,41 @@ function AccountDialog({
   );
 }
 
+/** 기기는 마스터에서 고르는 게 아니라 유형·라벨을 직접 적는다 */
 function DeviceDialog({
-  devices,
+  edit,
   onClose,
   onSaved,
 }: {
-  devices: { id: number; name: string }[];
+  edit?: MemberDevice;
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [deviceId, setDeviceId] = useState("");
-  const [label, setLabel] = useState("");
-  const [memo, setMemo] = useState("");
+  const [deviceType, setDeviceType] = useState(edit?.deviceType ?? "");
+  const [label, setLabel] = useState(edit?.label ?? "");
+  const [memo, setMemo] = useState(edit?.memo ?? "");
+
   return (
     <FormDialog
-      title="보유 기기 추가"
+      title={edit ? "기기 수정" : "기기 추가"}
       onClose={onClose}
       onSubmit={async () => {
-        await api.post("/api/me/devices", {
-          deviceId: Number(deviceId),
-          label,
-          memo: memo.trim() || null,
-        });
+        const body = { deviceType, label, memo: memo.trim() || null };
+        if (edit) await api.put(`/api/me/devices/${edit.deviceId}`, body);
+        else await api.post("/api/me/devices", body);
         onSaved();
       }}
     >
-      <Field label="Device">
-        <select
-          value={deviceId}
-          onChange={(event) => setDeviceId(event.target.value)}
-          className={FIELD_SELECT}
-        >
-          <option value="">선택</option>
-          {devices.map((device) => (
-            <option key={device.id} value={device.id}>
-              {device.name}
-            </option>
-          ))}
-        </select>
+      {edit && <BulkChangeNotice />}
+      <Field label="Type" hint="예) Windows PC, Nintendo Switch">
+        <input
+          value={deviceType}
+          onChange={(event) => setDeviceType(event.target.value)}
+          maxLength={50}
+          className={FIELD_INPUT}
+        />
       </Field>
-      <Field label="Label" hint="예) 거실 스위치">
+      <Field label="Label" hint="같은 기종을 여러 대 두실 때 구분하는 이름입니다. 예) 거실 스위치">
         <input
           value={label}
           onChange={(event) => setLabel(event.target.value)}
@@ -886,33 +1049,88 @@ function DeviceDialog({
           className={FIELD_INPUT}
         />
       </Field>
-      <Field label="Memo" hint="마크다운 · Enter로 목록 이어쓰기, Tab으로 들여쓰기">
+      <Field label="Memo" hint="스펙·주의점 · 마크다운 · Enter로 목록 이어쓰기, Tab으로 들여쓰기">
         <MarkdownTextarea value={memo} onChange={setMemo} rows={6} maxLength={2000} />
       </Field>
     </FormDialog>
   );
 }
 
-function SubscriptionDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [serviceName, setServiceName] = useState("");
-  const [startedOn, setStartedOn] = useState("");
-  const [endedOn, setEndedOn] = useState("");
-  const [amount, setAmount] = useState("");
-  const [currency, setCurrency] = useState("KRW");
-  const [billingCycle, setBillingCycle] = useState("MONTHLY");
+function EmulatorDialog({
+  edit,
+  onClose,
+  onSaved,
+}: {
+  edit?: MemberEmulator;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState(edit?.name ?? "");
+  const [memo, setMemo] = useState(edit?.memo ?? "");
 
   return (
     <FormDialog
-      title="구독 추가"
+      title={edit ? "에뮬레이터 수정" : "에뮬레이터 추가"}
       onClose={onClose}
       onSubmit={async () => {
-        await api.post("/api/me/subscriptions", {
+        const body = { name, memo: memo.trim() || null };
+        if (edit) await api.put(`/api/me/emulators/${edit.emulatorId}`, body);
+        else await api.post("/api/me/emulators", body);
+        onSaved();
+      }}
+    >
+      {edit && <BulkChangeNotice />}
+      <Field label="Name" hint="예) Ryujinx, Azahar">
+        <input
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          maxLength={50}
+          className={FIELD_INPUT}
+        />
+      </Field>
+      <Field label="Memo" hint="설정값·주의점 · 마크다운">
+        <MarkdownTextarea value={memo} onChange={setMemo} rows={6} maxLength={2000} />
+      </Field>
+    </FormDialog>
+  );
+}
+
+/**
+ * 구독 추가·수정.
+ *
+ * 예전엔 추가와 삭제만 있어서 **요금이 바뀌면 지우고 다시 만들어야 했다** —
+ * 그러면 그 구독에 걸린 취득 기록의 연결이 끊긴다. 백엔드 PUT은 진작 있었다
+ */
+function SubscriptionDialog({
+  edit,
+  onClose,
+  onSaved,
+}: {
+  edit?: Subscription;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [serviceName, setServiceName] = useState(edit?.serviceName ?? "");
+  const [startedOn, setStartedOn] = useState(edit?.startedOn ?? "");
+  const [endedOn, setEndedOn] = useState(edit?.endedOn ?? "");
+  const [amount, setAmount] = useState(edit?.fee ? String(edit.fee.amount) : "");
+  const [currency, setCurrency] = useState<string>(edit?.fee?.currency ?? "KRW");
+  const [billingCycle, setBillingCycle] = useState<string>(edit?.billingCycle ?? "MONTHLY");
+
+  return (
+    <FormDialog
+      title={edit ? "구독 수정" : "구독 추가"}
+      onClose={onClose}
+      onSubmit={async () => {
+        const body = {
           serviceName,
           startedOn,
           endedOn: endedOn || null,
           fee: amount ? { amount: Number(amount), currency } : null,
           billingCycle,
-        });
+        };
+        if (edit) await api.put(`/api/me/subscriptions/${edit.subscriptionId}`, body);
+        else await api.post("/api/me/subscriptions", body);
         onSaved();
       }}
     >

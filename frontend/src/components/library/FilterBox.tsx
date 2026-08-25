@@ -18,6 +18,7 @@ export type Filters = {
   releaseYear: string;
   deviceId: string;
   platformId: string;
+  platformAccountId: string;
 };
 
 export const EMPTY_FILTERS: Filters = {
@@ -27,13 +28,14 @@ export const EMPTY_FILTERS: Filters = {
   releaseYear: "",
   deviceId: "",
   platformId: "",
+  platformAccountId: "",
 };
 
 export function hasAnyFilter(filters: Filters): boolean {
   return (
     filters.status.length > 0 ||
     Boolean(filters.genreName || filters.developer || filters.releaseYear ||
-      filters.deviceId || filters.platformId)
+      filters.deviceId || filters.platformId || filters.platformAccountId)
   );
 }
 
@@ -87,6 +89,19 @@ export default function FilterBox({
   const platformOptions = useMemo<ComboOption[]>(
     () => (options?.platforms ?? []).map((item) => ({ value: String(item.id), label: item.name })),
     [options],
+  );
+  /*
+   * 계정은 facets를 쓴다 — 카운트가 붙고, 실제로 취득에 쓰인 계정만 나온다.
+   * options 쪽은 아직 아무 데도 안 쓴 계정까지 줘서 필터로는 과하다
+   */
+  const accountOptions = useMemo<ComboOption[]>(
+    () =>
+      (facets?.platformAccounts ?? []).map((item) => ({
+        value: String(item.id),
+        label: item.name,
+        count: item.count,
+      })),
+    [facets],
   );
 
   const set = <K extends keyof Filters>(key: K, value: Filters[K]) =>
@@ -191,6 +206,16 @@ export default function FilterBox({
             options={platformOptions}
             value={draft.platformId}
             onChange={(value) => set("platformId", value)}
+            placeholder="전체"
+            className={INPUT}
+          />
+        </Field>
+
+        <Field label="Account">
+          <Combobox
+            options={accountOptions}
+            value={draft.platformAccountId}
+            onChange={(value) => set("platformAccountId", value)}
             placeholder="전체"
             className={INPUT}
           />

@@ -30,11 +30,11 @@ public interface PlaythroughRepository extends BaseRepository<Playthrough, Long>
 
     /** 기기별 항목 수 (H-4). 회차가 기기를 가리키므로 회차에서 센다 */
     @Query("select new com.milobeene.gamebacklog.backlog.dto.FacetCount(" +
-            "   p.device.id, p.device.name, count(distinct p.backlogEntry.id))" +
+            "   p.device.id, p.device.label, count(distinct p.backlogEntry.id))" +
             " from Playthrough p" +
             " where p.backlogEntry.member.id = :memberId" +
             "   and p.backlogEntry.deletedAt is null and p.device is not null" +
-            " group by p.device.id, p.device.name" +
-            " order by p.device.name asc")
+            " group by p.device.id, p.device.label" +
+            " order by p.device.label asc")
     List<FacetCount> countByDevice(@Param("memberId") Long memberId);
 }

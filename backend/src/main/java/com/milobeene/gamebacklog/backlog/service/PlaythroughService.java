@@ -8,9 +8,11 @@ import com.milobeene.gamebacklog.common.exception.ConflictException;
 import com.milobeene.gamebacklog.common.exception.NotFoundException;
 import com.milobeene.gamebacklog.platform.domain.Device;
 import com.milobeene.gamebacklog.platform.domain.Emulator;
+import com.milobeene.gamebacklog.platform.domain.InputMethod;
 import com.milobeene.gamebacklog.platform.domain.PlatformAccount;
-import com.milobeene.gamebacklog.platform.repository.DeviceRepository;
-import com.milobeene.gamebacklog.platform.repository.EmulatorRepository;
+import com.milobeene.gamebacklog.platform.service.DeviceService;
+import com.milobeene.gamebacklog.platform.service.EmulatorService;
+import com.milobeene.gamebacklog.platform.service.InputMethodService;
 import com.milobeene.gamebacklog.platform.service.PlatformAccountService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -24,8 +26,9 @@ import java.util.List;
 public class PlaythroughService {
 
     private final PlaythroughRepository playthroughRepository;
-    private final DeviceRepository deviceRepository;
-    private final EmulatorRepository emulatorRepository;
+    private final DeviceService deviceService;
+    private final EmulatorService emulatorService;
+    private final InputMethodService inputMethodService;
     private final PlatformAccountService platformAccountService;
     private final BacklogEntryFinder entryFinder;
 
@@ -114,30 +117,32 @@ public class PlaythroughService {
         return target.getId() != null && target.getId().equals(sibling.getId());
     }
 
-    /** 엔티티는 리포지토리를 모르므로 참조 조회는 서비스가 한다 */
+    /**
+     * 엔티티는 리포지토리를 모르므로 참조 조회는 서비스가 한다.
+     *
+     * **넷 다 남의 것을 붙일 수 없다.** 예전엔 기기·에뮬이 전역 마스터라 소유권 검사가 없었는데,
+     * 회원 소유로 내려오면서 계정과 같은 규칙을 받는다 — 안 막으면 남의 id를 넣어
+     * 상세 응답에 그 이름을 실을 수 있다 (NFR-S7).
+     *
+     * findOne은 **삭제된 것도 돌려준다** — 삭제한 기기로 플레이했던 과거 회차를 수정할 때
+     * 실패하면 안 되기 때문이다. 새로 고를 때 삭제된 게 안 보이는 건 findSelectable이 맡는다
+     */
     private void assignReferences(Playthrough playthrough, PlaythroughCommand command) {
-        Device device = (command.deviceId() == null) ? null
-                : deviceRepository.findById(command.deviceId())
-                .orElseThrow(() -> new NotFoundException("기기를 찾을 수 없습니다. id=" + command.deviceId()));
-
-        /*
-         * **남의 계정을 붙일 수 없다.** API 설계서 v0.2가 "1인 사용이라 참작하고 넘어가되
-         * Phase 3 인증을 붙일 때는 막아야 한다"고 보류해둔 지점인데, Phase 3이 끝났으므로 해제한다.
-         * 안 막으면 남의 계정 id를 넣어 상세 응답에 그 라벨을 실을 수 있다 (NFR-S7).
-         *
-         * findOne은 삭제된 계정도 돌려준다 — 삭제한 계정으로 플레이했던 **과거 회차를 수정할 때**
-         * 실패하면 안 되기 때문이다. 새로 고를 때 삭제된 것이 안 보이는 건 findSelectable이 맡는다.
-         * Device·Emulator는 마스터라(회원 소유가 아님) 이 검사가 없는 게 맞다 (BR-PT-05)
-         */
         Long ownerId = playthrough.getBacklogEntry().getMember().getId();
+
+        Device device = (command.deviceId() == null) ? null
+                : deviceService.findOne(ownerId, command.deviceId());
+
         PlatformAccount account = (command.platformAccountId() == null) ? null
                 : platformAccountService.findOne(ownerId, command.platformAccountId());
 
         Emulator emulator = (command.emulatorId() == null) ? null
-                : emulatorRepository.findById(command.emulatorId())
-                .orElseThrow(() -> new NotFoundException("에뮬레이터를 찾을 수 없습니다. id=" + command.emulatorId()));
+                : emulatorService.findOne(ownerId, command.emulatorId());
 
-        playthrough.assignReferences(device, account, emulator);
+        InputMethod inputMethod = (command.inputMethodId() == null) ? null
+                : inputMethodService.findOne(ownerId, command.inputMethodId());
+
+        playthrough.assignReferences(device, account, emulator, inputMethod);
     }
 
     private Playthrough findOwnedPlaythrough(Long memberId, Long playthroughId) {

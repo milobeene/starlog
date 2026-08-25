@@ -78,7 +78,14 @@ cd backend && ./gradlew bootRun --args="--spring.profiles.active=dev,local \
 
 `driver-class-name`까지 덮어야 한다 — `application-local.yml`이 PostgreSQL 드라이버를 지정한다.
 
-시드 계정: `milo.beene@gmail.com` / `1111`
+시드 계정: `milo.beene@gmail.com` / `1111` (**ADMIN**), 예비 관리자 `admin` / `1111`
+
+⚠️ **신규 가입은 관리자 승인을 받아야 로그인된다** (FR-ADM-06). 무료 티어 용량 때문이다.
+`app.signup.require-approval`로 끌 수 있고, 승인은 관리자 화면 회원 탭에서 한다.
+
+⚠️ **가입은 구글 로그인 전용이다.** 도메인이 없어 인증 메일을 못 보내서, 이메일 가입은
+`app.signup.email-allowlist`(기본: 시드 계정)로 제한했다. 비밀번호 설정과 구글 연결 해제도 함께 막혀 있다.
+사유와 원복 절차는 `docs/spec-v1.5.md` §6.1의 "운영 제약" 박스.
 
 ⚠️ **`NEXT_PUBLIC_DEV_MEMBER_ID`는 기본으로 꺼져 있다.** 켜면 로그인 없이 들어가지지만
 헤더 인증이 매 요청을 다시 통과시켜 **로그아웃이 먹지 않는다**(세션은 실제로 끊긴다).

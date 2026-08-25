@@ -6,7 +6,6 @@ import com.milobeene.gamebacklog.backlog.domain.AcquisitionMethod;
 import com.milobeene.gamebacklog.backlog.domain.BacklogEntry;
 import com.milobeene.gamebacklog.backlog.domain.BacklogEntryGenre;
 import com.milobeene.gamebacklog.backlog.domain.BacklogEntryTag;
-import com.milobeene.gamebacklog.backlog.domain.InputMethod;
 import com.milobeene.gamebacklog.backlog.domain.OverrideCommand;
 import com.milobeene.gamebacklog.backlog.domain.Playthrough;
 import com.milobeene.gamebacklog.backlog.domain.PlaythroughCommand;
@@ -19,7 +18,9 @@ import com.milobeene.gamebacklog.tag.domain.Genre;
 import com.milobeene.gamebacklog.tag.domain.Tag;
 import com.milobeene.gamebacklog.platform.domain.Device;
 import com.milobeene.gamebacklog.platform.domain.Emulator;
+import com.milobeene.gamebacklog.platform.domain.InputMethod;
 import com.milobeene.gamebacklog.platform.domain.Platform;
+import com.milobeene.gamebacklog.platform.service.DefaultCatalogSeeder;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -45,7 +46,6 @@ public class DataInitializer implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
-        initService.initMasters();
         initService.initTestMember();
         initService.initSampleBacklog();
     }
@@ -57,25 +57,12 @@ public class DataInitializer implements ApplicationRunner {
 
         private final EntityManager em;
         private final PasswordEncoder passwordEncoder;
+        private final DefaultCatalogSeeder defaultCatalogSeeder;
 
-        @Transactional
-        public void initMasters() {
-            if (em.createQuery("select count(p) from Platform p", Long.class)
-                    .getSingleResult() > 0) {
-                return;   // 이미 있으면 건너뜀
-            }
-
-            List.of("Steam", "Nintendo", "Epic Games")
-                    .forEach(name -> em.persist(Platform.of(name)));
-
-            List.of("Windows PC", "MacBook Air M1", "iPhone 14",
-                            "Nintendo 3DS XL", "Nintendo Switch", "Nintendo Switch Lite")
-                    .forEach(name -> em.persist(Device.of(name)));
-
-            List.of("Ryujinx", "Eden", "Azahar", "Delta")
-                    .forEach(name -> em.persist(Emulator.of(name)));
-        }
-
+        /**
+         * 선택지는 이제 전역 마스터가 아니라 **회원 소유**다. 그래서 회원을 만든 뒤에 붙인다 —
+         * 기본 세트는 가입 경로와 같은 시더가 넣고, 여기서는 시드 계정의 실제 기기·에뮬만 더한다
+         */
         @Transactional
         public void initTestMember() {
             if (em.createQuery("select count(m) from Member m", Long.class)
@@ -86,7 +73,36 @@ public class DataInitializer implements ApplicationRunner {
             Member member = Member.signUpWithEmail(
                     "milo.beene@gmail.com", passwordEncoder.encode("1111"), "Milo Beene");
             member.verifyEmail();   // 시드 계정은 바로 로그인되게 (I-4 이후 미인증은 로그인 403)
+            member.approve(LocalDateTime.now());   // 승인제(FR-ADM-06)에 시드가 잠기지 않게
+            /*
+             * 시드 계정을 관리자로도 쓴다. 계정을 나누는 게 원칙적으로는 맞지만(최소 권한),
+             * 1인 프로젝트에서 관리 작업마다 로그아웃/로그인 하는 비용이 더 크다.
+             * 운영에서는 ADMIN_EMAIL 환경변수로 같은 승격이 일어난다 (AdminBootstrap)
+             */
+            member.promoteToAdmin();
             em.persist(member);
+
+            defaultCatalogSeeder.seed(member);
+
+            /*
+             * 관리자 계정. 운영에서는 ADMIN_EMAIL/ADMIN_PASSWORD 환경변수로 AdminBootstrap이
+             * 만들지만(OI-07), 로컬에서 매번 환경변수를 넣기 번거로워 dev 시드에 하나 둔다.
+             * 이메일 자리에 "admin"을 넣는다 — 형식 검증은 가입 DTO에만 있고 로그인은 안 본다
+             */
+            Member admin = Member.signUpWithEmail("admin", passwordEncoder.encode("1111"), "관리자");
+            admin.verifyEmail();
+            admin.approve(LocalDateTime.now());
+            admin.promoteToAdmin();
+            em.persist(admin);
+
+            defaultCatalogSeeder.seed(admin);
+
+            List.of("Windows PC", "MacBook Air M1", "iPhone 14",
+                            "Nintendo 3DS XL", "Nintendo Switch", "Nintendo Switch Lite")
+                    .forEach(type -> em.persist(new Device(member, type, type, null)));
+
+            List.of("Ryujinx", "Eden", "Azahar", "Delta")
+                    .forEach(name -> em.persist(new Emulator(member, name, null)));
         }
 
         /**
@@ -100,12 +116,16 @@ public class DataInitializer implements ApplicationRunner {
                 return;
             }
 
-            Member member = em.createQuery("select m from Member m order by m.id", Member.class)
-                    .setMaxResults(1).getSingleResult();
-            Device nintendoSwitch = byName(Device.class, "Nintendo Switch");
-            Device windowsPc = byName(Device.class, "Windows PC");
-            Platform nintendo = byName(Platform.class, "Nintendo");
-            Platform steam = byName(Platform.class, "Steam");
+            // 이메일로 콕 집는다 — 관리자 계정이 생기면서 "첫 회원"이 더는 자명하지 않다
+            Member member = em.createQuery(
+                            "select m from Member m where m.email = :email", Member.class)
+                    .setParameter("email", "milo.beene@gmail.com")
+                    .getSingleResult();
+            Device nintendoSwitch = byLabel(member, "Nintendo Switch");
+            Device windowsPc = byLabel(member, "Windows PC");
+            Platform nintendo = byName(member, Platform.class, "Nintendo");
+            Platform steam = byName(member, Platform.class, "Steam");
+            InputMethod pad = byName(member, InputMethod.class, "닌텐도 컨트롤러");
 
             Tag masterpiece = persistTag(member, "명작");   // 두 항목이 같은 태그를 공유한다
 
@@ -130,9 +150,9 @@ public class DataInitializer implements ApplicationRunner {
             linkTag(fit, masterpiece);
             linkTag(fit, persistTag(member, "운동"));
             addPlaythrough(fit, 1, LocalDate.of(2022, 1, 1), LocalDate.of(2023, 1, 1),
-                    PlaythroughStatus.COMPLETED, nintendoSwitch);
+                    PlaythroughStatus.COMPLETED, nintendoSwitch, pad);
             addPlaythrough(fit, 2, LocalDate.of(2026, 5, 27), null,
-                    PlaythroughStatus.PLAYING, nintendoSwitch);
+                    PlaythroughStatus.PLAYING, nintendoSwitch, pad);
             addAcquisition(fit, AcquisitionMethod.PURCHASED, nintendo,
                     new BigDecimal("89800"), LocalDate.of(2022, 1, 1));
 
@@ -152,7 +172,7 @@ public class DataInitializer implements ApplicationRunner {
             hollow.updatePersonalRecord(new BigDecimal("95.0"), 62, null);
             linkTag(hollow, masterpiece);
             addPlaythrough(hollow, 1, LocalDate.of(2024, 3, 1), LocalDate.of(2024, 4, 10),
-                    PlaythroughStatus.PAUSED, windowsPc);
+                    PlaythroughStatus.PAUSED, windowsPc, pad);
             addAcquisition(hollow, AcquisitionMethod.PURCHASED, steam,
                     new BigDecimal("15000"), LocalDate.of(2024, 2, 20));
 
@@ -162,9 +182,24 @@ public class DataInitializer implements ApplicationRunner {
             em.persist(BacklogEntry.of(member, stardew));
         }
 
-        private <T> T byName(Class<T> type, String name) {
+        /*
+         * **회원으로 좁혀야 한다.** 선택지가 회원 소유가 되면서 시드 계정과 관리자 계정이
+         * 같은 이름의 플랫폼을 각자 갖는다 — 전역으로 찾으면 NonUniqueResultException이 난다
+         */
+        private Device byLabel(Member owner, String label) {
             return em.createQuery(
-                            "select e from " + type.getSimpleName() + " e where e.name = :name", type)
+                            "select d from Device d where d.member = :owner and d.label = :label",
+                            Device.class)
+                    .setParameter("owner", owner)
+                    .setParameter("label", label)
+                    .getSingleResult();
+        }
+
+        private <T> T byName(Member owner, Class<T> type, String name) {
+            return em.createQuery(
+                            "select e from " + type.getSimpleName()
+                                    + " e where e.member = :owner and e.name = :name", type)
+                    .setParameter("owner", owner)
                     .setParameter("name", name)
                     .getSingleResult();
         }
@@ -193,11 +228,12 @@ public class DataInitializer implements ApplicationRunner {
 
         private void addPlaythrough(BacklogEntry entry, int sequenceNo,
                                     LocalDate startedOn, LocalDate finishedOn,
-                                    PlaythroughStatus status, Device device) {
+                                    PlaythroughStatus status, Device device,
+                                    InputMethod inputMethod) {
             Playthrough playthrough = Playthrough.of(entry, sequenceNo,
                     new PlaythroughCommand(startedOn, finishedOn, status,
-                            null, null, null, InputMethod.NINTENDO, null));
-            playthrough.assignReferences(device, null, null);
+                            null, null, null, null, null));
+            playthrough.assignReferences(device, null, null, inputMethod);
             em.persist(playthrough);
             entry.addPlaythrough(playthrough);
             entry.syncDerivedState();

@@ -1,110 +1,39 @@
 "use client";
 
-import { useState } from "react";
 import AuthCard, { AuthLink, GoogleButton } from "@/components/auth/AuthCard";
-import { Button, Field, FIELD_INPUT } from "@/components/ui/Field";
-import { api, errorMessage } from "@/lib/api";
 
 /**
- * 가입은 **자동 로그인이 아니다.** `emailVerified = false`로 만들어지고
- * 인증을 마쳐야 로그인이 된다 (FR-AUTH-02) — 그래서 성공하면 안내 화면으로 갈아탄다
+ * 가입은 **Google 계정으로만** 받는다.
+ *
+ * 이메일 가입은 인증 메일을 보내야 하는데(FR-AUTH-02), 지금 이 서비스는 메일을 보낼 수단이 없다 —
+ * Resend는 도메인 인증 전까지 계정 소유자에게만 보내주고, 유일한 우회로였던 SMTP는
+ * Render 무료 플랜이 아웃바운드를 막았다. 메일이 안 가면 미인증으로 남아 **로그인이 영영 403이라**
+ * 가입만 시키고 못 들어오게 하는 꼴이 된다.
+ *
+ * 구글은 구글이 이메일 소유를 확인해주므로 우리가 메일을 보낼 이유가 없다.
+ * 백엔드도 같은 제한을 건다 (`app.signup.email-allowlist`) — 서버는 클라이언트를 믿지 않는다
  */
 export default function SignupPage() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [nickname, setNickname] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
-
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (password.length < 4 || password.length > 64) {
-      setError("비밀번호는 4~64자로 입력해 주세요");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      await api.post("/api/auth/signup", { email, password, nickname });
-      setDone(true);
-    } catch (caught) {
-      setError(errorMessage(caught, "가입하지 못했습니다. 잠시 후 다시 시도해 주세요."));
-      setBusy(false);
-    }
-  };
-
-  if (done) {
-    return (
-      <AuthCard title="메일함을 확인해 주세요" subtitle={`${email}(으)로 인증 링크를 보내 드렸습니다.`}>
-        <p className="text-sm leading-relaxed text-white/60">
-          링크를 누르시면 인증이 완료되어 로그인하실 수 있습니다. 메일이 도착하지 않았다면 스팸함도 확인해 주세요.
-        </p>
-        <div className="mt-6">
-          <AuthLink href="/login">로그인 화면으로</AuthLink>
-        </div>
-      </AuthCard>
-    );
-  }
-
   return (
     <AuthCard
       title="Sign up"
-      subtitle="기록을 시작할 계정을 만들어 주세요."
+      subtitle="Google 계정으로 시작해 주세요."
       footer={<>이미 계정이 있으신가요? <AuthLink href="/login">로그인</AuthLink></>}
     >
-      <form onSubmit={submit} className="flex flex-col gap-4">
-        <Field label="Email">
-          <input
-            type="email"
-            required
-            autoComplete="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            className={FIELD_INPUT}
-          />
-        </Field>
-
-        <Field label="Nickname">
-          <input
-            type="text"
-            required
-            maxLength={30}
-            value={nickname}
-            onChange={(event) => setNickname(event.target.value)}
-            className={FIELD_INPUT}
-          />
-        </Field>
-
-        <Field label="Password" hint="4~64자">
-          <input
-            type="password"
-            required
-            minLength={4}
-            maxLength={64}
-            autoComplete="new-password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            className={FIELD_INPUT}
-          />
-        </Field>
-
-        {error && (
-          <div className="rounded-md border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs text-red-300">
-            {error}
-          </div>
-        )}
-
-        <Button type="submit" variant="primary" disabled={busy}>
-          {busy ? "가입 중" : "Sign up"}
-        </Button>
-
-        <div className="my-1 flex items-center gap-3 text-[10px] tracking-widest text-white/25 uppercase">
-          <span className="h-px flex-1 bg-white/10" /> or <span className="h-px flex-1 bg-white/10" />
-        </div>
+      <div className="flex flex-col gap-5">
+        <p className="rounded-md border border-white/10 bg-white/5 px-3 py-2.5 text-xs leading-relaxed text-white/50">
+          이 서비스는 아직 <b className="text-white/75">자체 도메인이 없어 인증 메일을 보내 드릴 수
+          없습니다.</b> 그래서 이메일 가입 대신 Google 로그인만 받고 있습니다 — 구글이 이메일 소유를
+          확인해 주므로 별도 인증 절차가 필요하지 않습니다.
+        </p>
 
         <GoogleButton label="Google로 시작" />
-      </form>
+
+        <p className="text-[11px] leading-relaxed text-white/30">
+          Google 계정으로 가입하시면 이후에도 Google 로그인으로만 이용하시게 됩니다. 비밀번호 설정과
+          연결 해제는 같은 이유로 막혀 있으며, 계정 정리는 설정의 회원 탈퇴로 하실 수 있습니다.
+        </p>
+      </div>
     </AuthCard>
   );
 }

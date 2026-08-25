@@ -6,6 +6,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import { CardGridSkeleton, Skeleton } from "@/components/ui/Skeleton";
 import { coverSrc } from "@/lib/cover";
 import { api } from "@/lib/api";
+import { GAME_GRID } from "@/lib/useGridColumns";
 import type { BacklogCard, FacetsResponse, PageResponse } from "@/lib/types";
 
 type Folder = { key: string; label: string; count: number; cards: BacklogCard[] };
@@ -96,7 +97,7 @@ export default function FolderView({ facets }: { facets: FacetsResponse }) {
         {open.cards.length === 0 ? (
           <CardGridSkeleton count={5} />
         ) : (
-          <div className="grid grid-cols-2 gap-x-6 gap-y-10 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+          <div className={GAME_GRID}>
             {open.cards.map((card) => (
               <GameCard key={card.entryId} card={card} />
             ))}

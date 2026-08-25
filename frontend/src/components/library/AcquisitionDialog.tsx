@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Modal from "@/components/ui/Modal";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { Button, Field, FIELD_DATE, FIELD_INPUT, FIELD_SELECT } from "@/components/ui/Field";
 import { api, errorMessage } from "@/lib/api";
 import { ACQUISITION_METHOD_LABEL } from "@/lib/labels";
@@ -48,6 +49,7 @@ export default function AcquisitionDialog({
   const [label, setLabel] = useState(acquisition?.label ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [removing, setRemoving] = useState(false);
 
   const save = async () => {
     setSaving(true);
@@ -80,7 +82,17 @@ export default function AcquisitionDialog({
       onClose={onClose}
       footer={
         <>
+          {/* 회차와 같은 이유로 수정할 때만 뜬다 — 지울 방법이 여기밖에 없다 (FR-ACQ-07) */}
+          {acquisition && (
+            <button
+              onClick={() => setRemoving(true)}
+              className="text-xs text-white/30 transition-colors hover:text-red-400"
+            >
+              삭제
+            </button>
+          )}
           {error && <span className="mr-auto text-xs text-red-400">{error}</span>}
+          {!error && acquisition && <span className="mr-auto" />}
           <Button onClick={onClose}>취소</Button>
           <Button variant="primary" onClick={save} disabled={saving}>
             {saving ? "저장 중" : "저장"}
@@ -89,6 +101,24 @@ export default function AcquisitionDialog({
       }
     >
       <div className="flex flex-col gap-4">
+        {removing && (
+          <ConfirmDialog
+            title="취득 기록 삭제"
+            message={
+              <>
+                이 취득 기록을 삭제합니다. 되돌릴 수 없으며,{" "}
+                <b className="text-white">지출 통계에서도 빠집니다.</b>
+              </>
+            }
+            onConfirm={async () => {
+              await api.del(`/api/acquisitions/${acquisition!.acquisitionId}`);
+              onSaved();
+              onClose();
+            }}
+            onClose={() => setRemoving(false)}
+          />
+        )}
+
         <Field label="Method">
           <select
             value={method}

@@ -28,6 +28,12 @@ const MESSAGES: Record<string, { tone: "ok" | "warn"; text: string }> = {
     tone: "warn",
     text: "이메일 인증이 완료되지 않은 계정입니다. 인증을 마친 뒤 다시 시도해 주세요.",
   },
+  APPROVAL_PENDING: {
+    tone: "warn",
+    text:
+      "가입 요청이 접수되었습니다. 관리자 승인 후 이용하실 수 있습니다. " +
+      "무료로 운영되는 서비스라 이용 인원을 관리하고 있습니다.",
+  },
   FAILED: { tone: "warn", text: "구글 인증에 실패했습니다. 잠시 후 다시 시도해 주세요." },
 };
 

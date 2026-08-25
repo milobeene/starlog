@@ -49,6 +49,20 @@ public class Member extends BaseEntity {
     private LocalDateTime deletedAt;
 
     /**
+     * 관리자 가입 승인 시각. **null이면 승인 대기**다 (FR-ADM-06).
+     *
+     * 왜 boolean이 아닌가 — 언제 승인했는지가 감사에 필요하고, `deletedAt`과 같은 규약이라
+     * "시각이 있으면 그 사건이 일어났다"로 코드 전체가 일관된다.
+     *
+     * 왜 REJECTED 상태가 없는가 — 상태를 늘리면 로그인·목록·통계 모든 분기에서 다뤄야 한다.
+     * 거절은 관리자가 그 대기 계정을 지우는 것으로 갈음한다.
+     *
+     * **기본값이 대기다.** 가입 경로가 아니라 시드·부트스트랩처럼 내부에서 만드는 계정이
+     * approve()를 빠뜨리면 로그인이 막힌다 — 반대로 새는 것보다 이쪽이 안전하다
+     */
+    private LocalDateTime approvedAt;
+
+    /**
      * JPA 전용 기본 생성자
      */
     protected Member() {}
@@ -95,14 +109,19 @@ public class Member extends BaseEntity {
     }
 
     /**
-     * 연결 해제 (FR-AUTH-08).
-     * BR-AUTH-01 — 비밀번호가 없으면 해제할 수 없다. 로그인 수단이 하나도 안 남는다
+     * 연결 해제 (FR-AUTH-08) — **현재 항상 거부된다.**
+     *
+     * BR-AUTH-01은 "비밀번호가 없으면 해제 불가"였다. 그런데 이메일 가입과 비밀번호 설정을
+     * 둘 다 막아둔 지금(인증 메일을 보낼 수 없다), 해제를 허용하면 **로그인 수단이 하나도
+     * 안 남는 계정**이 생긴다. 비밀번호를 가진 계정이라 해도 다시 연결할 방법이 없어
+     * 되돌리기 어려운 조작이라 통째로 닫았다.
+     *
+     * 계정을 정리하려면 탈퇴한다 — 30일 유예가 있어 되돌릴 수 있다 (FR-AUTH-09/10).
+     * 메일 발송이 가능해지면 위 두 제한과 함께 풀린다
      */
     public void unlinkGoogle() {
-        if (!hasPassword()) {
-            throw new InvalidInputException("비밀번호를 먼저 설정해야 구글 연결을 해제할 수 있습니다");
-        }
-        this.googleSubject = null;
+        throw new InvalidInputException(
+                "Google 연결은 해제하실 수 없습니다. 계정을 정리하시려면 회원 탈퇴를 이용해 주세요");
     }
 
     /** 관리자 승격 (I-9). 부트스트랩 경로에서만 부른다 */
@@ -136,6 +155,20 @@ public class Member extends BaseEntity {
     /** 이메일 인증 완료 (FR-AUTH-02). 이미 인증된 계정에 다시 불러도 무해하다 */
     public void verifyEmail() {
         this.emailVerified = true;
+    }
+
+    /**
+     * 가입 승인 (FR-ADM-06). 멱등이다 — 이미 승인된 계정의 승인 시각을 덮어쓰지 않는다.
+     * 덮어쓰면 "언제 들어온 사람인가"라는 감사 기록이 사라진다
+     */
+    public void approve(LocalDateTime approvedAt) {
+        if (this.approvedAt == null) {
+            this.approvedAt = approvedAt;
+        }
+    }
+
+    public boolean isApproved() {
+        return approvedAt != null;
     }
 
     /** 프로필 수정 (FR-AUTH-11의 데이터 부분). 인증·인가는 Phase 3에서 붙는다 */

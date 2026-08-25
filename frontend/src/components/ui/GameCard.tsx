@@ -24,7 +24,7 @@ export default function GameCard({ card }: { card: BacklogCard }) {
           name={card.displayName}
         />
         <div className="absolute top-2 left-2.5 z-10">
-          <StatusBadge status={card.status} variant="plain" />
+          <StatusBadge status={card.status} />
         </div>
       </div>
 

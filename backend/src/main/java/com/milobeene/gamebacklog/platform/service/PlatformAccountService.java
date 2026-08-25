@@ -1,16 +1,14 @@
 package com.milobeene.gamebacklog.platform.service;
 
 import com.milobeene.gamebacklog.common.exception.ConflictException;
-import com.milobeene.gamebacklog.common.exception.InvalidInputException;
-import com.milobeene.gamebacklog.common.exception.NotFoundException;
 import com.milobeene.gamebacklog.common.util.TextValues;
+import com.milobeene.gamebacklog.common.exception.NotFoundException;
 import com.milobeene.gamebacklog.member.domain.Member;
 import com.milobeene.gamebacklog.member.repository.MemberRepository;
 import com.milobeene.gamebacklog.platform.domain.Platform;
 import com.milobeene.gamebacklog.platform.domain.PlatformAccount;
 import com.milobeene.gamebacklog.platform.exception.RevivableAccountException;
 import com.milobeene.gamebacklog.platform.repository.PlatformAccountRepository;
-import com.milobeene.gamebacklog.platform.repository.PlatformRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,23 +22,26 @@ import java.util.Optional;
 @Transactional(readOnly = true)
 public class PlatformAccountService {
 
+    private static final String NOT_FOUND = "플랫폼 계정을 찾을 수 없습니다";
+
     private final PlatformAccountRepository platformAccountRepository;
-    private final PlatformRepository platformRepository;
+    private final PlatformService platformService;
     private final MemberRepository memberRepository;
 
     /**
      * 계정 등록 (FR-PLT-01). 같은 플랫폼에 여러 개 등록할 수 있다 (FR-PLT-02) —
      * 유니크가 (member, platform, label)이라 라벨만 다르면 된다.
-     * 삭제된 행도 유니크에 걸리므로 A-5와 같은 3분기가 필요하다 (§7.4)
+     *
+     * 나머지 선택지 넷과 달리 되살리기를 **조용히 하지 않고 409로 되묻는다** —
+     * 계정은 취득 기록(구매 이력)까지 물고 있어서 사용자가 알고 되살리는 편이 낫다 (§7.4)
      */
     @Transactional
     public Long register(Long memberId, Long platformId, String accountLabel) {
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new NotFoundException("회원을 찾을 수 없습니다. id=" + memberId));
-        Platform platform = platformRepository.findById(platformId)
-                .orElseThrow(() -> new NotFoundException("플랫폼을 찾을 수 없습니다. id=" + platformId));
+        Platform platform = platformService.findAlive(memberId, platformId);
 
-        String label = requireLabel(accountLabel);
+        String label = TextValues.require(accountLabel, "계정 라벨은 비울 수 없습니다");
 
         Optional<PlatformAccount> existing = platformAccountRepository
                 .findByMemberIdAndPlatformIdAndAccountLabel(memberId, platformId, label);
@@ -62,7 +63,7 @@ public class PlatformAccountService {
     @Transactional
     public void rename(Long memberId, Long accountId, String accountLabel) {
         PlatformAccount account = findOwnedAlive(memberId, accountId);
-        String label = requireLabel(accountLabel);
+        String label = TextValues.require(accountLabel, "계정 라벨은 비울 수 없습니다");
 
         platformAccountRepository
                 .findByMemberIdAndPlatformIdAndAccountLabel(
@@ -99,29 +100,12 @@ public class PlatformAccountService {
     }
 
     private PlatformAccount findOwnedAlive(Long memberId, Long accountId) {
-        PlatformAccount account = findOwned(memberId, accountId);
-        if (account.isDeleted()) {
-            throw new ConflictException("삭제된 계정입니다. id=" + accountId);
-        }
-        return account;
+        return OwnedCatalog.requireAlive(platformAccountRepository.findById(accountId),
+                memberId, NOT_FOUND + ". id=" + accountId);
     }
 
     private PlatformAccount findOwned(Long memberId, Long accountId) {
-        PlatformAccount account = platformAccountRepository.findById(accountId)
-                .orElseThrow(() -> new NotFoundException("플랫폼 계정을 찾을 수 없습니다. id=" + accountId));
-
-        if (!account.getMember().getId().equals(memberId)) {
-            throw new NotFoundException("플랫폼 계정을 찾을 수 없습니다. id=" + accountId);
-        }
-
-        return account;
-    }
-
-    private String requireLabel(String accountLabel) {
-        String normalized = TextValues.normalize(accountLabel);
-        if (normalized == null) {
-            throw new InvalidInputException("계정 라벨은 비울 수 없습니다");
-        }
-        return normalized;
+        return OwnedCatalog.require(platformAccountRepository.findById(accountId),
+                memberId, NOT_FOUND + ". id=" + accountId);
     }
 }

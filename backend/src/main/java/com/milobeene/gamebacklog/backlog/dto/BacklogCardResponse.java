@@ -42,7 +42,7 @@ public record BacklogCardResponse(
                     playthrough.getSequenceNo(),
                     playthrough.getStartedOn(),
                     playthrough.getFinishedOn(),
-                    playthrough.getDevice() == null ? null : playthrough.getDevice().getName(),
+                    playthrough.getDevice() == null ? null : playthrough.getDevice().getLabel(),
                     playthrough.getEmulator() == null ? null : playthrough.getEmulator().getName()
             );
         }

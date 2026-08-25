@@ -1,6 +1,5 @@
 package com.milobeene.gamebacklog.backlog.dto;
 
-import com.milobeene.gamebacklog.backlog.domain.InputMethod;
 import com.milobeene.gamebacklog.backlog.domain.PlaythroughCommand;
 import com.milobeene.gamebacklog.backlog.domain.PlaythroughStatus;
 
@@ -17,12 +16,12 @@ public record PlaythroughRequest(
         Long deviceId,
         Long platformAccountId,
         Long emulatorId,
-        InputMethod inputMethod,
+        Long inputMethodId,        // enum이던 시절엔 문자열이었다 (V2에서 테이블로 승격)
         @Size(max = 100) String label
 ) {
 
     public PlaythroughCommand toCommand() {
         return new PlaythroughCommand(startedOn, finishedOn, status,
-                deviceId, platformAccountId, emulatorId, inputMethod, label);
+                deviceId, platformAccountId, emulatorId, inputMethodId, label);
     }
 }

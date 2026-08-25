@@ -26,17 +26,20 @@ public class MemberPrincipal implements UserDetails {
     private final Collection<? extends GrantedAuthority> authorities;
     private final boolean active;
     private final boolean emailVerified;
+    private final boolean approved;
     private final MemberRole role;
 
     private MemberPrincipal(Long memberId, String email, String password,
                             Collection<? extends GrantedAuthority> authorities,
-                            boolean active, boolean emailVerified, MemberRole role) {
+                            boolean active, boolean emailVerified, boolean approved,
+                            MemberRole role) {
         this.memberId = memberId;
         this.email = email;
         this.password = password;
         this.authorities = authorities;
         this.active = active;
         this.emailVerified = emailVerified;
+        this.approved = approved;
         this.role = role;
     }
 
@@ -50,6 +53,8 @@ public class MemberPrincipal implements UserDetails {
                 // isEnabled()와는 다른 값이다 — 인증은 통과시키되 "유예 중"임을 응답에 알려야 한다
                 member.getDeletedAt() == null,
                 member.isEmailVerified(),
+                // 승인 대기도 emailVerified와 같은 취급이다 — 인증은 통과, 로그인 핸들러가 끊는다
+                member.isApproved(),
                 member.getRole());
     }
 

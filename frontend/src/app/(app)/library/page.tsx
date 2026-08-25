@@ -14,6 +14,7 @@ import FilterBox, { EMPTY_FILTERS, hasAnyFilter, type Filters } from "@/componen
 import FolderView from "@/components/library/FolderView";
 import { useApi } from "@/lib/useApi";
 import { qs } from "@/lib/api";
+import { GAME_GRID, useGridColumns } from "@/lib/useGridColumns";
 import { SORT_LABEL, SORT_ORDER } from "@/lib/labels";
 import type {
   BacklogCard,
@@ -24,7 +25,11 @@ import type {
   PageResponse,
 } from "@/lib/types";
 
-const PAGE_SIZE = 20;
+/**
+ * 한 페이지에 몇 **줄**을 채울지. 개수가 아니라 줄 수인 이유 —
+ * 열 수가 화면 폭에 따라 2~8로 바뀌는데 개수를 고정하면 마지막 줄이 어중간하게 잘린다
+ */
+const PAGE_ROWS = 4;
 
 /**
  * useSearchParams는 Suspense 경계 안에 있어야 한다 — 이 훅이 있으면 Next가
@@ -74,8 +79,16 @@ function LibraryContent() {
     return () => clearTimeout(timer);
   }, [query]);
 
+  /*
+   * 페이지 크기를 **열 수 × 줄 수**로 잡는다. 창을 넓히면 열이 늘어 한 페이지가 커진다.
+   * 크기가 바뀌면 지금 페이지 번호는 의미가 달라지므로 아래 conditions에 함께 넣어
+   * 첫 페이지로 되돌린다 — 8열 3페이지와 4열 3페이지는 다른 구간이다
+   */
+  const columns = useGridColumns();
+  const pageSize = columns * PAGE_ROWS;
+
   // 조건이 바뀌면 첫 페이지로. 안 그러면 3페이지에서 필터를 걸었을 때 빈 화면이 나온다
-  const conditions = `${debounced}|${sort}|${JSON.stringify(filters)}`;
+  const conditions = `${debounced}|${sort}|${pageSize}|${JSON.stringify(filters)}`;
   const [seenConditions, setSeenConditions] = useState(conditions);
   if (seenConditions !== conditions) {
     setSeenConditions(conditions);
@@ -99,11 +112,12 @@ function LibraryContent() {
         releaseYear: filters.releaseYear,
         deviceId: filters.deviceId,
         platformId: filters.platformId,
+        platformAccountId: filters.platformAccountId,
         page,
-        size: PAGE_SIZE,
+        size: pageSize,
         sort,
       })}`,
-    [debounced, filters, page, sort],
+    [debounced, filters, page, sort, pageSize],
   );
 
   const list = useApi<PageResponse<BacklogCard>>(view === "grid" ? listPath : null);
@@ -181,7 +195,7 @@ function LibraryContent() {
               Showing <span className="num">{list.data.items.length}</span> on this page ·{" "}
               <span className="num">{list.data.totalElements}</span> total games
             </div>
-            <div className="grid grid-cols-2 gap-x-6 gap-y-10 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+            <div className={GAME_GRID}>
               {list.data.items.map((card) => (
                 <GameCard key={card.entryId} card={card} />
               ))}

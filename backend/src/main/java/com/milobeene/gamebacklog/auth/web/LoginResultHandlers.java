@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.security.web.authentication.logout.LogoutSuccessHandler;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
@@ -20,12 +21,28 @@ public class LoginResultHandlers {
 
     private final CsrfTokenIssuer csrfTokenIssuer;
 
+    /** 가입 승인제 (FR-ADM-06). 끄면 승인 없이도 로그인된다 */
+    @Value("${app.signup.require-approval:false}")
+    private boolean requireApproval;
+
     public AuthenticationSuccessHandler success() {
         return (request, response, authentication) -> {
             MemberPrincipal principal = (MemberPrincipal) authentication.getPrincipal();
 
             if (!principal.isEmailVerified()) {
-                rejectUnverified(request, response);
+                reject(request, response, "EMAIL_NOT_VERIFIED", "이메일 인증이 필요합니다");
+                return;
+            }
+            /*
+             * 승인 대기 차단 (FR-ADM-06). **세션을 아예 안 남기는 게 핵심이다** —
+             * 세션이 없으면 /api/** 가 전부 401이라 DB 조회도 커버 업로드용 presigned URL 발급도
+             * 따로 막을 필요가 없다.
+             *
+             * 이메일 미인증과 같은 이유로 비밀번호 대조 **뒤에** 검사한다 (아래 reject 주석)
+             */
+            if (requireApproval && !principal.isApproved()) {
+                reject(request, response, "APPROVAL_PENDING",
+                        "관리자 승인 후 이용하실 수 있습니다");
                 return;
             }
 
@@ -43,15 +60,17 @@ public class LoginResultHandlers {
     }
 
     /**
-     * 이메일 미인증 계정 차단 (FR-AUTH-02).
+     * 로그인은 됐지만 아직 쓸 수 없는 계정을 끊는다 — 이메일 미인증(FR-AUTH-02),
+     * 가입 승인 대기(FR-ADM-06).
      *
      * **왜 UserDetails.isEnabled()로 막지 않는가** — 그 검사는 비밀번호를 대조하기 **전에** 돈다.
-     * 그러면 아무 비밀번호나 넣어보는 것만으로 "이 이메일은 가입돼 있고 미인증"이라는 사실이 새어나간다.
+     * 그러면 아무 비밀번호나 넣어보는 것만으로 "이 이메일은 가입돼 있다"는 사실이 새어나간다.
      * 비밀번호가 맞은 뒤에 막으면, 그 정보는 이미 비밀번호를 아는 사람에게만 보인다.
      *
      * 여기까지 왔다는 건 세션이 이미 만들어졌다는 뜻이라 되돌려놓고 나간다.
      */
-    private void rejectUnverified(HttpServletRequest request, HttpServletResponse response)
+    private void reject(HttpServletRequest request, HttpServletResponse response,
+                        String code, String message)
             throws java.io.IOException {
         // 인증(비밀번호 대조)은 성공했으므로 CSRF 토큰은 이미 회전된 상태다
         csrfTokenIssuer.issueFresh(request, response);
@@ -62,8 +81,7 @@ public class LoginResultHandlers {
         }
         SecurityContextHolder.clearContext();
 
-        JsonErrors.write(response, HttpStatus.FORBIDDEN.value(),
-                "EMAIL_NOT_VERIFIED", "이메일 인증이 필요합니다");
+        JsonErrors.write(response, HttpStatus.FORBIDDEN.value(), code, message);
     }
 
     /**

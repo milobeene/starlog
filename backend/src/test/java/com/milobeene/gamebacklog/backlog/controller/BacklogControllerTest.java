@@ -4,7 +4,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.milobeene.gamebacklog.backlog.domain.InputMethod;
 import com.milobeene.gamebacklog.backlog.domain.OverrideCommand;
 import com.milobeene.gamebacklog.backlog.domain.PlaythroughCommand;
 import com.milobeene.gamebacklog.backlog.domain.PlaythroughStatus;
@@ -211,6 +210,6 @@ class BacklogControllerTest extends ControllerTestSupport {
     private void addPlaythrough(Member member, Long entryId, LocalDate startedOn, LocalDate finishedOn) {
         playthroughService.add(member.getId(), entryId,
                 new PlaythroughCommand(startedOn, finishedOn, PlaythroughStatus.COMPLETED,
-                        null, null, null, InputMethod.KEYBOARD_MOUSE, null));
+                        null, null, null, null, null));
     }
 }

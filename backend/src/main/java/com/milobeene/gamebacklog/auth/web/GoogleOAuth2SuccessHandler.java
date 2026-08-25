@@ -50,6 +50,10 @@ public class GoogleOAuth2SuccessHandler implements AuthenticationSuccessHandler 
     private final CsrfTokenIssuer csrfTokenIssuer;
     private final MailProperties mailProperties;   // frontendBaseUrl을 재사용한다
 
+    /** 가입 승인제 (FR-ADM-06). 폼 로그인 쪽(LoginResultHandlers)과 같은 스위치를 본다 */
+    @org.springframework.beans.factory.annotation.Value("${app.signup.require-approval:false}")
+    private boolean requireApproval;
+
     private final SecurityContextRepository securityContextRepository =
             new HttpSessionSecurityContextRepository();
 
@@ -101,14 +105,29 @@ public class GoogleOAuth2SuccessHandler implements AuthenticationSuccessHandler 
 
         if (!member.isEmailVerified()) {
             // 이메일 가입과 같은 규칙이다 (FR-AUTH-02). 구글이 email_verified: false를 준 경우
-            SecurityContextHolder.clearContext();
-            csrfTokenIssuer.issueFresh(request, response);
-            OAuthRedirects.withResult(response, mailProperties.frontendBaseUrl(),
-                    "/login", "EMAIL_NOT_VERIFIED");
+            rejectBeforeSession(request, response, "EMAIL_NOT_VERIFIED");
+            return;
+        }
+
+        /*
+         * 승인 대기 차단 (FR-ADM-06). **여기를 빼먹으면 승인제가 통째로 우회된다** —
+         * 구글 로그인은 폼 로그인과 다른 경로라 LoginResultHandlers를 타지 않는다.
+         * 방금 가입한 사람도 여기로 떨어져 "승인 대기" 안내를 받는다
+         */
+        if (requireApproval && !member.isApproved()) {
+            rejectBeforeSession(request, response, "APPROVAL_PENDING");
             return;
         }
 
         authenticateAsMember(request, response, MemberPrincipal.from(member));
+    }
+
+    /** 세션을 남기지 않고 프론트로 사유를 실어 돌려보낸다 */
+    private void rejectBeforeSession(HttpServletRequest request, HttpServletResponse response,
+                                     String reason) throws IOException {
+        SecurityContextHolder.clearContext();
+        csrfTokenIssuer.issueFresh(request, response);
+        OAuthRedirects.withResult(response, mailProperties.frontendBaseUrl(), "/login", reason);
     }
 
     /** 가입 시도. 거부하면 응답을 직접 쓰고 null을 돌려준다 */

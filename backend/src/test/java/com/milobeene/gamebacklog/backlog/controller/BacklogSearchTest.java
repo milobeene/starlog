@@ -311,7 +311,8 @@ class BacklogSearchTest extends ControllerTestSupport {
         Long owned = addEntry(member, saveGame("Hollow Knight"));
         addEntry(member, saveGame("Celeste"));
 
-        Platform steam = Platform.of("Steam " + System.nanoTime());
+        Platform steam = new Platform(
+                em.getReference(Member.class, member.getId()), "Steam " + System.nanoTime());
         em.persist(steam);
         PlatformAccount account = new PlatformAccount(
                 em.find(Member.class, member.getId()), steam, "본계정");
@@ -552,7 +553,8 @@ class BacklogSearchTest extends ControllerTestSupport {
 
     /** 진행 중 회차를 붙여 상태를 PLAYING으로 만든다. 반환은 기기 id */
     private Long startPlaythrough(Member member, Long entryId) throws Exception {
-        Device device = Device.of("Nintendo Switch");
+        Device device = new Device(em.getReference(Member.class, member.getId()),
+                "Nintendo Switch", "Nintendo Switch", null);
         em.persist(device);
         em.flush();
 
@@ -586,7 +588,8 @@ class BacklogSearchTest extends ControllerTestSupport {
 
     private void completePlaythrough(Member member, Long entryId, String from, String to)
             throws Exception {
-        Device device = Device.of("기기 " + System.nanoTime());
+        Device device = new Device(em.getReference(Member.class, member.getId()),
+                "기기", "기기 " + System.nanoTime(), null);
         em.persist(device);
         em.flush();
         mockMvc.perform(post("/api/backlog/{id}/playthroughs", entryId)

@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.milobeene.gamebacklog.backlog.domain.BacklogEntry;
 import com.milobeene.gamebacklog.backlog.domain.BacklogStatus;
-import com.milobeene.gamebacklog.backlog.domain.InputMethod;
+import com.milobeene.gamebacklog.platform.domain.InputMethod;
 import com.milobeene.gamebacklog.backlog.domain.Playthrough;
 import com.milobeene.gamebacklog.backlog.domain.PlaythroughCommand;
 import com.milobeene.gamebacklog.backlog.domain.PlaythroughStatus;
@@ -85,19 +85,20 @@ class PlaythroughServiceTest {
         //given
         Long entryId = givenEntry("Zelda TotK");
         Device device = saveDevice("Nintendo Switch");
+        InputMethod pad = saveInputMethod("닌텐도 컨트롤러");
 
         //when
         playthroughService.add(memberId, entryId, new PlaythroughCommand(
                 LocalDate.of(2026, 5, 1), LocalDate.of(2026, 6, 20), PlaythroughStatus.COMPLETED,
-                device.getId(), null, null, InputMethod.NINTENDO, "  DLC - 쿠파 왕국  "));
+                device.getId(), null, null, pad.getId(), "  DLC - 쿠파 왕국  "));
 
         em.flush();
         em.clear();
 
         //then
         Playthrough found = playthroughService.findAll(memberId, entryId).get(0);
-        assertThat(found.getDevice().getName()).isEqualTo("Nintendo Switch");
-        assertThat(found.getInputMethod()).isEqualTo(InputMethod.NINTENDO);
+        assertThat(found.getDevice().getLabel()).isEqualTo("Nintendo Switch");
+        assertThat(found.getInputMethod().getName()).isEqualTo("닌텐도 컨트롤러");
         assertThat(found.getLabel()).isEqualTo("DLC - 쿠파 왕국");   // strip 적용
     }
 
@@ -240,7 +241,7 @@ class PlaythroughServiceTest {
         assertThat(entry.getLastPlaythrough().getSequenceNo()).isEqualTo(2);
         assertThat(entry.getLastPlaythrough().getStartedOn()).isEqualTo(LocalDate.of(2026, 5, 27));
         assertThat(entry.getLastPlaythrough().getFinishedOn()).isNull();
-        assertThat(entry.getLastPlaythrough().getDevice().getName()).isEqualTo("Nintendo Switch");
+        assertThat(entry.getLastPlaythrough().getDevice().getLabel()).isEqualTo("Nintendo Switch");
     }
 
     @Test
@@ -462,7 +463,8 @@ class PlaythroughServiceTest {
          * 404인 이유 — 403을 주면 "그 id는 존재한다"가 새어나간다
          */
         Member other = saveMember("other-owner@example.com");
-        Platform steam = savePlatform("Steam");
+        em.flush();
+        Platform steam = savePlatform(other.getId(), "Steam");
         PlatformAccount othersAccount = new PlatformAccount(other, steam, "남의 계정");
         em.persist(othersAccount);
         em.flush();
@@ -631,24 +633,41 @@ class PlaythroughServiceTest {
         assertThat(PlaythroughStatus.COMPLETED.mustBeClosed()).isTrue();
     }
 
-    // ── BR-PT-05 기기는 마스터 전체에서 선택 (우연히 통과하던 것을 의도로 고정)
+    // ── 기기는 회원 소유다 (마스터 공유를 폐기하면서 남의 것 차단이 필요해졌다)
 
     @Test
-    public void 보유하지_않은_기기로도_회차를_남길_수_있다() {
-        //given — 친구 집에서 빌려 플레이한 기록을 남길 수 있어야 한다 (BR-PT-05 근거)
+    public void 내_기기는_여러_대여도_각각_고를_수_있다() {
+        //given — 같은 기종 두 대를 라벨로 구분한다
         Long entryId = givenEntry("Hollow Knight");
-        Device myDevice = saveDevice("내 스위치");
-        Device friendsDevice = saveDevice("친구 PS5");
+        Device myDevice = saveDevice("거실 스위치");
+        Device bedroomDevice = saveDevice("침실 스위치");
         em.flush();
 
-        //when — 보유 목록에 없는 기기를 쓴다
+        //when
         Long playthroughId = playthroughService.add(memberId, entryId,
                 new PlaythroughCommand(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 5),
-                        PlaythroughStatus.COMPLETED, friendsDevice.getId(), null, null, null, null));
+                        PlaythroughStatus.COMPLETED, bedroomDevice.getId(), null, null, null, null));
 
         //then
         assertThat(em.find(Playthrough.class, playthroughId).getDevice().getId())
-                .isEqualTo(friendsDevice.getId());
+                .isEqualTo(bedroomDevice.getId());
+        assertThat(myDevice.getId()).isNotEqualTo(bedroomDevice.getId());
+    }
+
+    @Test
+    public void 남의_기기로는_회차를_남길_수_없다() {
+        //given — 404로 뭉갠다. 403을 주면 "그 id는 존재한다"가 새어나간다 (NFR-S7)
+        Long entryId = givenEntry("Celeste");
+        Member other = saveMember("other-device@example.com");
+        em.flush();
+        Device othersDevice = saveDevice(other.getId(), "남의 스위치");
+        em.flush();
+
+        //when //then
+        assertThatThrownBy(() -> playthroughService.add(memberId, entryId,
+                new PlaythroughCommand(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 5),
+                        PlaythroughStatus.COMPLETED, othersDevice.getId(), null, null, null, null)))
+                .isInstanceOf(NotFoundException.class);
     }
 
     // ── 헬퍼
@@ -720,15 +739,30 @@ class PlaythroughServiceTest {
         return member;
     }
 
-    private Device saveDevice(String name) {
-        Device device = Device.of(name);
+    private Device saveDevice(String label) {
+        return saveDevice(memberId, label);
+    }
+
+    private Device saveDevice(Long ownerId, String label) {
+        Device device = new Device(em.getReference(Member.class, ownerId), label, label, null);
         deviceRepository.persist(device);
         return device;
     }
 
     private Platform savePlatform(String name) {
-        Platform platform = Platform.of(name);
+        return savePlatform(memberId, name);
+    }
+
+    private Platform savePlatform(Long ownerId, String name) {
+        Platform platform = new Platform(em.getReference(Member.class, ownerId), name);
         platformRepository.persist(platform);
         return platform;
+    }
+
+    private InputMethod saveInputMethod(String name) {
+        InputMethod inputMethod =
+                new InputMethod(em.getReference(Member.class, memberId), name);
+        em.persist(inputMethod);
+        return inputMethod;
     }
 }

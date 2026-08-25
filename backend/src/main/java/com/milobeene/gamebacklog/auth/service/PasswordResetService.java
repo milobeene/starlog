@@ -59,6 +59,18 @@ public class PasswordResetService {
                 .orElseThrow(() -> new InvalidInputException("유효하지 않거나 만료된 링크입니다"));
 
         Member member = token.getMember();
+
+        /*
+         * 재설정은 **잊은 비밀번호를 되찾는 경로지 새로 만드는 경로가 아니다.**
+         * 막지 않으면 구글 전용 계정이 여기로 비밀번호를 만들어, 이메일 가입과
+         * 비밀번호 설정을 막아둔 것(MemberService)이 무의미해진다.
+         * 실제로는 그런 계정에 메일이 안 가서 링크를 못 받지만, 그건 우연한 방어다
+         */
+        if (!member.hasPassword()) {
+            throw new InvalidInputException(
+                    "이 계정은 Google 로그인 전용입니다. 비밀번호는 설정하실 수 없습니다");
+        }
+
         member.changePassword(passwordEncoder.encode(newRawPassword));
         token.markUsed(now);
 

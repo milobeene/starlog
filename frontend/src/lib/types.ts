@@ -22,7 +22,6 @@ export type AcquisitionMethod =
   | "DEMO"
   | "NOT_OWNED";
 
-export type InputMethod = "XINPUT" | "NINTENDO" | "PLAYSTATION" | "KEYBOARD_MOUSE";
 export type BillingCycle = "MONTHLY" | "YEARLY";
 export type GameSource = "IGDB" | "MANUAL";
 export type Currency = "KRW" | "USD" | "JPY";
@@ -135,6 +134,11 @@ export interface EmulatorRef {
   name: string;
 }
 
+export interface InputMethodRef {
+  inputMethodId: number;
+  name: string;
+}
+
 export interface PlatformRef {
   platformId: number;
   name: string;
@@ -156,7 +160,7 @@ export interface Playthrough {
   device: DeviceRef | null;
   platformAccount: AccountRef | null;
   emulator: EmulatorRef | null;
-  inputMethod: InputMethod | null;
+  inputMethod: InputMethodRef | null;
 }
 
 export interface Acquisition {
@@ -199,11 +203,28 @@ export interface Profile {
   hasPassword: boolean;
 }
 
+/** 마스터에서 고르는 게 아니라 유형·라벨을 직접 적는다. memo는 마크다운 */
 export interface MemberDevice {
-  memberDeviceId: number;
+  deviceId: number;
+  deviceType: string;
   label: string;
   memo: string | null;
-  device: NamedRef;
+}
+
+export interface MemberPlatform {
+  platformId: number;
+  name: string;
+}
+
+export interface MemberEmulator {
+  emulatorId: number;
+  name: string;
+  memo: string | null;
+}
+
+export interface MemberInputMethod {
+  inputMethodId: number;
+  name: string;
 }
 
 export interface Subscription {
@@ -218,8 +239,11 @@ export interface Subscription {
 
 export interface MeResponse {
   profile: Profile;
+  platforms: MemberPlatform[];
   platformAccounts: PlatformAccountRef[];
   devices: MemberDevice[];
+  emulators: MemberEmulator[];
+  inputMethods: MemberInputMethod[];
   subscriptions: Subscription[];
 }
 
@@ -313,8 +337,10 @@ export interface GenreDistribution {
 /** GET /api/me/options — 폼 선택지. 백엔드가 전부 `Ref(id, name)` 한 모양으로 준다 */
 export interface OptionsResponse {
   platforms: NamedRef[];
+  /** name이 "거실 스위치 (Nintendo Switch)" 꼴이다 — 라벨만으로는 기종을 모른다 */
   devices: NamedRef[];
   emulators: NamedRef[];
+  inputMethods: NamedRef[];
   platformAccounts: NamedRef[];
   subscriptions: NamedRef[];
   tagDictionary: string[];
@@ -329,8 +355,28 @@ export interface AdminMember {
   nickname: string;
   role: string;
   emailVerified: boolean;
+  /** null이면 승인 대기 — 그 계정은 로그인이 403이다 (FR-ADM-06) */
+  approvedAt: string | null;
   deletedAt: string | null;
   createdAt: string;
+}
+
+/** GET /api/admin/games — 마스터 게임만. IGDB 결과가 섞이지 않아 gameId가 항상 있다 */
+export interface AdminGame {
+  gameId: number;
+  name: string;
+  source: GameSource;
+  externalId: string | null;
+  releasedOn: string | null;
+  coverImageId: string | null;
+  lastSyncedAt: string | null;
+}
+
+/** POST /api/admin/games/{id}/resync — 무엇이 몇 건 바뀌었는지 */
+export interface GameResyncResult {
+  nameChanged: boolean;
+  renamedEntries: number;
+  reorderedEntries: number;
 }
 
 export interface AuditLog {

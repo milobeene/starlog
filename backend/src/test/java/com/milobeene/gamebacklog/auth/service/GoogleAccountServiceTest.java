@@ -105,42 +105,28 @@ class GoogleAccountServiceTest extends ControllerTestSupport {
     }
 
     @Test
-    public void 소셜_전용_계정도_재설정_경로로_비밀번호를_만들_수_있다() throws Exception {
-        //given — 이 경로가 없으면 구글 계정을 잃었을 때 영영 못 들어온다
+    public void 소셜_전용_계정은_재설정_경로로도_비밀번호를_만들_수_없다() throws Exception {
+        /*
+         * 뒤집힌 규칙이다 (OI-02 후속). 예전엔 "구글 계정을 잃었을 때 영영 못 들어온다"는 이유로
+         * 이 경로를 열어뒀는데, 지금은 **재설정 메일 자체가 배달되지 않는다** —
+         * 그래서 열어둬도 실제 복구는 안 되고, 비밀번호 설정 차단만 우회하는 구멍이 된다.
+         *
+         * 대가: 구글 계정을 잃으면 이 서비스 계정도 잃는다. 메일 발송이 가능해지면 되돌린다
+         */
         mailSender.sent.clear();
         Member member = googleAccountService.signUp("new-sub-6", "social-pw@example.com", true, "밀로");
         em.flush();
 
-        //when
         passwordResetService.request("social-pw@example.com");
         String token = mailSender.of(Kind.PASSWORD_RESET).getFirst().token();
-        passwordResetService.reset(token, "brandNewPassword1");
 
-        //then
-        em.flush();
+        //when //then
+        assertThatThrownBy(() -> passwordResetService.reset(token, "brandNewPassword1"))
+                .isInstanceOf(InvalidInputException.class)
+                .hasMessageContaining("Google 로그인 전용");
+
         em.clear();
-        Member reloaded = em.find(Member.class, member.getId());
-        assertThat(reloaded.getPassword()).isNotNull();
-        assertThat(passwordEncoder.matches("brandNewPassword1", reloaded.getPassword())).isTrue();
-    }
-
-    @Test
-    public void 비밀번호를_만들면_구글_연결도_해제할_수_있다() throws Exception {
-        //given — BR-AUTH-01은 "수단이 하나도 안 남는 것"만 막는다
-        mailSender.sent.clear();
-        Member member = googleAccountService.signUp("new-sub-7", "social-unlink@example.com", true, "밀로");
-        em.flush();
-        passwordResetService.request("social-unlink@example.com");
-        passwordResetService.reset(mailSender.of(Kind.PASSWORD_RESET).getFirst().token(), "brandNewPassword1");
-        em.flush();
-
-        //when
-        googleAccountService.unlink(member.getId());
-
-        //then
-        em.flush();
-        em.clear();
-        assertThat(em.find(Member.class, member.getId()).getGoogleSubject()).isNull();
+        assertThat(em.find(Member.class, member.getId()).getPassword()).isNull();
     }
 
     @Test
@@ -168,24 +154,24 @@ class GoogleAccountServiceTest extends ControllerTestSupport {
     }
 
     @Test
-    public void 비밀번호가_있으면_연결을_해제할_수_있다() throws Exception {
-        //given
+    public void 비밀번호가_있어도_연결을_해제할_수_없다() {
+        //given — 예전엔 비밀번호만 있으면 해제됐다 (BR-AUTH-01). 지금은 통째로 닫혀 있다:
+        // 이메일 가입과 비밀번호 설정을 막아둔 상태(인증 메일 발송 불가)에서 해제까지 열어두면
+        // 다시 연결할 방법이 없어 되돌리기 어렵다. 정리는 탈퇴로 한다 (FR-AUTH-09/10)
         Member member = saveMember();
         googleAccountService.link(member.getId(), "google-sub-4");
         em.flush();
 
-        //when
-        googleAccountService.unlink(member.getId());
-
-        //then
-        em.flush();
-        em.clear();
-        assertThat(em.find(Member.class, member.getId()).getGoogleSubject()).isNull();
+        //when //then
+        assertThatThrownBy(() -> googleAccountService.unlink(member.getId()))
+                .isInstanceOf(InvalidInputException.class)
+                .hasMessageContaining("탈퇴");
     }
 
     @Test
     public void 비밀번호가_없으면_해제할_수_없다() throws Exception {
         //given — 소셜 전용 계정. 해제하면 로그인 수단이 하나도 안 남는다 (BR-AUTH-01)
+        //        지금은 비밀번호 유무와 무관하게 막히지만, 이 경우가 원래 규칙의 핵심이었다
         Member member = Member.signUpWithEmail("social" + System.nanoTime() + "@example.com", null, "소셜");
         em.persist(member);
         googleAccountService.link(member.getId(), "google-sub-5");

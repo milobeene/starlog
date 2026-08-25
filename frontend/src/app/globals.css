@@ -120,6 +120,15 @@
 }
 
 /* ── 상태 배지 6종 ─────────────────────────────────────── */
+/*
+ * 그리드 카드와 상세 헤더가 **이 한 벌을 같이 쓴다.** 커버 위 전용 파스텔 변형(.badge-chip)이
+ * 따로 있었는데, 같은 상태가 화면마다 다른 색으로 보여서 없앴다.
+ * 그림자도 여기 한 곳에만 있어 두 화면에서 크기가 어긋나지 않는다
+ */
+.badge-status {
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
+}
+
 .badge-wishlist  { background: #475569; color: #f8fafc; }
 .badge-backlog   { background: #7e22ce; color: #faf5ff; }
 .badge-playing   { background: #15803d; color: #f0fdf4; }
@@ -127,10 +136,6 @@
 .badge-dropped   { background: #b91c1c; color: #fef2f2; }
 .badge-completed { background: #1d4ed8; color: #eff6ff; }
 
-/*
- * 커버 위에 얹는 상태 글씨 — 배경 없이 텍스트만 띄운다.
- * 그림자를 네 겹 겹쳐 어두운 테두리를 만든다: 밝은 커버 위에서도 글자가 살아남는다
- */
 /*
  * 팝업 메뉴 공통 — 정렬 드롭다운·자동완성·프로필 메뉴가 같은 모양을 쓴다.
  * 패딩을 상하좌우 같은 폭으로 좁게 주고, 항목 사이에 갭을 둔다
@@ -166,26 +171,6 @@
   background: rgba(255, 255, 255, 0.1);
   color: #fff;
 }
-
-/*
- * 커버 위에 얹는 상태 — 반투명 박스 + 블러. 커버 아트를 덜 가리면서도
- * 글자가 배경 밝기에 안 흔들린다 (글로우 그림자는 밝은 커버에서 번져 보였다)
- */
-.badge-chip {
-  color: var(--chip-fg);
-  background: var(--chip-bg);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
-}
-
-/* 파스텔 배경 + 어두운 글씨. 흰 글씨를 얹으면 밝은 바탕에서 대비가 안 난다 */
-.chip-wishlist  { --chip-bg: rgba(203, 213, 225, 0.92); --chip-fg: #1e293b; }
-.chip-backlog   { --chip-bg: rgba(216, 180, 254, 0.92); --chip-fg: #4c1d95; }
-.chip-playing   { --chip-bg: rgba(167, 233, 190, 0.92); --chip-fg: #14532d; }
-.chip-paused    { --chip-bg: rgba(253, 230, 138, 0.92); --chip-fg: #713f12; }
-.chip-dropped   { --chip-bg: rgba(254, 189, 189, 0.92); --chip-fg: #7f1d1d; }
-.chip-completed { --chip-bg: rgba(179, 210, 253, 0.92); --chip-fg: #1e3a8a; }
 
 /* ── 커버 자리 ─────────────────────────────────────────── */
 .image-placeholder {

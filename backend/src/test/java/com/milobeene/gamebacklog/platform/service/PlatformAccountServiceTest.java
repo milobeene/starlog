@@ -168,7 +168,7 @@ class PlatformAccountServiceTest {
 
     private Platform givenPlatform(String name) {
         memberId = saveMember("test@example.com").getId();
-        Platform platform = Platform.of(name);
+        Platform platform = new Platform(em.getReference(Member.class, memberId), name);
         platformRepository.persist(platform);
         return platform;
     }

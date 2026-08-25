@@ -20,6 +20,14 @@ spring:
         generate_statistics: true
 
 app:
+  # 이메일 가입 제한을 푼다 — 테스트는 무작위 이메일로 회원을 만든다.
+  # 제한이 걸린 동작 자체는 SignupRestrictionTest가 프로퍼티를 켜서 따로 검증한다
+  signup:
+    email-allowlist:
+    # 테스트는 회원을 직접 만들어 바로 로그인한다. 승인제가 켜진 동작은
+    # SignupRestrictionTest가 프로퍼티를 켜서 따로 검증한다
+    require-approval: false
+
   # 배치는 테스트에서 절대 자동으로 돌면 안 된다 — 2월 30일은 오지 않는 날짜다.
   # 배치 로직 자체는 스케줄러를 거치지 않고 메서드를 직접 불러 검증한다
   cleanup:

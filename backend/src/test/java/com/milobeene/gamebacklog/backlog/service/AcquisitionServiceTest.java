@@ -319,7 +319,7 @@ class AcquisitionServiceTest {
     }
 
     private Platform savePlatform(String name) {
-        Platform platform = Platform.of(name);
+        Platform platform = new Platform(em.getReference(Member.class, memberId), name);
         platformRepository.persist(platform);
         return platform;
     }

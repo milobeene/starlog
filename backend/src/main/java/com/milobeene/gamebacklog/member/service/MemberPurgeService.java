@@ -41,8 +41,12 @@ public class MemberPurgeService {
             "delete from AuthToken t where t.member.id = :memberId",
             "delete from AuditLog l where l.actor.id = :memberId",
             "delete from Subscription s where s.member.id = :memberId",
-            "delete from MemberDevice d where d.member.id = :memberId",
+            // 선택지 5종. 계정이 플랫폼을 참조하므로 계정 → 플랫폼 순서를 지켜야 한다
             "delete from PlatformAccount a where a.member.id = :memberId",
+            "delete from Platform p where p.member.id = :memberId",
+            "delete from Device d where d.member.id = :memberId",
+            "delete from Emulator e where e.member.id = :memberId",
+            "delete from InputMethod i where i.member.id = :memberId",
             "delete from Tag t where t.member.id = :memberId",
             "delete from Genre g where g.member.id = :memberId",
             "delete from Member m where m.id = :memberId");
