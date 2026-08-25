@@ -37,7 +37,6 @@ public class MemberPurgeService {
             "delete from Acquisition x where x.backlogEntry in (select b from BacklogEntry b where b.member.id = :memberId)",
             "delete from Playthrough x where x.backlogEntry in (select b from BacklogEntry b where b.member.id = :memberId)",
             "delete from BacklogEntry b where b.member.id = :memberId",
-            "delete from EntitySnapshot s where s.changedBy.id = :memberId",
             "delete from AuthToken t where t.member.id = :memberId",
             "delete from AuditLog l where l.actor.id = :memberId",
             "delete from Subscription s where s.member.id = :memberId",

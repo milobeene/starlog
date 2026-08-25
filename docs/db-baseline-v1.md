@@ -1,0 +1,30 @@
+# DB 베이스라인 설계 노트 (V1 재작성, 2026-08-26)
+
+`V1__init.sql`을 아침에 눈으로 승인하기 위한 결정 대장. **바꾸자고 하면 V1 수정 + Neon 재적용 2분**이면 된다 (빈 DB라 되돌림 비용 없음).
+
+## 왜 다시 썼나
+
+V1(덤프 감사본) → V2(선택지 회원 소유) → V3(승인제)의 3단 역사를 **한 판으로 청산**했다.
+첫 실배포 전 + 데이터 소모품인 지금만 공짜로 할 수 있는 일이다. 옛 판은 git 이력에 있다.
+`V2DataMigrationTest`(데이터 이행 검증)는 대상이 사라져 함께 삭제.
+
+## 테이블별 결정
+
+| 결정 | 근거 |
+|---|---|
+| **entity_snapshot 삭제** (엔티티 포함) | FR-BL-09(SHOULD)용인데 리포지토리·서비스·엔드포인트가 전무한 죽은 테이블. 구현하는 날 마이그레이션으로 추가. `MemberPurgeService`의 삭제 순서에서도 제거 |
+| member_device 부재 | V2에서 흡수된 역사 자체를 지움 — 새 판엔 처음부터 없음 |
+| member.approved_at 포함, **인덱스는 안 둠** | 승인제가 회원 수를 강제로 작게 유지. 단독 필터 경로 없음 (V3에 있던 idx는 근거 없어 제거) |
+| **audit_log.created_at 인덱스 신설** | 보존기간(1년) 삭제 배치가 `created_at < threshold`로 훑는데 옛 판엔 인덱스가 없었다. 로그는 단조 증가라 유일한 전체 스캔 경로였음 |
+| **playthrough.input_method_id FK + 인덱스** | enum 시절 check 제약(`chk_playthrough_input_method`) 흔적 없이 처음부터 FK로 |
+| 선택지 5종에 회원별 인덱스 없음 | `unique(member_id, …)`의 선두 컬럼이 회원 조회를 접두어로 커버 |
+| subscription.member_id 인덱스 유지 | 유니크가 없어 접두어 커버 불가 |
+| FK 인덱스는 **경로 있는 것만** | PG는 FK에 인덱스 자동 생성 안 함. 각 인덱스 옆 주석이 근거 쿼리 |
+| 부분 인덱스(`where deleted_at is null`) 안 씀 | H2(dev)가 미지원. dev·prod 스키마 동형 유지가 우선 |
+| game.name 검색 인덱스 없음 | `like '%…%'`는 btree 불가. 마스터가 커지면 PG 전용 trigram 검토 (주석으로 남김) |
+
+## 검증 상태
+
+- `FlywayMigrationTest` — 빈 DB에 V1 적용 후 Hibernate validate로 엔티티 전수 대조 ✅
+- 전체 테스트 409개 ✅ (V2DataMigrationTest 삭제로 -1)
+- 스키마 집중 미니 리뷰(3렌즈) 결과는 아래 §리뷰에 추가됨
