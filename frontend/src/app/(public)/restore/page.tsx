@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import AuthCard from "@/components/auth/AuthCard";
 import { Button } from "@/components/ui/Field";
 import { api, errorMessage } from "@/lib/api";
-import { logout } from "@/lib/session";
+import { logout, refreshSession } from "@/lib/session";
 
 /**
  * 탈퇴 유예(30일) 중 로그인하면 도착한다.
@@ -40,6 +40,8 @@ export default function RestorePage() {
             setError(null);
             try {
               await api.post("/api/me/restore");
+              // 복구되면 권한이 바뀐다(PENDING_DELETION → USER). 세션을 다시 받아야 반영된다
+              await refreshSession();
               router.push("/dashboard");
             } catch (caught) {
               setError(errorMessage(caught, "계정을 복구하지 못했습니다. 잠시 후 다시 시도해 주세요."));

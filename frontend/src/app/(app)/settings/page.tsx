@@ -46,6 +46,7 @@ type Dialog =
   | { kind: "inputMethod"; edit?: MemberInputMethod }
   | { kind: "subscription"; edit?: Subscription }
   | { kind: "password" }
+  | { kind: "unlinkGoogle" }
   | { kind: "withdraw" };
 
 /**
@@ -76,7 +77,6 @@ function SettingsContent() {
   const companies = useApi<CompanyDictionary>("/api/backlog/companies");
   const [dialog, setDialog] = useState<Dialog>(null);
   const [unlinkRequested, setUnlinkRequested] = useState(false);
-  const [unlinkError, setUnlinkError] = useState<string | null>(null);
 
   const refresh = () => {
     me.reload();
@@ -98,13 +98,14 @@ function SettingsContent() {
 
   const unlinkGoogle = async () => {
     setUnlinkRequested(true);
-    setUnlinkError(null);
     try {
       await api.del("/api/me/google");
       refresh();
     } catch (caught) {
-      setUnlinkError(errorMessage(caught, "연결을 해제하지 못했습니다."));
       setUnlinkRequested(false);   // 실패는 즉시 푼다 — 되돌아갈 상태가 원래 상태다
+      // **다시 던진다.** ConfirmDialog가 실패를 잡아 창을 열어둔 채 문구를 띄운다 —
+      // 여기서 삼키면 성공한 것처럼 창이 닫히고 아무 일도 안 일어난 화면만 남는다
+      throw caught;
     }
   };
 
@@ -138,9 +139,6 @@ function SettingsContent() {
               </div>
             )}
           </SettingsSection>
-
-          {/* 삭제한 게 없으면 스스로 아무것도 안 그린다 */}
-          <DeletedEntriesSection />
 
           {/* WEB-ONLY: 쿼터가 없는 빌드에서는 스스로 아무것도 안 그린다 */}
           <QuotaSection />
@@ -408,7 +406,8 @@ function SettingsContent() {
               {me.data?.profile.googleLinked ? (
                 <button
                   disabled={!me.data.profile.hasPassword || unlinking}
-                  onClick={() => void unlinkGoogle()}
+                  // 되돌리려면 구글 재연결을 거쳐야 한다 — 한 번 묻는다
+                  onClick={() => setDialog({ kind: "unlinkGoogle" })}
                   title={
                     me.data.profile.hasPassword
                       ? "해제 후에도 이메일과 비밀번호로 로그인하실 수 있습니다."
@@ -431,9 +430,6 @@ function SettingsContent() {
                       ? "해제하셔도 이메일과 비밀번호로 로그인하실 수 있습니다"
                       : "비밀번호가 없어 해제하시면 로그인 수단이 남지 않습니다. 계정 정리는 아래 회원 탈퇴로 하실 수 있습니다"}
                   </span>
-                  {unlinkError && (
-                    <span className="mt-1 block text-xs text-red-400">{unlinkError}</span>
-                  )}
                 </button>
               ) : (
                 <a
@@ -458,6 +454,13 @@ function SettingsContent() {
               </button>
             </div>
           </SettingsSection>
+
+          {/*
+            **맨 아래다.** 되살리기·완전 삭제는 자주 쓰는 기능이 아니고, 위에 두면
+            설정을 열 때마다 "삭제한 게임"이 먼저 눈에 들어온다.
+            삭제한 게 없으면 스스로 아무것도 안 그린다
+          */}
+          <DeletedEntriesSection />
         </div>
       </div>
 
@@ -509,6 +512,22 @@ function SettingsContent() {
       {dialog?.kind === "password" && (
         <PasswordDialog onClose={() => setDialog(null)} onSaved={refresh} />
       )}
+      {dialog?.kind === "unlinkGoogle" && (
+        <ConfirmDialog
+          title="Google 계정 연결 해제"
+          confirmLabel="해제하기"
+          message={
+            <>
+              해제하시면 Google 계정으로는 로그인하실 수 없게 됩니다.
+              <br />
+              이메일과 비밀번호로는 그대로 로그인하실 수 있고, 다시 연결하실 수도 있습니다.
+            </>
+          }
+          onConfirm={unlinkGoogle}
+          onClose={() => setDialog(null)}
+        />
+      )}
+
       {dialog?.kind === "withdraw" && (
         <ConfirmDialog
           title="회원 탈퇴"

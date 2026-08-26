@@ -1,5 +1,6 @@
 "use client";
 
+import { refreshSession } from "@/lib/session";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import AuthCard, { AuthLink, GoogleButton } from "@/components/auth/AuthCard";
@@ -41,6 +42,13 @@ function LoginForm() {
         password,
       });
       // 유예 중 계정은 복구 화면 말고는 전부 403이라 다른 데로 보내면 막힌다 (FR-AUTH-10)
+      /*
+       * **이동 전에 세션을 다시 받는다.** 이게 없으면 로그인은 됐는데 화면이 안 바뀐다 —
+       * 세션 스토어가 로그인 직전의 "비로그인" 답을 그대로 들고 있어서, /dashboard로 가도
+       * 앱 레이아웃이 다시 /login으로 튕겨낸다. 새로고침하면 그제서야 맞는 이유가 이것이다
+       */
+      await refreshSession();
+
       router.push(result.withdrawalPending ? "/restore" : (next ?? "/dashboard"));
     } catch (caught) {
       setError(caught instanceof ApiError ? caught : new ApiError(0, "NETWORK", "서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요."));

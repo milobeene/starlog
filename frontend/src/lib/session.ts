@@ -56,9 +56,24 @@ function load(): Promise<void> {
 }
 
 function subscribe(listener: () => void) {
+  /*
+   * 구독자가 0 → 1이 되는 순간 **한 번 다시 묻는다.**
+   *
+   * 훅이던 시절엔 컴포넌트가 뜰 때마다 /api/me를 새로 불러서 판정이 늘 최신이었다.
+   * 스토어로 바꾸면서 그게 사라졌고, 그 결과 로그인 직후 화면이 안 바뀌는 버그가 났다
+   * (로그인·복구 경로는 refreshSession()으로 명시적으로 고쳤다).
+   *
+   * 0 → 1은 실질적으로 "이 판정을 아무도 안 보고 있다가 다시 보기 시작했다"는 뜻이다 —
+   * 새 탭, 새로고침, 인증 화면(구독자 0)에서 앱 화면으로 넘어온 순간. 그때 한 번만
+   * 확인하므로 화면을 옮길 때마다 요청이 늘지 않는다.
+   *
+   * 옛 답으로 즉시 그리고 새 답이 오면 조용히 갈아끼운다 — 깜빡임은 없다
+   */
+  const wasIdle = listeners.size === 0;
   listeners.add(listener);
-  // 첫 구독자가 붙을 때 한 번만 묻는다. 이후 구독자는 이미 있는 답을 그대로 받는다
-  if (state.status === "loading") void load();
+
+  if (state.status === "loading" || wasIdle) void load();
+
   return () => {
     listeners.delete(listener);
   };

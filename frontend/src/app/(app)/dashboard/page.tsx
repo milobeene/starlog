@@ -209,11 +209,17 @@ function GameRow({
             pb-14는 커버 아래 이름·값 줄의 높이다. 그만큼 아래를 빼면 세로 가운데가
             카드가 아니라 **커버의 가운데**로 온다
           */}
+          {/*
+            **호버를 <a>에 걸고 알약은 group-hover로 반응시킨다.**
+            예전엔 알약(span)에만 호버가 붙어서, 링크 몸통은 눌리는데 아무 반응이 없었다 —
+            눌리는 곳과 눌리는 것처럼 보이는 곳이 달라 조준해서 눌러야 했다.
+            pl-10으로 왼쪽 여백까지 링크의 몸으로 삼는다. 어차피 페이드로 지워진 자리다
+          */}
           <Link
             href={`/library?sort=${sort}`}
-            className="absolute inset-y-0 right-0 flex items-center pb-14"
+            className="group absolute inset-y-0 right-0 flex items-center pb-14 pl-10"
           >
-            <span className="flex items-center gap-1 rounded-full border border-white/15 bg-black/30 px-3.5 py-2 text-[11px] font-medium tracking-widest text-white/70 uppercase backdrop-blur-sm transition-colors hover:border-white/40 hover:bg-black/50 hover:text-white">
+            <span className="flex items-center gap-1 rounded-full border border-white/15 bg-black/30 px-3.5 py-2 text-[11px] font-medium tracking-widest text-white/70 uppercase backdrop-blur-sm transition-colors group-hover:border-white/40 group-hover:bg-black/50 group-hover:text-white">
               More <span className="text-[12px] leading-none font-normal">→</span>
             </span>
           </Link>
