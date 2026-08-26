@@ -22,8 +22,7 @@
 2. ~~Neon 실물 DB 검증~~ — **완료.** 스키마 리셋 → 새 V1 적용 → API 왕복 검증까지 (`docs/db-baseline-v1.md`)
 3. **옵시디언 임포트 결과 수정** (아래 ③)
 4. ~~서비스명 STARLOG 못박기~~ — **완료.** 패키지 `com.milobeene.starlog`, gradle·문서 전부.
-   **남은 것 둘**: 저장소 폴더명(`mv game-backlog starlog` — 세션 작업 디렉터리라 미뤘다),
-   구글 OAuth 동의 화면 App name (콘솔에서 직접)
+   **남아 있던 둘도 2026-08-26 완료**: 저장소 폴더명 `starlog`, 구글 OAuth 동의 화면 App name
 5. ~~인증 메일 발송~~ — 구글 로그인 전용으로 전환 (§0-3)
 6. **감사에서 남긴 미구현 3건** — FR-STAT-02(완료 통계), FR-STAT-04(지출 2축),
    FR-BL-09(변경 이력). 앞 둘은 백엔드 API가 놀고 있고 "화면 어디에 넣을지"가 미정이라 보류했다
@@ -316,6 +315,6 @@ fix(phase9): 코드 리뷰 확정 21건 조치 — 구글 세션 무효화·탈�
 
 ### 아침에 결정할 것
 
-- **폴더명**: `cd ~/projects/Practice && mv game-backlog starlog` (세션 작업 디렉터리라 밤에 못 건드렸다)
+- ~~**폴더명**~~: 2026-08-26 완료 — `~/projects/Practice/starlog`
 - **구글 OAuth 동의 화면 App name** → `STARLOG` (콘솔에서 직접, 코드로 안 됨)
 - **알려진 한계 3건**을 고칠지 — `code-review-2026-08-26.md` 마지막 표

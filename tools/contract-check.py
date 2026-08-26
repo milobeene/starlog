@@ -18,7 +18,8 @@ Jackson 직렬화·중첩·@JsonInclude까지 그대로 드러나기 때문이�
 import json, re, subprocess, sys, pathlib
 
 BASE = "http://localhost:8080"
-TYPES = pathlib.Path("/Users/milo/projects/Practice/game-backlog/frontend/src/lib/types.ts")
+# 저장소 루트 기준 상대 경로. 절대 경로를 박아두면 폴더명이 바뀌는 순간 조용히 깨진다
+TYPES = pathlib.Path(__file__).resolve().parent.parent / "frontend/src/lib/types.ts"
 
 # 응답 경로 → 프론트 인터페이스. 배열은 [] 로 파고든다
 ENDPOINTS = [

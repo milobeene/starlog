@@ -1,6 +1,6 @@
 # 다음 세션 작업 계획 (2026-08-26 작성, 오후 갱신)
 
-> 현재 상태: 태그 단일화(작업 A) 완료. 테스트 **417개**, 계약 검사 통과.
+> 현재 상태: 태그 단일화 완료, 폴더명 `starlog`로 변경 완료. 테스트 **420개** 초록(실 PG 4건 포함), 계약 검사 22건 0.
 > Neon은 **아직 옛 V1이 적용된 상태** — 재적용이 남아 있다 (작업 1 참고).
 >
 > 이 문서는 **설계 판단이 남지 않을 정도로** 촘촘하게 쓴 것이다. `[결정 필요]` 표시가 붙은 곳만
@@ -11,9 +11,9 @@
 ## 0. 세션 시작 시 30초 점검
 
 ```bash
-cd ~/projects/Practice/game-backlog       # 폴더명을 바꿨다면 starlog
+cd ~/projects/Practice/starlog
 git log --oneline -1                      # 태그 단일화 커밋이 최신이어야 함
-cd backend && ./gradlew test              # 417개 초록 (도커 필요 — PostgresSchemaTest)
+cd backend && ./gradlew test              # 420개 초록 (도커 필요 — PostgresSchemaTest)
 ```
 
 ⚠️ **도커가 꺼져 있으면 `PostgresSchemaTest`가 실패한다.** `open -a Docker` 후 20초.
