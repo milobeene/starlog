@@ -2,8 +2,13 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { placeBelow, type AnchorPlacement } from "@/lib/anchorPosition";
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
+
+/** 패널 크기는 고정이라 미리 안다 — 그려 보고 재면 한 프레임 깜빡인다 */
+const PANEL_W = 256;
+const PANEL_H = 330;
 
 /**
  * 날짜 입력 — **브라우저 기본 달력을 우리 것으로 갈아끼운다.**
@@ -31,7 +36,7 @@ export default function DateField({
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
-  const [rect, setRect] = useState<DOMRect | null>(null);
+  const [place, setPlace] = useState<AnchorPlacement | null>(null);
 
   /** 보고 있는 달. 값이 있으면 그 달에서 시작한다 */
   const [cursor, setCursor] = useState(() => monthOf(value));
@@ -59,12 +64,17 @@ export default function DateField({
 
   /*
    * 패널을 body로 뺀다. 다이얼로그가 overflow-y-auto라 안에 두면 달력이 잘린다 —
-   * 그려진 뒤에 재면 (0,0)에 한 프레임 스쳤다 옮겨가므로 useLayoutEffect다
+   * 그려진 뒤에 재면 (0,0)에 한 프레임 스쳤다 옮겨가므로 useLayoutEffect다.
+   *
+   * **아래 공간이 모자라면 위로 뒤집는다** — 다이얼로그 하단의 날짜 칸을 누르면
+   * 달력이 화면 밖으로 내려가 절반이 잘렸다 (placeBelow가 그 판단을 한다)
    */
   useLayoutEffect(() => {
     if (!open) return;
-    setRect(rootRef.current?.getBoundingClientRect() ?? null);
-  }, [open]);
+    const anchor = rootRef.current?.getBoundingClientRect();
+    if (!anchor) return;
+    setPlace(placeBelow(anchor, { width: PANEL_W, height: PANEL_H }, "left"));
+  }, [open, cursor]);
 
   const today = todayString();
   const days = monthGrid(cursor);
@@ -121,12 +131,12 @@ export default function DateField({
       </button>
 
       {open &&
-        rect &&
+        place &&
         createPortal(
           <div
             data-datefield-panel
-            className="menu-panel fixed z-[60] w-64 p-3"
-            style={{ top: rect.bottom + 4, left: Math.min(rect.left, window.innerWidth - 272) }}
+            className="menu-panel fixed z-[60] w-64 overflow-y-auto p-3"
+            style={{ top: place.top, left: place.left, maxHeight: place.maxHeight }}
           >
             <div className="mb-2 flex items-center justify-between">
               <button

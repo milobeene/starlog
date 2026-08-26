@@ -291,6 +291,26 @@ export interface DeletedEntry {
   deletedAt: string;
 }
 
+/**
+ * 완전 삭제 버튼 옆에 붙는 미리보기.
+ *
+ * 회차·취득은 **개수만** 온다 — 되살리면 통째로 돌아오므로 목록을 늘어놓을 이유가 없고,
+ * "몇 개나 딸려 있었나"가 지울지 말지의 실제 판단 기준이다
+ */
+export interface DeletedEntryDetail {
+  entryId: number;
+  displayName: string;
+  deletedAt: string;
+  createdAt: string;
+  coverImageId: string | null;
+  rating: number | null;
+  playTimeHours: number | null;
+  memo: string | null;
+  genres: string[];
+  playthroughCount: number;
+  acquisitionCount: number;
+}
+
 /* ── 게임 검색 (GET /api/games?q=) ────────────────────────── */
 
 /**

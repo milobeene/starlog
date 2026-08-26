@@ -4,6 +4,8 @@ import com.milobeene.starlog.backlog.domain.BacklogEntry;
 import com.milobeene.starlog.backlog.dto.BacklogCardResponse;
 import com.milobeene.starlog.backlog.dto.BacklogNameResponse;
 import com.milobeene.starlog.backlog.dto.DeletedEntryResponse;
+import com.milobeene.starlog.backlog.dto.DeletedEntryDetailResponse;
+import com.milobeene.starlog.common.exception.ConflictException;
 import com.milobeene.starlog.backlog.dto.CompanyDictionary;
 import com.milobeene.starlog.backlog.dto.BacklogDetailResponse;
 import com.milobeene.starlog.backlog.dto.BacklogSearchCondition;
@@ -92,8 +94,35 @@ public class BacklogQueryService {
     }
 
     /** 삭제한 항목 (§7.4). 되살리기 화면이 유일한 소비자다 */
-    public List<DeletedEntryResponse> findDeleted(Long memberId) {
-        return backlogEntryRepository.findDeleted(memberId);
+    public PageResponse<DeletedEntryResponse> findDeleted(Long memberId, int page, int size) {
+        return PageResponse.from(backlogEntryRepository.findDeleted(
+                memberId, PageRequest.of(normalizePage(page), normalizeSize(size))));
+    }
+
+    /**
+     * 삭제한 항목 미리보기 (§7.4).
+     *
+     * **삭제된 행을 일부러 읽는다.** 일반 상세는 삭제된 항목을 409로 막는데(수정 대상이 아니므로),
+     * 여기서는 "지워도 되나"를 판단하려고 보는 것이라 반대로 삭제된 것만 의미가 있다
+     */
+    public DeletedEntryDetailResponse findDeletedDetail(Long memberId, Long entryId) {
+        BacklogEntry entry = backlogEntryFinder.findOwnedIncludingDeleted(memberId, entryId);
+        if (!entry.isDeleted()) {
+            throw new ConflictException("삭제되지 않은 항목입니다. id=" + entryId);
+        }
+
+        return new DeletedEntryDetailResponse(
+                entry.getId(),
+                entry.getDisplayName(),
+                entry.getDeletedAt(),
+                entry.getCreatedAt(),
+                entry.getGame().getCoverImageId(),
+                entry.getRating(),
+                entry.getPlayTimeHours(),
+                entry.getMemo(),
+                entry.resolvedGenres(),
+                entry.getPlaythroughs().size(),
+                entry.getAcquisitions().size());
     }
 
     /**

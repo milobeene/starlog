@@ -128,6 +128,13 @@ export function formatLastPlaythrough(
   if (!last) return null;
   // 종료일이 없으면 물결로 끝낸다 — "진행 중"은 상태 배지가 이미 말한다
   const period = `${last.startedOn}~${last.finishedOn ?? ""}`;
-  const device = last.emulatorName ?? last.deviceName;
-  return [`${last.sequenceNo}회차`, period, device].filter(Boolean).join(" · ");
+
+  /*
+   * **기기는 안 싣는다.** 카드 한 줄에 회차·기간·기기를 다 넣으면 잘려서 셋 다 못 읽는다.
+   * 기기는 상세에서 회차마다 정확히 보이므로 여기서 빠져도 잃는 게 없다.
+   *
+   * 구분점 양옆은 좁은 공백(U+2009)이다 — 회차와 날짜는 한 덩어리로 읽혀야 하는데
+   * 보통 공백을 쓰면 둘이 따로 노는 두 조각처럼 보였다
+   */
+  return `${last.sequenceNo}회차\u2009·\u2009${period}`;
 }

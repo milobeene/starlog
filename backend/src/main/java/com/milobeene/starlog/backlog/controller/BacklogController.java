@@ -6,6 +6,7 @@ import com.milobeene.starlog.backlog.dto.BacklogCardResponse;
 import com.milobeene.starlog.backlog.dto.BacklogDetailResponse;
 import com.milobeene.starlog.backlog.dto.BacklogNameResponse;
 import com.milobeene.starlog.backlog.dto.DeletedEntryResponse;
+import com.milobeene.starlog.backlog.dto.DeletedEntryDetailResponse;
 import com.milobeene.starlog.backlog.dto.CompanyDictionary;
 import com.milobeene.starlog.backlog.dto.BacklogSearchCondition;
 import com.milobeene.starlog.backlog.dto.BacklogSort;
@@ -122,8 +123,36 @@ public class BacklogController {
      * 되돌릴 방법이 없어 보였다. 이 목록이 그 문을 하나 더 낸다
      */
     @GetMapping("/deleted")
-    public List<DeletedEntryResponse> deleted(@LoginMember Long memberId) {
-        return backlogQueryService.findDeleted(memberId);
+    public PageResponse<DeletedEntryResponse> deleted(
+            @LoginMember Long memberId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+
+        return backlogQueryService.findDeleted(memberId, page, size);
+    }
+
+    /**
+     * 삭제한 항목 미리보기 (§7.4).
+     *
+     * 완전 삭제 버튼 옆에 붙는 창이다 — **되돌릴 수 없는 일 앞에서 "이게 뭐였지"를
+     * 확인할 수 있어야 한다.** 목록의 이름만으로는 회차 30개짜리인지 담고 만 것인지 모른다
+     */
+    @GetMapping("/deleted/{entryId}")
+    public DeletedEntryDetailResponse deletedDetail(@LoginMember Long memberId,
+                                                    @PathVariable Long entryId) {
+        return backlogQueryService.findDeletedDetail(memberId, entryId);
+    }
+
+    /**
+     * **완전 삭제** (§7.4). 되돌릴 수 없다.
+     *
+     * 이미 소프트 삭제된 항목만 지운다 — 라이브러리에 살아 있는 게임이 실수로 한 방에
+     * 사라지는 경로를 만들지 않는다. 휴지통을 한 번 거쳐야 한다
+     */
+    @DeleteMapping("/deleted/{entryId}")
+    public ResponseEntity<Void> purge(@LoginMember Long memberId, @PathVariable Long entryId) {
+        backlogService.purge(memberId, entryId);
+        return ResponseEntity.noContent().build();
     }
 
     /** 개발사·유통사 사전 (Phase 8) — 필터·편집 폼의 자동완성 선택지 */

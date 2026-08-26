@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { placeBelow, type AnchorPlacement } from "@/lib/anchorPosition";
 
 /**
  * 정렬·프로필 공용 드롭다운.
@@ -31,7 +32,8 @@ export default function Dropdown({
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
-  const [rect, setRect] = useState<DOMRect | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [place, setPlace] = useState<AnchorPlacement | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -53,23 +55,35 @@ export default function Dropdown({
 
   /*
    * 포탈 패널은 트리거의 화면 좌표를 알아야 위치를 잡는다.
-   * useLayoutEffect로 재는 이유 — 그려진 뒤에 재면 패널이 (0,0)에 한 프레임 스쳤다 옮겨간다
+   * useLayoutEffect로 재는 이유 — 그려진 뒤에 재면 패널이 (0,0)에 한 프레임 스쳤다 옮겨간다.
+   *
+   * **패널 높이를 실제로 잰다.** 항목 수가 상황마다 달라(관리자면 한 줄 더) 고정값을 쓸 수 없다.
+   * 처음엔 추정치로 자리를 잡고, 그려진 다음 실측으로 한 번 더 맞춘다
    */
   useLayoutEffect(() => {
     if (!portal || !open) return;
-    setRect(rootRef.current?.getBoundingClientRect() ?? null);
-  }, [portal, open]);
+    const anchor = rootRef.current?.getBoundingClientRect();
+    if (!anchor) return;
+
+    const measured = panelRef.current?.getBoundingClientRect();
+    setPlace(placeBelow(
+      anchor,
+      { width: measured?.width ?? 192, height: measured?.height ?? 160 },
+      align,
+    ));
+  }, [portal, open, align]);
 
   const panel = (close: () => void) =>
-    portal && rect ? (
+    portal && place ? (
       createPortal(
         <div
-          className={`menu-panel fixed z-[60] ${panelClassName}`}
+          ref={panelRef}
+          className={`menu-panel fixed z-[60] overflow-y-auto ${panelClassName}`}
           style={{
-            top: rect.bottom + 4,
-            ...(align === "right"
-              ? { right: window.innerWidth - rect.right }
-              : { left: rect.left }),
+            top: place.top,
+            left: place.left,
+            right: place.right,
+            maxHeight: place.maxHeight,
           }}
           // 바깥 클릭 판정이 rootRef를 보는데 포탈 패널은 그 밖이다 — 클릭이 새 나가지 않게 막는다
           onMouseDown={(event) => event.stopPropagation()}

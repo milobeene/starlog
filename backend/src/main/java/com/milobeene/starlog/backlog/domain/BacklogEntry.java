@@ -276,6 +276,17 @@ public class BacklogEntry extends BaseEntity {
     }
 
     /**
+     * 회차로 향한 참조를 끊는다. **완전 삭제 직전에만 쓴다.**
+     *
+     * 항목과 회차가 서로를 참조해서(lastPlaythrough 비정규화, §7.2) 이걸 안 끊으면
+     * 회차를 지울 때 FK 제약에 걸린다. 파생 상태를 다시 계산하지 않는 이유 —
+     * 어차피 이 행도 곧 사라진다
+     */
+    public void detachLastPlaythrough() {
+        this.lastPlaythrough = null;
+    }
+
+    /**
      * displayName 갱신 경로는 여기 하나뿐 (§7.2).
      * A-7의 마스터 이름 수정도 이 메서드를 부른다.
      */

@@ -72,14 +72,18 @@ public interface BacklogEntryRepository
      * 삭제한 항목 목록 (§7.4 되살리기).
      *
      * 최근에 지운 것부터 — 되살리려는 건 방금 잘못 지운 것일 확률이 높다.
-     * 페이징이 없다: 삭제는 드물고, 많아지면 그건 목록이 아니라 다른 문제다
+     *
+     * 2차 정렬로 id를 붙인다. 같은 초에 여러 개를 지우면 deletedAt이 같아져
+     * 순서가 매 요청 흔들리고, 그러면 페이징에서 같은 행이 두 번 나오거나 아예 빠진다
      */
-    @Query("select new com.milobeene.starlog.backlog.dto.DeletedEntryResponse("
+    @Query(value = "select new com.milobeene.starlog.backlog.dto.DeletedEntryResponse("
             + "   b.id, b.displayName, b.deletedAt)"
             + " from BacklogEntry b"
             + " where b.member.id = :memberId and b.deletedAt is not null"
-            + " order by b.deletedAt desc")
-    List<DeletedEntryResponse> findDeleted(@Param("memberId") Long memberId);
+            + " order by b.deletedAt desc, b.id desc",
+            countQuery = "select count(b) from BacklogEntry b"
+                    + " where b.member.id = :memberId and b.deletedAt is not null")
+    Page<DeletedEntryResponse> findDeleted(@Param("memberId") Long memberId, Pageable pageable);
 
     @Query("select new com.milobeene.starlog.backlog.dto.BacklogNameResponse(b.id, b.displayName)" +
             " from BacklogEntry b" +

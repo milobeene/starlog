@@ -40,13 +40,34 @@ class BacklogSortTest {
         }
     }
 
+    /** CASE식이라 컬럼 이름이 아니다. 경로 문자열이 이 모양으로 나온다 */
+    private static final String PLAYING_FIRST = "status = PLAYING then 1 else 0 end";
+
     @Test
-    public void 최근_플레이순은_1차와_2차가_같은_컬럼이라_중복을_뺀다() {
-        //given //when
+    public void 최근_플레이순은_진행_중을_맨_앞에_세운다() {
+        //given — "지금 뭘 하고 있나"가 이 목록을 여는 이유다. 날짜만으로 세우면
+        //        어제 끝낸 게임이 아직 붙들고 있는 게임보다 위로 온다
+
+        //when
         String[] paths = pathsOf(BacklogSort.LAST_PLAYED);
 
-        //then — lastPlayedOn 이 두 번 나가면 SQL이 지저분해진다
-        assertThat(paths).containsExactly("lastPlayedOn", "id");
+        //then — 1차가 진행 중 여부, 그다음이 날짜. lastPlayedOn은 한 번만 나간다
+        assertThat(paths).containsExactly(PLAYING_FIRST, "lastPlayedOn", "id");
+        assertThat(directionsOf(BacklogSort.LAST_PLAYED)[0])
+                .as("1이 위로 와야 진행 중이 앞이다")
+                .isEqualTo("DESC");
+    }
+
+    @Test
+    public void 다른_정렬에는_진행_중_우선이_안_붙는다() {
+        //given — 평점·이름순은 사용자가 그 기준 하나로 줄을 세워 달라고 고른 것이다.
+        //        상태가 끼어들면 기준이 흐려진다
+        for (BacklogSort sort : BacklogSort.values()) {
+            if (sort == BacklogSort.LAST_PLAYED) {
+                continue;
+            }
+            assertThat(pathsOf(sort)).as("%s", sort).doesNotContain(PLAYING_FIRST);
+        }
     }
 
     @Test
@@ -74,11 +95,11 @@ class BacklogSortTest {
 
     /**
      * nullable 컬럼만 nullsLast가 필요하다.
-     * `displayName`은 `nullable = false`, `id`는 PK라 둘 다 대상이 아니다 —
-     * 안 붙는 게 맞고, Spring Sort 쪽도 같다
+     * `displayName`은 `nullable = false`, `id`는 PK, 진행 중 여부는 CASE라 항상 0 아니면 1이다 —
+     * 셋 다 NULL이 나올 수 없어 안 붙는 게 맞다
      */
     private static final java.util.Set<String> NOT_NULL_COLUMNS =
-            java.util.Set.of("displayName", "id");
+            java.util.Set.of("displayName", "id", PLAYING_FIRST);
 
     @Test
     public void nullable_컬럼은_전부_null을_뒤로_보낸다() {
@@ -118,21 +139,6 @@ class BacklogSortTest {
         //when //then — 서버는 클라이언트를 믿지 않는다
         assertThatThrownBy(() -> BacklogSort.from("bogus"))
                 .isInstanceOf(InvalidInputException.class);
-    }
-
-    @Test
-    public void Sort와_OrderSpecifier가_같은_규칙을_말한다() {
-        /*
-         * given — 두 표현이 한 enum 안에 나란히 있는 이유. 갈라지면 정렬이 조용히 달라진다.
-         * Spring Sort 쪽은 QueryDSL 경로로 옮긴 뒤 안 쓰이지만, 남아 있는 한 어긋나면 안 된다
-         */
-        for (BacklogSort sort : BacklogSort.values()) {
-            String springPrimary = sort.toSort().iterator().next().getProperty();
-            String querydslPrimary = pathsOf(sort)[0];
-
-            //when //then
-            assertThat(querydslPrimary).as("%s 의 1차 정렬 컬럼", sort).isEqualTo(springPrimary);
-        }
     }
 
     private String[] pathsOf(BacklogSort sort) {

@@ -3,7 +3,12 @@ package com.milobeene.starlog.backlog.service;
 import com.milobeene.starlog.backlog.domain.BacklogEntry;
 import com.milobeene.starlog.backlog.domain.OverrideCommand;
 import com.milobeene.starlog.backlog.exception.RevivableEntryException;
+import com.milobeene.starlog.backlog.domain.CoverImage;
 import com.milobeene.starlog.backlog.repository.BacklogEntryRepository;
+import com.milobeene.starlog.backlog.repository.CoverImageRepository;
+import com.milobeene.starlog.auth.service.AfterCommit;
+import com.milobeene.starlog.common.storage.FileStoragePort;
+import jakarta.persistence.EntityManager;
 import com.milobeene.starlog.common.exception.ConflictException;
 import com.milobeene.starlog.common.exception.NotFoundException;
 import com.milobeene.starlog.game.domain.Game;
@@ -28,6 +33,11 @@ public class BacklogService {
     private final MemberRepository memberRepository;
     private final GameRepository gameRepository;
     private final BacklogEntryFinder entryFinder;
+    /* 완전 삭제 전용. 삭제 순서가 전부인 작업이라 리포지토리 넷 대신 EntityManager를 직접 쓴다
+       (MemberPurgeService와 같은 이유 — 순서가 한 곳에서 읽혀야 한다) */
+    private final CoverImageRepository coverImageRepository;
+    private final FileStoragePort fileStorage;
+    private final EntityManager em;
 
     /** 게임을 내 백로그에 담는다 (FR-BL-01) */
     @Transactional
@@ -115,5 +125,57 @@ public class BacklogService {
         BacklogEntry entry = entryFinder.findOwnedIncludingDeleted(memberId, entryId);
 
         entry.revive();
+    }
+
+    /**
+     * **완전 삭제** (§7.4). 되돌릴 수 없다.
+     *
+     * **이미 소프트 삭제된 것만 지운다** — 살아 있는 게임이 한 방에 사라지는 경로를 만들지
+     * 않는다. 휴지통을 한 번 거쳐야 한다.
+     *
+     * 삭제 순서가 전부다. `BacklogEntry ↔ Playthrough`는 서로를 참조하므로
+     * (lastPlaythrough 비정규화, §7.2) **항목의 참조를 먼저 끊어야** 회차를 지울 수 있다.
+     * MemberPurgeService의 DELETE_ORDER와 같은 규칙을 항목 하나짜리로 좁힌 것이다.
+     *
+     * 커버 파일은 반환만 하고 지우지 않는다 — 컨트롤러가 커밋 뒤에 지운다.
+     * DB 커밋 전에 파일부터 지우면 롤백 시 "DB엔 있는데 파일이 없는" 최악이 나온다 (K-4)
+     */
+    @Transactional
+    public void purge(Long memberId, Long entryId) {
+        BacklogEntry entry = entryFinder.findOwnedIncludingDeleted(memberId, entryId);
+        if (!entry.isDeleted()) {
+            throw new ConflictException("삭제된 항목만 완전히 지울 수 있습니다. id=" + entryId);
+        }
+
+        // 행이 사라지기 전에 스토리지 key를 챙긴다 — 지운 뒤엔 어떤 파일이었는지 알 길이 없다
+        String coverKey = coverImageRepository.findByBacklogEntryId(entryId)
+                .map(CoverImage::getStorageKey)
+                .orElse(null);
+
+        // 순환 참조를 먼저 끊는다. 이걸 안 하면 회차 삭제가 FK에 걸린다
+        entry.detachLastPlaythrough();
+        em.flush();
+
+        em.createQuery("delete from BacklogEntryGenre x where x.backlogEntry.id = :id")
+                .setParameter("id", entryId).executeUpdate();
+        em.createQuery("delete from CoverImage x where x.backlogEntry.id = :id")
+                .setParameter("id", entryId).executeUpdate();
+        em.createQuery("delete from Acquisition x where x.backlogEntry.id = :id")
+                .setParameter("id", entryId).executeUpdate();
+        em.createQuery("delete from Playthrough x where x.backlogEntry.id = :id")
+                .setParameter("id", entryId).executeUpdate();
+
+        /*
+         * 벌크 삭제는 영속성 컨텍스트를 우회한다 — 방금 지운 자식들이 컨텍스트에 그대로 남아
+         * 부모를 지울 때 다시 flush되면 이미 없는 행을 건드린다. 비우고 나서 부모를 지운다
+         */
+        em.clear();
+        em.createQuery("delete from BacklogEntry b where b.id = :id")
+                .setParameter("id", entryId).executeUpdate();
+
+        if (coverKey != null) {
+            // 커밋 뒤에 지운다 — 실패는 삼킨다. 최악이 고아 파일이고 그건 감수한다 (K-4)
+            AfterCommit.run(() -> fileStorage.delete(coverKey));
+        }
     }
 }

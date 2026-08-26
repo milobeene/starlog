@@ -2,8 +2,8 @@
 
 > 현재 상태: **v0.1 기능이 전부 들어갔다.** 배포·실데이터 76건·종단 검증·UI·폰트·헤더에 더해
 > 마지막 둘(배경 색상 설정, IGDB 쿼터 + /admin 시스템 탭)까지 끝났다.
-> 백엔드 테스트 **442개 초록**, 프론트 `tsc`·`lint`·`next build` 통과(에러 0, 경고 7은 기존),
-> `contract-check` **25건 불일치 0**. Neon은 V2까지 적용돼 있고 **V3는 아직 안 올라갔다**.
+> 백엔드 테스트 **446개 초록**, 프론트 `tsc`·`lint`·`next build` 통과(에러 0, 경고 7은 기존),
+> `contract-check` **26건 불일치 0**. Neon은 V2까지 적용돼 있고 **V3는 아직 안 올라갔다**.
 > → **남은 건 V3 적용 + 배포 확인뿐이다.**
 >
 > 이 문서는 **설계 판단이 남지 않을 정도로** 촘촘하게 쓴 것이다. `[결정 필요]` 표시가 붙은 곳만
@@ -28,7 +28,7 @@ Vercel 프로젝트 → Settings → Domains에서 다른 이름으로 재시도
 ```bash
 cd ~/projects/Practice/starlog
 git log --oneline -1                      # 헤더 개편 커밋이 최신이어야 함
-cd backend && ./gradlew test              # 442개 초록 (도커 필요 — PostgresSchemaTest)
+cd backend && ./gradlew test              # 446개 초록 (도커 필요 — PostgresSchemaTest)
 ```
 
 프론트는 `cd frontend && npx tsc --noEmit && npm run lint`.
@@ -332,7 +332,7 @@ IGDB 누적 호출·반려 수 / 커버 수·용량 / DB 크기 / 오늘 회원�
    월별 지출 툴팁에 항목 이름 · 그리드 제목 한 줄 · 검색창 지우기 버튼
    Field label 위임 버그 · 쿼터 타임존(KST) · 정리 배치 기동 따라잡기 · 필터 플랫폼명
    사이드바 전역 무효화 · 관리자 무제한 · 삭제 되살리기 화면 · IME 가드 · 날짜 선택기
-   옵시디언 메모 43건
+   옵시디언 메모 43건 · 팝업 위치 재계산 · 진행 중 우선 정렬 · 완전 삭제 + 미리보기
 
 ── v0.1 출시 절차 ─────────────────────────
 0-1. Neon에 **V3 적용** (앱을 prod로 한 번 띄우면 Flyway가 올린다)
