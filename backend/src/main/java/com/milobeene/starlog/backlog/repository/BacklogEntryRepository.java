@@ -20,6 +20,19 @@ public interface BacklogEntryRepository
         extends BaseRepository<BacklogEntry, Long>, BacklogEntryRepositoryCustom {
 
     /**
+     * 회차 검증을 직렬화하기 위한 부모 행 잠금.
+     *
+     * BR-PT-02(기간 겹침 금지)·BR-PT-03(진행 중 1개)은 **형제 회차를 봐야 판정되는 규칙**이라
+     * DB 제약으로 표현할 수 없다(부분 유니크 인덱스는 H2가 미지원이라 dev/prod가 갈린다).
+     * 그래서 항목 행을 잠가 "형제를 읽고 → 검증하고 → 쓰는" 구간을 한 번에 하나만 돌게 한다.
+     * 잠그지 않으면 동시 요청 둘이 서로의 미커밋 회차를 못 보고 둘 다 통과해
+     * 불변식이 깨진 데이터가 영구 저장되고, 이후 정상 수정까지 409로 연쇄된다
+     */
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select b from BacklogEntry b where b.id = :entryId")
+    java.util.Optional<BacklogEntry> findByIdForUpdate(@Param("entryId") Long entryId);
+
+    /**
      * 이미 담은 게임인지 확인 (FR-BL-02, uk_backlog_entry_member_game).
      * 삭제된 행까지 포함해서 찾는다 — 되살리기(§7.4)가 삭제된 행을 찾아야 하므로
      * deletedAt 조건을 일부러 걸지 않는다. 살아있는 항목만 필요한 조회는 A-6에서 따로 만든다.

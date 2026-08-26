@@ -1,8 +1,8 @@
 package com.milobeene.starlog.member.service;
 
 import jakarta.persistence.EntityManager;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,10 +24,21 @@ import java.util.List;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class MemberPurgeService {
 
     private final EntityManager em;
+
+    /**
+     * 자기 자신의 프록시. `@Transactional`은 프록시 기반이라 `this.purge()`로 부르면
+     * 트랜잭션이 안 걸린다 (원칙 11번) — 회원별로 트랜잭션을 끊으려면 프록시를 거쳐야 한다.
+     * 별도 빈으로 쪼개는 대신 자기 주입을 쓴 이유는, 삭제 순서가 이 파일 안에 다 보여야 하기 때문이다
+     */
+    private final MemberPurgeService self;
+
+    public MemberPurgeService(EntityManager em, @Lazy MemberPurgeService self) {
+        this.em = em;
+        this.self = self;
+    }
 
     /** 자식 → 부모 순서. 이 목록의 순서가 곧 명세다 */
     private static final List<String> DELETE_ORDER = List.of(
@@ -56,25 +67,46 @@ public class MemberPurgeService {
      */
     public record PurgeResult(int purgedMembers, List<String> coverStorageKeys) {}
 
-    /** 유예가 끝난 회원을 전부 지운다 */
-    @Transactional
+    /**
+     * 유예가 끝난 회원을 전부 지운다.
+     *
+     * ⚠️ **이 메서드에는 트랜잭션이 없다.** 대상 조회와 회원별 삭제가 각각 자기 트랜잭션을 갖는다.
+     * 전원을 한 트랜잭션에 묶으면 한 명이 터질 때 그날 **전원이 롤백**되고, 배치가 매일 같은
+     * 집합을 다시 뽑으므로 그 한 명이 영원히 배치를 막는다(poison pill). 실제로 그 상태였다.
+     *
+     * 실패한 회원은 로그만 남기고 넘어간다 — 다음 날 배치가 다시 시도하고, 그동안 나머지는 정리된다
+     */
     public PurgeResult purgeExpired(LocalDateTime threshold) {
-        List<Long> targets = em.createQuery("""
+        List<Long> targets = findExpired(threshold);
+
+        List<String> coverKeys = new ArrayList<>();
+        int purged = 0;
+        for (Long memberId : targets) {
+            try {
+                coverKeys.addAll(self.purge(memberId));
+                purged++;
+            } catch (RuntimeException e) {
+                // 한 명의 실패가 나머지를 막지 않는다. 원인은 로그로 남겨 다음 날 재시도된다
+                log.error("회원 물리 삭제 실패 — 건너뛴다. memberId={}", memberId, e);
+            }
+        }
+
+        if (!targets.isEmpty()) {
+            log.info("유예 만료 회원 {}/{}명 물리 삭제 (커버 파일 {}건 정리 대상)",
+                    purged, targets.size(), coverKeys.size());
+        }
+        return new PurgeResult(purged, coverKeys);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Long> findExpired(LocalDateTime threshold) {
+        return em.createQuery("""
                         select m.id from Member m
                          where m.deletedAt is not null
                            and m.deletedAt < :threshold
                         """, Long.class)
                 .setParameter("threshold", threshold)
                 .getResultList();
-
-        List<String> coverKeys = new ArrayList<>();
-        targets.forEach(memberId -> coverKeys.addAll(purge(memberId)));
-
-        if (!targets.isEmpty()) {
-            log.info("유예 만료 회원 {}명 물리 삭제 (커버 파일 {}건 정리 대상)",
-                    targets.size(), coverKeys.size());
-        }
-        return new PurgeResult(targets.size(), coverKeys);
     }
 
     @Transactional

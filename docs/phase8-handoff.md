@@ -4,12 +4,26 @@
 
 ---
 
+## 0-0. Phase 9 야간 작업 완료분 (2026-08-26)
+
+1. **스키마 베이스라인 재작성** — V1~V3 청산, 손설계 단일 V1 (`db-baseline-v1.md`)
+2. **STARLOG 이름 못박기** — 패키지 `com.milobeene.starlog` 전면 치환
+3. **Neon 실검증** — 리셋 → 새 V1 → API 왕복. PG 전용 버그 2건 발견·수정
+4. **멀티에이전트 코드 리뷰 62 에이전트** — 확정 21건 중 HIGH 5건 포함 전부 조치 (`code-review-2026-08-26.md`)
+5. **테스트 409 → 416** — 마이그레이션 안전망, Testcontainers 부분 도입, 커밋 시점 검증 지원
+
+**커밋은 안 했다** — 커밋 메시지는 아래 §커밋 참고.
+
+---
+
 ## 0. 남은 할 일
 
 1. ~~백엔드 스펙 ↔ 프론트 전수 검증~~ — **완료. 결과는 §0-4** (남은 미구현 3건은 아래)
-2. **Neon 실물 DB 검증** — ⚠️ **V2·V3 마이그레이션이 아직 Neon에 안 올라갔다.** 적용 전 백업 필수
+2. ~~Neon 실물 DB 검증~~ — **완료.** 스키마 리셋 → 새 V1 적용 → API 왕복 검증까지 (`docs/db-baseline-v1.md`)
 3. **옵시디언 임포트 결과 수정** (아래 ③)
-4. **서비스명 STARLOG 못박기** — 문서·코드·패키지에 남은 "game-backlog"를 정리한다. 범위 미확정
+4. ~~서비스명 STARLOG 못박기~~ — **완료.** 패키지 `com.milobeene.starlog`, gradle·문서 전부.
+   **남은 것 둘**: 저장소 폴더명(`mv game-backlog starlog` — 세션 작업 디렉터리라 미뤘다),
+   구글 OAuth 동의 화면 App name (콘솔에서 직접)
 5. ~~인증 메일 발송~~ — 구글 로그인 전용으로 전환 (§0-3)
 6. **감사에서 남긴 미구현 3건** — FR-STAT-02(완료 통계), FR-STAT-04(지출 2축),
    FR-BL-09(변경 이력). 앞 둘은 백엔드 API가 놀고 있고 "화면 어디에 넣을지"가 미정이라 보류했다
@@ -39,9 +53,9 @@
 - 가입 시 `DefaultCatalogSeeder`가 기본 플랫폼 6종 + 입력 방식 4종을 복사한다. 기기·에뮬은 안 넣는다
 - 관리자 마스터 CRUD(FR-ADM-04)·`MasterDataService`·`MemberDevice` 삭제. 스펙 v1.8로 개정
 
-**⚠️ `V2__member_owned_catalog.sql`이 진짜 위험 지점이다.** 마스터를 회원별로 복제하고
-회차·취득·계정의 FK를 사본으로 갈아끼운다. `V2DataMigrationTest`가 V1 데이터를 넣고 V2를 돌려 검증하지만,
-**Neon 실데이터에는 아직 안 돌렸다.** 배포 전 백업 필수.
+**⚠️ 이 이행 마이그레이션(V2)은 이후 청산됐다.** 데이터가 소모품이 된 시점에
+V1~V3를 단일 베이스라인 `V1__init.sql` 하나로 다시 썼다 — `docs/db-baseline-v1.md` 참고.
+Neon도 리셋 후 새 V1로 재적용을 마쳤다.
 
 ---
 
@@ -83,7 +97,7 @@
   ⚠️ **구글 쪽을 빼먹으면 통째로 우회된다**
 - 세션을 안 남기고 403이라 `/api/**`가 전부 401 → DB·R2 접근이 자동으로 막힌다
 - 스위치 `app.signup.require-approval` (기본 켬, 테스트는 끔)
-- `V3__member_approval.sql`이 **기존 회원 전원을 승인 처리**한다 (안 그러면 다 잠긴다)
+- `approved_at`은 새 베이스라인 `V1__init.sql`에 처음부터 들어 있다
 - 관리자 화면 회원 탭에 대기 배너 + 승인 버튼
 
 ### 감사에서 고친 것
@@ -272,3 +286,30 @@ To send emails to other recipients, please verify a domain at resend.com/domains
 ## 참조 문서
 `CLAUDE.md` → `docs/spec-v1.5.md`(판단 기준) · `docs/design-system.md`(화면 규칙) ·
 `docs/api-design-v0.2.md` · `docs/dev-order.md` · `docs/frontend-impl-notes.md` · `docs/design-request.md`
+
+
+---
+
+## 커밋 (아직 안 함)
+
+야간 작업은 5개로 나뉜다. 앞 4개는 이미 커밋됐고 **마지막 하나만 남았다**:
+
+```
+fix(phase9): 코드 리뷰 확정 21건 조치 — 구글 세션 무효화·탈퇴 배치 트랜잭션·커버 업로드 2건, Testcontainers 부분 도입
+```
+
+## 다음에 할 일
+
+| 순서 | 내용 |
+|---|---|
+| 1 | **배포** (Render/Vercel) — 반응형·PWA·일렉트론의 선행 조건 |
+| 2 | 옵시디언 76건 재투입 — `VaultLoader`를 git 이력에서 부활시켜 새 스키마에 맞게 (`acquiredOn`·`playTimeHours` null도 같이 해결) |
+| 3 | 반응형 (구조 6곳, 모바일 퍼스트) → PWA |
+| 4 | **IGDB 처리율 게이트 + /admin 시스템 탭** — `capacity-planning.md`의 A·B·모니터링 |
+| 5 | 일렉트론 (구글 OAuth 딥링크 필요 — 도메인 안 사기로 확정했으므로) |
+
+### 아침에 결정할 것
+
+- **폴더명**: `cd ~/projects/Practice && mv game-backlog starlog` (세션 작업 디렉터리라 밤에 못 건드렸다)
+- **구글 OAuth 동의 화면 App name** → `STARLOG` (콘솔에서 직접, 코드로 안 됨)
+- **알려진 한계 3건**을 고칠지 — `code-review-2026-08-26.md` 마지막 표

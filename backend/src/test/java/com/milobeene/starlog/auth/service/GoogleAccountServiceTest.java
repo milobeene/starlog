@@ -92,6 +92,7 @@ class GoogleAccountServiceTest extends ControllerTestSupport {
 
         //then
         assertThat(member.isEmailVerified()).isFalse();
+        commitNow();   // 인증 메일은 커밋 뒤에 나간다 (AfterCommit)
         assertThat(mailSender.of(Kind.EMAIL_VERIFICATION)).hasSize(1);
     }
 
@@ -118,6 +119,7 @@ class GoogleAccountServiceTest extends ControllerTestSupport {
         em.flush();
 
         passwordResetService.request("social-pw@example.com");
+        commitNow();   // 재설정 메일도 커밋 뒤에 나간다
         String token = mailSender.of(Kind.PASSWORD_RESET).getFirst().token();
 
         //when //then

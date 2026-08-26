@@ -59,6 +59,23 @@ dependencies {
 	// prod(Neon). dev는 계속 H2라 둘 다 클래스패스에 있고, 프로필이 URL로 가른다
 	runtimeOnly 'org.postgresql:postgresql'
 	annotationProcessor 'org.projectlombok:lombok'
+	/*
+	 * 실 PostgreSQL 검증 (Testcontainers).
+	 *
+	 * **전면 전환이 아니라 PG 전용 결함만 덮는 몇 개 테스트용이다.** 나머지 400여 개는
+	 * H2 인메모리로 그대로 돈다 — 전부 컨테이너로 돌리면 테스트 시간이 몇 배가 된다.
+	 *
+	 * 도입한 이유 — H2(MODE=PostgreSQL)가 원리적으로 못 잡는 부류가 실제로 새어나갔다:
+	 *   · null 파라미터 타입 추론 (`lower(bytea)`, `could not determine data type`) — 관리자 검색 2곳이 500
+	 *   · 인덱스 정렬 방향 (H2는 방언 기본값이 nulls last라 괴리가 안 드러난다)
+	 *   · read-only 트랜잭션 강제 (PG는 25006으로 거부, H2는 통과)
+	 * 셋 다 테스트 400개가 초록불인 채로 운영에서만 터졌다.
+	 *
+	 * 코어 아티팩트만 쓴다 — `org.testcontainers:postgresql` 모듈이 이 환경에서 해석되지 않아
+	 * GenericContainer로 postgres 이미지를 직접 띄운다. 어차피 필요한 건 "JDBC URL 하나"라
+	 * 전용 모듈의 편의 메서드가 없어도 손해가 없다
+	 */
+	testImplementation 'org.testcontainers:testcontainers'
 	testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-security-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'

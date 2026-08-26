@@ -24,6 +24,11 @@ import java.time.LocalDateTime;
  * 토큰 원문은 DB에 없다(해시만 저장). 그래서 테스트도 **발송 포트를 가로채서** 원문을 얻는다 —
  * 실제 사용자가 메일로 받는 것과 같은 경로다.
  */
+/*
+ * 인증 메일은 **커밋 뒤에** 나간다 (AfterCommit) — 롤백되는 테스트 트랜잭션에서는
+ * 영영 실행되지 않으므로, 발송을 단언하는 테스트는 commitNow()로 한 번 끊어준다.
+ * 커밋된 데이터가 남으므로 조회 단언에는 자기 계정 조건을 붙인다
+ */
 @Import(CapturingAuthMailSender.class)
 class EmailVerificationTest extends ControllerTestSupport {
 
@@ -38,6 +43,7 @@ class EmailVerificationTest extends ControllerTestSupport {
     public void 가입하면_인증_메일이_나간다() throws Exception {
         //when
         mockMvc.perform(signUp("verify@example.com")).andExpect(status().isCreated());
+        commitNow();
 
         //then
         assertThat(mailSender.sent).hasSize(1);
@@ -49,10 +55,13 @@ class EmailVerificationTest extends ControllerTestSupport {
     public void 토큰_원문은_저장되지_않는다() throws Exception {
         //given
         mockMvc.perform(signUp("nostore@example.com"));
+        commitNow();
         String rawToken = mailSender.sent.getFirst().token();
 
-        //when
-        AuthToken saved = em.createQuery("select t from AuthToken t", AuthToken.class)
+        //when — 커밋된 다른 테스트의 토큰이 섞이므로 이 계정으로 좁힌다
+        AuthToken saved = em.createQuery(
+                        "select t from AuthToken t where t.member.email = :email", AuthToken.class)
+                .setParameter("email", "nostore@example.com")
                 .getResultList().getFirst();
 
         //then
@@ -65,6 +74,7 @@ class EmailVerificationTest extends ControllerTestSupport {
     public void 토큰으로_인증하면_로그인할_수_있다() throws Exception {
         //given
         mockMvc.perform(signUp("ok@example.com"));
+        commitNow();
         String rawToken = mailSender.sent.getFirst().token();
 
         //when
@@ -92,6 +102,7 @@ class EmailVerificationTest extends ControllerTestSupport {
     public void 같은_토큰을_두_번_쓸_수_없다() throws Exception {
         //given
         mockMvc.perform(signUp("once@example.com"));
+        commitNow();
         String rawToken = mailSender.sent.getFirst().token();
         mockMvc.perform(verify(rawToken)).andExpect(status().isNoContent());
 
@@ -111,10 +122,11 @@ class EmailVerificationTest extends ControllerTestSupport {
     public void 재발송은_60초_안에_두_번_나가지_않는다() throws Exception {
         //given
         mockMvc.perform(signUp("throttle@example.com"));
-        em.flush();
+        commitNow();
 
         //when
         mockMvc.perform(resend("throttle@example.com")).andExpect(status().isAccepted());
+        commitNow();
 
         //then — 가입 때 1통. 스로틀에 걸려 추가 발송이 없다 (NFR-S9)
         assertThat(mailSender.sent).hasSize(1);
@@ -131,12 +143,14 @@ class EmailVerificationTest extends ControllerTestSupport {
     public void 이미_인증된_계정에_재발송해도_메일이_안_나간다() throws Exception {
         //given
         mockMvc.perform(signUp("done@example.com"));
+        commitNow();
         mockMvc.perform(verify(mailSender.sent.getFirst().token()));
-        em.flush();
+        commitNow();
         mailSender.sent.clear();
 
         //when //then
         mockMvc.perform(resend("done@example.com")).andExpect(status().isAccepted());
+        commitNow();
         assertThat(mailSender.sent).isEmpty();
     }
 

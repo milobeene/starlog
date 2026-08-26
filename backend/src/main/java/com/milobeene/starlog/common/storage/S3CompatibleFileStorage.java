@@ -10,6 +10,7 @@ import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
@@ -119,11 +120,15 @@ public class S3CompatibleFileStorage implements FileStoragePort {
                     .key(storageKey)
                     .build());
 
-        } catch (S3Exception e) {
+        } catch (SdkException e) {
             /*
              * 던지지 않는다. 이 메서드는 DB 커밋 **뒤에** 불린다 (K-4) —
              * 여기서 예외를 올리면 이미 커밋된 삭제가 실패한 것처럼 보인다.
-             * 남은 파일은 버킷 라이프사이클 규칙이 정리한다
+             * 남은 파일은 버킷 라이프사이클 규칙이 정리한다.
+             *
+             * **S3Exception이 아니라 SdkException을 잡는다.** 네트워크 오류(SdkClientException)는
+             * S3Exception의 하위가 아니라, 좁게 잡으면 연결 실패가 그대로 전파돼
+             * "절대 안 던진다"는 이 계약이 깨진다. 탈퇴 배치가 그 예외로 통째로 멈추던 경로다
              */
             log.warn("스토리지 파일 삭제 실패 — key={} (고아 파일로 남는다)", storageKey, e);
         }

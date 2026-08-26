@@ -32,6 +32,17 @@ public class BacklogEntryFinder {
         return entry;
     }
 
+    /**
+     * findOwned와 같지만 **항목 행을 잠근다.** 형제를 보고 판정하는 검증(회차의 BR-PT-02·03)이
+     * 동시 요청에 뚫리지 않게 그 구간을 직렬화한다. 잠금 비용이 있으므로 그런 경로만 쓴다
+     */
+    public BacklogEntry findOwnedForUpdate(Long memberId, Long entryId) {
+        backlogEntryRepository.findByIdForUpdate(entryId)
+                .orElseThrow(() -> new NotFoundException("백로그 항목을 찾을 수 없습니다. id=" + entryId));
+
+        return findOwned(memberId, entryId);
+    }
+
     /** 살아있는 내 항목만. 수정 경로는 전부 이걸 쓴다 */
     public BacklogEntry findOwned(Long memberId, Long entryId) {
         BacklogEntry entry = findOwnedIncludingDeleted(memberId, entryId);

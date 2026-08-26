@@ -42,6 +42,7 @@ class PasswordResetTest extends ControllerTestSupport {
 
         //when
         mockMvc.perform(request("reset@example.com")).andExpect(status().isAccepted());
+        commitNow();
 
         //then
         assertThat(mailSender.of(Kind.PASSWORD_RESET)).hasSize(1);
@@ -52,12 +53,15 @@ class PasswordResetTest extends ControllerTestSupport {
         //given — 계정을 통째로 넘겨주는 열쇠라 노출 창을 좁힌다
         signUp("short@example.com");
         mockMvc.perform(request("short@example.com"));
-        em.flush();
+        commitNow();
 
-        //when
+        //when — 커밋된 다른 테스트의 토큰이 섞이므로 이 계정으로 좁힌다
         AuthToken token = em.createQuery(
-                        "select t from AuthToken t where t.purpose = :purpose", AuthToken.class)
+                        "select t from AuthToken t"
+                                + " where t.purpose = :purpose and t.member.email = :email",
+                        AuthToken.class)
                 .setParameter("purpose", TokenPurpose.PASSWORD_RESET)
+                .setParameter("email", "short@example.com")
                 .getSingleResult();
 
         //then — 30분
@@ -69,6 +73,7 @@ class PasswordResetTest extends ControllerTestSupport {
         //given
         signUp("change@example.com");
         mockMvc.perform(request("change@example.com"));
+        commitNow();
         String rawToken = mailSender.of(Kind.PASSWORD_RESET).getFirst().token();
 
         //when
@@ -85,6 +90,7 @@ class PasswordResetTest extends ControllerTestSupport {
         //given
         signUp("twice@example.com");
         mockMvc.perform(request("twice@example.com"));
+        commitNow();
         String rawToken = mailSender.of(Kind.PASSWORD_RESET).getFirst().token();
         mockMvc.perform(confirm(rawToken, "brandNewPassword1")).andExpect(status().isNoContent());
 
@@ -99,8 +105,8 @@ class PasswordResetTest extends ControllerTestSupport {
         //given — 두 번 요청해서 링크가 둘인 상황 (스로틀 때문에 서비스로 직접 만든다)
         Member member = signUp("multi@example.com");
         mockMvc.perform(request("multi@example.com"));
+        commitNow();
         String firstToken = mailSender.of(Kind.PASSWORD_RESET).getFirst().token();
-        em.flush();
 
         // 두 번째 토큰을 직접 심는다
         em.persist(new AuthToken(member, TokenPurpose.PASSWORD_RESET,
@@ -121,6 +127,7 @@ class PasswordResetTest extends ControllerTestSupport {
         //given
         signUp("weak@example.com");
         mockMvc.perform(request("weak@example.com"));
+        commitNow();
         String rawToken = mailSender.of(Kind.PASSWORD_RESET).getFirst().token();
 
         //when //then — 여기만 느슨하면 재설정이 우회로가 된다

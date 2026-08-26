@@ -1,0 +1,112 @@
+package com.milobeene.starlog;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+
+import com.milobeene.starlog.admin.service.AdminQueryService;
+import java.time.LocalDate;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.containers.wait.strategy.Wait;
+import org.testcontainers.utility.DockerImageName;
+
+/**
+ * **실 PostgreSQL 검증.** 나머지 400여 개는 H2로 돌고 여기만 컨테이너를 띄운다.
+ *
+ * 왜 필요한가 — H2(MODE=PostgreSQL)가 원리적으로 못 잡는 부류가 실제로 운영까지 새어나갔다:
+ *   · null 파라미터 타입 추론 — `:param is null or …` 관용구가 PG에서 `lower(bytea)` /
+ *     `could not determine data type`으로 죽는다. 관리자 검색 2곳이 500이었는데 테스트는 전부 초록
+ *   · 인덱스 정렬 방향 — PG는 방향 무지정 btree의 역방향이 `desc nulls FIRST`라 정렬을 못 태운다.
+ *     H2는 방언 기본값이 nulls last라 괴리 자체가 안 드러난다
+ *
+ * 전용 `org.testcontainers:postgresql` 모듈이 이 환경에서 해석되지 않아 GenericContainer로
+ * 직접 띄운다. 필요한 건 JDBC URL 하나뿐이라 손해가 없다.
+ *
+ * ⚠️ 도커가 없으면 이 클래스는 실패한다. 로컬에서 도커 없이 돌리려면
+ * `./gradlew test --tests '*' -x` 대신 `-PexcludePgTests` 같은 스위치를 두는 게 다음 숙제다
+ */
+@SpringBootTest(properties = {
+        "spring.flyway.enabled=true",
+        "spring.jpa.hibernate.ddl-auto=validate"
+})
+@ActiveProfiles("test")
+class PostgresSchemaTest {
+
+    private static final GenericContainer<?> POSTGRES =
+            new GenericContainer<>(DockerImageName.parse("postgres:17-alpine"))
+                    .withExposedPorts(5432)
+                    .withEnv("POSTGRES_DB", "starlog")
+                    .withEnv("POSTGRES_USER", "starlog")
+                    .withEnv("POSTGRES_PASSWORD", "starlog")
+                    // 초기화 중 한 번 떴다 재시작하므로 두 번째 신호를 기다린다
+                    .waitingFor(Wait.forLogMessage(".*database system is ready to accept connections.*", 2));
+
+    @BeforeAll
+    static void startContainer() {
+        POSTGRES.start();
+    }
+
+    @AfterAll
+    static void stopContainer() {
+        POSTGRES.stop();
+    }
+
+    @DynamicPropertySource
+    static void datasource(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", () -> "jdbc:postgresql://%s:%d/starlog"
+                .formatted(POSTGRES.getHost(), POSTGRES.getMappedPort(5432)));
+        registry.add("spring.datasource.username", () -> "starlog");
+        registry.add("spring.datasource.password", () -> "starlog");
+        registry.add("spring.datasource.driver-class-name", () -> "org.postgresql.Driver");
+    }
+
+    @Autowired JdbcTemplate jdbc;
+    @Autowired AdminQueryService adminQueryService;
+
+    @Test
+    void V1이_실_PostgreSQL에서_적용되고_엔티티와_일치한다() {
+        // 컨텍스트 기동 자체가 검증 (Flyway 적용 + Hibernate validate).
+        // H2 호환 모드가 통과시키던 문법이 여기서 걸린다
+        assertThat(jdbc.queryForObject(
+                "select count(*) from information_schema.tables where table_schema = 'public'"
+                        + " and table_type = 'BASE TABLE'", Integer.class))
+                .isEqualTo(25);
+    }
+
+    @Test
+    void 정렬_인덱스가_desc_nulls_last로_생성된다() {
+        //given — H2에서는 방언 기본값이 nulls last라 방향 누락이 드러나지 않는다
+        //when
+        String definition = jdbc.queryForObject(
+                "select indexdef from pg_indexes where indexname = 'idx_backlog_member_rating'",
+                String.class);
+
+        //then — 방향이 빠지면 PG가 정렬에 이 인덱스를 못 쓴다
+        assertThat(definition).contains("DESC NULLS LAST");
+    }
+
+    @Test
+    void 관리자_검색이_빈_조건에서도_PostgreSQL을_통과한다() {
+        /*
+         * `:param is null or …` 관용구가 여기서 죽었다. 빈 조건(검색어·날짜 없음)이
+         * 가장 흔한 호출인데 그게 500이었다 — H2는 전부 통과시켰다
+         */
+        assertThatCode(() -> adminQueryService.findMembers(null, null, null, 0, 30))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> adminQueryService.findMembers("milo", LocalDate.of(2026, 1, 1),
+                LocalDate.of(2026, 12, 31), 0, 30))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> adminQueryService.findGames(null, 0, 30))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> adminQueryService.findGames("hollow", 0, 30))
+                .doesNotThrowAnyException();
+    }
+}

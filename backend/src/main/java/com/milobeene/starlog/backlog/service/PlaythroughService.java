@@ -35,7 +35,8 @@ public class PlaythroughService {
     /** 회차 추가 (FR-PT-01~07). 번호는 1부터 순차, 구멍은 메우지 않는다 */
     @Transactional
     public Long add(Long memberId, Long entryId, PlaythroughCommand command) {
-        BacklogEntry entry = entryFinder.findOwned(memberId, entryId);
+        // 형제를 보고 판정하는 검증이라 항목 행을 잠가 직렬화한다 (BR-PT-02·03)
+        BacklogEntry entry = entryFinder.findOwnedForUpdate(memberId, entryId);
         List<Playthrough> siblings = siblingsOf(entryId);
 
         Playthrough playthrough = Playthrough.of(entry, nextSequenceNo(siblings), command);
@@ -149,8 +150,9 @@ public class PlaythroughService {
         Playthrough playthrough = playthroughRepository.findById(playthroughId)
                 .orElseThrow(() -> new NotFoundException("회차를 찾을 수 없습니다. id=" + playthroughId));
 
-        // 부모 항목의 소유권을 확인한다. 회차는 자기 소유자를 따로 갖지 않는다
-        entryFinder.findOwned(memberId, playthrough.getBacklogEntry().getId());
+        // 부모 항목의 소유권을 확인한다. 회차는 자기 소유자를 따로 갖지 않는다.
+        // 수정도 형제 검증을 타므로 add와 같은 잠금이 필요하다
+        entryFinder.findOwnedForUpdate(memberId, playthrough.getBacklogEntry().getId());
 
         return playthrough;
     }

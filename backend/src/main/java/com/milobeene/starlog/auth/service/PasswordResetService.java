@@ -89,7 +89,9 @@ public class PasswordResetService {
                 TokenValues.hash(rawToken),
                 LocalDateTime.now().plus(VALID_FOR)));
 
-        mailSender.sendPasswordReset(member.getEmail(), rawToken);
+        // 커밋 뒤에 보낸다 — 인증 메일과 같은 이유 (AfterCommit 주석 참고)
+        String email = member.getEmail();
+        AfterCommit.run(() -> mailSender.sendPasswordReset(email, rawToken));
     }
 
     private boolean notThrottled(Member member) {

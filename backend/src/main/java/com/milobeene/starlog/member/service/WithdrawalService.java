@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
@@ -60,7 +61,20 @@ public class WithdrawalService {
         sessionInvalidator.expireAllSessionsOf(memberId);   // 권한을 다시 굳히려면 재로그인해야 한다
     }
 
-    /** 유예 만료 배치 (I-8). 이 메서드에 @Transactional이 없어야 한다 — 파일 삭제가 DB 커밋 뒤여야 하므로 */
+    /**
+     * 유예 만료 배치 (I-8, FR-SYS-06).
+     *
+     * ⚠️ **`@Transactional`을 "안 붙이는" 것으로는 트랜잭션이 안 끊긴다.** 클래스 레벨
+     * `@Transactional(readOnly = true)`가 이 메서드에도 걸리고, `@Scheduled`는 프록시를 거쳐
+     * 호출되므로 그대로 적용된다. 그 결과 두 가지가 동시에 깨져 있었다:
+     *   1) 커버 실물 삭제가 DB 커밋 **전에** 실행 — 롤백되면 "DB엔 있는데 파일이 없는" 최악 (K-4 위반)
+     *   2) 하위 벌크 DELETE가 readOnly 트랜잭션에 참여 — PostgreSQL이 `25006`으로 거부해
+     *      **운영에서 이 배치가 매일 아무 일도 안 하고 조용히 실패**했다 (H2는 관대해 테스트로 안 잡혔다)
+     *
+     * NEVER를 쓰는 이유 — 바깥 트랜잭션이 생기는 순간 예외로 터져 회귀가 즉시 드러난다.
+     * NOT_SUPPORTED는 조용히 보류만 해서 같은 실수가 다시 숨는다
+     */
+    @Transactional(propagation = Propagation.NEVER)
     @Scheduled(cron = "${app.withdrawal.purge-cron}")
     public void purgeExpired() {
         MemberPurgeService.PurgeResult result =

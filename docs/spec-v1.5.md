@@ -605,7 +605,8 @@ DLC는 별도 게임으로 관리하지 않고 **본편의 추가 회차로 흡�
 > 이름을 바꾸면 FK를 타고 그 항목을 쓴 모든 기록에 반영된다.
 > 가입 시 기본 플랫폼·입력 방식이 회원 소유로 복사된다 (기기·에뮬은 개인 하드웨어라 비운다).
 >
-> 데이터 이행은 마이그레이션 `V2__member_owned_catalog.sql`, 검증은 `V2DataMigrationTest`.
+> 이 개정의 데이터 이행 마이그레이션(V2)은 **첫 실배포 전에 청산됐다** — 현재 스키마는
+> 단일 베이스라인 `V1__init.sql`이 전부다 (`docs/db-baseline-v1.md`).
 
 - `Platform`·`Device`·`Emulator`·`InputMethod`는 회원이 소유한다. 유니크는 각각
   `(member_id, name)` / `(member_id, label)` / `(member_id, name)` / `(member_id, name)`
@@ -979,8 +980,8 @@ inputMethod:
 > - 세션을 아예 안 남기고 403으로 끊는다. 그래서 `/api/**`가 전부 401이 되어
 >   **DB 조회도 커버 업로드용 presigned URL 발급도 따로 막을 필요가 없다**
 > - 스위치는 `app.signup.require-approval` (기본 켬)
-> - 마이그레이션 `V3__member_approval.sql`이 **기존 회원을 전부 승인 처리한다** —
->   안 그러면 적용 순간 모두가 잠긴다
+> - `approved_at`은 베이스라인 `V1__init.sql`에 처음부터 들어 있다. (승인제를 도입하던 시점의
+>   V3 마이그레이션은 기존 회원을 전부 승인 처리했는데, 그 판은 V1 재작성으로 청산됐다)
 >
 > **한계**: 메일을 못 보내는 동안은 가입 요청 알림이 가지 않는다. 관리자가 화면을 직접 봐야 한다
 

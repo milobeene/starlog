@@ -17,6 +17,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.context.transaction.TestTransaction;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -37,6 +38,35 @@ import org.springframework.transaction.annotation.Transactional;
 public abstract class ControllerTestSupport {
 
     protected MockMvc mockMvc;
+
+    /**
+     * 테스트 트랜잭션을 실제로 커밋한다.
+     *
+     * 인증 메일처럼 **커밋 이후에 일어나는 부수효과**(AfterCommit)는 롤백되는 테스트
+     * 트랜잭션에서는 영영 실행되지 않는다. 그 경로를 검증하려면 여기서 한 번 끊어줘야 한다.
+     *
+     * ⚠️ 커밋한 데이터는 남는다 — 이 메서드를 쓰는 테스트는 조회 단언에
+     * **자기 데이터만 걸리는 조건**(이메일 등)을 붙여야 앞선 테스트의 잔여물에 안 걸린다
+     */
+    protected void commitNow() {
+        TestTransaction.flagForCommit();
+        TestTransaction.end();
+        TestTransaction.start();
+    }
+
+    /**
+     * 테스트 트랜잭션을 커밋하고 **다시 열지 않는다.**
+     *
+     * 스케줄러 배치처럼 `Propagation.NEVER`로 "바깥 트랜잭션이 없어야 한다"를 못박은 코드를
+     * 부를 때 쓴다. commitNow()는 새 트랜잭션을 다시 열기 때문에 그런 코드에는 못 쓴다.
+     *
+     * ⚠️ 이후 데이터는 롤백되지 않는다. 이 메서드를 쓴 테스트는 스스로 뒷정리하거나,
+     * 다른 테스트와 겹치지 않는 데이터만 만들어야 한다
+     */
+    protected void commitAndLeaveTransaction() {
+        TestTransaction.flagForCommit();
+        TestTransaction.end();
+    }
 
     @Autowired private WebApplicationContext context;
     @Autowired protected EntityManager em;

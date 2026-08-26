@@ -24,6 +24,7 @@ public interface PlaythroughRepository extends BaseRepository<Playthrough, Long>
             " left join fetch p.device" +
             " left join fetch p.platformAccount" +
             " left join fetch p.emulator" +
+            " left join fetch p.inputMethod" +
             " where p.backlogEntry.id = :entryId" +
             " order by p.sequenceNo asc")
     List<Playthrough> findAllWithReferences(@Param("entryId") Long entryId);

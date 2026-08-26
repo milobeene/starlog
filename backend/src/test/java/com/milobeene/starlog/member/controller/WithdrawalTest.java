@@ -153,11 +153,19 @@ class WithdrawalTest extends ControllerTestSupport {
         member.withdraw(LocalDateTime.now().minusDays(31));
         em.flush();
 
-        //when — 스케줄러가 부르는 경로 그대로 (DB 퍼지 → 커밋 뒤 파일 삭제 순서)
+        /*
+         * when — 스케줄러가 부르는 경로 **그대로**: 바깥 트랜잭션 없이.
+         * purgeExpired는 Propagation.NEVER라 트랜잭션 안에서 부르면 거부한다 —
+         * 그게 이 배치의 계약이다(커버 실물 삭제가 DB 커밋 뒤여야 하므로).
+         * 테스트 트랜잭션을 커밋하고 닫아야 스케줄러와 같은 조건이 된다
+         */
+        Long memberId = member.getId();
+        commitAndLeaveTransaction();
+
         withdrawalService.purgeExpired();
 
         //then — DB 행과 스토리지 실물이 함께 사라진다. 파일이 남으면 탈퇴가 탈퇴가 아니다
-        assertThat(em.find(Member.class, member.getId())).isNull();
+        assertThat(em.find(Member.class, memberId)).isNull();
         assertThat(storage.deleted).contains(storageKey);
     }
 

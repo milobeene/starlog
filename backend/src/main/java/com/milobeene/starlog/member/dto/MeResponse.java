@@ -44,7 +44,11 @@ public record MeResponse(
         }
     }
 
-    public record PlatformRef(Long platformId, String name) {}
+    /**
+     * 필드명이 `platformId`가 아니라 `id`인 이유 — 프론트가 공통 `NamedRef({id, name})`로 읽고
+     * 설정의 계정 수정 다이얼로그가 `edit.platform.id`를 쓴다. `OptionsResponse.Ref`와도 같은 모양이다
+     */
+    public record PlatformRef(Long id, String name) {}
 
     public record PlatformItem(Long platformId, String name) {
 

@@ -5,7 +5,10 @@
 ## 참조 문서 (필요할 때 읽을 것, 미리 다 읽지 말 것)
 
 - `docs/spec-v1.5.md` — 기능명세서. **모든 설계 판단의 기준**
-- `docs/entity-design-v0.4.md` — 엔티티 설계서 (Phase 2 H-6까지 반영)
+- `docs/entity-design-v1.0.md` — 엔티티 설계서 (Phase 9 전면 개정)
+- `docs/db-baseline-v1.md` — 스키마 베이스라인 설계 근거. **DDL을 고치기 전에 읽을 것**
+- `docs/code-review-2026-08-26.md` — 멀티에이전트 리뷰 결과·조치·알려진 한계
+- `docs/capacity-planning.md` — 무료 티어 한도와 사용량 제한 설계 (미구현 권고안)
 - `docs/api-design-v0.2.md` — API 설계서 (Phase 2). 화면에서 역산한 엔드포인트
 - `docs/dto-design-v0.1.md` — DTO 설계 원칙 (H-1). 변환 위치·null 규약·검증 두 겹
 - `docs/design-system.md` — **디자인 시스템 (Phase 8). 모든 화면이 이걸 따른다.** 색·타이포·공통 컴포넌트

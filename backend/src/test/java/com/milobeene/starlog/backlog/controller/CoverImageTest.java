@@ -145,6 +145,53 @@ class CoverImageTest extends ControllerTestSupport {
     }
 
     @Test
+    public void 파일명_끝에_공백이_있어도_업로드가_된다() throws Exception {
+        /*
+         * 허가증 발급은 원문에서, 확정 검증은 strip한 이름에서 확장자를 뽑던 시절엔
+         * `"cover.png "`의 키가 `....png `로 만들어져 확정이 **항상 400**이었다.
+         * macOS·리눅스는 파일명 끝 공백을 허용하므로 실제로 도달하는 경로다
+         */
+        //given
+        Member member = saveMember();
+        Long entryId = addEntry(member, saveGame("Hades"));
+
+        //when
+        String key = attachCover(member, entryId, "cover.png ", FakeFileStorage.PNG, "image/png");
+
+        //then — 키에 공백이 새지 않고 확정까지 통과한다
+        assertThat(key).endsWith(".png");
+        assertThat(storage.exists(key)).isTrue();
+    }
+
+    @Test
+    public void 같은_키로_두_번_확정해도_실물이_남는다() throws Exception {
+        /*
+         * PUT은 멱등 메서드라 브라우저·프록시가 재시도할 수 있다. 그때 previousKey와
+         * storageKey가 같아지는데, 걸러내지 않으면 방금 붙인 그 객체를 지워서
+         * **DB 행만 남은 깨진 커버**가 된다
+         */
+        //given
+        Member member = saveMember();
+        Long entryId = addEntry(member, saveGame("Celeste"));
+        String key = attachCover(member, entryId, "same.jpg", FakeFileStorage.JPEG, "image/jpeg");
+
+        //when — 같은 키로 한 번 더 확정 (전송 계층 재시도와 같은 요청)
+        mockMvc.perform(put("/api/backlog/{id}/cover", entryId)
+                        .header("X-Member-Id", member.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"storageKey\":\"" + key + "\"}"))
+                .andExpect(status().isOk());
+
+        //then — 실물이 살아있고 DB도 그 키를 가리킨다
+        assertThat(storage.deleted).doesNotContain(key);
+        assertThat(storage.exists(key)).isTrue();
+        em.flush();
+        em.clear();
+        assertThat(coverImageRepository.findByBacklogEntryId(entryId).orElseThrow().getStorageKey())
+                .isEqualTo(key);
+    }
+
+    @Test
     public void 교체하면_예전_파일이_스토리지에서_지워진다() throws Exception {
         //given — FR-MED-03
         Member member = saveMember();

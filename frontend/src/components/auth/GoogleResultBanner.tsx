@@ -34,6 +34,12 @@ const MESSAGES: Record<string, { tone: "ok" | "warn"; text: string }> = {
       "가입 요청이 접수되었습니다. 관리자 승인 후 이용하실 수 있습니다. " +
       "무료로 운영되는 서비스라 이용 인원을 관리하고 있습니다.",
   },
+  WITHDRAWAL_PENDING: {
+    tone: "warn",
+    text:
+      "탈퇴 요청 상태에서는 Google 계정을 연결하실 수 없습니다. " +
+      "먼저 계정을 복구하신 뒤 다시 시도해 주세요.",
+  },
   FAILED: { tone: "warn", text: "구글 인증에 실패했습니다. 잠시 후 다시 시도해 주세요." },
 };
 

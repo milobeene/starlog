@@ -14,6 +14,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.session.SessionRegistry;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
@@ -49,6 +50,7 @@ public class GoogleOAuth2SuccessHandler implements AuthenticationSuccessHandler 
     private final GoogleAccountService googleAccountService;
     private final CsrfTokenIssuer csrfTokenIssuer;
     private final MailProperties mailProperties;   // frontendBaseUrl을 재사용한다
+    private final SessionRegistry sessionRegistry;
 
     /** 가입 승인제 (FR-ADM-06). 폼 로그인 쪽(LoginResultHandlers)과 같은 스위치를 본다 */
     @org.springframework.beans.factory.annotation.Value("${app.signup.require-approval:false}")
@@ -74,6 +76,20 @@ public class GoogleOAuth2SuccessHandler implements AuthenticationSuccessHandler 
              * ConflictException(이미 다른 계정에 연결된 구글 계정)을 여기서 잡는 이유 —
              * 성공 핸들러는 필터 계층이라 @RestControllerAdvice가 못 잡는다. 안 잡으면 500이다
              */
+            /*
+             * 탈퇴 유예 중에는 복구 외에 아무것도 못 한다 (FR-AUTH-10). OAuth2 경로는
+             * SecurityConfig의 /api/me/restore 규칙을 타지 않아 여기서 직접 막지 않으면
+             * 유예 계정이 구글 연결이라는 영속 상태 변경을 할 수 있다
+             */
+            if (googleAccountService.findOne(linkMemberId).getDeletedAt() != null) {
+                establishSession(request, response,
+                        MemberPrincipal.from(googleAccountService.findOne(linkMemberId)));
+                csrfTokenIssuer.issueFresh(request, response);
+                OAuthRedirects.withResult(response, mailProperties.frontendBaseUrl(),
+                        "/settings", "WITHDRAWAL_PENDING");
+                return;
+            }
+
             try {
                 googleAccountService.link(linkMemberId, googleSubject);
             } catch (ConflictException e) {
@@ -122,10 +138,24 @@ public class GoogleOAuth2SuccessHandler implements AuthenticationSuccessHandler 
         authenticateAsMember(request, response, MemberPrincipal.from(member));
     }
 
-    /** 세션을 남기지 않고 프론트로 사유를 실어 돌려보낸다 */
+    /**
+     * 세션을 남기지 않고 프론트로 사유를 실어 돌려보낸다.
+     *
+     * **HTTP 세션까지 지워야 한다.** ThreadLocal(SecurityContextHolder)만 비우면 시큐리티 필터가
+     * 이미 저장해둔 OAuth2 인증이 세션에 그대로 남아, "미승인 계정은 세션이 아예 안 생긴다"는
+     * 승인제의 불변식(FR-ADM-06)이 깨진다. 폼 로그인 쪽 LoginResultHandlers.reject와 같은 순서다
+     */
     private void rejectBeforeSession(HttpServletRequest request, HttpServletResponse response,
                                      String reason) throws IOException {
         SecurityContextHolder.clearContext();
+
+        HttpSession session = request.getSession(false);
+        if (session != null) {
+            sessionRegistry.removeSessionInformation(session.getId());
+            session.invalidate();
+        }
+
+        // 세션을 지운 뒤에 발급해야 다음 로그인 요청의 CSRF가 맞는다
         csrfTokenIssuer.issueFresh(request, response);
         OAuthRedirects.withResult(response, mailProperties.frontendBaseUrl(), "/login", reason);
     }
@@ -156,7 +186,16 @@ public class GoogleOAuth2SuccessHandler implements AuthenticationSuccessHandler 
         }
     }
 
-    /** 세션의 인증을 우리 MemberPrincipal로 갈아끼운다. 로그인·연결 두 브랜치가 공유한다 */
+    /**
+     * 세션의 인증을 우리 MemberPrincipal로 갈아끼운다. 로그인·연결 두 브랜치가 공유한다.
+     *
+     * **SessionRegistry도 함께 갈아끼워야 한다.** 시큐리티 필터가 성공 핸들러를 부르기 **전에**
+     * 세션을 레지스트리에 등록하는데, 그때의 principal은 구글이 준 OAuth2 사용자(DefaultOidcUser)다.
+     * 여기서 SecurityContext만 바꾸면 레지스트리에는 OAuth2 principal이 그대로 남고,
+     * `SessionInvalidator`의 `instanceof MemberPrincipal` 필터에 영원히 안 걸린다 —
+     * 비밀번호 재설정(FR-AUTH-05)·탈퇴(FR-AUTH-09)·복구의 전 세션 무효화가 **구글 세션에 대해
+     * 조용히 0건**이 된다. v1.9는 구글 로그인 전용이라 사실상 모든 세션이 해당됐다.
+     */
     private void establishSession(HttpServletRequest request, HttpServletResponse response,
                                   MemberPrincipal principal) {
         SecurityContext context = SecurityContextHolder.createEmptyContext();
@@ -164,6 +203,18 @@ public class GoogleOAuth2SuccessHandler implements AuthenticationSuccessHandler 
                 principal, null, principal.getAuthorities()));
         SecurityContextHolder.setContext(context);
         securityContextRepository.saveContext(context, request, response);
+
+        reregisterSession(request, principal);
+    }
+
+    /** 레지스트리의 OAuth2 principal을 MemberPrincipal로 교체한다 (위 주석의 이유) */
+    private void reregisterSession(HttpServletRequest request, MemberPrincipal principal) {
+        HttpSession session = request.getSession(false);
+        if (session == null) {
+            return;
+        }
+        sessionRegistry.removeSessionInformation(session.getId());
+        sessionRegistry.registerNewSession(session.getId(), principal);
     }
 
     private Long popLinkRequester(HttpServletRequest request) {

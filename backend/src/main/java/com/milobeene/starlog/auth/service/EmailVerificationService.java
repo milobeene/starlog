@@ -41,8 +41,10 @@ public class EmailVerificationService {
                 TokenValues.hash(rawToken),          // 원문은 저장하지 않는다 (NFR-S2)
                 LocalDateTime.now().plus(VALID_FOR)));
 
-        // 메일에는 원문이 실린다. 이 순간 이후로 서버는 원문을 다시 알 수 없다
-        mailSender.sendEmailVerification(member.getEmail(), rawToken);
+        // 메일에는 원문이 실린다. 이 순간 이후로 서버는 원문을 다시 알 수 없다.
+        // 커밋 뒤에 보낸다 — 롤백되면 해시가 없어 링크가 죽는다 (AfterCommit 주석 참고)
+        String email = member.getEmail();
+        AfterCommit.run(() -> mailSender.sendEmailVerification(email, rawToken));
     }
 
     /**

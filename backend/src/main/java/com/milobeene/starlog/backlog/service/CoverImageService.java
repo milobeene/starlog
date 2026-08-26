@@ -94,8 +94,14 @@ public class CoverImageService {
         Optional<String> previousKey = coverRecordService.attach(
                 memberId, entryId, storageKey, contentType, stored.sizeBytes());
 
-        // 커밋이 끝난 뒤에 지운다. 반대로 하면 DB엔 남았는데 파일이 없는 상태가 생긴다
-        previousKey.ifPresent(fileStorage::delete);
+        /*
+         * 커밋이 끝난 뒤에 지운다. 반대로 하면 DB엔 남았는데 파일이 없는 상태가 생긴다.
+         *
+         * **같은 키면 지우지 않는다.** PUT은 멱등 메서드라 브라우저·프록시가 재시도할 수 있는데,
+         * 그때 previousKey와 storageKey가 같아진다. 걸러내지 않으면 방금 DB에 붙인 바로 그 객체를
+         * 스토리지에서 지워서 DB 행만 남은 깨진 커버가 된다
+         */
+        previousKey.filter(key -> !key.equals(storageKey)).ifPresent(fileStorage::delete);
 
         return previousKey;
     }
@@ -124,7 +130,17 @@ public class CoverImageService {
      * uuid를 쓰는 이유는 같은 파일명을 다시 올려도 덮어쓰지 않기 위해서다 (교체 중 원본 유실 방지)
      */
     private String newStorageKey(Long memberId, Long entryId, String fileName) {
-        String extension = fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
+        /*
+         * **검증과 같은 문자열에서 확장자를 뽑아야 한다.** 검증(CoverImageValidator)은
+         * strip한 이름을 보는데 여기서 원문을 쓰면 `"cover.png "` 같은 이름에서
+         * 확장자가 `"png "`가 되어 키가 `....png `로 만들어진다. 그 키로 업로드된 파일은
+         * 2단계 확정에서 다시 검증될 때 `"png "`가 허용 목록에 없어 **항상 400**이 되고,
+         * 스토리지에는 아무도 참조하지 않는 객체만 남는다.
+         * macOS·리눅스는 파일명 끝 공백을 허용하므로 실제로 도달하는 경로다
+         */
+        String normalized = TextValues.normalize(fileName);
+        String extension = normalized
+                .substring(normalized.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
 
         return keyPrefix(memberId, entryId) + UUID.randomUUID() + "." + extension;
     }

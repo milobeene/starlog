@@ -4,9 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.milobeene.starlog.member.domain.Member;
 import com.milobeene.starlog.support.ControllerTestSupport;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import java.util.Map;
 import org.springframework.security.core.session.SessionRegistry;
+import org.springframework.security.oauth2.core.oidc.OidcIdToken;
+import org.springframework.security.oauth2.core.oidc.user.DefaultOidcUser;
 
 /**
  * 전 세션 무효화 (FR-AUTH-05).
@@ -19,6 +23,17 @@ class SessionInvalidatorTest extends ControllerTestSupport {
 
     @Autowired SessionRegistry sessionRegistry;
     @Autowired SessionInvalidator sessionInvalidator;
+
+    /**
+     * SessionRegistry는 스프링 컨텍스트를 공유하는 **싱글턴**이라 등록한 세션이 테스트 사이에 샌다.
+     * 남으면 다른 테스트의 "몇 건 끊겼나" 단언이 흔들린다 — 실제로 그렇게 깨진 적이 있다
+     */
+    @AfterEach
+    void clearRegistry() {
+        sessionRegistry.getAllPrincipals().forEach(principal ->
+                sessionRegistry.getAllSessions(principal, true)
+                        .forEach(session -> sessionRegistry.removeSessionInformation(session.getSessionId())));
+    }
 
     @Test
     public void 한_회원의_모든_세션이_끊긴다() throws Exception {
@@ -50,6 +65,43 @@ class SessionInvalidatorTest extends ControllerTestSupport {
 
         //then
         assertThat(sessionRegistry.getSessionInformation("other").isExpired()).isFalse();
+    }
+
+    /**
+     * 구글 로그인 세션이 **여기서 통째로 새고 있었다.**
+     *
+     * 시큐리티 필터는 성공 핸들러를 부르기 전에 세션을 레지스트리에 등록하는데, 그때 principal은
+     * 구글이 준 OAuth2 사용자(DefaultOidcUser)다. 핸들러가 SecurityContext만 MemberPrincipal로
+     * 갈아끼우면 레지스트리에는 OAuth2 principal이 남아 `instanceof MemberPrincipal` 필터에
+     * 안 걸린다 — 탈퇴·비밀번호 재설정의 전 세션 무효화가 조용히 0건이 된다.
+     * v1.9는 구글 로그인 전용이라 사실상 모든 세션이 해당됐다.
+     *
+     * 그래서 GoogleOAuth2SuccessHandler가 레지스트리를 갈아끼운다. 이 테스트는 그 필요성과
+     * 효과를 한 쌍으로 못박는다
+     */
+    @Test
+    public void 구글_principal로_등록된_세션은_재등록해야_끊긴다() throws Exception {
+        //given — 시큐리티 필터가 등록한 그대로
+        Member member = saveMember();
+        sessionRegistry.registerNewSession("google-session", oidcUser());
+
+        //when //then — 갈아끼우기 전에는 0건이다
+        assertThat(sessionInvalidator.expireAllSessionsOf(member.getId())).isZero();
+
+        //when — 핸들러의 reregisterSession이 하는 일 그대로
+        sessionRegistry.removeSessionInformation("google-session");
+        sessionRegistry.registerNewSession("google-session", MemberPrincipal.from(member));
+
+        //then
+        assertThat(sessionInvalidator.expireAllSessionsOf(member.getId())).isEqualTo(1);
+        assertThat(sessionRegistry.getSessionInformation("google-session").isExpired()).isTrue();
+    }
+
+    private DefaultOidcUser oidcUser() {
+        return new DefaultOidcUser(null, OidcIdToken.withTokenValue("token")
+                .claim("sub", "google-sub-" + System.nanoTime())
+                .claims(claims -> claims.putAll(Map.of("iss", "https://accounts.google.com")))
+                .build());
     }
 
     /**
