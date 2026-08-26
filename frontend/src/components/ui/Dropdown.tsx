@@ -35,23 +35,48 @@ export default function Dropdown({
   const panelRef = useRef<HTMLDivElement>(null);
   const [place, setPlace] = useState<AnchorPlacement | null>(null);
 
+  /**
+   * 그려졌으면 실측, 아니면 추정치.
+   *
+   * **첫 열기에도 실측이 되게 하려면 폴백 패널에도 ref가 있어야 한다** — 예전엔 포탈 패널에만
+   * 달려 있어서, 첫 열기에는 추정치(192×160)로 배치하고 두 번째 패스가 아예 없었다.
+   * 항목이 많은 메뉴를 화면 아래쪽에서 열면 그대로 화면 밖으로 넘쳤다
+   */
+  const panelSize = () => {
+    const measured = panelRef.current?.getBoundingClientRect();
+    return { width: measured?.width || 192, height: measured?.height || 160 };
+  };
+
   useEffect(() => {
     if (!open) return;
 
     const onPointerDown = (event: MouseEvent) => {
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
     };
+    // 전파를 끊는다 — 안 끊으면 Esc 한 번이 메뉴와 바깥 다이얼로그를 같이 닫는다
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key !== "Escape") return;
+      event.stopImmediatePropagation();
+      setOpen(false);
     };
 
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
+    // 스크롤·리사이즈를 따라간다. capture로 듣는 이유는 스크롤이 버블링하지 않아서다
+    const reposition = () => {
+      const anchor = rootRef.current?.getBoundingClientRect();
+      if (anchor) setPlace(placeBelow(anchor, panelSize(), align));
     };
-  }, [open]);
+
+    document.addEventListener("keydown", onKeyDown, true);
+    document.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown, true);
+      document.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
+    };
+  }, [open, align]);
 
   /*
    * 포탈 패널은 트리거의 화면 좌표를 알아야 위치를 잡는다.
@@ -65,13 +90,9 @@ export default function Dropdown({
     const anchor = rootRef.current?.getBoundingClientRect();
     if (!anchor) return;
 
-    const measured = panelRef.current?.getBoundingClientRect();
-    setPlace(placeBelow(
-      anchor,
-      { width: measured?.width ?? 192, height: measured?.height ?? 160 },
-      align,
-    ));
+    setPlace(placeBelow(anchor, panelSize(), align));
   }, [portal, open, align]);
+
 
   const panel = (close: () => void) =>
     portal && place ? (
@@ -94,6 +115,7 @@ export default function Dropdown({
       )
     ) : (
       <div
+        ref={panelRef}
         className={`menu-panel absolute ${align === "right" ? "right-0" : "left-0"} top-full z-50 mt-1 ${panelClassName}`}
       >
         {children(close)}

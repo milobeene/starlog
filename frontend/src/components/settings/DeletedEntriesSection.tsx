@@ -37,8 +37,8 @@ export default function DeletedEntriesSection() {
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
-  // 첫 페이지가 비면 삭제한 게 하나도 없다는 뜻이다
-  if (deleted.loading || !deleted.data) return null;
+  // `loading ||`을 빼야 완전 삭제 직후 섹션이 통째로 깜빡 사라지지 않는다
+  if (!deleted.data) return null;
   if (deleted.data.totalElements === 0) return null;
 
   const revive = async (entryId: number) => {
@@ -120,6 +120,7 @@ export default function DeletedEntriesSection() {
           onRevive={() => revive(preview.entryId)}
           onPurge={() => purge(preview.entryId)}
           busy={busy === preview.entryId}
+          error={error}
         />
       )}
     </SettingsSection>
@@ -138,12 +139,14 @@ function PreviewDialog({
   onRevive,
   onPurge,
   busy,
+  error,
 }: {
   entry: DeletedEntry;
   onClose: () => void;
   onRevive: () => void;
   onPurge: () => void;
   busy: boolean;
+  error: string | null;
 }) {
   const detail = useApi<DeletedEntryDetail>(`/api/backlog/deleted/${entry.entryId}`);
   const [confirming, setConfirming] = useState(false);
@@ -156,7 +159,10 @@ function PreviewDialog({
       onClose={onClose}
       footer={
         <>
-          {confirming ? (
+          {/* 실패 문구를 모달 안에 그린다 — 섹션 상단에 그리면 백드롭 아래라 안 보인다 */}
+          {error ? (
+            <span className="mr-auto text-xs text-red-400">{error}</span>
+          ) : confirming ? (
             <span className="mr-auto text-xs text-red-400">
               되돌릴 수 없습니다. 회차·취득·메모가 함께 사라집니다.
             </span>
@@ -168,18 +174,26 @@ function PreviewDialog({
 
           <Button
             variant="danger"
-            disabled={busy}
+            disabled={busy || detail.error !== null}
             onClick={() => (confirming ? onPurge() : setConfirming(true))}
           >
             {busy ? "지우는 중" : confirming ? "정말 지웁니다" : "완전 삭제"}
           </Button>
-          <Button variant="primary" disabled={busy} onClick={onRevive}>
+          <Button variant="primary" disabled={busy || detail.error !== null} onClick={onRevive}>
             되살리기
           </Button>
         </>
       }
     >
-      {detail.loading || !detail.data ? (
+      {detail.error ? (
+        /*
+         * useApi는 실패하면 `{data: null, loading: false}`가 된다 — error를 안 보면
+         * **스켈레톤 분기에 영영 갇힌다.** 다른 탭에서 이미 되살렸거나 지운 항목을 열면 그렇게 된다
+         */
+        <p className="py-6 text-center text-sm text-red-400">
+          불러오지 못했습니다. 목록이 오래되었을 수 있습니다.
+        </p>
+      ) : !detail.data ? (
         <Skeleton className="h-32 w-full" />
       ) : (
         <div className="flex flex-col gap-4">

@@ -16,7 +16,8 @@ import type { QuotaStatus } from "@/lib/types";
 export default function QuotaSection() {
   const quota = useApi<QuotaStatus[]>("/api/me/quota");
 
-  if (quota.loading || !quota.data || quota.data.length === 0) return null;
+  // `loading ||`을 빼야 재검증 때 섹션이 깜빡 사라지지 않는다
+  if (!quota.data || quota.data.length === 0) return null;
 
   return (
     <SettingsSection

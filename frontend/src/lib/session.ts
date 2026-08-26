@@ -28,6 +28,14 @@ export type SessionState =
  */
 let state: SessionState = { status: "loading", me: null };
 let inFlight: Promise<void> | null = null;
+/**
+ * 세대 번호. **늦게 도착한 옛 답이 새 답을 덮는 걸 막는다.**
+ *
+ * `inFlight = null`은 약속 참조를 버릴 뿐 요청을 취소하지 않는다. 그래서 로그인 직후
+ * `refreshSession()`이 새 요청을 띄워도, 그 전에 나갔던(예: 잠든 서버를 기다리던) 요청이
+ * 뒤늦게 401로 도착하면 **로그인 성공을 비로그인으로 덮어쓴다.**
+ */
+let generation = 0;
 const listeners = new Set<() => void>();
 
 function publish(next: SessionState) {
@@ -39,40 +47,62 @@ function load(): Promise<void> {
   // 이미 나간 요청이 있으면 그걸 같이 기다린다 — 네 컴포넌트가 동시에 떠도 요청은 하나다
   if (inFlight) return inFlight;
 
-  inFlight = api
+  const mine = generation;
+  const promise = api
     .get<MeResponse>("/api/me")
-    .then((me) => publish({ status: "member", me }))
+    .then((me) => {
+      if (mine === generation) publish({ status: "member", me });
+    })
     .catch((error: unknown) => {
-      // 401뿐 아니라 네트워크 실패도 비로그인으로 본다 — 입구 페이지가 그려져야 하므로
-      if (error instanceof ApiError || error instanceof Error) {
-        publish({ status: "guest", me: null });
-      }
+      if (mine !== generation) return;
+
+      /*
+       * **401만 비로그인으로 확정한다.**
+       *
+       * 예전엔 네트워크 실패·502도 guest로 떨어뜨렸는데, 그러면 잠든 서버를 처음 깨울 때나
+       * 잠깐 끊겼을 때 **로그인돼 있는데도 비로그인으로 굳었다.** 게다가 재검증 경로가 없어
+       * 앱 화면으로 들어가려 하면 계속 /login으로 튕겼다 — 새로고침해야만 풀렸다.
+       *
+       * 판정이 안 서면 "모름"(loading)으로 남긴다. 게이트는 loading에서 아무것도 안 하므로
+       * 튕기지 않고, 다음 재검증 기회에 다시 묻는다
+       */
+      const unauthorized = error instanceof ApiError
+          && (error.status === 401 || error.status === 403);
+
+      publish(unauthorized
+          ? { status: "guest", me: null }
+          : { status: "loading", me: null });
     })
     .finally(() => {
-      inFlight = null;
+      // 내 슬롯일 때만 비운다 — 버려진 옛 요청이 새 요청의 자리를 지우면 안 된다
+      if (inFlight === promise) inFlight = null;
     });
 
-  return inFlight;
+  inFlight = promise;
+  return promise;
+}
+
+/*
+ * **탭이 다시 보이면 판정을 갱신한다.**
+ *
+ * 예전엔 "구독자가 0 → 1이 되는 순간"에 다시 물으려 했는데 **그 순간이 오지 않았다** —
+ * `FluidBackground`가 루트 레이아웃에 상주하며 이 스토어를 구독하고, 루트 레이아웃은
+ * 클라이언트 내비게이션으로 언마운트되지 않는다. 그래서 그 분기는 죽은 코드였고,
+ * "다른 탭에서 로그아웃했을 수 있다"는 원래 의도가 달성되지 않았다.
+ *
+ * 탭 포커스는 그 의도를 실제로 잡는 신호다 — 화면을 옮길 때마다 요청이 늘지도 않는다.
+ * 옛 답으로 즉시 그리고 새 답이 오면 조용히 갈아끼운다
+ */
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && listeners.size > 0) void load();
+  });
 }
 
 function subscribe(listener: () => void) {
-  /*
-   * 구독자가 0 → 1이 되는 순간 **한 번 다시 묻는다.**
-   *
-   * 훅이던 시절엔 컴포넌트가 뜰 때마다 /api/me를 새로 불러서 판정이 늘 최신이었다.
-   * 스토어로 바꾸면서 그게 사라졌고, 그 결과 로그인 직후 화면이 안 바뀌는 버그가 났다
-   * (로그인·복구 경로는 refreshSession()으로 명시적으로 고쳤다).
-   *
-   * 0 → 1은 실질적으로 "이 판정을 아무도 안 보고 있다가 다시 보기 시작했다"는 뜻이다 —
-   * 새 탭, 새로고침, 인증 화면(구독자 0)에서 앱 화면으로 넘어온 순간. 그때 한 번만
-   * 확인하므로 화면을 옮길 때마다 요청이 늘지 않는다.
-   *
-   * 옛 답으로 즉시 그리고 새 답이 오면 조용히 갈아끼운다 — 깜빡임은 없다
-   */
-  const wasIdle = listeners.size === 0;
   listeners.add(listener);
 
-  if (state.status === "loading" || wasIdle) void load();
+  if (state.status === "loading") void load();
 
   return () => {
     listeners.delete(listener);
@@ -98,12 +128,15 @@ export function useSession(): SessionState {
  * 배경 색을 바꾸고 저장하면 이것 때문에 배경이 즉시 갈아끼워진다
  */
 export async function refreshSession(): Promise<void> {
-  inFlight = null;   // 진행 중인 옛 요청에 얹히면 저장 전 값을 받는다
+  generation += 1;   // 진행 중인 옛 요청의 답을 여기서 무효로 만든다
+  inFlight = null;   // 옛 요청에 얹히면 저장 전 값을 받는다
   await load();
 }
 
 /** 로그아웃·탈퇴처럼 판정이 확실히 뒤집히는 순간에 부른다 */
 export function clearSessionCache() {
+  // 세대를 올려야 한다 — 안 그러면 진행 중이던 요청이 로그아웃 직후 member를 되살린다
+  generation += 1;
   inFlight = null;
   publish({ status: "loading", me: null });
 }
@@ -112,6 +145,9 @@ export function clearSessionCache() {
 export async function logout(): Promise<void> {
   try {
     await api.post("/api/auth/logout");
+  } catch {
+    // 삼킨다 — 호출부가 전부 `void logout()`이라 안 잡으면 unhandled rejection이 뜬다.
+    // 서버가 못 받았어도 아래에서 캐시를 비우고 나가는 편이 낫다
   } finally {
     clearSessionCache();          // 캐시를 안 지우면 돌아온 입구가 여전히 로그인 상태로 보인다
     window.location.href = "/";

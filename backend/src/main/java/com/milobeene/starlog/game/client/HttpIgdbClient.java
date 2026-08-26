@@ -171,7 +171,19 @@ public class HttpIgdbClient implements GameCatalogClient {
 
         } catch (HttpClientErrorException.Unauthorized e) {
             log.warn("IGDB 401 — 토큰을 재발급하고 한 번만 다시 시도합니다. {}", what);
-            return send(endpoint, query, type, tokenProvider.forceRefresh());
+            try {
+                return send(endpoint, query, type, tokenProvider.forceRefresh());
+            } catch (HttpClientErrorException.Unauthorized retryFailed) {
+                /*
+                 * 새로 받은 토큰도 거부당했다 — 시크릿이 회전됐거나 잘못 설정된 것이다.
+                 * **여기서 접지 않으면 그대로 밖으로 새어 500이 된다** — 어드바이스에
+                 * RestClientException 핸들러가 없어서 에러 형태까지 계약을 벗어난다.
+                 * 502로 접으면 프론트가 이미 처리하는 경로다
+                 */
+                log.error("IGDB 재발급 토큰도 거부됨 — 자격증명을 확인해야 한다. {}", what, retryFailed);
+                throw new ExternalApiException(ExternalApiException.Service.GAME_CATALOG,
+                        "게임 정보 서비스 인증에 실패했습니다", retryFailed);
+            }
         }
     }
 

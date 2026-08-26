@@ -144,13 +144,8 @@ void main() {
     vec3 finalColor = mix(color, darkAppColor, appColor);
 
     /*
-     * 그레인도 색과 **같은 비율로** 어두워져야 한다.
-     * 절대량을 고정하면 앱 화면(baseColor × 0.25)에서 상대적으로 4배 거칠어진다 —
-     * 같은 값인데 눈에는 다른 질감으로 보인다
-     */
-    /*
-     * 색이 어두워진 만큼(×0.25) 그대로 줄이면 앱 화면에서 그레인이 거의 안 보인다.
-     * 절대 고정(0.06)은 반대로 4배 거칠어 보였다 — 둘 사이로 잡은 값이다
+     * 색이 어두워진 만큼(×0.34) 그대로 줄이면 앱 화면에서 그레인이 거의 안 보이고,
+     * 절대 고정(0.06)은 반대로 거칠어 보였다 — 둘 사이로 잡은 값이다
      */
     float grain = random(gl_FragCoord.xy * 0.05 + floor(uTime * 15.0) * 0.001);
     finalColor += (grain - 0.5) * mix(0.06, 0.042, appColor);
@@ -185,7 +180,21 @@ export function buildProgram(gl: WebGLRenderingContext) {
 
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
     console.error("program link:", gl.getProgramInfoLog(program));
+    gl.deleteProgram(program);
+    gl.deleteShader(vs);
+    gl.deleteShader(fs);
     return null;
   }
+
+  /*
+   * 링크가 끝나면 셰이더 객체는 프로그램 안에 복사돼 있어 더 필요 없다.
+   * 안 놓으면 개발 모드에서 샌다 — StrictMode가 effect를 두 번 돌리는데
+   * `getContext("webgl")`은 같은 캔버스에 같은 컨텍스트를 돌려주므로,
+   * 컨텍스트는 안 늘고 프로그램·셰이더만 매번 쌓인다
+   */
+  gl.detachShader(program, vs);
+  gl.detachShader(program, fs);
+  gl.deleteShader(vs);
+  gl.deleteShader(fs);
   return program;
 }

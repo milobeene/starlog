@@ -42,12 +42,26 @@ export function placeBelow(
   const height = Math.min(panel.height, maxHeight);
   const top = flipped ? anchor.top - GAP - height : anchor.bottom + GAP;
 
+  /*
+   * **세로도 화면 안으로 밀어 넣는다.** 좌우만 클램프하고 세로를 안 하면,
+   * 앵커가 스크롤로 화면 밖으로 밀려났을 때 `top`이 음수가 되어 패널 윗줄이
+   * 잘려 나가고 손댈 수 없게 된다. maxHeight의 바닥값(120)과 top이 따로 놀아도 같은 일이 난다
+   */
+  const clampedTop = Math.min(
+    Math.max(MARGIN, top),
+    Math.max(MARGIN, viewportH - MARGIN - height),
+  );
+
   if (align === "right") {
-    // 오른쪽 정렬은 right로 잡는다 — 패널 폭이 바뀌어도 오른쪽 모서리가 안 흔들린다
-    const right = Math.max(MARGIN, viewportW - anchor.right);
-    return { top, right, maxHeight, flipped };
+    // 오른쪽 정렬은 right로 잡는다 — 패널 폭이 바뀌어도 오른쪽 모서리가 안 흔들린다.
+    // 왼쪽으로 넘치는 것도 막아야 한다: 앵커가 화면 왼쪽에 있으면 패널이 밖으로 나간다
+    const right = Math.min(
+      Math.max(MARGIN, viewportW - anchor.right),
+      Math.max(MARGIN, viewportW - panel.width - MARGIN),
+    );
+    return { top: clampedTop, right, maxHeight, flipped };
   }
 
   const left = Math.min(Math.max(MARGIN, anchor.left), viewportW - panel.width - MARGIN);
-  return { top, left: Math.max(MARGIN, left), maxHeight, flipped };
+  return { top: clampedTop, left: Math.max(MARGIN, left), maxHeight, flipped };
 }

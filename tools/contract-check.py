@@ -47,6 +47,7 @@ ENDPOINTS = [
     ("/api/admin/members?size=1",  "AdminMember",      "items[]"),
     ("/api/admin/audit-logs?size=1","AuditLog",        "items[]"),
     ("/api/me/quota",              "QuotaStatus",      "[]"),
+    ("/api/me/export",             "MemberExport",     ""),
     ("/api/backlog/deleted?size=1","PageResponse",     ""),
     ("/api/backlog/deleted?size=1","DeletedEntry",     "items[]"),
     ("/api/admin/system",          "SystemStatus",     ""),

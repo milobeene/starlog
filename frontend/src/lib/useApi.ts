@@ -69,12 +69,19 @@ export function useApi<T>(path: string | null): State<T> & { reload: () => void 
     // 마이크로태스크로 한 틱 미루면 같은 프레임 안에서 켜지고 리렌더는 한 번이다
     queueMicrotask(() => {
       if (controller.signal.aborted) return;
-      setState((prev) => ({ ...prev, loading: true }));
+      /*
+       * data는 남기고 **error는 비운다.** 옛 에러가 남으면 화면이 error를 loading보다
+       * 먼저 검사해서, 재시도를 눌러도 에러 화면이 그대로 걸려 있다 — 누른 티가 안 난다
+       */
+      setState((prev) => ({ data: prev.data, error: null, loading: true }));
     });
 
     api
       .get<T>(path, controller.signal)
-      .then((data) => setState({ data, error: null, loading: false }))
+      .then((data) => {
+        if (controller.signal.aborted) return;   // .catch만 가드하고 있었다
+        setState({ data, error: null, loading: false });
+      })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
         setState({

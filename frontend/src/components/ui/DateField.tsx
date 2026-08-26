@@ -36,10 +36,17 @@ export default function DateField({
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const [place, setPlace] = useState<AnchorPlacement | null>(null);
 
   /** 보고 있는 달. 값이 있으면 그 달에서 시작한다 */
   const [cursor, setCursor] = useState(() => monthOf(value));
+
+  /** 그려졌으면 실제 높이로, 아니면 추정치로. 달의 주 수(5·6)에 따라 34px이 갈린다 */
+  const panelSize = () => {
+    const measured = panelRef.current?.getBoundingClientRect();
+    return { width: PANEL_W, height: measured?.height || PANEL_H };
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -50,15 +57,36 @@ export default function DateField({
       if ((target as HTMLElement).closest?.("[data-datefield-panel]")) return;
       setOpen(false);
     };
+    /*
+     * **전파를 끊는다.** 안 끊으면 Esc 한 번이 달력과 다이얼로그를 같이 닫아
+     * 편집하던 내용이 통째로 날아간다 — Modal도 같은 document에 리스너를 달기 때문이다.
+     * 같은 노드의 다른 리스너는 stopPropagation으로 못 막으므로 즉시 중단이어야 한다
+     */
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key !== "Escape") return;
+      event.stopImmediatePropagation();
+      setOpen(false);
     };
 
+    /*
+     * 스크롤·리사이즈를 따라간다. 없으면 모달 본문이나 관리자 목록을 스크롤할 때
+     * **앵커만 움직이고 달력은 제자리에 남아** 엉뚱한 필드 위에 떠 있게 된다
+     */
+    const reposition = () => {
+      const anchor = rootRef.current?.getBoundingClientRect();
+      if (anchor) setPlace(placeBelow(anchor, panelSize(), "left"));
+    };
+
+    // capture로 듣는다 — 스크롤은 버블링하지 않아 조상 컨테이너의 것을 놓친다
+    document.addEventListener("keydown", onKeyDown, true);
     document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
     return () => {
+      document.removeEventListener("keydown", onKeyDown, true);
       document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
     };
   }, [open]);
 
@@ -73,8 +101,9 @@ export default function DateField({
     if (!open) return;
     const anchor = rootRef.current?.getBoundingClientRect();
     if (!anchor) return;
-    setPlace(placeBelow(anchor, { width: PANEL_W, height: PANEL_H }, "left"));
+    setPlace(placeBelow(anchor, panelSize(), "left"));
   }, [open, cursor]);
+
 
   const today = todayString();
   const days = monthGrid(cursor);
@@ -134,8 +163,13 @@ export default function DateField({
         place &&
         createPortal(
           <div
+            ref={panelRef}
             data-datefield-panel
-            className="menu-panel fixed z-[60] w-64 overflow-y-auto p-3"
+            /*
+              menu-panel은 @layer 밖이라 Tailwind 유틸리티를 이긴다 —
+              여기에 p-3를 얹어봐야 안 먹는다. 필요한 것만 직접 지정한다
+            */
+            className="fixed z-[60] w-64 overflow-y-auto rounded-lg border border-white/10 bg-neutral-900 p-3 shadow-xl"
             style={{ top: place.top, left: place.left, maxHeight: place.maxHeight }}
           >
             <div className="mb-2 flex items-center justify-between">
@@ -223,7 +257,12 @@ type Month = { year: number; month: number };
 
 function monthOf(value: string): Month {
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return { year: Number(value.slice(0, 4)), month: Number(value.slice(5, 7)) };
+    const year = Number(value.slice(0, 4));
+    const month = Number(value.slice(5, 7));
+    // 정규식은 자릿수만 본다. `2026-13-01`이 들어오면 13월 31칸을 그려 서버가 400을 준다
+    if (month >= 1 && month <= 12) {
+      return { year, month };
+    }
   }
   const now = new Date();
   return { year: now.getFullYear(), month: now.getMonth() + 1 };
@@ -231,7 +270,8 @@ function monthOf(value: string): Month {
 
 function addMonths({ year, month }: Month, delta: number): Month {
   const total = year * 12 + (month - 1) + delta;
-  return { year: Math.floor(total / 12), month: (total % 12) + 1 };
+  // JS의 %는 나머지 부호가 피제수를 따라간다 — `-1 % 12 === -1`이라 그냥 쓰면 month가 0이 된다
+  return { year: Math.floor(total / 12), month: ((total % 12) + 12) % 12 + 1 };
 }
 
 function todayString(): string {

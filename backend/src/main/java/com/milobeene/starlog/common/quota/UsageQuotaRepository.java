@@ -55,8 +55,17 @@ public interface UsageQuotaRepository extends BaseRepository<UsageQuota, UsageQu
 
     /**
      * 관리자 시스템 탭 — 오늘 누가 얼마나 썼나. 날짜 인덱스를 탄다.
-     * 여기는 회원 id도 필요해 엔티티로 읽는다 — 읽기 전용 요청이라 캐시 오염 경로가 없다
+     *
+     * **여기도 스칼라다.** 지금 운영 경로에서는 consume과 다른 트랜잭션이라 안 터지지만,
+     * 이 패키지에 엔티티 조회를 하나라도 남겨두면 같은 함정(벌크 UPDATE 뒤 1차 캐시가
+     * 옛 값을 준다)이 언제든 다시 열린다 — 실제로 그걸로 23을 쓰고 1이 나온 적이 있다
      */
-    @Query("select q from UsageQuota q where q.id.usageDate = :date order by q.used desc")
-    List<UsageQuota> findAllOn(@Param("date") LocalDate date);
+    @Query("""
+            select new com.milobeene.starlog.common.quota.MemberDailyUsage(
+                q.id.memberId, q.id.kind, q.used)
+              from UsageQuota q
+             where q.id.usageDate = :date
+             order by q.used desc
+            """)
+    List<MemberDailyUsage> findAllOn(@Param("date") LocalDate date);
 }

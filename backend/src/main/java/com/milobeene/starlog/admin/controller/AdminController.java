@@ -3,8 +3,6 @@ package com.milobeene.starlog.admin.controller;
 import com.milobeene.starlog.admin.dto.AdminGameResponse;
 import com.milobeene.starlog.admin.dto.AdminMemberResponse;
 import com.milobeene.starlog.admin.dto.AuditLogResponse;
-import com.milobeene.starlog.admin.dto.SystemStatusResponse;
-import com.milobeene.starlog.admin.service.SystemStatusService;
 import com.milobeene.starlog.admin.dto.GameNameUpdateRequest;
 import com.milobeene.starlog.admin.dto.MasterInfoUpdateRequest;
 import com.milobeene.starlog.admin.service.GameMergeService;
@@ -46,21 +44,8 @@ public class AdminController {
     private final GameResyncService gameResyncService;
     private final GameMergeService gameMergeService;
     private final MemberApprovalService memberApprovalService;
-    /* WEB-ONLY: 시스템 탭 (docs/web-only-inventory.md) */
-    private final SystemStatusService systemStatusService;
 
     /** 회원 목록·검색 (FR-ADM-03). 이메일 부분 일치 + 가입일 범위 */
-    /**
-     * WEB-ONLY: 시스템 현황 (docs/capacity-planning.md §3).
-     *
-     * 페이징이 없다 — 값이 한 화면에 다 들어간다. 오늘치 쿼터도 회원 수가 승인제로
-     * 통제되어 길어질 일이 없다
-     */
-    @GetMapping("/system")
-    public SystemStatusResponse system() {
-        return systemStatusService.status();
-    }
-
     @GetMapping("/members")
     public PageResponse<AdminMemberResponse> members(
             @RequestParam(required = false) String email,

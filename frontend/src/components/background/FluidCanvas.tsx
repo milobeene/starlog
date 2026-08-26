@@ -67,6 +67,22 @@ export default function FluidCanvas({
     let current = targetRef.current;
     let frame = 0;
 
+    /*
+     * **컨텍스트를 잃으면 preventDefault를 해야 복구 이벤트가 온다.**
+     * 명세상 preventDefault를 안 부르면 브라우저가 `webglcontextrestored`를 아예 안 보낸다.
+     * 전역 배경은 루트 레이아웃에 있어 리마운트가 없으므로, 여기서 못 살리면
+     * **새로고침 전까지 영영 안 돌아온다**
+     */
+    const onLost = (event: Event) => {
+        event.preventDefault();
+        cancelAnimationFrame(frame);
+    };
+    const onRestored = () => {
+        frame = requestAnimationFrame(render);
+    };
+    canvas.addEventListener("webglcontextlost", onLost);
+    canvas.addEventListener("webglcontextrestored", onRestored);
+
     const render = (now: number) => {
       const seconds = now * 0.001;
 
@@ -105,7 +121,26 @@ export default function FluidCanvas({
     };
 
     frame = requestAnimationFrame(render);
-    return () => cancelAnimationFrame(frame);
+
+    /*
+     * **자원을 반드시 놓는다.** 캔버스가 DOM에서 빠져도 브라우저의 활성 컨텍스트 목록에는
+     * GC가 걷어갈 때까지 남는다. 크롬은 한도(16개)를 넘으면 **가장 오래된 것을 강제로 잃게** 하는데,
+     * 여기서 가장 오래된 건 루트 레이아웃의 전역 배경이다.
+     *
+     * 즉 설정 → 프로필 다이얼로그를 열고 닫기만 반복하면 (미리보기가 매번 새 컨텍스트를 만든다)
+     * **배경이 죽는다.** 리뷰에서 16회째에 실제로 재현됐다.
+     *
+     * `loseContext()`가 핵심 — GC를 안 기다리고 즉시 목록에서 뺀다.
+     * 리스너를 먼저 떼야 한다: loseContext가 위 onLost를 깨운다
+     */
+    return () => {
+      cancelAnimationFrame(frame);
+      canvas.removeEventListener("webglcontextlost", onLost);
+      canvas.removeEventListener("webglcontextrestored", onRestored);
+      gl.deleteBuffer(positionBuffer);
+      gl.deleteProgram(program);
+      gl.getExtension("WEBGL_lose_context")?.loseContext();
+    };
   }, []);
 
   return <canvas ref={canvasRef} aria-hidden className={className} />;

@@ -4,7 +4,7 @@ import com.milobeene.starlog.admin.dto.SystemStatusResponse;
 import com.milobeene.starlog.backlog.repository.CoverImageRepository;
 import com.milobeene.starlog.common.quota.QuotaProperties;
 import com.milobeene.starlog.common.util.AppClock;
-import com.milobeene.starlog.common.quota.UsageQuota;
+import com.milobeene.starlog.common.quota.MemberDailyUsage;
 import com.milobeene.starlog.common.quota.UsageQuotaRepository;
 import com.milobeene.starlog.game.client.GameCatalogClient;
 import com.milobeene.starlog.game.client.HttpIgdbClient;
@@ -104,7 +104,7 @@ public class SystemStatusService {
      * 읽기 두 번이라 각자의 트랜잭션으로 충분하다
      */
     private List<SystemStatusResponse.QuotaRow> quotaToday() {
-        List<UsageQuota> rows = usageQuotaRepository.findAllOn(AppClock.today());
+        List<MemberDailyUsage> rows = usageQuotaRepository.findAllOn(AppClock.today());
         if (rows.isEmpty()) {
             return List.of();
         }
@@ -115,16 +115,16 @@ public class SystemStatusService {
 
         return rows.stream()
                 .map(row -> {
-                    Member member = members.get(row.getId().memberId());
+                    Member member = members.get(row.memberId());
                     // 관리자는 한도가 없다 → null. 세기는 세므로 used는 그대로 보인다
                     boolean unlimited = member != null && member.getRole() == MemberRole.ADMIN;
                     return new SystemStatusResponse.QuotaRow(
-                            row.getId().memberId(),
+                            row.memberId(),
                             member == null ? "(삭제됨)" : member.getNickname(),
-                            row.getId().kind().name(),
-                            row.getId().kind().label(),
-                            row.getUsed(),
-                            unlimited ? null : quotaProperties.limitOf(row.getId().kind()));
+                            row.kind().name(),
+                            row.kind().label(),
+                            row.used(),
+                            unlimited ? null : quotaProperties.limitOf(row.kind()));
                 })
                 .toList();
     }

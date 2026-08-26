@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Profile;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 /**
@@ -30,6 +31,12 @@ import org.springframework.stereotype.Component;
 @Profile("!test")   // 테스트가 뜰 때마다 배치가 도는 건 원치 않는다. 각 배치는 자기 테스트가 따로 있다
 @Component
 @RequiredArgsConstructor
+/*
+ * 실행 순서를 못 박는다(3/3). @Order가 없으면 셋 다 LOWEST_PRECEDENCE라
+ * **컴포넌트 스캔 발견 순서** = 파일시스템 열거 순서가 그대로 실행 순서가 된다.
+ * 정리는 순서와 무관하지만 마지막이 자연스럽다
+ */
+@Order(3)
 public class StartupCleanup implements ApplicationRunner {
 
     private final AuthTokenCleaner authTokenCleaner;

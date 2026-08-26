@@ -83,6 +83,7 @@ class PostgresSchemaTest {
     @Autowired TagService tagService;
     @Autowired BacklogService backlogService;
     @Autowired BacklogEntryRepository backlogEntryRepository;
+    @Autowired com.milobeene.starlog.backlog.repository.AcquisitionRepository acquisitionRepository;
     @Autowired GameRepository gameRepository;
     @Autowired EntityManager em;
 
@@ -159,12 +160,25 @@ class PostgresSchemaTest {
                     assertThat(facet.count()).isEqualTo(1);
                 });
 
-        //when //then — 태그 필터 (QueryDSL)
+        /*
+         * 태그 필터 (QueryDSL). 정렬을 **LAST_PLAYED로** 태운다 —
+         * 여기에 "진행 중 우선" CASE가 들어가 있는데, 실 PostgreSQL에서 한 번도 안 돌아본
+         * 쿼리였다. 이 파일이 존재하는 이유가 정확히 그런 사각지대다
+         */
         assertThat(backlogEntryRepository.search(member.getId(),
                         new BacklogSearchCondition(null, null, tagId, null, null, null, null,
                                 null, null, null),
-                        BacklogSort.NAME, org.springframework.data.domain.PageRequest.of(0, 10)))
+                        BacklogSort.LAST_PLAYED, org.springframework.data.domain.PageRequest.of(0, 10)))
                 .hasSize(1);
+
+        /*
+         * 계정 파셋. `concat`으로 플랫폼명을 붙이고 group by에 그 컬럼을 더한 쿼리라
+         * PostgreSQL이 select 표현식과 order by의 관계를 어떻게 보는지가 갈릴 수 있다.
+         * H2는 관대해서 이 부류를 안 잡는다
+         */
+        assertThat(acquisitionRepository.countByPlatformAccount(member.getId()))
+                .as("실 PG에서 실행만 되면 된다 — 데이터가 없어도 쿼리가 유효한지가 관심사다")
+                .isNotNull();
 
         //when //then — 삭제 전파 (벌크 update → Tag 물리 삭제)
         tagService.delete(member.getId(), tagId);

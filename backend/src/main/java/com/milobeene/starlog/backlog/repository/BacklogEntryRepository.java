@@ -69,6 +69,19 @@ public interface BacklogEntryRepository
      * id asc는 같은 이름을 지웠다 다시 담았을 때 순서 고정용이다
      */
     /**
+     * 내보내기 전용 — **삭제된 항목까지 전부.**
+     *
+     * 백업은 "지금 보이는 것"이 아니라 "가진 것 전부"여야 한다. 삭제 상태(`deletedAt`)도
+     * 그대로 옮겨서, 복원하면 휴지통까지 똑같이 재현된다.
+     *
+     * 게임을 join fetch 한다 — 항목마다 게임을 따로 읽으면 그게 N+1이다.
+     * 나머지 연관(회차·취득·장르)은 컬렉션이라 페치 조인을 겹칠 수 없어 호출부가 따로 읽는다
+     */
+    @Query("select b from BacklogEntry b join fetch b.game"
+            + " where b.member.id = :memberId order by b.id asc")
+    List<BacklogEntry> findAllForExport(@Param("memberId") Long memberId);
+
+    /**
      * 삭제한 항목 목록 (§7.4 되살리기).
      *
      * 최근에 지운 것부터 — 되살리려는 건 방금 잘못 지운 것일 확률이 높다.

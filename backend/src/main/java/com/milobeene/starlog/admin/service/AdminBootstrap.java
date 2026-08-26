@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,6 +27,12 @@ import java.util.Locale;
  */
 @Component
 @RequiredArgsConstructor
+/*
+ * 실행 순서를 못 박는다(2/3). @Order가 없으면 셋 다 LOWEST_PRECEDENCE라
+ * **컴포넌트 스캔 발견 순서** = 파일시스템 열거 순서가 그대로 실행 순서가 된다.
+ * 시드가 만든 회원을 보고 판단해야 한다
+ */
+@Order(2)
 public class AdminBootstrap implements ApplicationRunner {
 
     private final AdminBootstrapExecutor executor;

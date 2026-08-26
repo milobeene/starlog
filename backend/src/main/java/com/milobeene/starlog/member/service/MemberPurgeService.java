@@ -47,6 +47,14 @@ public class MemberPurgeService {
             "delete from Acquisition x where x.backlogEntry in (select b from BacklogEntry b where b.member.id = :memberId)",
             "delete from Playthrough x where x.backlogEntry in (select b from BacklogEntry b where b.member.id = :memberId)",
             "delete from BacklogEntry b where b.member.id = :memberId",
+            /*
+             * ⚠️ **테스트가 못 잡는 자리다.** UsageQuota는 회원을 @ManyToOne이 아니라
+             * @EmbeddedId 안의 Long으로 들고 있어서, ddl-auto:create가 만드는 테스트 스키마엔
+             * FK가 아예 없다. 반면 배포 스키마(V3)에는 fk_usage_quota_member가 실재한다.
+             * 그래서 이게 빠졌을 때 테스트 400여 개가 전부 초록인 채로 **운영의 파기 배치만
+             * 매일 조용히 실패**했다 — purgeExpired가 예외를 삼키고 로그만 남기기 때문이다
+             */
+            "delete from UsageQuota q where q.id.memberId = :memberId",
             "delete from AuthToken t where t.member.id = :memberId",
             "delete from AuditLog l where l.actor.id = :memberId",
             "delete from Subscription s where s.member.id = :memberId",

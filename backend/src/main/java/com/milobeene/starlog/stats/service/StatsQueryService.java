@@ -284,8 +284,13 @@ public class StatsQueryService {
                     row.get(acquisition.price.currency),
                     row.get(acquisition.price.amount));
 
+            /*
+             * 0원은 이름도 안 싣는다. 무료 배포·선물을 `0 KRW`로 적어두면 금액은 그대로인데
+             * 이름만 늘어, 툴팁의 "이만큼 쓴 이유"가 흐려진다
+             */
+            BigDecimal amount = row.get(acquisition.price.amount);
             String name = row.get(acquisition.backlogEntry.displayName);
-            if (name != null) {
+            if (name != null && amount != null && amount.signum() > 0) {
                 gameNames.computeIfAbsent(month.toString(), m -> new TreeSet<>()).add(name);
             }
         }
@@ -326,6 +331,15 @@ public class StatsQueryService {
             if (startedOn == null) {
                 continue;
             }
+            /*
+             * **아직 시작 안 한 구독은 세지 않는다.** `/api/stats/spending`은 LocalDate로,
+             * 여기는 YearMonth로 경계를 봐서, 이달 말이 시작일인 구독을 미리 등록하면
+             * 한쪽만 세어 **두 통계의 구독 총액이 어긋났다.** billingCount 주석이 경고한 그 상황이다
+             */
+            if (startedOn.isAfter(LocalDate.now())) {
+                continue;
+            }
+
             LocalDate endedOn = row.get(subscription.endedOn);
             YearMonth until = (endedOn == null) ? today : YearMonth.from(endedOn);
             if (until.isAfter(today)) {

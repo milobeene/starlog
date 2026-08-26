@@ -98,7 +98,12 @@ export default function BacklogDetailPage({
   };
 
   if (error) return <ErrorNotice error={error} onRetry={reload} />;
-  if (loading || !data) return <DetailSkeleton />;
+  /*
+   * `loading ||`을 뺐다. 전역 무효화가 돌 때마다 화면이 통째로 스켈레톤으로 무너져
+   * **DOM이 파괴됐다 다시 만들어지면서 스크롤이 맨 위로 튀었다.**
+   * useApi가 재검증 중에도 data를 들고 있으므로, 있으면 그대로 두고 조용히 갈아끼운다
+   */
+  if (!data) return <DetailSkeleton />;
 
   const { resolved, master, overrides, personalRecord } = data;
   const totalPlaytime = personalRecord.playTimeHours;
@@ -528,6 +533,12 @@ export default function BacklogDetailPage({
           }
           onConfirm={async () => {
             await api.del(`/api/backlog/${data.entryId}`);
+            /*
+             * 사이드바는 (app)/library/layout.tsx에 있어 목록↔상세를 오갈 때
+             * **언마운트되지 않는다.** 무효화가 없으면 방금 지운 게임이 왼쪽에 그대로 남아
+             * 누르면 에러 상세로 들어간다
+             */
+            invalidateQueries();
             router.push("/library");
           }}
           onClose={() => setDialog(null)}

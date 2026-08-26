@@ -37,6 +37,8 @@ export default function HeaderSymbol() {
     to: 0,
     dur: 0,
     raf: 0,
+    /** 어느 포인터가 눌렀는지. 아래 안전망이 남의 손가락에 반응하지 않게 한다 */
+    pointerId: -1,
   });
 
   useEffect(() => () => cancelAnimationFrame(st.current.raf), []);
@@ -84,6 +86,13 @@ export default function HeaderSymbol() {
 
   const press = (event: React.PointerEvent<SVGSVGElement>) => {
     /*
+     * 주 버튼만 받는다. 안 그러면 **우클릭에도 회전이 시작된다** — 컨텍스트 메뉴가
+     * pointerup을 삼키는 플랫폼에서는 메뉴를 닫아도 계속 돌고, 2초가 넘었으면
+     * 아무 데나 클릭하는 순간 파티클까지 터진다
+     */
+    if (event.button !== 0 || !event.isPrimary) return;
+
+    /*
      * 포인터를 잡아둔다 — 안 그러면 누른 채 심볼 밖으로 나갔을 때 떼는 걸 못 받아 영영 돈다.
      * 실패해도 회전은 시작돼야 한다 (활성 포인터가 없으면 던진다)
      */
@@ -98,6 +107,7 @@ export default function HeaderSymbol() {
     s.mode = "charging";
     s.speed = 0;
     s.last = s.start = performance.now();
+    s.pointerId = event.pointerId;
     s.raf = requestAnimationFrame(frame);
   };
 
@@ -155,7 +165,13 @@ export default function HeaderSymbol() {
    * 창 전체에서 한 번 더 듣는다 — 이미 멈춘 뒤에 와도 release가 알아서 무시한다
    */
   useEffect(() => {
-    const stop = () => releaseRef.current();
+    /*
+     * **누른 그 포인터인지 확인한다.** 안 보면 터치 기기에서, 한 손가락으로 심볼을 누른 채
+     * 다른 손가락으로 화면을 탭했다 뗄 때 회전이 멈추고 파티클이 터진다
+     */
+    const stop = (event: PointerEvent) => {
+      if (event.pointerId === st.current.pointerId) releaseRef.current();
+    };
     window.addEventListener("pointerup", stop);
     window.addEventListener("pointercancel", stop);
     return () => {

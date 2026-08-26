@@ -106,12 +106,16 @@ export default function MonthlySpendingChart({ data }: { data: MonthlySpending }
         </div>
       </div>
 
-      <div className="w-full overflow-x-auto rounded-sm border border-white/10 bg-black/10 p-4">
-        <svg
-          viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-          className="h-72 w-full min-w-[640px]"
-          onMouseLeave={() => setHover(null)}
-        >
+      {/*
+        **onMouseLeave가 svg가 아니라 이 박스에 걸린다.** 툴팁 줄은 svg 바깥 형제라,
+        svg에 걸어두면 포인터가 `+N` 버튼으로 내려가는 순간 hover가 풀려
+        **버튼이 손에 닿기 전에 사라졌다.** 펼치기가 아예 도달 불가였다
+      */}
+      <div
+        className="w-full overflow-x-auto rounded-sm border border-white/10 bg-black/10 p-4"
+        onMouseLeave={() => setHover(null)}
+      >
+        <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="h-72 w-full min-w-[640px]">
           {/* 가로 눈금 + 세로 축 값 (첫 통화 기준) */}
           {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
             const y = PAD.top + ratio * PLOT_H;
@@ -312,7 +316,8 @@ function SpendingItems({ items }: { items: string[] }) {
           onClick={() => setExpanded((prev) => !prev)}
           className="num shrink-0 text-[10px] text-white/35 underline-offset-2 transition-colors hover:text-white/80 hover:underline"
         >
-          {expanded ? "접기" : `+${items.length}`}
+          {/* 전체 개수가 아니라 "더 있다"는 표시다 — 몇 개가 가려졌는지는 알 수 없다 */}
+          {expanded ? "접기" : "더보기"}
         </button>
       )}
     </span>

@@ -201,8 +201,15 @@ class HttpIgdbClientTest {
     }
 
     @Test
-    public void 재시도도_401이면_예외가_그대로_올라간다() {
-        //given — 무한 재시도는 장애를 증폭시킨다. 딱 한 번만 다시 시도한다
+    public void 재시도도_401이면_ExternalApiException이_된다() {
+        /*
+         * given — 무한 재시도는 장애를 증폭시킨다. 딱 한 번만 다시 시도한다.
+         *
+         * **예전엔 스프링의 Unauthorized가 그대로 밖으로 샜다.** 어드바이스에 그걸 잡는
+         * 핸들러가 없어서 500 + 계약 밖 에러 형태가 나갔다 — 바로 아래 테스트가 못 박은
+         * "스프링 예외가 밖으로 새지 않는다"(FR-SYS-04)를 이 경로만 어기고 있었다.
+         * 시크릿을 회전하면 실제로 밟는 길이다
+         */
         server.expect(requestTo(Matchers.containsString("/games")))
                 .andRespond(withUnauthorizedRequest());
         server.expect(requestTo(Matchers.containsString("/games")))
@@ -210,8 +217,9 @@ class HttpIgdbClientTest {
 
         //when //then
         assertThatThrownBy(() -> client.search("hollow"))
-                .isInstanceOf(org.springframework.web.client.HttpClientErrorException.Unauthorized.class);
-        assertThat(tokens.forceRefreshCount).isEqualTo(1);
+                .isInstanceOf(ExternalApiException.class)
+                .hasMessageContaining("인증");
+        assertThat(tokens.forceRefreshCount).as("재시도는 여전히 한 번뿐이다").isEqualTo(1);
     }
 
     @Test

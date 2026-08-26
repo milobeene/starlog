@@ -416,6 +416,40 @@ export interface QuotaStatus {
   limit: number | null;
 }
 
+/* ── 백업 (GET /api/me/export · POST /api/me/import) ───────── */
+
+/**
+ * 회원 데이터 한 벌. **자격증명은 안 담긴다** — 이 파일은 동기화 폴더에 놓일 물건이다.
+ *
+ * 커버는 `storageKey`만 담는다. 실물은 R2에 남으므로 **R2까지 버리면 그 키는 무용지물**이다.
+ * 백엔드 `MemberExport`의 주석이 더 자세하다.
+ *
+ * 화면이 이 타입을 깊게 쓰지는 않는다 — 내려받아 그대로 파일로 저장하는 게 전부다.
+ * 여기 적어 두는 건 contract-check가 백엔드 응답과 대조하게 하려는 것이다
+ */
+export interface MemberExport {
+  formatVersion: number;
+  exportedAt: string;
+  profile: {
+    email: string;
+    nickname: string | null;
+    memo: string | null;
+    backgroundColors: string[] | null;
+  };
+  catalog: {
+    platforms: string[];
+    accounts: { label: string; platform: string }[];
+    devices: { deviceType: string; label: string; memo: string | null }[];
+    emulators: { name: string; memo: string | null }[];
+    inputMethods: string[];
+    subscriptions: unknown[];
+    tags: string[];
+    genres: string[];
+  };
+  games: unknown[];
+  entries: unknown[];
+}
+
 /* ── 관리자 (GET /api/admin/**) ────────────────────────────── */
 
 /** WEB-ONLY: 시스템 탭. igdb·database.sizeBytes는 null일 수 있다 (DTO 주석 참고) */

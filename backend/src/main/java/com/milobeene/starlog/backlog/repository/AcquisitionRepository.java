@@ -43,6 +43,12 @@ public interface AcquisitionRepository extends BaseRepository<Acquisition, Long>
             "   and a.backlogEntry.deletedAt is null" +
             "   and a.platformAccount is not null and a.platformAccount.deletedAt is null" +
             " group by a.platformAccount.id, a.platformAccount.accountLabel, a.platformAccount.platform.name" +
-            " order by a.platformAccount.accountLabel asc")
+            /*
+             * 화면에 보이는 문자열 순서(`Beene (GOG)` → `Beene (Steam)`)와 맞추고
+             * tie-break까지 준다. 라벨만으로 정렬하면 **concat을 붙인 바로 그 상황** —
+             * 같은 라벨을 여러 플랫폼에 쓸 때 — 두 행의 정렬 키가 같아져 순서가 흔들린다
+             */
+            " order by a.platformAccount.platform.name asc,"
+            + " a.platformAccount.accountLabel asc, a.platformAccount.id asc")
     List<FacetCount> countByPlatformAccount(@Param("memberId") Long memberId);
 }

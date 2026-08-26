@@ -30,6 +30,7 @@ import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,6 +40,12 @@ import org.springframework.transaction.annotation.Transactional;
 // prod의 마스터 시딩은 Phase 9(Flyway V1__init.sql)의 몫이다
 @Profile("dev")
 @RequiredArgsConstructor
+/*
+ * 실행 순서를 못 박는다(1/3). @Order가 없으면 셋 다 LOWEST_PRECEDENCE라
+ * **컴포넌트 스캔 발견 순서** = 파일시스템 열거 순서가 그대로 실행 순서가 된다.
+ * 시드 데이터를 먼저 넣는다
+ */
+@Order(1)
 public class DataInitializer implements ApplicationRunner {
 
     private final InitService initService;   // ← 자기 자신이 아닌 별도 빈을 주입

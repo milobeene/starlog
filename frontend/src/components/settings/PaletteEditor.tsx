@@ -67,7 +67,9 @@ export default function PaletteEditor({
             */}
             <input
               type="color"
-              value={color}
+              // 브라우저가 값을 소문자로 정규화한다 — 대문자를 주면 controlled input이
+              // 매 렌더 DOM을 다시 써서 피커가 튄다. 저장·표시는 그대로 대문자다
+              value={color.toLowerCase()}
               onChange={(event) => setSlot(index, event.target.value)}
               // 기본 색 입력은 두꺼운 테두리와 안쪽 여백이 붙는다 — 전부 걷어내고 색만 남긴다
               className="h-9 w-full cursor-pointer rounded-md border border-white/15 bg-transparent p-0

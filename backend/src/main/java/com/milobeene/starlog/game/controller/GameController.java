@@ -48,6 +48,15 @@ public class GameController {
     @GetMapping
     public List<GameSearchResponse> search(@LoginMember Long memberId,
                                            @RequestParam(required = false) String q) {
+        /*
+         * 빈 검색어는 IGDB를 **안 부른다**(GameSearchService가 즉시 빈 목록으로 끝낸다).
+         * 그런데 쿼터를 먼저 먹으면 `?q=`를 200번 때려 하루치를 태울 수 있다 —
+         * IGDB 호출은 0회인데. 세는 대상이 "IGDB를 부르게 만든 시도"라 여기서 갈라야 한다
+         */
+        if (q == null || q.isBlank()) {
+            return List.of();
+        }
+
         // WEB-ONLY: 일일 쿼터 (docs/web-only-inventory.md).
         // IGDB 한도는 앱 전체 기준이라 한 사람이 다 쓰면 나머지가 막힌다
         quotaGuard.consume(memberId, QuotaKind.GAME_SEARCH);

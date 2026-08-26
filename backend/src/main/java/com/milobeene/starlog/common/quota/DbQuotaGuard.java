@@ -2,10 +2,11 @@ package com.milobeene.starlog.common.quota;
 
 import com.milobeene.starlog.common.exception.TooManyRequestsException;
 import com.milobeene.starlog.common.util.AppClock;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataAccessException;
 import com.milobeene.starlog.member.domain.MemberRole;
 import com.milobeene.starlog.member.repository.MemberRepository;
 import org.springframework.context.annotation.Profile;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +24,7 @@ import java.util.Map;
  * **인메모리로 세지 않는 이유** — Render 무료는 15분 무활동이면 프로세스를 내린다.
  * 카운터가 매번 0으로 돌아가면 쿼터가 아니라 장식이다.
  */
+@Slf4j
 @Profile("!local-app")
 @Service
 @Transactional(readOnly = true)
@@ -31,12 +33,14 @@ public class DbQuotaGuard implements QuotaGuard {
     private final UsageQuotaRepository repository;
     private final QuotaProperties properties;
     private final MemberRepository memberRepository;
+    private final UsageQuotaInitializer initializer;
 
     public DbQuotaGuard(UsageQuotaRepository repository, QuotaProperties properties,
-                        MemberRepository memberRepository) {
+                        MemberRepository memberRepository, UsageQuotaInitializer initializer) {
         this.repository = repository;
         this.properties = properties;
         this.memberRepository = memberRepository;
+        this.initializer = initializer;
     }
 
     /**
@@ -85,13 +89,25 @@ public class DbQuotaGuard implements QuotaGuard {
 
         if (repository.increment(memberId, today, kind) == 0) {
             /*
-             * 오늘 첫 사용. 동시에 두 요청이 여기 닿으면 둘 다 INSERT를 시도하는데
-             * **복합 PK가 진짜 방어선이다** (설계 원칙 7). 진 쪽은 제약 위반을 받고
-             * UPDATE로 물러선다 — 그때는 상대가 이미 줄을 만들어 뒀다
+             * 오늘 첫 사용. **복합 PK가 진짜 방어선이다** (설계 원칙 7) —
+             * 동시에 두 요청이 여기 닿으면 하나만 행을 만든다.
+             *
+             * 만드는 일을 별도 빈에 맡기는 이유는 `UsageQuotaInitializer` 주석에 있다.
+             * 요약하면 **여기서 try/catch로 잡으려던 시도가 한 번도 안 돌았다** —
+             * persist가 INSERT를 커밋까지 미뤄서 예외가 try 밖에서 났다.
+             *
+             * false면 남이 먼저 만든 것이고, 그러면 내 몫은 아직 안 세어졌다
              */
             try {
-                repository.persist(UsageQuota.firstUse(memberId, today, kind));
-            } catch (DataIntegrityViolationException e) {
+                initializer.createFirstUse(memberId, today, kind);
+            } catch (DataAccessException e) {
+                /*
+                 * 동시에 들어온 다른 요청이 먼저 만들었다. **정상 경로다.**
+                 * 잡는 게 여기인 이유는 UsageQuotaInitializer 주석 참고 —
+                 * 안에서 잡으면 스프링이 오염된 세션을 커밋하려다 또 터진다.
+                 * 남이 만들었으니 내 몫은 아직 안 세어졌다 → 한 번 더
+                 */
+                log.debug("쿼터 행 생성 경합 — 남이 먼저 만들었다. member={} kind={}", memberId, kind);
                 repository.increment(memberId, today, kind);
             }
         }
