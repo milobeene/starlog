@@ -14,7 +14,6 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.session.SessionRegistry;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
@@ -50,7 +49,6 @@ public class GoogleOAuth2SuccessHandler implements AuthenticationSuccessHandler 
     private final GoogleAccountService googleAccountService;
     private final CsrfTokenIssuer csrfTokenIssuer;
     private final MailProperties mailProperties;   // frontendBaseUrl을 재사용한다
-    private final SessionRegistry sessionRegistry;
 
     /** 가입 승인제 (FR-ADM-06). 폼 로그인 쪽(LoginResultHandlers)과 같은 스위치를 본다 */
     @org.springframework.beans.factory.annotation.Value("${app.signup.require-approval:false}")
@@ -151,7 +149,8 @@ public class GoogleOAuth2SuccessHandler implements AuthenticationSuccessHandler 
 
         HttpSession session = request.getSession(false);
         if (session != null) {
-            sessionRegistry.removeSessionInformation(session.getId());
+            // invalidate() 하나면 된다 — 세션이 DB로 간 뒤로는 이게 spring_session 행까지 지운다.
+            // 예전에는 메모리 레지스트리를 따로 비워줘야 했다 (O-4)
             session.invalidate();
         }
 
@@ -189,12 +188,14 @@ public class GoogleOAuth2SuccessHandler implements AuthenticationSuccessHandler 
     /**
      * 세션의 인증을 우리 MemberPrincipal로 갈아끼운다. 로그인·연결 두 브랜치가 공유한다.
      *
-     * **SessionRegistry도 함께 갈아끼워야 한다.** 시큐리티 필터가 성공 핸들러를 부르기 **전에**
-     * 세션을 레지스트리에 등록하는데, 그때의 principal은 구글이 준 OAuth2 사용자(DefaultOidcUser)다.
-     * 여기서 SecurityContext만 바꾸면 레지스트리에는 OAuth2 principal이 그대로 남고,
-     * `SessionInvalidator`의 `instanceof MemberPrincipal` 필터에 영원히 안 걸린다 —
-     * 비밀번호 재설정(FR-AUTH-05)·탈퇴(FR-AUTH-09)·복구의 전 세션 무효화가 **구글 세션에 대해
-     * 조용히 0건**이 된다. v1.9는 구글 로그인 전용이라 사실상 모든 세션이 해당됐다.
+     * **O-4에서 레지스트리 재등록 우회가 없어졌다.** 예전에는 여기서 SecurityContext만 바꾸면
+     * 메모리 레지스트리에 구글 principal(DefaultOidcUser)이 남아 전 세션 무효화가 구글 세션을
+     * 통째로 놓쳤고, 그래서 `removeSessionInformation` + `registerNewSession`으로 직접 갈아끼웠다.
+     *
+     * 세션이 DB로 가면서 그 전제가 사라졌다 — Spring Session은 **요청이 끝날 때 세션에 저장된
+     * `SPRING_SECURITY_CONTEXT`에서** principal 이름을 뽑아 색인한다. 바로 아래 saveContext가
+     * 넣는 그 값이라, 색인되는 이름이 자동으로 MemberPrincipal의 이메일이 된다.
+     * (덧붙여 `SpringSessionBackedSessionRegistry`의 두 메서드는 빈 구현이라 불러도 아무 일도 안 한다)
      */
     private void establishSession(HttpServletRequest request, HttpServletResponse response,
                                   MemberPrincipal principal) {
@@ -203,18 +204,6 @@ public class GoogleOAuth2SuccessHandler implements AuthenticationSuccessHandler 
                 principal, null, principal.getAuthorities()));
         SecurityContextHolder.setContext(context);
         securityContextRepository.saveContext(context, request, response);
-
-        reregisterSession(request, principal);
-    }
-
-    /** 레지스트리의 OAuth2 principal을 MemberPrincipal로 교체한다 (위 주석의 이유) */
-    private void reregisterSession(HttpServletRequest request, MemberPrincipal principal) {
-        HttpSession session = request.getSession(false);
-        if (session == null) {
-            return;
-        }
-        sessionRegistry.removeSessionInformation(session.getId());
-        sessionRegistry.registerNewSession(session.getId(), principal);
     }
 
     private Long popLinkRequester(HttpServletRequest request) {

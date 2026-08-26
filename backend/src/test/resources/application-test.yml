@@ -10,6 +10,12 @@ spring:
   flyway:
     enabled: false
 
+  # Flyway를 껐으니 세션 테이블을 만들 주체가 없다 → 여기서만 Spring Session에게 맡긴다.
+  # embedded = 인메모리 H2일 때만 제 스크립트를 돌린다 (운영 DB에는 절대 손대지 않는 기본값)
+  session:
+    jdbc:
+      initialize-schema: embedded
+
   # 쿼리 수를 세기 위한 스위치 (L-3). QueryCountTest가 이걸로 N+1을 감시한다.
   # 통계 수집은 공짜가 아니라서 운영에서는 켜지 않는다
   jpa:

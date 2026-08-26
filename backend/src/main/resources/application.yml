@@ -29,6 +29,15 @@ spring:
     console:
       enabled: true
 
+  # 세션 저장소 (O-4). 스키마 주인은 Flyway(V2)라 Spring Session이 제 스크립트를 못 돌리게 막는다.
+  # never가 아니면 기본값 embedded가 H2(dev)에서만 몰래 테이블을 만들어, dev는 되는데
+  # prod에서만 "테이블 없음"으로 죽는 비대칭이 생긴다
+  session:
+    jdbc:
+      initialize-schema: never
+    # 로그인 유지 기간. 기본 30분은 "가끔 들어오는 앱"에 짧다
+    timeout: 14d
+
 # 배치 주기. 테스트에서는 절대 안 도는 값으로 덮는다 (application-test.yml)
 app:
   # 이메일 가입 허용 목록 (OI-02 후속). **비우면 제한이 풀린다.**

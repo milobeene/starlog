@@ -7,6 +7,15 @@ plugins {
 group = 'com.milobeene'
 version = '0.0.1-SNAPSHOT'
 
+/*
+ * jar 이름을 버전에서 떼어낸다 (O-3). Render의 시작 명령이 파일 이름을 그대로 적는데,
+ * 기본값은 starlog-<version>.jar라 version을 올리는 순간 배포가 조용히 죽는다.
+ * 배포처 설정을 손대지 않고 버전을 올릴 수 있어야 한다
+ */
+tasks.named('bootJar') {
+	archiveFileName = 'app.jar'
+}
+
 java {
 	toolchain {
 		languageVersion = JavaLanguageVersion.of(21)
@@ -29,6 +38,9 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-restclient'
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
+	// 세션을 DB로 (O-4). Render 무료는 15분 무활동이면 JVM이 죽는데, 메모리 세션이면
+	// 깰 때마다 전원 로그아웃이 된다. 스키마는 Flyway V2가 만든다 (initialize-schema=never)
+	implementation 'org.springframework.boot:spring-boot-starter-session-jdbc'
 	// 동적 쿼리 (L-1). 원본 com.querydsl은 5.1.0에서 멈췄고 Jakarta EE 11 대응이 불확실해
 	// 활발히 유지되는 OpenFeign 포크를 쓴다. Boot 4 / Hibernate 7에서 도는 것을 스파이크로 확인했다
 	implementation 'io.github.openfeign.querydsl:querydsl-jpa:7.0'

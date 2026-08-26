@@ -87,13 +87,15 @@ class PostgresSchemaTest {
     @Autowired EntityManager em;
 
     @Test
-    void V1이_실_PostgreSQL에서_적용되고_엔티티와_일치한다() {
+    void 마이그레이션이_실_PostgreSQL에서_적용되고_엔티티와_일치한다() {
         // 컨텍스트 기동 자체가 검증 (Flyway 적용 + Hibernate validate).
         // H2 호환 모드가 통과시키던 문법이 여기서 걸린다
         assertThat(jdbc.queryForObject(
                 "select count(*) from information_schema.tables where table_schema = 'public'"
                         + " and table_type = 'BASE TABLE'", Integer.class))
-                .isEqualTo(24);   // 태그 조인 테이블이 사라져 25 → 24 (§6.7 v1.6)
+                // 25 → 24: 태그 조인 테이블이 사라졌다 (§6.7 v1.6)
+                // 24 → 26: V2가 spring_session 2개를 더한다 (O-4)
+                .isEqualTo(26);
     }
 
     @Test

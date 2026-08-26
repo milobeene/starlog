@@ -84,3 +84,24 @@ Neon에 시험 데이터를 넣었다 지우는 대신 회귀 테스트로 남�
 
 → 교훈: H2 기반 테스트는 PG 전용 오류 부류(타입 추론·인덱스 방향·문법 방언)를 못 덮는다.
 Testcontainers(실 PG로 테스트) 도입이 아침 결정 후보다.
+
+
+---
+
+## V2 — Spring Session JDBC (2026-08-26, O-4)
+
+| 결정 | 근거 |
+|---|---|
+| **V1에 합치지 않고 V2로 분리** | V1은 우리가 손으로 설계한 도메인 스키마, V2는 스프링이 준 남의 스키마다. 한 파일에 섞으면 Spring Session 버전을 올릴 때 어디까지가 우리 것인지 안 보인다. Neon이 비어 있어 합치는 비용이 0이었지만, 그게 합칠 이유는 아니다 |
+| **식별자를 상류 그대로** (`SPRING_SESSION_IX1` 같은 무의미한 이름 포함) | V1의 "제약에 뜻 있는 이름" 규칙을 여기서만 어긴다. Spring Session을 올릴 때 그쪽 `schema-postgresql.sql`과 diff를 떠서 변경을 감지하는 게 유일한 수단인데, 개명하면 그 diff가 전부 노이즈가 된다 |
+| **BYTEA 한 벌로 H2·PG 양쪽** | 공식 H2 스크립트는 `LONGVARBINARY`를 쓰지만 H2(MODE=PostgreSQL)가 `BYTEA`를 받는다. 파일을 쪼개면 dev·prod 스키마가 갈린다 — V1이 한 파일로 양쪽을 덮은 것과 같은 판단 |
+| `spring.session.jdbc.initialize-schema=never` | 스키마 주인은 Flyway. 기본값 `embedded`면 H2(dev)에서만 몰래 테이블이 생겨 **dev는 되는데 prod만 죽는** 비대칭이 난다. 테스트만 Flyway를 안 쓰므로 거기서만 `embedded` |
+
+**Neon 적용 결과 (증분)** — V1은 체크섬 검증만 통과하고 V2만 적용됐다. drop 불필요.
+
+| 항목 | 결과 |
+|---|---|
+| BASE TABLE | 24 → **26** |
+| FOREIGN KEY | 33 → **34** (`spring_session_attributes_fk`) |
+| flyway 이력 | 2줄, 현재 v2. V1 checksum `290737956` 그대로 |
+| 데이터 | 여전히 0행 |

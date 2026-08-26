@@ -74,15 +74,16 @@ class FlywayMigrationTest {
     }
 
     @Test
-    void V1이_외래키를_전부_만든다() {
-        //given — 33개 전부를 나열하는 대신 개수로 본다. FK는 이름보다 "빠진 게 없는가"가 중요하고,
+    void 마이그레이션이_외래키를_전부_만든다() {
+        //given — 34개 전부를 나열하는 대신 개수로 본다. FK는 이름보다 "빠진 게 없는가"가 중요하고,
         // 이름 목록은 스키마가 늘 때마다 갱신 비용이 크다
         //when
         int count = constraintNamesOf("FOREIGN KEY").size();
 
         //then
-        // 34 → 33: 조인 테이블 FK 2개가 빠지고 backlog_entry.tag_id 1개가 들어왔다
-        assertThat(count).isEqualTo(33);
+        // 태그 단일화로 34 → 33 (조인 FK 2개 빠지고 tag_id 1개 추가),
+        // 세션 테이블(V2)의 spring_session_attributes_fk가 더해져 34
+        assertThat(count).isEqualTo(34);
     }
 
     @Test

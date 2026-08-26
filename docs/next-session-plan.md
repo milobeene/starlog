@@ -1,7 +1,8 @@
 # 다음 세션 작업 계획 (2026-08-26 작성, 오후 갱신)
 
-> 현재 상태: 태그 단일화 + 폴더명 변경 + **Neon 재적용 완료**. 테스트 **421개** 초록(실 PG 5건 포함), 계약 검사 22건 0.
-> → 남은 것은 배포(작업 2)부터다.
+> 현재 상태: 태그 단일화 + 폴더명 + Neon 재적용 + **O-4 세션 DB화 + O-5 풀 튜닝 완료.**
+> 테스트 421개 초록. Neon은 V2까지 적용됨(테이블 26개).
+> → **남은 건 네가 Render/Vercel 대시보드에서 할 일뿐이다** (2-1, 2-2, 2-3).
 >
 > 이 문서는 **설계 판단이 남지 않을 정도로** 촘촘하게 쓴 것이다. `[결정 필요]` 표시가 붙은 곳만
 > 사용자 답이 있어야 하고, 나머지는 그대로 실행하면 된다.
@@ -38,8 +39,8 @@ cd backend && ./gradlew test              # 421개 초록 (도커 필요 — Pos
 
 **사용자가 할 것** (내가 못 하는 것: 계정·대시보드·환경변수 입력)
 1. Render에서 `New > Web Service` → 이 저장소 연결 → **Root Directory `backend`**
-2. Build: `./gradlew build -x test` / Start: `java -jar build/libs/starlog-0.0.1-SNAPSHOT.jar`
-   (실제 jar 이름은 `backend/build/libs/` 확인 — `rootProject.name`이 `starlog`로 바뀌었다)
+2. Build: `./gradlew build -x test` / Start: `java -jar build/libs/app.jar`
+   (jar 이름을 버전에서 떼어냈다 — 버전을 올려도 이 명령이 안 깨진다)
 3. 환경변수 입력:
 
 | 키 | 값 |
@@ -66,7 +67,7 @@ cd backend && ./gradlew test              # 421개 초록 (도커 필요 — Pos
 콘솔 → `Credentials` → OAuth 클라이언트 → **승인된 리디렉션 URI**에
 `https://{render주소}/login/oauth2/code/google` 추가. 안 하면 구글 로그인이 `redirect_uri_mismatch`로 죽는다.
 
-### 2-4. O-4 Spring Session JDBC  ★ [내 작업 — 배포와 같이 해야 함]
+### 2-4. ~~O-4 Spring Session JDBC~~ — ✅ **2026-08-26 완료**
 
 **이걸 배포 뒤로 미루면 안 되는 이유**: Render 무료는 **15분 무활동이면 JVM이 죽는다.**
 세션이 메모리에 있으므로 **깰 때마다 전원 로그아웃**된다. 지인 몇 명이 가끔 쓰는 패턴이면
@@ -79,7 +80,7 @@ cd backend && ./gradlew test              # 421개 초록 (도커 필요 — Pos
   `SpringSessionBackedSessionRegistry`로 교체할 것
 - 검증: `PostgresSchemaTest`에 세션 테이블 제약 단언 추가 + 재시작 후 로그인 유지 수동 확인
 
-### 2-5. O-5 HikariCP 튜닝  [내 작업]
+### 2-5. ~~O-5 HikariCP 튜닝~~ — ✅ **2026-08-26 완료** (`maximum-pool-size: 5`, prod 전용)
 Neon 무료는 유휴 시 컴퓨트를 재운다. 기본 풀(10)은 무료 티어에 과하다.
 `maximum-pool-size: 5`, `idle-timeout`·`max-lifetime`을 Neon 유휴 임계보다 짧게.
 `application-prod.yml`에만 넣는다 (dev H2는 그대로).
