@@ -31,15 +31,22 @@ export default function FolderView({ facets }: { facets: FacetsResponse }) {
       const all = await api.get<PageResponse<BacklogCard>>("/api/backlog?size=100&sort=name");
       if (cancelled) return;
 
-      // 사전 순서(facets)를 그대로 따른다 — 카드 등장 순서로 묶으면 폴더 순서가 데이터에 흔들린다
-      const next: Folder[] = facets.tags.map((tag) => {
-        const cards = all.items.filter((card) => card.tag === tag.name);
-        return { key: `tag-${tag.id}`, label: tag.name, count: cards.length, cards };
-      });
+      /*
+       * 정렬은 **이름순, 태그 없음은 맨 마지막** — 사이드바와 같은 규칙이다.
+       *
+       * 백엔드 파셋도 이름순으로 주지만 그건 DB 콜레이션이라 한글 순서가 브라우저와 어긋날 수 있다.
+       * 두 화면이 다른 순서로 보이면 같은 데이터인지 의심하게 되므로 여기서 다시 정렬한다
+       */
+      const next: Folder[] = [...facets.tags]
+        .sort((a, b) => a.name.localeCompare(b.name, "ko"))
+        .map((tag) => {
+          const cards = all.items.filter((card) => card.tag === tag.name);
+          return { key: `tag-${tag.id}`, label: tag.name, count: cards.length, cards };
+        });
 
       const untagged = all.items.filter((card) => card.tag === null);
       if (untagged.length > 0) {
-        next.push({ key: "untagged", label: "Untagged", count: untagged.length, cards: untagged });
+        next.push({ key: "untagged", label: "태그 없음", count: untagged.length, cards: untagged });
       }
 
       setFolders(next);
@@ -125,7 +132,8 @@ function FolderBox({ folder, onOpen }: { folder: Folder; onOpen: () => void }) {
   return (
     <button
       onClick={onOpen}
-      className="group relative flex aspect-square items-center justify-center overflow-hidden rounded-2xl bg-neutral-900"
+      // 테두리는 앱 공통 관례를 따른다 — border-white/10, hover는 /25
+      className="group relative flex aspect-square items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-neutral-900 transition-colors hover:border-white/25"
     >
       {backdrop ? (
         <div

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import PageHeading from "@/components/ui/PageHeading";
@@ -69,12 +69,40 @@ function SettingsContent() {
   const facets = useApi<FacetsResponse>("/api/backlog/facets");
   const companies = useApi<CompanyDictionary>("/api/backlog/companies");
   const [dialog, setDialog] = useState<Dialog>(null);
+  const [unlinking, setUnlinking] = useState(false);
+  const [unlinkError, setUnlinkError] = useState<string | null>(null);
 
   const refresh = () => {
     me.reload();
     facets.reload();
     companies.reload();
   };
+
+  /*
+   * 구글 연결 해제 (FR-AUTH-08). 서버가 비밀번호 유무를 다시 검사하므로
+   * 화면의 disabled는 편의일 뿐 방어선이 아니다 — 실패 메시지를 그대로 보여준다.
+   *
+   * **성공했을 때 unlinking을 여기서 끄지 않는다.** 끄면 refresh()가 돌아오기 전이라
+   * me.data는 아직 googleLinked=true다 → "해제하는 중"이 잠깐 "연결 해제"로 되돌아갔다가
+   * 데이터가 도착해야 "연결"로 바뀐다. 사용자 눈에는 실패했다 성공한 것처럼 깜빡인다.
+   * 그래서 **데이터가 실제로 바뀔 때까지** 켜둔 채 두고, 아래 effect가 끈다
+   */
+  const unlinkGoogle = async () => {
+    setUnlinking(true);
+    setUnlinkError(null);
+    try {
+      await api.del("/api/me/google");
+      refresh();
+    } catch (caught) {
+      setUnlinkError(errorMessage(caught, "연결을 해제하지 못했습니다."));
+      setUnlinking(false);   // 실패는 즉시 푼다 — 되돌아갈 상태가 원래 상태다
+    }
+  };
+
+  // 해제가 서버에 반영되어 내려온 순간에만 대기 상태를 푼다
+  useEffect(() => {
+    if (unlinking && me.data && !me.data.profile.googleLinked) setUnlinking(false);
+  }, [unlinking, me.data]);
 
   if (me.error) return <ErrorNotice error={me.error} onRetry={me.reload} />;
 
@@ -164,8 +192,17 @@ function SettingsContent() {
             <ul className="flex flex-col gap-2">
               {(me.data?.platformAccounts ?? []).map((account) => (
                 <Row key={account.accountId}>
-                  <span className="flex-1">{account.label}</span>
-                  <span className="text-xs text-white/40">{account.platform.name}</span>
+                  {/*
+                    플랫폼을 라벨 **바로 옆**에 붙인다. 예전엔 오른쪽 끝에 흐린 글씨로 뒀는데,
+                    라벨이 "Beene"으로 다 같아서 목록이 같은 이름 여러 줄로 보였다 —
+                    소속이 멀리 떨어져 있으면 짝을 눈으로 이어야 해서 안 읽힌다
+                  */}
+                  <span className="flex flex-1 items-center gap-2">
+                    <span>{account.label}</span>
+                    <span className="rounded border border-white/12 px-1.5 py-0.5 text-[10px] tracking-wide text-white/55">
+                      {account.platform.name}
+                    </span>
+                  </span>
                   <EditButton onClick={() => setDialog({ kind: "account", edit: account })} />
                   <DeleteButton
                     path={`/api/me/platform-accounts/${account.accountId}`}
@@ -354,25 +391,39 @@ function SettingsContent() {
               )}
 
               {/*
-                연결 해제는 **항상 막혀 있다.** 이메일 가입과 비밀번호 설정을 둘 다 막아둔 지금
-                해제까지 열어두면 로그인 수단이 하나도 안 남는다. 정리는 탈퇴로 한다 (FR-AUTH-09/10)
+                연결 해제는 **비밀번호가 있을 때만** 허용한다 (BR-AUTH-01).
+                기준은 "이메일 인증됨"이 아니라 **로그인 수단이 남는가**다 — 구글로 가입하면
+                이메일은 인증돼 있는데 비밀번호가 없어서, 풀면 들어올 방법이 사라진다
               */}
               {me.data?.profile.googleLinked ? (
                 <button
-                  disabled
-                  title="연결을 해제하시면 로그인 수단이 남지 않습니다. 계정 정리는 회원 탈퇴를 이용해 주세요."
-                  className="cursor-not-allowed rounded-lg border border-white/10 px-4 py-3 text-left text-sm text-white/35"
+                  disabled={!me.data.profile.hasPassword || unlinking}
+                  onClick={() => void unlinkGoogle()}
+                  title={
+                    me.data.profile.hasPassword
+                      ? "해제 후에도 이메일과 비밀번호로 로그인하실 수 있습니다."
+                      : "비밀번호가 없어 해제하시면 로그인 수단이 남지 않습니다."
+                  }
+                  className={
+                    me.data.profile.hasPassword
+                      ? "rounded-lg border border-white/10 px-4 py-3 text-left text-sm transition-colors hover:border-white/25"
+                      : "cursor-not-allowed rounded-lg border border-white/10 px-4 py-3 text-left text-sm text-white/35"
+                  }
                 >
                   <span className="flex items-center gap-2">
-                    Google 계정 연결 해제
+                    {unlinking ? "해제하는 중" : "Google 계정 연결 해제"}
                     <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
                       연결됨
                     </span>
                   </span>
-                  <span className="mt-0.5 block text-xs text-white/20">
-                    해제하시면 로그인 수단이 남지 않아 막아 두었습니다. 계정 정리는 아래 회원 탈퇴로
-                    하실 수 있습니다
+                  <span className="mt-0.5 block text-xs text-white/35">
+                    {me.data.profile.hasPassword
+                      ? "해제하셔도 이메일과 비밀번호로 로그인하실 수 있습니다"
+                      : "비밀번호가 없어 해제하시면 로그인 수단이 남지 않습니다. 계정 정리는 아래 회원 탈퇴로 하실 수 있습니다"}
                   </span>
+                  {unlinkError && (
+                    <span className="mt-1 block text-xs text-red-400">{unlinkError}</span>
+                  )}
                 </button>
               ) : (
                 <a

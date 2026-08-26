@@ -46,6 +46,22 @@ export default function PlaythroughDialog({
   const [error, setError] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
 
+  /*
+   * 계정 이름에 소속 플랫폼을 붙인다 — "Beene (Steam)" 꼴.
+   * 라벨은 회원이 정하는 자유 문자열이라 플랫폼마다 같은 이름이 흔하고,
+   * 그대로 두면 선택지에 구별 불가능한 항목이 여러 개 뜬다
+   */
+  const accountChoices = withCurrent(
+    (options?.platformAccounts ?? []).map((account) => ({
+      id: account.id,
+      name: `${account.name} (${account.platformName})`,
+    })),
+    run?.platformAccount && {
+      id: run.platformAccount.accountId,
+      name: run.platformAccount.label,
+    },
+  );
+
   const save = async () => {
     if (!startedOn) {
       setError("시작일을 입력해 주세요.");
@@ -164,7 +180,12 @@ export default function PlaythroughDialog({
           <Field label="Account">
             <select value={accountId} onChange={(e) => setAccountId(e.target.value)} className={FIELD_SELECT}>
               <option value="">선택 안 함</option>
-              {withCurrent(options?.platformAccounts ?? [], run?.platformAccount && { id: run.platformAccount.accountId, name: run.platformAccount.label }).map((item) => (
+              {/*
+                회차는 취득과 달리 플랫폼으로 좁히지 않는다 — "스팀에서 산 걸 스위치에서 했다"가
+                성립하므로 계정과 기기를 묶으면 안 된다. 대신 **어느 플랫폼 계정인지 병기**한다.
+                라벨이 "Beene"으로 겹쳐서 이게 없으면 선택지가 같은 이름 여러 개로 보인다
+              */}
+              {accountChoices.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name}
                 </option>

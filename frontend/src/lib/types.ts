@@ -338,13 +338,24 @@ export interface GenreDistribution {
 }
 
 /** GET /api/me/options — 폼 선택지. 백엔드가 전부 `Ref(id, name)` 한 모양으로 준다 */
+export interface AccountOption {
+  id: number;
+  name: string;
+  platformId: number;
+  platformName: string;
+}
+
 export interface OptionsResponse {
   platforms: NamedRef[];
   /** name이 "거실 스위치 (Nintendo Switch)" 꼴이다 — 라벨만으로는 기종을 모른다 */
   devices: NamedRef[];
   emulators: NamedRef[];
   inputMethods: NamedRef[];
-  platformAccounts: NamedRef[];
+  /**
+   * 계정만 소속 플랫폼을 함께 준다 — 라벨("Beene")이 플랫폼마다 겹쳐서
+   * 이름만으로는 선택지에서 구별이 안 된다
+   */
+  platformAccounts: AccountOption[];
   subscriptions: NamedRef[];
   tagDictionary: string[];
   genreDictionary: string[];

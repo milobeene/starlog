@@ -70,8 +70,11 @@ public class MeQueryService {
                         .map(e -> new OptionsResponse.Ref(e.getId(), e.getName())).toList(),
                 inputMethodService.findSelectable(memberId).stream()
                         .map(i -> new OptionsResponse.Ref(i.getId(), i.getName())).toList(),
+                // 계정만 소속 플랫폼을 함께 싣는다 — 라벨이 겹쳐도 화면이 구별할 수 있게
                 platformAccountService.findSelectable(memberId).stream()
-                        .map(a -> new OptionsResponse.Ref(a.getId(), a.getAccountLabel())).toList(),
+                        .map(a -> new OptionsResponse.AccountRef(
+                                a.getId(), a.getAccountLabel(),
+                                a.getPlatform().getId(), a.getPlatform().getName())).toList(),
                 subscriptionRepository.findByMemberIdOrderByStartedOnDesc(memberId).stream()
                         .map(s -> new OptionsResponse.Ref(s.getId(), s.getServiceName())).toList(),
                 tagRepository.findUsedByMemberId(memberId).stream().map(Tag::getName).toList(),

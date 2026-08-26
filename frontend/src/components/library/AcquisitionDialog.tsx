@@ -51,6 +51,32 @@ export default function AcquisitionDialog({
   const [error, setError] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
 
+  /*
+   * 계정은 **플랫폼의 하위**다. 예전엔 전체 계정을 그대로 늘어놨는데, 라벨이 "Beene"으로
+   * 겹쳐서 어느 것이 스팀인지 알 수 없었다. 플랫폼을 고르면 그 아래 계정만 남긴다.
+   *
+   * 편집 중인 값은 소프트 삭제됐을 수 있어 withCurrent로 지켜준다 —
+   * 목록에서 빠진 채 저장하면 원래 붙어 있던 계정이 조용히 날아간다 (lib/options.ts)
+   */
+  const accountChoices = withCurrent(
+    (options?.platformAccounts ?? []).filter(
+      (account) => String(account.platformId) === platformId,
+    ),
+    acquisition?.platformAccount && {
+      id: acquisition.platformAccount.accountId,
+      name: acquisition.platformAccount.label,
+    },
+  );
+
+  /*
+   * 플랫폼을 바꾸면 계정을 비운다. 안 그러면 "스팀 + 닌텐도 계정" 같은 모순이 저장된다 —
+   * select에는 안 보이는데 상태에는 남아 있어서, 눈으로는 알아챌 수 없는 종류의 오류다
+   */
+  const changePlatform = (next: string) => {
+    setPlatformId(next);
+    if (next !== platformId) setAccountId("");
+  };
+
   const save = async () => {
     setSaving(true);
     setError(null);
@@ -170,7 +196,7 @@ export default function AcquisitionDialog({
 
         <div className="grid grid-cols-2 gap-4">
           <Field label="Platform">
-            <select value={platformId} onChange={(e) => setPlatformId(e.target.value)} className={FIELD_SELECT}>
+            <select value={platformId} onChange={(e) => changePlatform(e.target.value)} className={FIELD_SELECT}>
               <option value="">선택 안 함</option>
               {withCurrent(options?.platforms ?? [], acquisition?.platform && { id: acquisition.platform.platformId, name: acquisition.platform.name }).map((item) => (
                 <option key={item.id} value={item.id}>
@@ -180,9 +206,14 @@ export default function AcquisitionDialog({
             </select>
           </Field>
           <Field label="Account">
-            <select value={accountId} onChange={(e) => setAccountId(e.target.value)} className={FIELD_SELECT}>
-              <option value="">선택 안 함</option>
-              {withCurrent(options?.platformAccounts ?? [], acquisition?.platformAccount && { id: acquisition.platformAccount.accountId, name: acquisition.platformAccount.label }).map((item) => (
+            <select
+              value={accountId}
+              onChange={(e) => setAccountId(e.target.value)}
+              className={FIELD_SELECT}
+              disabled={!platformId}
+            >
+              <option value="">{platformId ? "선택 안 함" : "플랫폼을 먼저 고르세요"}</option>
+              {accountChoices.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name}
                 </option>

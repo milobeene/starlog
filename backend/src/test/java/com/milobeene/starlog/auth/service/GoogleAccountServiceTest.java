@@ -155,25 +155,34 @@ class GoogleAccountServiceTest extends ControllerTestSupport {
         googleAccountService.link(member.getId(), "google-sub-3");
     }
 
+    /**
+     * **2026-08-26 규칙 복원.** 한때 비밀번호가 있어도 해제를 막았는데, 그 걱정
+     * ("로그인 수단이 하나도 안 남는다")은 비밀번호가 없는 계정에만 해당했다.
+     * 비밀번호가 있으면 해제해도 이메일 로그인이 남으므로 잠기지 않는다 (BR-AUTH-01)
+     */
     @Test
-    public void 비밀번호가_있어도_연결을_해제할_수_없다() {
-        //given — 예전엔 비밀번호만 있으면 해제됐다 (BR-AUTH-01). 지금은 통째로 닫혀 있다:
-        // 이메일 가입과 비밀번호 설정을 막아둔 상태(인증 메일 발송 불가)에서 해제까지 열어두면
-        // 다시 연결할 방법이 없어 되돌리기 어렵다. 정리는 탈퇴로 한다 (FR-AUTH-09/10)
+    public void 비밀번호가_있으면_연결을_해제할_수_있다() {
+        //given
         Member member = saveMember();
         googleAccountService.link(member.getId(), "google-sub-4");
         em.flush();
+        em.clear();
 
-        //when //then
-        assertThatThrownBy(() -> googleAccountService.unlink(member.getId()))
-                .isInstanceOf(InvalidInputException.class)
-                .hasMessageContaining("탈퇴");
+        //when
+        googleAccountService.unlink(member.getId());
+        em.flush();
+        em.clear();
+
+        //then — 연결만 끊기고 계정은 남는다
+        Member after = em.find(Member.class, member.getId());
+        assertThat(after.getGoogleSubject()).isNull();
+        assertThat(after.hasPassword()).isTrue();
     }
 
     @Test
     public void 비밀번호가_없으면_해제할_수_없다() throws Exception {
-        //given — 소셜 전용 계정. 해제하면 로그인 수단이 하나도 안 남는다 (BR-AUTH-01)
-        //        지금은 비밀번호 유무와 무관하게 막히지만, 이 경우가 원래 규칙의 핵심이었다
+        //given — 소셜 전용 계정. 해제하면 로그인 수단이 하나도 안 남는다 (BR-AUTH-01).
+        //        이게 규칙의 핵심이다 — "이메일 인증됨"이 아니라 "로그인 수단이 남는가"가 기준
         Member member = Member.signUpWithEmail("social" + System.nanoTime() + "@example.com", null, "소셜");
         em.persist(member);
         googleAccountService.link(member.getId(), "google-sub-5");

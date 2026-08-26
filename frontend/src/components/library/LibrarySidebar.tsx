@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useApi } from "@/lib/useApi";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { coverSrc } from "@/lib/cover";
@@ -11,15 +11,24 @@ import type { BacklogCard, BacklogName, PageResponse } from "@/lib/types";
 /**
  * 전체 게임 목록 — 이름순, 페이징 없음. 필터는 여기 없다 (툴바의 필터 박스가 전부 맡는다).
  *
- * 이름은 전용 엔드포인트(`/api/backlog/names`)로, 썸네일은 목록 API로 따로 받는다.
+ * 이름은 전용 엔드포인트(`/api/backlog/names`)로, 썸네일과 태그는 목록 API로 따로 받는다.
  * names에 커버를 실으면 이 가벼운 조회에 조인이 붙는데, 썸네일은 **있으면 좋은 것**이라
- * 늦게 도착해도 이름 목록이 먼저 뜨는 편이 낫다
+ * 늦게 도착해도 이름 목록이 먼저 뜨는 편이 낫다.
+ *
+ * **태그로 묶는다** (design-request.md §3-1). 태그가 항목당 하나라 한 게임은 한 그룹에만 든다 —
+ * 중복이 없어서 "이동용 목록"으로서 스캔이 깨지지 않는다.
+ * 그룹 헤더는 일부러 얇다. 이건 필터 UI가 아니라 **목록에 결을 주는 장치**다 (필터는 FilterBox 담당)
  */
+/** 태그 없는 게임을 담는 그룹 키. 실제 태그 이름과 겹치지 않게 화면 문구와 분리해 둔다 */
+const UNTAGGED = "\u0000untagged";
+
 export default function LibrarySidebar() {
   const names = useApi<BacklogName[]>("/api/backlog/names");
   const covers = useApi<PageResponse<BacklogCard>>("/api/backlog?size=100&sort=name");
   const params = useParams<{ entryId?: string }>();
   const currentId = params?.entryId;
+
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   const coverById = useMemo(() => {
     const map = new Map<number, string | null>();
@@ -28,6 +37,42 @@ export default function LibrarySidebar() {
     );
     return map;
   }, [covers.data]);
+
+  const tagById = useMemo(() => {
+    const map = new Map<number, string | null>();
+    covers.data?.items.forEach((card) => map.set(card.entryId, card.tag));
+    return map;
+  }, [covers.data]);
+
+  /*
+   * 태그별로 묶는다. **정렬은 항상 이름순** — 그룹 안에서도, 그룹 자체도 (다른 정렬 옵션 없음).
+   * names가 이미 이름순으로 오므로 그룹 안은 순서를 그대로 쓰면 된다.
+   *
+   * 태그 없는 게임은 맨 아래 한 덩어리로 몬다. 실데이터는 태그 안 붙은 항목이 더 많아서
+   * 이 그룹이 없으면 게임이 사라져 보인다.
+   *
+   * 태그 정보는 목록 API(covers)에서 오는데 이름 목록(names)보다 늦게 도착한다.
+   * 그동안은 전부 "태그 없음"으로 묶이는데, 그래도 **목록 자체는 먼저 읽힌다** —
+   * 태그가 도착하면 조용히 재배치된다
+   */
+  const groups = useMemo(() => {
+    const buckets = new Map<string, typeof names.data>();
+    (names.data ?? []).forEach((entry) => {
+      const tag = tagById.get(entry.entryId) ?? null;
+      const key = tag ?? UNTAGGED;
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key)!.push(entry);
+    });
+
+    const tagged = [...buckets.keys()]
+      .filter((key) => key !== UNTAGGED)
+      .sort((a, b) => a.localeCompare(b, "ko"));
+
+    return [...tagged, ...(buckets.has(UNTAGGED) ? [UNTAGGED] : [])].map((key) => ({
+      key,
+      items: buckets.get(key) ?? [],
+    }));
+  }, [names.data, tagById]);
 
   return (
     <aside className="glass-panel mt-20 mr-2 mb-4 ml-6 flex w-64 shrink-0 flex-col overflow-hidden rounded-xl xl:w-72">
@@ -45,37 +90,74 @@ export default function LibrarySidebar() {
             ))}
           </div>
         ) : (
-          <ul className="flex flex-col gap-0.5">
-            {names.data?.map((entry) => {
-              const active = String(entry.entryId) === currentId;
-              const thumb = coverById.get(entry.entryId);
+          <div className="flex flex-col gap-1">
+            {groups.map((group) => {
+              const isOpen = !collapsed.has(group.key);
+              const label = group.key === UNTAGGED ? "태그 없음" : group.key;
               return (
-                <li key={entry.entryId}>
-                  <Link
-                    href={`/library/${entry.entryId}`}
-                    className={`flex items-center gap-2.5 rounded px-2 py-1.5 text-sm transition-colors ${
-                      active
-                        ? "bg-white/10 text-white"
-                        : "text-white/60 hover:bg-white/5 hover:text-white"
-                    }`}
-                    title={entry.displayName}
+                <section key={group.key}>
+                  {/*
+                    헤더를 버튼으로 두되 생김새는 라벨에 가깝게 — 얇은 글씨 + 개수.
+                    필터처럼 보이면 사용자가 여기서 걸러질 거라 기대하는데, 그건 FilterBox의 몫이다
+                  */}
+                  <button
+                    onClick={() =>
+                      setCollapsed((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(group.key)) next.delete(group.key);
+                        else next.add(group.key);
+                        return next;
+                      })
+                    }
+                    className="flex w-full items-center gap-2 px-2 py-2 text-[11px] font-semibold tracking-widest text-white/60 uppercase transition-colors hover:text-white/85"
                   >
-                    {thumb ? (
-                      <img
-                        src={thumb}
-                        alt=""
-                        loading="lazy"
-                        className="h-5 w-5 shrink-0 rounded-[3px] object-cover"
-                      />
-                    ) : (
-                      <span className="image-placeholder h-5 w-5 shrink-0 rounded-[3px]" />
-                    )}
-                    <span className="truncate">{entry.displayName}</span>
-                  </Link>
-                </li>
+                    <span
+                      className={`text-[10px] transition-transform ${isOpen ? "rotate-90" : ""}`}
+                      aria-hidden
+                    >
+                      ▶
+                    </span>
+                    <span className="truncate">{label}</span>
+                    <span className="num font-normal text-white/30">{group.items.length}</span>
+                  </button>
+
+                  {isOpen && (
+                    <ul className="flex flex-col gap-0.5">
+                      {group.items.map((entry) => {
+                        const active = String(entry.entryId) === currentId;
+                        const thumb = coverById.get(entry.entryId);
+                        return (
+                          <li key={entry.entryId}>
+                            <Link
+                              href={`/library/${entry.entryId}`}
+                              className={`flex items-center gap-2.5 rounded px-2 py-1.5 text-sm transition-colors ${
+                                active
+                                  ? "bg-white/10 text-white"
+                                  : "text-white/60 hover:bg-white/5 hover:text-white"
+                              }`}
+                              title={entry.displayName}
+                            >
+                              {thumb ? (
+                                <img
+                                  src={thumb}
+                                  alt=""
+                                  loading="lazy"
+                                  className="h-5 w-5 shrink-0 rounded-[3px] object-cover"
+                                />
+                              ) : (
+                                <span className="image-placeholder h-5 w-5 shrink-0 rounded-[3px]" />
+                              )}
+                              <span className="truncate">{entry.displayName}</span>
+                            </Link>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </section>
               );
             })}
-          </ul>
+          </div>
         )}
       </div>
 

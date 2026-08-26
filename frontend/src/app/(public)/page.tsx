@@ -16,9 +16,10 @@ import { logout, useSession } from "@/lib/session";
  * 로더 최소 노출 시간.
  *
  * 서버가 깨어 있으면 판정이 0.2초 만에 끝난다. 그대로 두면 로더가 번쩍이고 사라져
- * 없는 것만 못하다. 빛이 한 번 훑는 데 1.9초라, 3초면 한 번 반을 보고 넘어간다
+ * 없는 것만 못하다. 빛이 한 번 훑는 데 1.9초라, 1.5초면 한 번을 채 못 보고 넘어간다 —
+ * "뭔가 지나갔다"는 인상만 남기고 길을 막지 않는 선이다
  */
-const MIN_LOADER_MS = 3000;
+const MIN_LOADER_MS = 1500;
 
 export default function LandingPage() {
   const session = useSession();
