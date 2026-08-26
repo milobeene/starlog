@@ -6,24 +6,26 @@
 FROM eclipse-temurin:21-jdk AS build
 WORKDIR /app
 
-# 래퍼와 빌드 스크립트를 먼저 — 의존성 레이어가 소스보다 앞서야 코드만 바뀔 때 캐시가 산다
+# ⚠️ **소스를 Gradle보다 먼저 놓는다. 순서를 바꾸지 말 것.**
+#
+# 예전에는 의존성 레이어를 캐시하려고 `COPY src` 앞에서 `./gradlew dependencies`를 한 번 돌렸다.
+# 그러면 Render에서만 `compileJava NO-SOURCE`로 죽었다 — 자바 파일 219개가 멀쩡히 있는데도.
+# 원인은 Gradle 9의 파일시스템 감시(VFS)다. 소스가 없는 상태로 Gradle을 돌리면
+# "src/main은 존재하지 않는다"가 /app/.gradle/에 스냅샷으로 남고, 다음 실행이 그걸 복원해
+# 소스를 통째로 못 본다. inotify 지원이 환경마다 달라 로컬(arm64·amd64 모두)은 통과하고
+# Render만 걸렸다 — 그래서 재현에 오래 걸렸다.
+#
+# 캐시 이득을 포기한 대신 Gradle을 **소스가 다 놓인 뒤 한 번만** 돌린다. 배포마다 의존성을
+# 다시 받아 30초쯤 손해지만, 환경에 따라 갈리는 실패보다 낫다.
 COPY gradlew ./
 COPY gradle gradle
 COPY build.gradle settings.gradle ./
-RUN chmod +x gradlew && ./gradlew dependencies -q || true
-
-# **소스를 명시적으로 복사한다.** `COPY . .`로 두면 빌드 컨텍스트가 잘못 잡혀 src가 안 와도
-# 조용히 넘어가고, 한참 뒤 bootJar에서 "Main class를 못 찾겠다"는 엉뚱한 메시지로 터진다.
-# 경로를 박아두면 컨텍스트가 틀린 순간 이 줄에서 바로 죽는다
 COPY src src
 
-# 진단 — Render 빌드가 "Main class를 못 찾겠다"로 2.6초 만에 죽는데, 로컬(arm64·amd64 둘 다)에서는
-# 통과한다. 컴파일이 아예 안 도는 정황이라 컨텍스트에 뭐가 들어왔는지 눈으로 본다.
-# 원인이 잡히면 이 블록은 지운다
-RUN echo "=== 컨텍스트 최상위 ===" && ls -la  && echo "=== src 트리 (2단계) ===" && find src -maxdepth 2  && echo "=== 자바 파일 수 ===" && find src -name '*.java' | wc -l  && echo "=== settings.gradle ===" && cat settings.gradle
-
-# -q를 뺀다. 조용하면 컴파일이 도는지 안 도는지가 안 보인다
-RUN ./gradlew bootJar -x test
+# --no-daemon: 컨테이너는 한 번 쓰고 버리므로 데몬이 이득이 없다.
+# vfs.watch=false: 위 문제의 근본 스위치를 아예 꺼서 재발을 막는다
+RUN chmod +x gradlew \
+ && ./gradlew bootJar -x test --no-daemon -Dorg.gradle.vfs.watch=false
 
 # 산출물이 실제로 나왔는지 확인 — 없으면 여기서 끊어야 런타임까지 안 흘러간다
 RUN test -f build/libs/app.jar || (echo "app.jar가 없다. bootJar 산출물 이름을 확인할 것" && ls -la build/libs && exit 1)
