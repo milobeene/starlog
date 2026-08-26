@@ -156,7 +156,15 @@ void main() {
     vec2 st = gl_FragCoord.xy / uResolution.xy;
     st.x *= uResolution.x / uResolution.y;
 
-    float speed = mix(0.1, 0.03, uAppState);
+    /*
+     * 흐름 속도. 입구는 0.1, 앱 내부는 그보다 느리다 — 본문이 읽혀야 하므로.
+     * 처음엔 0.03(3.3배 느림)이었는데 앱 안에서 배경이 거의 멈춰 보였다.
+     * 0.067이면 1.5배만 느려서 "차분하지만 살아 있는" 쪽에 선다.
+     *
+     * 이 값은 색상환 순회 주기도 같이 정한다 — hue가 t(= uTime × speed)를 쓰므로
+     * 앱 내부 순회도 3.3배 → 1.5배 느림으로 함께 빨라진다
+     */
+    float speed = mix(0.1, 0.067, uAppState);
     float t = uTime * speed;
 
     float n1 = snoise(st * 1.5 + t);
