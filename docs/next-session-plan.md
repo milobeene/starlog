@@ -1,7 +1,7 @@
 # 다음 세션 작업 계획 (2026-08-26 작성, 오후 갱신)
 
-> 현재 상태: 태그 단일화 완료, 폴더명 `starlog`로 변경 완료. 테스트 **420개** 초록(실 PG 4건 포함), 계약 검사 22건 0.
-> Neon은 **아직 옛 V1이 적용된 상태** — 재적용이 남아 있다 (작업 1 참고).
+> 현재 상태: 태그 단일화 + 폴더명 변경 + **Neon 재적용 완료**. 테스트 **421개** 초록(실 PG 5건 포함), 계약 검사 22건 0.
+> → 남은 것은 배포(작업 2)부터다.
 >
 > 이 문서는 **설계 판단이 남지 않을 정도로** 촘촘하게 쓴 것이다. `[결정 필요]` 표시가 붙은 곳만
 > 사용자 답이 있어야 하고, 나머지는 그대로 실행하면 된다.
@@ -13,28 +13,19 @@
 ```bash
 cd ~/projects/Practice/starlog
 git log --oneline -1                      # 태그 단일화 커밋이 최신이어야 함
-cd backend && ./gradlew test              # 420개 초록 (도커 필요 — PostgresSchemaTest)
+cd backend && ./gradlew test              # 421개 초록 (도커 필요 — PostgresSchemaTest)
 ```
 
 ⚠️ **도커가 꺼져 있으면 `PostgresSchemaTest`가 실패한다.** `open -a Docker` 후 20초.
 
 ---
 
-## 작업 1. Neon 스키마 재적용  ★ 배포 전 필수
+## 작업 1. ~~Neon 스키마 재적용~~ — ✅ **2026-08-26 완료**
 
-태그 단일화로 **V1 체크섬이 바뀌었다.** Neon에는 옛 V1이 적용돼 있어 그대로 띄우면
-Flyway가 checksum mismatch로 기동을 거부한다. 빈 DB라 그냥 밀면 된다.
+`drop schema public cascade` → `prod,local` 기동으로 새 V1 적용 → 스키마 17항목 검수 통과.
+상세는 `docs/db-baseline-v1.md`의 "재적용 #2".
 
-```sql
--- Neon SQL 에디터에서
-drop schema public cascade;
-create schema public;
-```
-
-그다음 prod 프로필로 한 번 기동하면 새 V1이 적용된다. 적용 후 **테이블 24개**
-(옛 판은 25개 — `backlog_entry_tag`가 빠졌다).
-
-> 폴더명 변경(`mv game-backlog starlog`)과 구글 OAuth App name은 **2026-08-26에 완료.**
+**Neon 현재 상태: 빈 테이블 24개 + flyway 이력 V1 한 줄 (checksum 290737956).**
 
 ---
 
@@ -113,8 +104,7 @@ Neon 무료는 유휴 시 컴퓨트를 재운다. 기본 풀(10)은 무료 티�
 - 3렌즈 미니 리뷰로 검수 → 정렬 인덱스 2종·방향 명시·auth_token 인덱스 보강
 - Neon `drop schema` → 새 V1 적용 → API 왕복 검증 → 검증 데이터 청소
 
-**현재 Neon 상태: 빈 테이블 25개 + flyway 이력 V1 한 줄.**
-→ 그 뒤 태그 단일화로 V1이 바뀌었다. 재적용하면 **24개**가 된다 (작업 1).
+**현재 Neon 상태: 빈 테이블 24개 + flyway 이력 V1 한 줄** (2026-08-26 재적용 후).
 
 ---
 
@@ -219,8 +209,7 @@ Neon 스토리지(`pg_database_size()`). Actuator를 붙이되 **외부 모니�
 ## 우선순위 요약
 
 ```
-0. 태그 단일화                   ✅ 2026-08-26 완료
-1. Neon 스키마 재적용            ★ 체크섬이 바뀌어 배포 전 필수
+0. 태그 단일화 + 폴더명 + Neon 재적용   ✅ 2026-08-26 완료
 2. 배포 + O-4 세션 + O-5 풀      ★ 나머지 전부의 선행 조건
 3. 사이드바 태그 그룹 + 반응형 4곳 → PWA
 4. IGDB 안내 + 일일 쿼터 + /admin 시스템 탭

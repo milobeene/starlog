@@ -51,9 +51,28 @@ V1(덤프 감사본) → V2(선택지 회원 소유) → V3(승인제)의 3단 �
 - 로그인/선택지 시딩/가입 차단/수동 게임→담기→회차/파셋(JPQL FQCN 치환 검증)/정렬 3종/관리자 3탭 ✅
 - 검증 데이터는 전부 청소 — 최종 상태: **빈 테이블 25개 + flyway 이력 V1 한 줄**
 
-> ⚠️ **2026-08-26 오후 — 태그 단일화로 V1을 다시 고쳤다.** 체크섬이 바뀌었으므로
-> Neon에 `drop schema public cascade` → 재적용이 한 번 더 필요하다. 빈 DB라 비용은 그대로 0.
-> 적용 후 테이블은 **24개**다.
+## 재적용 #2 — 태그 단일화 (2026-08-26 오후) ✅ 완료
+
+V1을 다시 고쳐 체크섬이 바뀌었으므로(`1660992519` → `290737956`) Neon을 한 번 더 밀었다.
+직전 상태가 **전 테이블 0행 + flyway 이력 한 줄**임을 확인한 뒤 `drop schema public cascade`.
+
+`prod,local` 프로필로 기동 → Flyway가 새 V1 적용 → Hibernate validate 통과. 검수 결과:
+
+| 항목 | 결과 |
+|---|---|
+| BASE TABLE 수 | **24** (23 도메인 + flyway). `backlog_entry_tag` 사라짐 |
+| `backlog_entry.tag_id` | bigint, **nullable**, `fk_backlog_entry_tag` → `tag(id)` |
+| `idx_backlog_member_tag` | `(member_id, tag_id)` — 선두가 member_id |
+| 정렬 인덱스 4종 | `DESC NULLS LAST` 유지 |
+| FOREIGN KEY | **33** (34에서 조인 FK 2개 빠지고 tag_id 1개 추가) |
+| `uk_backlog_entry_tag` | 없음. `uk_tag_member_name`은 유지 |
+| flyway 이력 | 1줄, success=t, 새 checksum |
+| 데이터 | 0행 (prod 프로필이라 시드가 안 돈다) |
+
+**남은 리스크를 테스트로 옮겼다** — 이 문서의 교훈("H2는 PG 전용 오류를 못 덮는다")대로,
+태그 단일화로 새로 생긴 쿼리 3종(`countByTag` 생성자 표현식 / `hasTag` QueryDSL 술어 /
+`clearTag` 벌크 update)을 `PostgresSchemaTest`에 넣어 **Testcontainers 실 PG에서** 돌린다.
+Neon에 시험 데이터를 넣었다 지우는 대신 회귀 테스트로 남긴 것이다.
 
 **실검증이 잡은 실버그 — H2로는 원리적으로 못 잡는 부류:**
 

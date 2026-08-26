@@ -4,7 +4,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
 import com.milobeene.starlog.admin.service.AdminQueryService;
+import com.milobeene.starlog.backlog.dto.BacklogSearchCondition;
+import com.milobeene.starlog.backlog.dto.BacklogSort;
+import com.milobeene.starlog.backlog.repository.BacklogEntryRepository;
+import com.milobeene.starlog.backlog.service.BacklogService;
+import com.milobeene.starlog.game.domain.Game;
+import com.milobeene.starlog.game.repository.GameRepository;
+import com.milobeene.starlog.member.domain.Member;
+import com.milobeene.starlog.tag.service.TagService;
+import jakarta.persistence.EntityManager;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -70,6 +80,11 @@ class PostgresSchemaTest {
 
     @Autowired JdbcTemplate jdbc;
     @Autowired AdminQueryService adminQueryService;
+    @Autowired TagService tagService;
+    @Autowired BacklogService backlogService;
+    @Autowired BacklogEntryRepository backlogEntryRepository;
+    @Autowired GameRepository gameRepository;
+    @Autowired EntityManager em;
 
     @Test
     void V1이_실_PostgreSQL에서_적용되고_엔티티와_일치한다() {
@@ -108,6 +123,51 @@ class PostgresSchemaTest {
 
         //then — 방향이 빠지면 PG가 정렬에 이 인덱스를 못 쓴다
         assertThat(definition).contains("DESC NULLS LAST");
+    }
+
+    @Test
+    @org.springframework.transaction.annotation.Transactional
+    void 태그_쿼리_3종이_실_PostgreSQL에서_돈다() {
+        /*
+         * 태그 단일화(§6.7 v1.6)로 새로 생긴 쿼리 셋을 실 PG에서 한 번 태운다.
+         * 나머지 태그 테스트는 전부 H2에서 도는데, **이 파일의 존재 이유가 그게 못 잡는 부류**다 —
+         * 실제로 파셋의 생성자 표현식(`new …FacetCount(...)`)이 옛 판에서 PG 전용으로 죽은 적이 있다.
+         *
+         *   · countByTag  — 생성자 표현식 + group by
+         *   · hasTag      — QueryDSL 동적 술어(exists 서브쿼리에서 FK 직접 비교로 바뀐 자리)
+         *   · clearTag    — 벌크 update. FK가 살아 있으면 Tag 물리 삭제가 막힌다
+         */
+        //given
+        Member member = Member.signUpWithEmail("pg-tag@example.com", "1111", "테스터");
+        em.persist(member);
+        Game game = Game.manual("Hollow Knight");
+        gameRepository.persist(game);
+        Long entryId = backlogService.addToBacklog(member.getId(), game.getId());
+        tagService.changeTag(member.getId(), entryId, "명작");
+        em.flush();
+
+        Long tagId = tagService.findDictionary(member.getId()).get(0).getId();
+
+        //when //then — 파셋 집계
+        assertThat(backlogEntryRepository.countByTag(member.getId()))
+                .singleElement()
+                .satisfies(facet -> {
+                    assertThat(facet.name()).isEqualTo("명작");
+                    assertThat(facet.count()).isEqualTo(1);
+                });
+
+        //when //then — 태그 필터 (QueryDSL)
+        assertThat(backlogEntryRepository.search(member.getId(),
+                        new BacklogSearchCondition(null, null, tagId, null, null, null, null,
+                                null, null, null),
+                        BacklogSort.NAME, org.springframework.data.domain.PageRequest.of(0, 10)))
+                .hasSize(1);
+
+        //when //then — 삭제 전파 (벌크 update → Tag 물리 삭제)
+        tagService.delete(member.getId(), tagId);
+        em.flush();
+        em.clear();
+        assertThat(tagService.findTagName(member.getId(), entryId)).isNull();
     }
 
     @Test
