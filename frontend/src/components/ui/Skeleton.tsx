@@ -20,9 +20,10 @@ export function CardGridSkeleton({ count = 10 }: { count?: number }) {
   );
 }
 
-export function RowSkeleton({ count = 12 }: { count?: number }) {
+/** 대시보드 가로 목록의 자리지킴 — GameRow와 **같은 --card 식**을 써야 뜰 때 안 튄다 */
+export function RowSkeleton({ count = 10 }: { count?: number }) {
   return (
-    <div className="grid grid-cols-3 gap-4 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10">
+    <div className="grid grid-flow-col gap-4 overflow-hidden auto-cols-[var(--card)] [--card:calc((100%_-_5rem)_/_6)] lg:[--card:calc((100%_-_7rem)_/_8)] xl:[--card:calc((100%_-_9rem)_/_10)]">
       {Array.from({ length: count }, (_, index) => (
         <div key={index} className="flex flex-col">
           <Skeleton className="mb-4 aspect-[3/4] w-full rounded-xl" />

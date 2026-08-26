@@ -228,7 +228,7 @@ class HttpIgdbClientTest {
     /** min-call-interval을 0으로 둔다 — 테스트에 260ms짜리 sleep이 끼면 안 된다 */
     private IgdbProperties properties() {
         return new IgdbProperties("https://api.igdb.com/v4", null, "cid", "secret",
-                null, null, 20, null, Duration.ZERO);
+                null, null, 20, null, Duration.ZERO, Duration.ZERO, null);
     }
 
     /** 토큰 발급 자체는 IgdbTokenProviderTest가 본다. 여기서는 "몇 번 갈아탔나"만 필요하다 */
@@ -238,7 +238,7 @@ class HttpIgdbClientTest {
 
         StubTokenProvider() {
             super(RestClient.create(), new IgdbProperties(null, null, "cid", "secret",
-                    null, null, 20, null, Duration.ZERO));
+                    null, null, 20, null, Duration.ZERO, Duration.ZERO, null));
         }
 
         @Override

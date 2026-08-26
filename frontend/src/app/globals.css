@@ -114,6 +114,18 @@
     outline: 1px solid rgba(255, 255, 255, 0.6);
     outline-offset: 2px;
   }
+
+  /*
+   * 스크롤바는 문서가 아니라 **main 안에** 있다 (main이 overflow-y-auto다).
+   * 그래서 main의 내용 중앙은 스크롤바 폭의 절반만큼 왼쪽으로 밀리는데,
+   * 헤더는 fixed라 뷰포트 기준으로 가운데를 잡는다 — 심볼이 본문 중앙과 안 맞았다.
+   *
+   * both-edges는 거터를 **양쪽에** 잡아 두 중앙을 일치시킨다.
+   * 오버레이 스크롤바(맥 기본)에서는 폭이 0이라 아무 일도 안 일어난다
+   */
+  main {
+    scrollbar-gutter: stable both-edges;
+  }
 }
 
 /*

@@ -22,6 +22,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -259,8 +260,17 @@ public class StatsQueryService {
         Map<String, Map<String, BigDecimal>> buckets = new TreeMap<>();
         Set<String> currencies = new TreeSet<>();
 
+        /*
+         * 이름은 금액과 **따로 모은다.** 한 맵에 섞으면 구독을 앞세우는 순서를 못 지킨다.
+         * LinkedHashSet이라 같은 달에 같은 항목을 두 번 사도(본편+DLC) 이름은 한 번만 남는다 —
+         * 영수증이 아니라 "무엇에 썼나"를 보여주는 줄이라 중복은 고장으로 보인다
+         */
+        Map<String, Set<String>> gameNames = new TreeMap<>();
+        Map<String, Set<String>> subscriptionNames = new TreeMap<>();
+
         List<Tuple> purchases = queryFactory
-                .select(acquisition.acquiredOn, acquisition.price.currency, acquisition.price.amount)
+                .select(acquisition.acquiredOn, acquisition.price.currency, acquisition.price.amount,
+                        acquisition.backlogEntry.displayName)
                 .from(acquisition)
                 .where(acquisition.backlogEntry.member.id.eq(memberId),
                         acquisition.backlogEntry.deletedAt.isNull(),
@@ -269,16 +279,22 @@ public class StatsQueryService {
                 .fetch();
 
         for (Tuple row : purchases) {
-            add(buckets, currencies,
-                    YearMonth.from(row.get(acquisition.acquiredOn)),
+            YearMonth month = YearMonth.from(row.get(acquisition.acquiredOn));
+            add(buckets, currencies, month,
                     row.get(acquisition.price.currency),
                     row.get(acquisition.price.amount));
+
+            String name = row.get(acquisition.backlogEntry.displayName);
+            if (name != null) {
+                gameNames.computeIfAbsent(month.toString(), m -> new TreeSet<>()).add(name);
+            }
         }
 
-        spreadSubscriptions(memberId, buckets, currencies);
+        spreadSubscriptions(memberId, buckets, currencies, subscriptionNames);
 
         List<MonthlySpending.Bucket> months = buckets.entrySet().stream()
-                .map(e -> new MonthlySpending.Bucket(e.getKey(), e.getValue()))
+                .map(e -> new MonthlySpending.Bucket(e.getKey(), e.getValue(),
+                        itemsOf(subscriptionNames.get(e.getKey()), gameNames.get(e.getKey()))))
                 .toList();
 
         return new MonthlySpending(List.copyOf(currencies), months,
@@ -292,12 +308,13 @@ public class StatsQueryService {
      * "그 달에 실제로 나간 돈"이 아니게 되고, 꺾은선의 뜻이 지출에서 상각으로 바뀐다
      */
     private void spreadSubscriptions(Long memberId, Map<String, Map<String, BigDecimal>> buckets,
-                                     Set<String> currencies) {
+                                     Set<String> currencies, Map<String, Set<String>> names) {
         QSubscription subscription = QSubscription.subscription;
 
         List<Tuple> rows = queryFactory
                 .select(subscription.fee.currency, subscription.fee.amount,
-                        subscription.billingCycle, subscription.startedOn, subscription.endedOn)
+                        subscription.billingCycle, subscription.startedOn, subscription.endedOn,
+                        subscription.serviceName)
                 .from(subscription)
                 .where(subscription.member.id.eq(memberId), subscription.fee.amount.isNotNull())
                 .fetch();
@@ -318,9 +335,15 @@ public class StatsQueryService {
             YearMonth cursor = YearMonth.from(startedOn);
             int step = row.get(subscription.billingCycle) == BillingCycle.YEARLY ? 12 : 1;
 
+            String serviceName = row.get(subscription.serviceName);
             while (!cursor.isAfter(until)) {
                 add(buckets, currencies, cursor,
                         row.get(subscription.fee.currency), row.get(subscription.fee.amount));
+                if (serviceName != null) {
+                    // (구독)을 붙여 게임과 구별한다 — 이름만으로는 둘이 안 갈린다
+                    names.computeIfAbsent(cursor.toString(), m -> new TreeSet<>())
+                            .add(serviceName + "(구독)");
+                }
                 cursor = cursor.plusMonths(step);
             }
         }
@@ -352,6 +375,18 @@ public class StatsQueryService {
         currencies.add(currency);
         buckets.computeIfAbsent(month.toString(), m -> new TreeMap<>())
                 .merge(currency, amount, BigDecimal::add);
+    }
+
+    /** 구독 먼저, 그다음 게임. 각 무리 안에서는 이름순(TreeSet)이라 순서가 흔들리지 않는다 */
+    private List<String> itemsOf(Set<String> subscriptions, Set<String> games) {
+        List<String> items = new ArrayList<>();
+        if (subscriptions != null) {
+            items.addAll(subscriptions);
+        }
+        if (games != null) {
+            items.addAll(games);
+        }
+        return items;
     }
 
     private long billingCount(BillingCycle cycle, LocalDate from, LocalDate to) {

@@ -67,6 +67,18 @@ public class GlobalExceptionHandler {
                         template.formatted(e.getTargetId())));
     }
 
+    /**
+     * 429 — 지금은 못 받지만 잠시 뒤엔 된다.
+     *
+     * 502(ExternalApiException)로 내리지 않는 이유 — 외부가 고장 난 게 아니라
+     * **우리가 스스로 막은 것**이다. 사용자에게도 "오류"가 아니라 "지금은 붐빈다"로 보여야 한다
+     */
+    @ExceptionHandler(TooManyRequestsException.class)
+    public ResponseEntity<ErrorResponse> handleTooManyRequests(TooManyRequestsException e) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(new ErrorResponse(e.getCode(), e.getMessage()));
+    }
+
     /** 409 — 중복·상태 충돌 */
     @ExceptionHandler(ConflictException.class)
     public ResponseEntity<ErrorResponse> handleConflict(ConflictException e) {

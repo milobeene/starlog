@@ -14,7 +14,8 @@ export default function PosterCard({
   name: string;
   coverUrl: string | null;
   coverImageId: string | null;
-  meta: string;
+  /** 문자열이 아니라 노드다 — 평점 줄은 별 아이콘을 함께 그린다 */
+  meta: React.ReactNode;
   metaClassName?: string;
 }) {
   return (
@@ -22,10 +23,12 @@ export default function PosterCard({
       <div className="mb-4">
         <GameCover coverUrl={coverUrl} coverImageId={coverImageId} name={name} />
       </div>
-      <h4 className="mb-1 line-clamp-1 text-sm leading-snug font-medium">
+      {/* GameCard와 같은 규칙 — 한 줄, 넘치면 `…`, 전체는 title로 */}
+      <h4 className="mb-1 truncate text-sm leading-snug font-medium" title={name}>
         {name}
       </h4>
-      <div className={`num text-xs ${metaClassName}`}>{meta}</div>
+      {/* 이름(14px)보다 한 칸만 작게 — text-xs는 커버 폭에 비해 너무 잘게 보였다 */}
+      <div className={`num text-[13px] ${metaClassName}`}>{meta}</div>
     </Link>
   );
 }

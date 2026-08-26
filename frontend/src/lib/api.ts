@@ -130,7 +130,22 @@ export const ERROR = {
   APPROVAL_PENDING: "APPROVAL_PENDING",
   FORBIDDEN: "FORBIDDEN",
   REVIVABLE: "REVIVABLE",
+  /** 429 — 앱 전체가 외부 DB 한도에 닿았다. **1초 안에 풀린다** */
+  CATALOG_BUSY: "CATALOG_BUSY",
+  /** 429 — 내 하루치를 다 썼다. 자정에 풀린다 */
+  QUOTA_EXCEEDED: "QUOTA_EXCEEDED",
 } as const;
+
+/**
+ * 429는 **오류가 아니라 "지금은 안 된다"**다. 두 뜻이 한 상태코드에 있어 code로 가른다.
+ *
+ * 서버가 사람이 읽을 문구를 이미 담아 보내므로 그대로 쓴다 —
+ * 여기서 문구를 또 쓰면 서버와 화면이 다른 말을 하게 된다
+ */
+export function busyMessage(error: unknown): string | null {
+  if (!(error instanceof ApiError) || error.status !== 429) return null;
+  return error.message || "지금은 요청이 많습니다. 잠시 후 다시 시도해 주세요.";
+}
 
 export function isUnauthorized(error: unknown): boolean {
   return (

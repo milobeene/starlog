@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Dropdown from "@/components/ui/Dropdown";
+import HeaderSymbol from "./HeaderSymbol";
 import { logout, useSession } from "@/lib/session";
 
 const LEFT = [{ href: "/dashboard", label: "Dashboard" }];
@@ -66,23 +67,7 @@ export default function AppHeader() {
           </div>
 
           {/* 심볼은 장식이다 — 링크가 아니다. 나가는 출구는 왼쪽 워드마크 하나면 된다 */}
-          {/*
-            shapeRendering=geometricPrecision — 브라우저가 속도보다 **정밀도**를 택하게 한다.
-            기본값(auto)은 작은 도형에서 픽셀 격자에 맞추려다 곡선을 계단으로 만든다.
-            mix-blend-mode가 이 요소를 별도 합성 레이어로 올리는 것도 겹쳐 더 도드라진다
-          */}
-          <svg
-            viewBox="0 0 100 100"
-            aria-hidden
-            shapeRendering="geometricPrecision"
-            className="mx-4 h-7 w-7 shrink-0 text-white"
-            fill="currentColor"
-          >
-            <path
-              fillRule="evenodd"
-              d="M50 3 Q60.5 39.5 97 50 Q60.5 60.5 50 97 Q39.5 60.5 3 50 Q39.5 39.5 50 3 Z M50 33 Q55 45 67 50 Q55 55 50 67 Q45 55 33 50 Q45 45 50 33 Z"
-            />
-          </svg>
+          <HeaderSymbol />
 
           <div className="flex h-full w-44 items-center justify-start">
             {RIGHT.map((item) => (

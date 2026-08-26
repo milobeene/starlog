@@ -1,5 +1,6 @@
 package com.milobeene.starlog.member.controller;
 
+import com.milobeene.starlog.common.quota.QuotaGuard;
 import com.milobeene.starlog.common.web.LoginMember;
 import com.milobeene.starlog.member.dto.MeResponse;
 import com.milobeene.starlog.member.dto.OptionsResponse;
@@ -21,6 +22,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/me")
 @RequiredArgsConstructor
@@ -30,11 +33,26 @@ public class MeController {
     private final MemberService memberService;
     private final WithdrawalService withdrawalService;
     private final GoogleAccountService googleAccountService;
+    /* WEB-ONLY: 일일 쿼터 (docs/web-only-inventory.md) */
+    private final QuotaGuard quotaGuard;
 
     /** 프로필 / 설정 (화면 4) */
     @GetMapping
     public MeResponse me(@LoginMember Long memberId) {
         return meQueryService.findMe(memberId);
+    }
+
+    /**
+     * WEB-ONLY: 오늘 남은 쿼터 (docs/capacity-planning.md §2-B).
+     *
+     * **"모르고 막히는 것"보다 "하루에 몇 건까지인지 보이는 것"이 낫다**는 방침의 화면 쪽 절반이다.
+     *
+     * 쿼터가 없는 빌드에서는 `NoOpQuotaGuard`가 빈 목록을 준다 — 404가 아니라 빈 배열인 이유는
+     * 프론트가 `length === 0`으로 섹션을 통째로 안 그리면 되기 때문이다. 에러 처리가 안 늘어난다
+     */
+    @GetMapping("/quota")
+    public List<QuotaGuard.QuotaStatus> quota(@LoginMember Long memberId) {
+        return quotaGuard.statusOf(memberId);
     }
 
     /** 편집 폼 선택지 (화면 2·4 공용) */
@@ -46,7 +64,8 @@ public class MeController {
     @PutMapping("/profile")
     public void updateProfile(@LoginMember Long memberId,
                               @Valid @RequestBody ProfileUpdateRequest request) {
-        memberService.updateProfile(memberId, request.nickname(), request.memo());
+        memberService.updateProfile(memberId, request.nickname(), request.memo(),
+                request.backgroundColors());
     }
 
     /**

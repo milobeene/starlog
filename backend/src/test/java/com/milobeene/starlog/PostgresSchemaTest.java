@@ -95,7 +95,8 @@ class PostgresSchemaTest {
                         + " and table_type = 'BASE TABLE'", Integer.class))
                 // 25 → 24: 태그 조인 테이블이 사라졌다 (§6.7 v1.6)
                 // 24 → 26: V2가 spring_session 2개를 더한다 (O-4)
-                .isEqualTo(26);
+                // 26 → 27: V3이 usage_quota를 더한다 (일일 쿼터, WEB-ONLY)
+                .isEqualTo(27);
     }
 
     @Test

@@ -35,7 +35,8 @@ public record MeResponse(
      * `googleSubject` 자체를 내리지 않는 건 구글 계정 식별자라 밖에 나갈 값이 아니기 때문
      */
     public record Profile(Long memberId, String email, String nickname, String memo,
-                          boolean googleLinked, boolean hasPassword, MemberRole role) {
+                          boolean googleLinked, boolean hasPassword, MemberRole role,
+                          List<String> backgroundColors) {
 
         /**
          * `role`은 화면이 관리자 메뉴를 보일지 정하는 데만 쓴다 — **방어선이 아니다.**
@@ -43,11 +44,15 @@ public record MeResponse(
          * 메뉴가 보일 뿐 호출은 403이다 (AUTH-P2)
          */
         static Profile from(Member member) {
+            // **null이면 빈 리스트가 아니라 null로 내린다** — "기본값을 따른다"와
+            // "다섯 칸이 비었다"는 다른 뜻이고, 화면은 그 차이로 기본 팔레트를 고른다
+            String colors = member.getBackgroundColors();
             return new Profile(member.getId(), member.getEmail(),
                     member.getNickname(), member.getMemo(),
                     member.getGoogleSubject() != null,
                     member.hasPassword(),
-                    member.getRole());
+                    member.getRole(),
+                    colors == null ? null : List.of(colors.split(",")));
         }
     }
 

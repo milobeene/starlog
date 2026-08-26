@@ -15,7 +15,10 @@ import GoogleResultBanner from "@/components/auth/GoogleResultBanner";
 import MoneyText from "@/components/ui/Money";
 import { useApi } from "@/lib/useApi";
 import { api, ApiError, ERROR, errorMessage } from "@/lib/api";
-import { logout } from "@/lib/session";
+import { logout, refreshSession } from "@/lib/session";
+import PaletteEditor from "@/components/settings/PaletteEditor";
+import QuotaSection from "@/components/settings/QuotaSection";
+import { paletteOf, toPayload } from "@/lib/palette";
 import { BILLING_CYCLE_LABEL } from "@/lib/labels";
 import type {
   CompanyDictionary,
@@ -133,6 +136,9 @@ function SettingsContent() {
               </div>
             )}
           </SettingsSection>
+
+          {/* WEB-ONLY: 쿼터가 없는 빌드에서는 스스로 아무것도 안 그린다 */}
+          <QuotaSection />
 
           {/*
             메모는 자유 서식이라 프로필 폼 한 줄로는 좁다.
@@ -808,25 +814,43 @@ function ProfileDialog({
 }) {
   const [nickname, setNickname] = useState(profile.nickname);
   const [memo, setMemo] = useState(profile.memo ?? "");
+  // 아직 저장 안 한 값이다. 취소하면 그냥 버려진다 — 그래서 상태의 주인이 여기 하나여야 한다
+  const [colors, setColors] = useState(() => [...paletteOf(profile.backgroundColors)]);
 
   return (
     <FormDialog
       title={field === "nickname" ? "프로필" : "메모"}
       onClose={onClose}
       onSubmit={async () => {
-        await api.put("/api/me/profile", { nickname, memo: memo.trim() || null });
+        await api.put("/api/me/profile", {
+          nickname,
+          memo: memo.trim() || null,
+          // 기본값과 같으면 빈 문자열 → 서버가 null로 되돌린다 ("안 고름")
+          backgroundColors: toPayload(colors),
+        });
+        /*
+         * 세션까지 다시 받는다. onSaved()는 이 화면의 useApi만 새로 고치는데,
+         * **배경은 세션 스토어를 본다** — 이게 없으면 새로고침 전까지 옛 색으로 남는다
+         */
+        await refreshSession();
         onSaved();
       }}
     >
       {field === "nickname" ? (
-        <Field label="Nickname">
-          <input
-            value={nickname}
-            onChange={(event) => setNickname(event.target.value)}
-            maxLength={30}
-            className={FIELD_INPUT}
-          />
-        </Field>
+        <>
+          <Field label="Nickname">
+            <input
+              value={nickname}
+              onChange={(event) => setNickname(event.target.value)}
+              maxLength={30}
+              className={FIELD_INPUT}
+            />
+          </Field>
+
+          <Field label="Background" hint="고르는 즉시 위 창에 반영됩니다 · 저장을 눌러야 실제로 바뀝니다">
+            <PaletteEditor colors={colors} onChange={setColors} />
+          </Field>
+        </>
       ) : (
         <Field label="Memo" hint="마크다운을 지원합니다 · Enter로 목록 이어쓰기, Tab으로 들여쓰기 · 2,000자 이내">
           <MarkdownTextarea value={memo} onChange={setMemo} rows={12} maxLength={2000} />

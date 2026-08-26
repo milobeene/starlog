@@ -28,7 +28,12 @@ export default function GameCard({ card }: { card: BacklogCard }) {
         </div>
       </div>
 
-      <h4 className="mb-1.5 line-clamp-2 text-sm leading-snug font-medium">
+      {/*
+        한 줄로 자르고 넘치면 `…`. 두 줄이던 것을 줄인 것이라 카드가 그만큼 짧아졌다 —
+        모든 카드가 똑같이 짧아지므로 그리드 행 높이는 여전히 고르다.
+        title을 함께 두는 이유: 잘린 이름을 확인할 방법이 이것뿐이다
+      */}
+      <h4 className="mb-1.5 truncate text-sm leading-snug font-medium" title={card.displayName}>
         {card.displayName}
       </h4>
 

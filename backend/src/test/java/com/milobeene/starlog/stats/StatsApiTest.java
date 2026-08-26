@@ -269,6 +269,54 @@ class StatsApiTest extends ControllerTestSupport {
     }
 
     @Test
+    public void 월별_지출에_그_달에_산_게임_이름이_함께_온다() throws Exception {
+        //given — 금액만 있으면 "이 달에 왜 이만큼 썼지"에 답이 안 된다
+        Member member = saveMember();
+        Long a = addEntry(member, saveGame("Celeste"));
+        Long b = addEntry(member, saveGame("Hades"));
+        addPurchaseOn(member, a, "16500", "KRW", "2026-01-15");
+        addPurchaseOn(member, b, "20000", "KRW", "2026-01-20");
+
+        //when //then — 이름순이라 순서가 흔들리지 않는다
+        mockMvc.perform(get("/api/stats/spending/monthly").header("X-Member-Id", member.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.months[0].items.length()").value(2))
+                .andExpect(jsonPath("$.months[0].items[0]").value("Celeste"))
+                .andExpect(jsonPath("$.months[0].items[1]").value("Hades"));
+    }
+
+    @Test
+    public void 같은_달에_같은_항목을_두_번_사도_이름은_한_번만_나온다() throws Exception {
+        //given — 본편 + DLC처럼 취득이 둘이어도 이름이 겹쳐 보이면 고장으로 읽힌다
+        Member member = saveMember();
+        Long entry = addEntry(member, saveGame("Celeste"));
+        addPurchaseOn(member, entry, "16500", "KRW", "2026-02-01");
+        addPurchaseOn(member, entry, "5000", "KRW", "2026-02-10");
+
+        //when //then — 금액은 합쳐지고 이름은 하나다
+        mockMvc.perform(get("/api/stats/spending/monthly").header("X-Member-Id", member.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.months[0].amounts.KRW").value(21500))
+                .andExpect(jsonPath("$.months[0].items.length()").value(1))
+                .andExpect(jsonPath("$.months[0].items[0]").value("Celeste"));
+    }
+
+    @Test
+    public void 구독이_게임보다_앞에_오고_구독_표시가_붙는다() throws Exception {
+        //given — 구독은 매달 고정으로 깔리는 바닥이라 먼저 읽혀야 나머지가 변동분으로 보인다
+        Member member = saveMember();
+        Long entry = addEntry(member, saveGame("Celeste"));
+        addPurchaseOn(member, entry, "16500", "KRW", "2026-01-15");
+        addSubscription(member, "PS Plus", "10000", "KRW", "MONTHLY", "2026-01-01", "2026-01-31");
+
+        //when //then
+        mockMvc.perform(get("/api/stats/spending/monthly").header("X-Member-Id", member.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.months[0].items[0]").value("PS Plus(구독)"))
+                .andExpect(jsonPath("$.months[0].items[1]").value("Celeste"));
+    }
+
+    @Test
     public void 같은_달_취득은_합산된다() throws Exception {
         //given
         Member member = saveMember();

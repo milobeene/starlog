@@ -1,6 +1,11 @@
 import Link from "next/link";
 
-/** 대시보드 목록 3줄의 머리 — 제목 + `More →` */
+/**
+ * 섹션 머리 — 제목, 그리고 선택적으로 오른쪽 끝에 `More →`.
+ *
+ * 대시보드 목록 3줄은 moreHref를 **안 넘긴다** — 줄 오른쪽 끝의 페이드 위에
+ * More 버튼이 따로 있어서, 여기에도 두면 한 섹션에 같은 링크가 둘이 된다
+ */
 export default function SectionHeader({ title, moreHref }: { title: string; moreHref?: string }) {
   return (
     <div className="mb-8 flex items-end justify-between">

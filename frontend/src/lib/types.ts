@@ -206,6 +206,12 @@ export interface Profile {
   hasPassword: boolean;
   /** 관리자 메뉴를 보일지 정하는 데만 쓴다. 진짜 방어선은 서버의 hasRole (AUTH-P2) */
   role: "USER" | "ADMIN";
+  /**
+   * 유체 배경 색 5개. **null이면 "안 골랐다"**는 뜻이고 기본 팔레트를 쓴다 —
+   * 빈 배열과 구분해야 기본값을 나중에 바꿔도 안 만진 회원이 따라온다.
+   * 읽을 때는 `lib/palette.ts`의 paletteOf()만 쓴다
+   */
+  backgroundColors: string[] | null;
 }
 
 /** 마스터에서 고르는 게 아니라 유형·라벨을 직접 적는다. memo는 마크다운 */
@@ -309,7 +315,8 @@ export interface PlaytimeStats {
 /** period는 `2026-01`. **통화를 합치지 않는다** — 환산은 범위 밖이라 축이 통화별로 갈린다 */
 export interface MonthlySpending {
   currencies: string[];
-  months: { period: string; amounts: Record<string, number> }[];
+  /** items — 그 달에 돈이 나간 것들의 이름. **구독이 먼저**, 그다음 게임(오버라이드 반영된 표시명) */
+  months: { period: string; amounts: Record<string, number>; items: string[] }[];
   yearlyAverages: { year: number; amounts: Record<string, number> }[];
 }
 
@@ -363,7 +370,40 @@ export interface OptionsResponse {
   genreDictionary: string[];
 }
 
+/* ── 일일 쿼터 (GET /api/me/quota) ─────────────────────────── */
+
+/**
+ * WEB-ONLY. **빈 배열이면 화면이 이 섹션을 통째로 안 그린다** —
+ * 쿼터가 없는 빌드(로컬 앱)에서 서버가 빈 배열을 주므로 에러 처리가 안 늘어난다
+ */
+export interface QuotaStatus {
+  kind: "GAME_SEARCH" | "GAME_ADD" | "COVER_UPLOAD";
+  label: string;
+  used: number;
+  limit: number;
+}
+
 /* ── 관리자 (GET /api/admin/**) ────────────────────────────── */
+
+/** WEB-ONLY: 시스템 탭. igdb·database.sizeBytes는 null일 수 있다 (DTO 주석 참고) */
+export interface SystemStatus {
+  igdb: {
+    calls: number;
+    rejected: number;
+    maxConcurrent: number;
+    minCallIntervalMillis: number;
+  } | null;
+  storage: { coverCount: number; totalBytes: number };
+  database: { product: string; sizeBytes: number | null };
+  quotaToday: {
+    memberId: number;
+    nickname: string;
+    kind: string;
+    label: string;
+    used: number;
+    limit: number;
+  }[];
+}
 
 export interface AdminMember {
   memberId: number;

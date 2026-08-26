@@ -158,7 +158,7 @@ class DeviceServiceTest {
     @Test
     public void 프로필을_수정할_수_있다() {
         //when — FR-AUTH-11의 데이터 부분
-        memberService.updateProfile(memberId, "  밀로  ", "  게임 많이 삼  ");
+        memberService.updateProfile(memberId, "  밀로  ", "  게임 많이 삼  ", null);
 
         em.flush();
         em.clear();
@@ -172,7 +172,7 @@ class DeviceServiceTest {
     @Test
     public void 닉네임을_비우면_예외가_발생한다() {
         //when & then
-        assertThatThrownBy(() -> memberService.updateProfile(memberId, "   ", null))
+        assertThatThrownBy(() -> memberService.updateProfile(memberId, "   ", null, null))
                 .isInstanceOf(InvalidInputException.class);
     }
 

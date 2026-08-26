@@ -101,7 +101,7 @@ class IgdbTokenProviderTest {
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
 
         IgdbTokenProvider provider = new IgdbTokenProvider(builder.build(),
-                new IgdbProperties(null, null, null, null, null, null, 20, null, null));
+                new IgdbProperties(null, null, null, null, null, null, 20, null, null, null, null));
 
         //when //then
         assertThatThrownBy(provider::token)
@@ -126,6 +126,6 @@ class IgdbTokenProviderTest {
 
     private IgdbProperties properties(java.time.Duration renewMargin) {
         return new IgdbProperties(null, "https://id.twitch.tv/oauth2/token", "cid", "secret",
-                null, null, 20, renewMargin, Duration.ZERO);
+                null, null, 20, renewMargin, Duration.ZERO, Duration.ZERO, null);
     }
 }

@@ -82,8 +82,9 @@ class FlywayMigrationTest {
 
         //then
         // 태그 단일화로 34 → 33 (조인 FK 2개 빠지고 tag_id 1개 추가),
-        // 세션 테이블(V2)의 spring_session_attributes_fk가 더해져 34
-        assertThat(count).isEqualTo(34);
+        // 세션 테이블(V2)의 spring_session_attributes_fk가 더해져 34,
+        // V3의 fk_usage_quota_member가 더해져 35
+        assertThat(count).isEqualTo(35);
     }
 
     @Test

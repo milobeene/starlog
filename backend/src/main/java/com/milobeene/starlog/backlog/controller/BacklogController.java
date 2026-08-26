@@ -20,6 +20,8 @@ import com.milobeene.starlog.backlog.dto.PersonalRecordRequest;
 import com.milobeene.starlog.backlog.service.BacklogFacetQueryService;
 import com.milobeene.starlog.backlog.service.BacklogService;
 import com.milobeene.starlog.common.dto.IdResponse;
+import com.milobeene.starlog.common.quota.QuotaGuard;
+import com.milobeene.starlog.common.quota.QuotaKind;
 import com.milobeene.starlog.game.service.GameResolver;
 import com.milobeene.starlog.tag.service.GenreService;
 import com.milobeene.starlog.tag.service.TagService;
@@ -54,6 +56,14 @@ public class BacklogController {
     private final CoverImageService coverImageService;
     private final TagService tagService;
     private final GenreService genreService;
+    /*
+     * WEB-ONLY: 일일 쿼터 (docs/web-only-inventory.md).
+     *
+     * **컨트롤러에 두는 이유** — 쿼터는 도메인 규칙이 아니라 "한 서버를 여럿이 나눠 쓴다"에서
+     * 나온 웹 엣지의 정책이다. 서비스 안에 넣으면 로컬 앱으로 갈 때 도메인을 헤집어야 한다.
+     * 여기 있으면 이 줄들만 지우면 된다
+     */
+    private final QuotaGuard quotaGuard;
 
     /**
      * 백로그 목록 (화면 1). 검색·필터·정렬·페이징 (FR-QRY-01~04).
@@ -129,6 +139,8 @@ public class BacklogController {
     @PostMapping
     public ResponseEntity<IdResponse> add(@LoginMember Long memberId,
                                           @Valid @RequestBody BacklogAddRequest request) {
+        quotaGuard.consume(memberId, QuotaKind.GAME_ADD);   // WEB-ONLY
+
         Long gameId = gameResolver.resolve(request.gameId(), request.externalId());
         Long entryId = backlogService.addToBacklog(memberId, gameId);
 
@@ -147,6 +159,7 @@ public class BacklogController {
     public CoverUploadUrlResponse issueCoverUploadUrl(
             @LoginMember Long memberId, @PathVariable Long entryId,
             @Valid @RequestBody CoverUploadUrlRequest request) {
+        quotaGuard.consume(memberId, QuotaKind.COVER_UPLOAD);   // WEB-ONLY
 
         return coverImageService.issueUploadUrl(
                 memberId, entryId, request.fileName(), request.sizeBytes());

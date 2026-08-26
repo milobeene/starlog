@@ -3,6 +3,7 @@ package com.milobeene.starlog.game.client;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.milobeene.starlog.common.exception.ExternalApiException;
+import com.milobeene.starlog.common.exception.TooManyRequestsException;
 import com.milobeene.starlog.common.exception.NotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.ParameterizedTypeReference;
@@ -10,6 +11,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -50,11 +55,32 @@ public class HttpIgdbClient implements GameCatalogClient {
     private final Object rateLock = new Object();
     private long lastCallAtMillis;
 
+    /**
+     * 동시에 열어둘 요청 수. IGDB는 초당 4건과 **별개로** 동시 열린 요청 8개를 제한한다.
+     * 공정 모드(true) — 먼저 온 스레드가 먼저 자리를 잡는다. 아니면 운 나쁜 요청이
+     * 계속 밀려 매번 429를 받는다
+     */
+    private final Semaphore gate;
+
+    /** WEB-ONLY 성격의 계측 — /admin 시스템 탭이 읽는다. 프로세스가 내려가면 0으로 돌아간다 */
+    private final AtomicLong callCount = new AtomicLong();
+    private final AtomicLong rejectedCount = new AtomicLong();
+
     public HttpIgdbClient(RestClient igdbRestClient, IgdbTokenProvider tokenProvider,
                           IgdbProperties properties) {
         this.igdbRestClient = igdbRestClient;
         this.tokenProvider = tokenProvider;
         this.properties = properties;
+        this.gate = new Semaphore(properties.maxConcurrent(), true);
+    }
+
+    /** /admin 시스템 탭용. 누적 호출 수와 자리를 못 잡아 돌려보낸 수 */
+    public long callCount() {
+        return callCount.get();
+    }
+
+    public long rejectedCount() {
+        return rejectedCount.get();
     }
 
     @Override
@@ -150,7 +176,8 @@ public class HttpIgdbClient implements GameCatalogClient {
     }
 
     private <T> T send(String endpoint, String query, ParameterizedTypeReference<T> type, String token) {
-        throttle();
+        throttle();   // 자리를 못 잡으면 여기서 429로 나간다 — 아래 finally까지 오지 않는다
+        callCount.incrementAndGet();
         try {
             return igdbRestClient.post()
                     .uri("/" + endpoint)
@@ -167,33 +194,74 @@ public class HttpIgdbClient implements GameCatalogClient {
             // 타임아웃·연결 실패·429·5xx·역직렬화 실패가 전부 여기로 모인다 (FR-SYS-04)
             log.error("IGDB 호출 실패 — endpoint={}", endpoint, e);
             throw new ExternalApiException(ExternalApiException.Service.GAME_CATALOG, "게임 정보를 가져오지 못했습니다", e);
+
+        } finally {
+            // **실패해도 반드시 돌려준다.** 안 돌려주면 자리가 하나씩 영구히 줄어
+            // 결국 모든 요청이 429가 된다
+            releaseGate();
         }
     }
 
     /**
-     * 초당 4회 제한 대응 (J-7, docs/igdb-survey.md §6-①).
+     * 전역 게이트 — 초당 4회 + 동시 8건 (J-7, docs/capacity-planning.md §2-A).
      *
-     * 지금 사용 패턴(검색 1회·담기 1회)은 개인용이라 사실상 안 걸린다.
-     * 이건 최소한의 안전판이고, **Phase 7 임포트에서 파일 수백 개를 매칭할 때는 부족하다** —
-     * 429 백오프와 큐잉은 M-3에서 제대로 한다
+     * **IGDB 한도는 회원당이 아니라 앱 전체(우리 클라이언트 ID)당이다.** 그래서 회원별
+     * 배분보다 전역 처리율 제한이 먼저다.
+     *
+     * **기다리다 지치면 큐에 세우지 않고 즉시 돌려보낸다.** 무한정 기다리면 밀릴수록
+     * 뒷사람의 대기가 선형으로 늘어나 화면이 멈춘 것처럼 보인다. 초당 4건이라 실제로는
+     * 1초 안에 풀리므로 "바로 다시 시도"가 정직한 안내다.
+     *
+     * 세마포어(동시성)와 간격(처리율)은 **다른 것을 막는다** — 둘 다 필요하다.
+     * 세마포어만 두면 6개가 동시에 나갔다 돌아와 다시 6개가 나가서 초당 4건을 넘고,
+     * 간격만 두면 느린 응답이 쌓여 동시 열린 요청이 8을 넘는다
      */
     private void throttle() {
-        long interval = properties.minCallInterval().toMillis();
-        if (interval <= 0) {
-            return;
+        long maxWait = properties.maxGateWait().toMillis();
+        boolean acquired;
+        try {
+            acquired = maxWait <= 0
+                    ? gate.tryAcquire()
+                    : gate.tryAcquire(maxWait, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ExternalApiException(ExternalApiException.Service.GAME_CATALOG,
+                    "게임 정보 호출 대기 중 중단되었습니다", e);
         }
-        synchronized (rateLock) {
-            long waitMillis = lastCallAtMillis + interval - System.currentTimeMillis();
-            if (waitMillis > 0) {
-                try {
-                    Thread.sleep(waitMillis);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    throw new ExternalApiException(ExternalApiException.Service.GAME_CATALOG, "게임 정보 호출 대기 중 중단되었습니다", e);
-                }
+
+        if (!acquired) {
+            rejectedCount.incrementAndGet();
+            throw new TooManyRequestsException("CATALOG_BUSY",
+                    "지금 여러 분이 동시에 검색 중입니다. 바로 다시 시도해 주세요");
+        }
+
+        try {
+            long interval = properties.minCallInterval().toMillis();
+            if (interval <= 0) {
+                return;
             }
-            lastCallAtMillis = System.currentTimeMillis();
+            /*
+             * 간격 대기는 자리를 **잡은 채로** 한다. 놓고 기다리면 그 사이 다른 스레드가
+             * 들어와 같은 순간에 나가버려 간격이 무의미해진다
+             */
+            synchronized (rateLock) {
+                long waitMillis = lastCallAtMillis + interval - System.currentTimeMillis();
+                if (waitMillis > 0) {
+                    Thread.sleep(waitMillis);
+                }
+                lastCallAtMillis = System.currentTimeMillis();
+            }
+        } catch (InterruptedException e) {
+            releaseGate();
+            Thread.currentThread().interrupt();
+            throw new ExternalApiException(ExternalApiException.Service.GAME_CATALOG,
+                    "게임 정보 호출 대기 중 중단되었습니다", e);
         }
+    }
+
+    /** 자리를 돌려준다. **호출이 성공하든 실패하든 반드시** 불려야 한다 (finally) */
+    private void releaseGate() {
+        gate.release();
     }
 
     // ── 변환

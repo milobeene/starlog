@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Money, MonthlySpending } from "@/lib/types";
 import MoneyText from "@/components/ui/Money";
 
@@ -37,6 +37,15 @@ export default function MonthlySpendingChart({ data }: { data: MonthlySpending }
     return Array.from({ length: 12 }, (_, index) => {
       const period = `${year}-${String(index + 1).padStart(2, "0")}`;
       return byMonth.get(period) ?? null;
+    });
+  }, [data.months, year]);
+
+  /** 같은 12칸에 이름 목록도 깔아둔다 — 툴팁이 hover 인덱스 하나로 둘 다 집는다 */
+  const itemsByMonth = useMemo(() => {
+    const byMonth = new Map(data.months.map((month) => [month.period, month.items]));
+    return Array.from({ length: 12 }, (_, index) => {
+      const period = `${year}-${String(index + 1).padStart(2, "0")}`;
+      return byMonth.get(period) ?? [];
     });
   }, [data.months, year]);
 
@@ -229,6 +238,18 @@ export default function MonthlySpendingChart({ data }: { data: MonthlySpending }
                   </span>
                 ))
               )}
+
+              {/*
+                구분선 + 그 달에 돈이 나간 것들. 금액만 있으면 "왜 이만큼 썼지"에 답이 안 된다.
+                self-stretch라 위아래 글자 높이에 맞춰 늘어난다 — 고정 높이를 주면 어긋난다
+              */}
+              {itemsByMonth[hover].length > 0 && (
+                <>
+                  <span aria-hidden className="w-px self-stretch bg-white/15" />
+                  {/* key가 달이라 다른 달로 옮기면 리마운트된다 — 펼친 상태가 따라오지 않는다 */}
+                  <SpendingItems key={hover} items={itemsByMonth[hover]} />
+                </>
+              )}
             </>
           )}
         </div>
@@ -240,6 +261,61 @@ export default function MonthlySpendingChart({ data }: { data: MonthlySpending }
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * 그 달에 돈이 나간 것들 — 한 줄로 흘리고 넘치면 `…`.
+ *
+ * **잘렸을 때만 펼치기 버튼이 뜬다.** 항상 띄우면 다 보이는데도 누를 게 있어 헷갈린다.
+ * 잘림 판정은 `scrollWidth > clientWidth`인데, 이건 **그려진 뒤에야 알 수 있다** —
+ * 그래서 ResizeObserver로 잰다.
+ *
+ * 관찰자를 쓰는 두 번째 이유 — **박스 폭이 변할 때도 다시 재야 한다**(창 크기, 통화 개수).
+ * 내용이 바뀌면 effect가 다시 붙고, observe()가 초기 콜백을 한 번 쏴서 재측정된다.
+ *
+ * 펼침 상태를 effect로 되돌리지 않는다. 호출부가 달 인덱스를 key로 주므로
+ * 달이 바뀌면 이 컴포넌트가 통째로 새로 뜬다 — 상태 초기화는 리마운트가 하는 일이다
+ */
+function SpendingItems({ items }: { items: string[] }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [clipped, setClipped] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  const text = items.join(", ");
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+
+    const measure = () => setClipped(element.scrollWidth > element.clientWidth + 1);
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [text]);
+
+  return (
+    <span className="flex min-w-0 flex-1 items-baseline gap-2">
+      <span
+        ref={ref}
+        // 펼치면 줄바꿈으로 풀린다. min-w-0이 없으면 flex 자식이 안 줄어들어 truncate가 안 먹는다
+        className={`min-w-0 text-white/45 ${expanded ? "break-words whitespace-normal" : "truncate"}`}
+        title={text}
+      >
+        {text}
+      </span>
+
+      {/* 접혀 있고 잘렸을 때, 또는 이미 펼쳤을 때만 보인다 */}
+      {(clipped || expanded) && (
+        <button
+          type="button"
+          onClick={() => setExpanded((prev) => !prev)}
+          className="num shrink-0 text-[10px] text-white/35 underline-offset-2 transition-colors hover:text-white/80 hover:underline"
+        >
+          {expanded ? "접기" : `+${items.length}`}
+        </button>
+      )}
+    </span>
   );
 }
 

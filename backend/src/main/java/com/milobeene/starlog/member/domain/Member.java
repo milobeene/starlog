@@ -49,6 +49,18 @@ public class Member extends BaseEntity {
     private LocalDateTime deletedAt;
 
     /**
+     * 유체 배경 팔레트 — `#rrggbb` 다섯 개를 쉼표로 이은 한 줄.
+     *
+     * **null이면 코드의 기본 팔레트를 따른다.** 가입 시점 색을 박제하지 않으려는 것이다 —
+     * 기본값을 바꾸면 한 번도 안 만진 회원은 자동으로 따라온다.
+     *
+     * 5칸 고정에 순서가 있어 JSON으로 담을 이유가 없다. 숫자(속도·주기·채도)까지
+     * 열게 되면 그때 열을 하나 더 판다.
+     */
+    @Column(length = 64)
+    private String backgroundColors;
+
+    /**
      * 관리자 가입 승인 시각. **null이면 승인 대기**다 (FR-ADM-06).
      *
      * 왜 boolean이 아닌가 — 언제 승인했는지가 감사에 필요하고, `deletedAt`과 같은 규약이라
@@ -186,4 +198,26 @@ public class Member extends BaseEntity {
         this.nickname = normalized;
         this.memo = TextValues.normalize(memo);
     }
+
+    /**
+     * 배경 팔레트 변경. null이면 기본값으로 되돌린다.
+     *
+     * **여기서 형식을 못 박는다.** 이 값은 그대로 셰이더 uniform이 되므로 잘못된 문자열이
+     * 들어오면 화면이 검게 죽는다 — 컨트롤러의 `@Pattern`만 믿지 않는다 (검증 두 겹, dto-design §3).
+     */
+    public void changeBackgroundColors(String colors) {
+        String normalized = TextValues.normalize(colors);
+        if (normalized == null) {
+            this.backgroundColors = null;
+            return;
+        }
+        if (!PALETTE.matcher(normalized).matches()) {
+            throw new InvalidInputException("배경 색은 #rrggbb 다섯 개를 쉼표로 이어 주세요");
+        }
+        this.backgroundColors = normalized.toUpperCase();
+    }
+
+    /** `#RRGGBB` ×5, 쉼표 구분. 대소문자는 받아서 위에서 대문자로 통일한다 */
+    private static final java.util.regex.Pattern PALETTE =
+            java.util.regex.Pattern.compile("(#[0-9a-fA-F]{6})(,#[0-9a-fA-F]{6}){4}");
 }

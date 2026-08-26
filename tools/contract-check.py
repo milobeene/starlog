@@ -17,7 +17,8 @@ Jackson 직렬화·중첩·@JsonInclude까지 그대로 드러나기 때문이�
 """
 import json, re, subprocess, sys, pathlib
 
-BASE = "http://localhost:8080"
+# 포트를 인자로 바꿀 수 있다 — 이미 백엔드가 8080에 떠 있을 때 새 코드를 다른 포트에 띄워 대조한다
+BASE = f"http://localhost:{sys.argv[1] if len(sys.argv) > 1 else '8080'}"
 # 저장소 루트 기준 상대 경로. 절대 경로를 박아두면 폴더명이 바뀌는 순간 조용히 깨진다
 TYPES = pathlib.Path(__file__).resolve().parent.parent / "frontend/src/lib/types.ts"
 
@@ -45,6 +46,8 @@ ENDPOINTS = [
     ("/api/admin/members?size=1",  "PageResponse",     ""),
     ("/api/admin/members?size=1",  "AdminMember",      "items[]"),
     ("/api/admin/audit-logs?size=1","AuditLog",        "items[]"),
+    ("/api/me/quota",              "QuotaStatus",      "[]"),
+    ("/api/admin/system",          "SystemStatus",     ""),
 ]
 
 def parse_interfaces(text):

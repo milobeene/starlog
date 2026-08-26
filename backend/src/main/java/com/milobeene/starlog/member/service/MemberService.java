@@ -100,8 +100,10 @@ public class MemberService {
 
     /** 프로필 수정 (FR-AUTH-11의 데이터 부분). 가입·인증은 Phase 3 */
     @Transactional
-    public void updateProfile(Long memberId, String nickname, String memo) {
-        findMember(memberId).updateProfile(nickname, memo);
+    public void updateProfile(Long memberId, String nickname, String memo, String backgroundColors) {
+        Member member = findMember(memberId);
+        member.updateProfile(nickname, memo);
+        member.changeBackgroundColors(backgroundColors);
     }
 
     /**

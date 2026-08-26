@@ -2,6 +2,9 @@ package com.milobeene.starlog.game.controller;
 
 import com.milobeene.starlog.common.dto.IdResponse;
 import com.milobeene.starlog.common.dto.MoneyRequest;
+import com.milobeene.starlog.common.quota.QuotaGuard;
+import com.milobeene.starlog.common.quota.QuotaKind;
+import com.milobeene.starlog.common.web.LoginMember;
 import com.milobeene.starlog.game.dto.GameSearchResponse;
 import com.milobeene.starlog.game.dto.ManualGameRequest;
 import com.milobeene.starlog.game.service.GameSearchService;
@@ -32,13 +35,23 @@ public class GameController {
 
     private final GameSearchService gameSearchService;
     private final GameService gameService;
+    /*
+     * WEB-ONLY: 일일 쿼터 (docs/web-only-inventory.md §5).
+     * 서비스가 아니라 컨트롤러에 두는 이유는 BacklogController의 같은 필드 주석 참고
+     */
+    private final QuotaGuard quotaGuard;
 
     /**
      * 검색 (FR-GAME-01). 로컬 수동 등록 게임 + IGDB 결과를 이어 붙인다.
      * IGDB가 죽어 있으면 502로 끝난다 — 로컬 결과만 조용히 주지 않는다 (J-6)
      */
     @GetMapping
-    public List<GameSearchResponse> search(@RequestParam(required = false) String q) {
+    public List<GameSearchResponse> search(@LoginMember Long memberId,
+                                           @RequestParam(required = false) String q) {
+        // WEB-ONLY: 일일 쿼터 (docs/web-only-inventory.md).
+        // IGDB 한도는 앱 전체 기준이라 한 사람이 다 쓰면 나머지가 막힌다
+        quotaGuard.consume(memberId, QuotaKind.GAME_SEARCH);
+
         return gameSearchService.search(q);
     }
 

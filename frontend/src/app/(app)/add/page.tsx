@@ -9,7 +9,7 @@ import Modal from "@/components/ui/Modal";
 import { Button, Field, FIELD_INPUT } from "@/components/ui/Field";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { coverSrc } from "@/lib/cover";
-import { api, ApiError, ERROR, errorMessage } from "@/lib/api";
+import { api, ApiError, busyMessage, ERROR, errorMessage } from "@/lib/api";
 import type { GameSearchResult } from "@/lib/types";
 
 /** 마스터에 없는 게임은 gameId가 없어 externalId가 유일한 식별자다 */
@@ -65,10 +65,15 @@ export default function AddPage() {
       })
       .catch((caught: unknown) => {
         if (controller.signal.aborted) return;
+        /*
+         * 429는 서버가 사람이 읽을 문구를 담아 준다 — 붐빔("바로 다시")과
+         * 쿼터 소진("자정에")은 대처가 달라서 뭉뚱그리면 안 된다
+         */
         setError(
-          caught instanceof ApiError && caught.status === 502
-            ? "게임 정보 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요."
-            : "검색하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+          busyMessage(caught) ??
+            (caught instanceof ApiError && caught.status === 502
+              ? "게임 정보 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요."
+              : "검색하지 못했습니다. 잠시 후 다시 시도해 주세요."),
         );
         setSearching(false);
       });

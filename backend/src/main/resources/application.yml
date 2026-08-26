@@ -85,6 +85,15 @@ app:
     client-id: ${IGDB_CLIENT_ID:}
     client-secret: ${IGDB_CLIENT_SECRET:}
 
+  # 회원당 일일 한도 (docs/capacity-planning.md §2-B). 최대 사용자 10명 기준.
+  # WEB-ONLY — 로컬 앱(local-app 프로파일)에서는 NoOpQuotaGuard가 붙어 이 값이 안 쓰인다.
+  # 지인이 늘거나 줄면 배포 없이 환경변수로 바꾼다
+  quota:
+    game-search: ${QUOTA_GAME_SEARCH:200}
+    game-add: ${QUOTA_GAME_ADD:50}
+    cover-upload: ${QUOTA_COVER_UPLOAD:20}
+    cover-upload-megabytes: ${QUOTA_COVER_UPLOAD_MB:200}
+
   # 커버 스토리지 (Phase 5). R2가 기본이지만 S3 호환이면 뭐든 된다 —
   # MinIO로 로컬 검증할 때는 endpoint만 바꾼다.
   # 자격증명이 없으면 UnconfiguredFileStorage로 대체되어 기동은 되고 업로드만 502가 된다

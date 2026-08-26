@@ -8,6 +8,7 @@ import DataTable from "@/components/library/DataTable";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { Skeleton } from "@/components/ui/Skeleton";
 import AdminGameMaster from "@/components/admin/AdminGameMaster";
+import AdminSystemTab from "@/components/admin/AdminSystemTab";
 import { useApi } from "@/lib/useApi";
 import { api, qs } from "@/lib/api";
 import { Button, FIELD_DATE, FIELD_INPUT } from "@/components/ui/Field";
@@ -17,6 +18,8 @@ const TABS = [
   { key: "members", label: "회원" },
   { key: "games", label: "게임 마스터" },
   { key: "logs", label: "감사 로그" },
+  /* WEB-ONLY: 로컬 앱에는 남의 사용량을 볼 일이 없다 (docs/web-only-inventory.md) */
+  { key: "system", label: "시스템" },
 ] as const;
 
 type Tab = (typeof TABS)[number]["key"];
@@ -70,6 +73,7 @@ export default function AdminPage() {
         {tab === "members" && <MembersTab />}
         {tab === "games" && <AdminGameMaster />}
         {tab === "logs" && <LogsTab />}
+        {tab === "system" && <AdminSystemTab />}
       </div>
     </main>
   );
