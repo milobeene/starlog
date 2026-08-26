@@ -41,7 +41,7 @@ type Dialog =
   | null
   | { kind: "record" }
   | { kind: "overrides" }
-  | { kind: "tags" }
+  | { kind: "tag" }
   | { kind: "cover" }
   | { kind: "delete" }
   | { kind: "playthrough"; run: Playthrough | null }
@@ -418,13 +418,13 @@ export default function BacklogDetailPage({
                 <h4 className="mb-4 flex items-center justify-between text-xs tracking-wider text-white/40 uppercase">
                   <span className="flex items-center gap-2">
                     <SectionIcon name="tag" className="h-3.5 w-3.5" />
-                    Tags
+                    Tag
                   </span>
-                  <EditButton onClick={() => setDialog({ kind: "tags" })} label="태그 수정" />
+                  <EditButton onClick={() => setDialog({ kind: "tag" })} label="태그 수정" />
                 </h4>
                 <div className="flex flex-wrap gap-2">
-                  {data.tags.length > 0 ? (
-                    data.tags.map((tag) => <Chip key={tag} label={tag} rounded />)
+                  {data.tag ? (
+                    <Chip label={data.tag} rounded />
                   ) : (
                     <span className="text-xs text-white/25">지정된 태그 없음</span>
                   )}
@@ -461,11 +461,11 @@ export default function BacklogDetailPage({
         <OverridesDialog detail={data} onClose={() => setDialog(null)} onSaved={refresh} />
       )}
 
-      {dialog?.kind === "tags" && (
+      {dialog?.kind === "tag" && (
         <TagGenreDialog
           entryId={data.entryId}
-          kind="tags"
-          values={data.tags}
+          kind="tag"
+          value={data.tag}
           dictionary={options.data?.tagDictionary ?? []}
           onClose={() => setDialog(null)}
           onSaved={refresh}

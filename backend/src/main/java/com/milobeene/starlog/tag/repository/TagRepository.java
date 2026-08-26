@@ -18,9 +18,9 @@ public interface TagRepository extends BaseRepository<Tag, Long> {
      * 사전 행을 지우지 않고 조회에서 거르므로 COUNT→DELETE의 경쟁 상태가 없다 (§6.7 v1.5 개정)
      */
     @Query("select distinct t from Tag t" +
-            " join BacklogEntryTag l on l.tag = t" +
+            " join BacklogEntry b on b.tag = t" +
             " where t.member.id = :memberId" +
-            " and l.backlogEntry.deletedAt is null" +   // 삭제된 항목에만 붙은 태그는 숨긴다. 되살리면 다시 나온다
+            " and b.deletedAt is null" +   // 삭제된 항목에만 붙은 태그는 숨긴다. 되살리면 다시 나온다
             " order by t.name")
     List<Tag> findUsedByMemberId(@Param("memberId") Long memberId);
 }

@@ -4,7 +4,6 @@ import com.milobeene.starlog.backlog.domain.BacklogEntry;
 import com.milobeene.starlog.backlog.domain.QAcquisition;
 import com.milobeene.starlog.backlog.domain.QBacklogEntry;
 import com.milobeene.starlog.backlog.domain.QBacklogEntryGenre;
-import com.milobeene.starlog.backlog.domain.QBacklogEntryTag;
 import com.milobeene.starlog.backlog.domain.QPlaythrough;
 import com.milobeene.starlog.backlog.dto.BacklogSearchCondition;
 import com.milobeene.starlog.backlog.dto.BacklogSort;
@@ -52,6 +51,7 @@ public class BacklogEntryRepositoryImpl implements BacklogEntryRepositoryCustom 
         List<BacklogEntry> content = queryFactory
                 .selectFrom(entry)
                 .join(entry.game).fetchJoin()
+                .leftJoin(entry.tag).fetchJoin()
                 .leftJoin(entry.lastPlaythrough, last).fetchJoin()
                 .leftJoin(last.device).fetchJoin()
                 .leftJoin(last.emulator).fetchJoin()
@@ -107,16 +107,9 @@ public class BacklogEntryRepositoryImpl implements BacklogEntryRepositoryCustom 
         return condition.hasStatuses() ? entry.status.in(condition.statuses()) : null;
     }
 
+    /** 태그만 exists가 아니다 — 항목당 하나라 FK가 backlog_entry에 직접 있다 (§6.7 v1.6) */
     private BooleanExpression hasTag(QBacklogEntry entry, BacklogSearchCondition condition) {
-        if (condition.tagId() == null) {
-            return null;
-        }
-        QBacklogEntryTag link = QBacklogEntryTag.backlogEntryTag;
-
-        return JPAExpressions.selectOne()
-                .from(link)
-                .where(link.backlogEntry.eq(entry), link.tag.id.eq(condition.tagId()))
-                .exists();
+        return condition.tagId() != null ? entry.tag.id.eq(condition.tagId()) : null;
     }
 
     private BooleanExpression hasGenre(QBacklogEntry entry, BacklogSearchCondition condition) {

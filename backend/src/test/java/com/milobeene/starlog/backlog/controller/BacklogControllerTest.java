@@ -141,8 +141,10 @@ class BacklogControllerTest extends ControllerTestSupport {
         Member member = saveMember();
         Long first = addEntry(member, "Hollow Knight");
         Long second = addEntry(member, "Celeste");
-        tagService.replaceTags(member.getId(), first, List.of("명작", "메트로배니아"));
-        tagService.replaceTags(member.getId(), second, List.of("명작"));
+        Long third = addEntry(member, "Gris");
+        tagService.changeTag(member.getId(), first, "명작");
+        tagService.changeTag(member.getId(), second, "명작");
+        tagService.changeTag(member.getId(), third, "메트로배니아");
 
         //when //then
         mockMvc.perform(get("/api/backlog/facets").header("X-Member-Id", member.getId()))
@@ -150,7 +152,7 @@ class BacklogControllerTest extends ControllerTestSupport {
                 .andExpect(jsonPath("$.tags[?(@.name == '명작')].count").value(2))
                 .andExpect(jsonPath("$.tags[?(@.name == '메트로배니아')].count").value(1))
                 .andExpect(jsonPath("$.statuses[0].status").value("WISHLIST"))
-                .andExpect(jsonPath("$.statuses[0].count").value(2));
+                .andExpect(jsonPath("$.statuses[0].count").value(3));
     }
 
     @Test
@@ -158,7 +160,7 @@ class BacklogControllerTest extends ControllerTestSupport {
         //given — 사전 행을 지우는 게 아니라 조회에서 거른다 (§6.7 v1.5 개정)
         Member member = saveMember();
         Long entryId = addEntry(member, "Hollow Knight");
-        tagService.replaceTags(member.getId(), entryId, List.of("명작"));
+        tagService.changeTag(member.getId(), entryId, "명작");
 
         //when
         backlogService.delete(member.getId(), entryId);

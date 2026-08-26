@@ -62,6 +62,8 @@ export interface BacklogCard {
   lastPlaythrough: LastPlaythroughSummary | null;
   /** 마스터 커버 id (IGDB). coverUrl(개인 업로드)이 null일 때의 폴백 (§6.10) */
   coverImageId: string | null;
+  /** 그룹핑 키. 카드에 뿌리는 값이 아니라 사이드바·폴더 뷰가 묶는 데 쓴다 */
+  tag: string | null;
 }
 
 /* ── 상세 (GET /api/backlog/{entryId}) ────────────────────── */
@@ -183,7 +185,8 @@ export interface BacklogDetail {
   master: MasterInfo;
   overrides: OverrideInfo;
   personalRecord: PersonalRecord;
-  tags: string[];
+  /** 개인 태그. 항목당 최대 하나다 (§6.7 v1.6) */
+  tag: string | null;
   /** 개인 장르 원본. 폴백 전 값이라 resolved.genres와 다를 수 있다 */
   genres: string[];
   playthroughs: Playthrough[];

@@ -19,7 +19,8 @@ Game (+developer/publisher/     Member
                                   └─ BacklogEntry ── Game FK
                                        ├─ Playthrough → Device·PlatformAccount·Emulator·InputMethod
                                        ├─ Acquisition → Platform·PlatformAccount·Subscription
-                                       ├─ BacklogEntryTag/Genre → Tag/Genre
+                                       ├─ tag_id FK → Tag (항목당 1개, §6.7 v1.6)
+                                       ├─ BacklogEntryGenre → Genre (여러 개)
                                        └─ CoverImage (1:1)
 AuditLog · AuthToken는 Member에 매달린 시스템 기록
 ```

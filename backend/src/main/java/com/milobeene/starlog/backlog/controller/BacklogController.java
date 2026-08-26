@@ -14,6 +14,7 @@ import com.milobeene.starlog.backlog.dto.CoverUploadUrlResponse;
 import com.milobeene.starlog.backlog.service.CoverImageService;
 import com.milobeene.starlog.backlog.dto.FacetsResponse;
 import com.milobeene.starlog.backlog.dto.NameListRequest;
+import com.milobeene.starlog.backlog.dto.TagUpdateRequest;
 import com.milobeene.starlog.backlog.dto.OverrideUpdateRequest;
 import com.milobeene.starlog.backlog.dto.PersonalRecordRequest;
 import com.milobeene.starlog.backlog.service.BacklogFacetQueryService;
@@ -200,11 +201,11 @@ public class BacklogController {
         backlogService.updateOverrides(memberId, entryId, request.toCommand());
     }
 
-    /** 태그 전체 교체 (FR-TAG-01). 사전에 없는 이름은 적는 순간 생긴다 (§6.7) */
-    @PutMapping("/{entryId}/tags")
-    public void replaceTags(@LoginMember Long memberId, @PathVariable Long entryId,
-                            @Valid @RequestBody NameListRequest request) {
-        tagService.replaceTags(memberId, entryId, request.names());
+    /** 태그 교체 (FR-TAG-01). 항목당 하나이고, 사전에 없는 이름은 적는 순간 생긴다 (§6.7) */
+    @PutMapping("/{entryId}/tag")
+    public void changeTag(@LoginMember Long memberId, @PathVariable Long entryId,
+                          @Valid @RequestBody TagUpdateRequest request) {
+        tagService.changeTag(memberId, entryId, request.name());
     }
 
     /** 개인 장르 전체 교체 (FR-TAG-05). 비우면 마스터 장르로 폴백된다 */

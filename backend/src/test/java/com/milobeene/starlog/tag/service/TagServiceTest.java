@@ -18,8 +18,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
-
 @SpringBootTest
 @ActiveProfiles("test")
 @Transactional
@@ -38,10 +36,12 @@ class TagServiceTest {
     @Test
     public void 태그를_적으면_사전에_생긴다() {
         //given
-        Long entryId = givenEntry("Hollow Knight");
+        Long first = givenEntry("Hollow Knight");
+        Long second = givenEntryForSameMember("Celeste");
 
         //when — 사전에 미리 등록하는 절차가 없다 (§6.7)
-        tagService.replaceTags(memberId, entryId, List.of("명작", "메트로배니아"));
+        tagService.changeTag(memberId, first, "명작");
+        tagService.changeTag(memberId, second, "메트로배니아");
 
         em.flush();
         em.clear();
@@ -57,52 +57,76 @@ class TagServiceTest {
         //given
         Long first = givenEntry("Celeste");
         Long second = givenEntryForSameMember("Hades");
-        tagService.replaceTags(memberId, first, List.of("명작"));
+        tagService.changeTag(memberId, first, "명작");
 
         //when
-        tagService.replaceTags(memberId, second, List.of("명작"));
+        tagService.changeTag(memberId, second, "명작");
 
         em.flush();
         em.clear();
 
         //then — (member, name) 유니크. 태그 행은 하나뿐이다
         assertThat(countTagRows()).isEqualTo(1);
-        assertThat(tagService.findTagNames(memberId, first)).containsExactly("명작");
-        assertThat(tagService.findTagNames(memberId, second)).containsExactly("명작");
+        assertThat(tagService.findTagName(memberId, first)).isEqualTo("명작");
+        assertThat(tagService.findTagName(memberId, second)).isEqualTo("명작");
     }
 
     @Test
-    public void 공백과_빈_문자열은_정규화된다() {
+    public void 공백은_정규화되고_빈_문자열은_태그_없음이_된다() {
         //given
         Long entryId = givenEntry("Inside");
 
         //when
-        tagService.replaceTags(memberId, entryId, List.of("  명작  ", "", "   ", "명작"));
+        tagService.changeTag(memberId, entryId, "  명작  ");
 
         em.flush();
         em.clear();
 
-        //then — strip 되고 빈 값은 버려지고 중복은 하나로
-        assertThat(tagService.findTagNames(memberId, entryId)).containsExactly("명작");
-    }
+        //then — strip 된다
+        assertThat(tagService.findTagName(memberId, entryId)).isEqualTo("명작");
 
-    // ── D-2: 전체 교체와 자동 소멸
-
-    @Test
-    public void 전체_교체하면_빠진_태그는_떨어지고_새_태그는_붙는다() {
-        //given
-        Long entryId = givenEntry("Gris");
-        tagService.replaceTags(memberId, entryId, List.of("명작", "감성"));
-
-        //when
-        tagService.replaceTags(memberId, entryId, List.of("감성", "짧은게임"));
+        //when — 공백만 있는 값은 null로 수렴한다
+        tagService.changeTag(memberId, entryId, "   ");
 
         em.flush();
         em.clear();
 
         //then
-        assertThat(tagService.findTagNames(memberId, entryId))
-                .containsExactlyInAnyOrder("감성", "짧은게임");
+        assertThat(tagService.findTagName(memberId, entryId)).isNull();
+    }
+
+    // ── D-2: 교체와 자동 소멸
+
+    @Test
+    public void 태그를_바꾸면_이전_태그는_떨어진다() {
+        //given — 항목당 하나라 "교체"가 곧 "떼고 붙이기"다 (§6.7 v1.6)
+        Long entryId = givenEntry("Gris");
+        tagService.changeTag(memberId, entryId, "명작");
+
+        //when
+        tagService.changeTag(memberId, entryId, "감성");
+
+        em.flush();
+        em.clear();
+
+        //then
+        assertThat(tagService.findTagName(memberId, entryId)).isEqualTo("감성");
+    }
+
+    @Test
+    public void null을_보내면_태그가_떨어진다() {
+        //given
+        Long entryId = givenEntry("Journey");
+        tagService.changeTag(memberId, entryId, "명작");
+
+        //when
+        tagService.changeTag(memberId, entryId, null);
+
+        em.flush();
+        em.clear();
+
+        //then
+        assertThat(tagService.findTagName(memberId, entryId)).isNull();
     }
 
     @Test
@@ -110,11 +134,11 @@ class TagServiceTest {
         //given — 두 항목이 "명작"을 공유한다
         Long first = givenEntry("Sekiro");
         Long second = givenEntryForSameMember("Bloodborne");
-        tagService.replaceTags(memberId, first, List.of("명작"));
-        tagService.replaceTags(memberId, second, List.of("명작"));
+        tagService.changeTag(memberId, first, "명작");
+        tagService.changeTag(memberId, second, "명작");
 
         //when — 한쪽에서만 뗀다
-        tagService.replaceTags(memberId, first, List.of());
+        tagService.changeTag(memberId, first, null);
 
         em.flush();
         em.clear();
@@ -122,8 +146,8 @@ class TagServiceTest {
         //then — 다른 항목이 아직 쓰고 있으므로 사전에 남는다
         assertThat(tagService.findDictionary(memberId)).extracting(Tag::getName)
                 .containsExactly("명작");
-        assertThat(tagService.findTagNames(memberId, first)).isEmpty();
-        assertThat(tagService.findTagNames(memberId, second)).containsExactly("명작");
+        assertThat(tagService.findTagName(memberId, first)).isNull();
+        assertThat(tagService.findTagName(memberId, second)).isEqualTo("명작");
     }
 
     @Test
@@ -131,12 +155,12 @@ class TagServiceTest {
         //given
         Long first = givenEntry("Tunic");
         Long second = givenEntryForSameMember("Braid");
-        tagService.replaceTags(memberId, first, List.of("퍼즐"));
-        tagService.replaceTags(memberId, second, List.of("퍼즐"));
+        tagService.changeTag(memberId, first, "퍼즐");
+        tagService.changeTag(memberId, second, "퍼즐");
 
         //when — 양쪽 모두에서 뗀다
-        tagService.replaceTags(memberId, first, List.of());
-        tagService.replaceTags(memberId, second, List.of());
+        tagService.changeTag(memberId, first, null);
+        tagService.changeTag(memberId, second, null);
 
         em.flush();
         em.clear();
@@ -149,14 +173,14 @@ class TagServiceTest {
     public void 뗐던_태그를_다시_붙이면_원래_행을_재사용한다() {
         //given — 방식 C의 부수 효과. 행을 안 지웠으므로 그대로 살아난다
         Long entryId = givenEntry("Journey");
-        tagService.replaceTags(memberId, entryId, List.of("명작"));
+        tagService.changeTag(memberId, entryId, "명작");
         Long tagId = tagService.findDictionary(memberId).get(0).getId();
 
-        tagService.replaceTags(memberId, entryId, List.of());
+        tagService.changeTag(memberId, entryId, null);
         assertThat(tagService.findDictionary(memberId)).isEmpty();
 
         //when
-        tagService.replaceTags(memberId, entryId, List.of("명작"));
+        tagService.changeTag(memberId, entryId, "명작");
 
         em.flush();
         em.clear();
@@ -171,7 +195,7 @@ class TagServiceTest {
     public void 태그_이름을_변경할_수_있다() {
         //given
         Long entryId = givenEntry("Limbo");
-        tagService.replaceTags(memberId, entryId, List.of("명작"));
+        tagService.changeTag(memberId, entryId, "명작");
         Long tagId = tagService.findDictionary(memberId).get(0).getId();
 
         //when
@@ -181,14 +205,16 @@ class TagServiceTest {
         em.clear();
 
         //then — 연결은 그대로고 이름만 바뀐다
-        assertThat(tagService.findTagNames(memberId, entryId)).containsExactly("갓겜");
+        assertThat(tagService.findTagName(memberId, entryId)).isEqualTo("갓겜");
     }
 
     @Test
     public void 이미_있는_이름으로_변경하면_예외가_발생한다() {
-        //given
-        Long entryId = givenEntry("Cuphead");
-        tagService.replaceTags(memberId, entryId, List.of("명작", "갓겜"));
+        //given — 항목당 하나라 두 태그를 만들려면 항목도 둘이어야 한다
+        Long first = givenEntry("Cuphead");
+        Long second = givenEntryForSameMember("Katana Zero");
+        tagService.changeTag(memberId, first, "명작");
+        tagService.changeTag(memberId, second, "갓겜");
         Long tagId = tagService.findDictionary(memberId).stream()
                 .filter(t -> t.getName().equals("명작")).findFirst().orElseThrow().getId();
 
@@ -199,13 +225,33 @@ class TagServiceTest {
     }
 
     @Test
-    public void 태그를_삭제하면_연결도_함께_사라진다() {
+    public void 태그를_삭제하면_붙어있던_항목에서도_떨어진다() {
         //given
         Long first = givenEntry("Stray");
         Long second = givenEntryForSameMember("Outer Wilds");
-        tagService.replaceTags(memberId, first, List.of("명작"));
-        tagService.replaceTags(memberId, second, List.of("명작"));
+        tagService.changeTag(memberId, first, "명작");
+        tagService.changeTag(memberId, second, "명작");
         Long tagId = tagService.findDictionary(memberId).get(0).getId();
+
+        //when — 벌크 update로 떼고 사전 행을 지운다
+        tagService.delete(memberId, tagId);
+
+        em.flush();
+        em.clear();
+
+        //then
+        assertThat(tagService.findTagName(memberId, first)).isNull();
+        assertThat(tagService.findTagName(memberId, second)).isNull();
+        assertThat(tagRepository.findById(tagId)).isEmpty();
+    }
+
+    @Test
+    public void 소프트_삭제된_항목이_물고_있어도_태그를_지울_수_있다() {
+        //given — FK가 살아 있으면 Tag 물리 삭제가 막힌다. clearTag가 deletedAt을 안 보는 이유다
+        Long entryId = givenEntry("Limbo");
+        tagService.changeTag(memberId, entryId, "명작");
+        Long tagId = tagService.findDictionary(memberId).get(0).getId();
+        backlogService.delete(memberId, entryId);
 
         //when
         tagService.delete(memberId, tagId);
@@ -214,16 +260,14 @@ class TagServiceTest {
         em.clear();
 
         //then
-        assertThat(tagService.findTagNames(memberId, first)).isEmpty();
-        assertThat(tagService.findTagNames(memberId, second)).isEmpty();
         assertThat(tagRepository.findById(tagId)).isEmpty();
     }
 
     @Test
     public void 소프트_삭제된_항목만_쓰던_태그는_사전에서_숨는다() {
-        //given — 태그 연결은 되살리기 대비로 남지만, 사전 조회가 항목의 deletedAt을 본다 (리뷰 D1)
+        //given — 태그는 되살리기 대비로 붙어 있지만, 사전 조회가 항목의 deletedAt을 본다 (리뷰 D1)
         Long entryId = givenEntry("Firewatch");
-        tagService.replaceTags(memberId, entryId, List.of("워킹시뮬"));
+        tagService.changeTag(memberId, entryId, "워킹시뮬");
 
         //when
         backlogService.delete(memberId, entryId);
@@ -234,7 +278,7 @@ class TagServiceTest {
         //then
         assertThat(tagService.findDictionary(memberId)).isEmpty();
 
-        //when — 되살리면 연결이 그대로라 사전에도 다시 나온다
+        //when — 되살리면 태그가 그대로라 사전에도 다시 나온다
         backlogService.revive(memberId, entryId);
 
         em.flush();
@@ -250,7 +294,7 @@ class TagServiceTest {
     public void 남의_태그는_건드릴_수_없다() {
         //given
         Long entryId = givenEntry("Hades");
-        tagService.replaceTags(memberId, entryId, List.of("명작"));
+        tagService.changeTag(memberId, entryId, "명작");
         Long tagId = tagService.findDictionary(memberId).get(0).getId();
         Member stranger = saveMember("stranger@example.com");
 

@@ -4,7 +4,6 @@ import com.milobeene.starlog.backlog.dto.FacetsResponse;
 import com.milobeene.starlog.backlog.repository.AcquisitionRepository;
 import com.milobeene.starlog.backlog.repository.BacklogEntryGenreRepository;
 import com.milobeene.starlog.backlog.repository.BacklogEntryRepository;
-import com.milobeene.starlog.backlog.repository.BacklogEntryTagRepository;
 import com.milobeene.starlog.backlog.repository.PlaythroughRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -21,7 +20,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class BacklogFacetQueryService {
 
-    private final BacklogEntryTagRepository backlogEntryTagRepository;
     private final BacklogEntryGenreRepository backlogEntryGenreRepository;
     private final BacklogEntryRepository backlogEntryRepository;
     private final PlaythroughRepository playthroughRepository;
@@ -29,7 +27,7 @@ public class BacklogFacetQueryService {
 
     public FacetsResponse findFacets(Long memberId) {
         return new FacetsResponse(
-                backlogEntryTagRepository.countByTag(memberId),
+                backlogEntryRepository.countByTag(memberId),
                 backlogEntryGenreRepository.countByGenre(memberId),
                 backlogEntryRepository.countByStatus(memberId),
                 playthroughRepository.countByDevice(memberId),

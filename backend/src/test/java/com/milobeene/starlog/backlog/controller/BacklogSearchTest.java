@@ -99,10 +99,10 @@ class BacklogSearchTest extends ControllerTestSupport {
         Long tagged = addEntry(member, saveGame("Hollow Knight"));
         addEntry(member, saveGame("Celeste"));
 
-        mockMvc.perform(put("/api/backlog/{id}/tags", tagged)
+        mockMvc.perform(put("/api/backlog/{id}/tag", tagged)
                 .header("X-Member-Id", member.getId())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"names\":[\"명작\"]}"));
+                .content("{\"name\":\"명작\"}"));
         em.flush();
 
         Long tagId = tagIdOf(member, "명작");
@@ -115,24 +115,24 @@ class BacklogSearchTest extends ControllerTestSupport {
     }
 
     @Test
-    public void 태그가_여러_개_붙어도_행이_중복되지_않는다() throws Exception {
-        //given — join으로 짰다면 태그 수만큼 같은 항목이 반복된다. exists라 안 늘어난다
+    public void 태그가_없는_항목도_목록에_나온다() throws Exception {
+        //given — 목록 쿼리가 tag를 left join fetch 한다. inner로 짜면 무태그 항목이 통째로 사라진다
         Member member = saveMember();
-        Long entryId = addEntry(member, saveGame("Hollow Knight"));
+        Long tagged = addEntry(member, saveGame("Hollow Knight"));
+        addEntry(member, saveGame("Celeste"));
 
-        mockMvc.perform(put("/api/backlog/{id}/tags", entryId)
+        mockMvc.perform(put("/api/backlog/{id}/tag", tagged)
                 .header("X-Member-Id", member.getId())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"names\":[\"명작\",\"메트로배니아\",\"인디\"]}"));
+                .content("{\"name\":\"명작\"}"));
         em.flush();
 
-        Long tagId = tagIdOf(member, "명작");
-
-        //when //then
-        mockMvc.perform(get("/api/backlog").param("tagId", String.valueOf(tagId))
+        //when //then — 카드에 그룹핑 키가 실려 온다. 무태그는 null이다
+        mockMvc.perform(get("/api/backlog").param("sort", "name")
                         .header("X-Member-Id", member.getId()))
-                .andExpect(jsonPath("$.totalElements").value(1))
-                .andExpect(jsonPath("$.items.length()").value(1));
+                .andExpect(jsonPath("$.totalElements").value(2))
+                .andExpect(jsonPath("$.items[?(@.displayName == 'Hollow Knight')].tag").value("명작"))
+                .andExpect(jsonPath("$.items[?(@.displayName == 'Celeste')].tag[0]").doesNotExist());
     }
 
     @Test

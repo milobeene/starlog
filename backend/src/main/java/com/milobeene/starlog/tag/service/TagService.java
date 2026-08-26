@@ -1,8 +1,7 @@
 package com.milobeene.starlog.tag.service;
 
 import com.milobeene.starlog.backlog.domain.BacklogEntry;
-import com.milobeene.starlog.backlog.domain.BacklogEntryTag;
-import com.milobeene.starlog.backlog.repository.BacklogEntryTagRepository;
+import com.milobeene.starlog.backlog.repository.BacklogEntryRepository;
 import com.milobeene.starlog.backlog.service.BacklogEntryFinder;
 import com.milobeene.starlog.common.exception.ConflictException;
 import com.milobeene.starlog.common.exception.InvalidInputException;
@@ -15,11 +14,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.LinkedHashSet;
+import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Objects;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -27,43 +23,26 @@ import java.util.stream.Collectors;
 public class TagService {
 
     private final TagRepository tagRepository;
-    private final BacklogEntryTagRepository backlogEntryTagRepository;
+    private final BacklogEntryRepository backlogEntryRepository;
     private final BacklogEntryFinder entryFinder;
 
     /**
-     * 항목의 태그 전체 교체 (FR-TAG-01).
-     * 등록 절차가 없다 — 목록에 없는 이름은 여기서 만들어진다 (§6.7 사전 메커니즘)
+     * 항목의 태그 교체 (FR-TAG-01). **항목당 하나다** — null·빈 문자열이면 뗀다.
+     * 등록 절차가 없다: 목록에 없는 이름은 여기서 만들어진다 (§6.7 사전 메커니즘)
      */
     @Transactional
-    public void replaceTags(Long memberId, Long entryId, List<String> names) {
+    public void changeTag(Long memberId, Long entryId, String name) {
         BacklogEntry entry = entryFinder.findOwned(memberId, entryId);
-        Set<String> wanted = normalizeNames(names);
+        String normalized = TextValues.normalize(name);
 
-        List<BacklogEntryTag> existing = backlogEntryTagRepository.findByBacklogEntryId(entryId);
-
-        // 뗄 것 — 연결만 지운다. 사전 행은 그대로 두고 조회에서 거른다 (§6.7 v1.5)
-        existing.stream()
-                .filter(link -> !wanted.contains(link.getTag().getName()))
-                .forEach(backlogEntryTagRepository::delete);
-
-        // 붙일 것 — 사전에 없으면 만든다
-        Set<String> current = existing.stream()
-                .map(link -> link.getTag().getName())
-                .collect(Collectors.toSet());
-
-        wanted.stream()
-                .filter(name -> !current.contains(name))
-                .forEach(name -> backlogEntryTagRepository.persist(
-                        new BacklogEntryTag(entry, findOrCreate(entry.getMember(), name))));
+        // 뗄 때 사전 행은 안 지운다. 연결이 0인 태그는 조회에서 걸러진다 (§6.7 v1.5)
+        entry.changeTag(normalized == null ? null : findOrCreate(entry.getMember(), normalized));
     }
 
-    /** 이 항목에 붙은 태그 이름들 */
-    public List<String> findTagNames(Long memberId, Long entryId) {
-        entryFinder.findOwned(memberId, entryId);
-        return backlogEntryTagRepository.findByBacklogEntryId(entryId).stream()
-                .map(link -> link.getTag().getName())
-                .sorted()
-                .toList();
+    /** 이 항목에 붙은 태그 이름. 없으면 null */
+    public String findTagName(Long memberId, Long entryId) {
+        Tag tag = entryFinder.findOwned(memberId, entryId).getTag();
+        return tag == null ? null : tag.getName();
     }
 
     /** 사전 목록 (자동완성·필터 옵션). 아무 항목에도 안 붙은 태그는 안 나온다 */
@@ -89,17 +68,18 @@ public class TagService {
         tag.rename(normalized);
     }
 
-    /** 태그 삭제 (FR-TAG-02) — 연결까지 함께 지운다. Tag는 물리 삭제 대상이다 (§7.4) */
+    /** 태그 삭제 (FR-TAG-02) — 붙어 있던 항목에서도 떨어진다. Tag는 물리 삭제 대상이다 (§7.4) */
     @Transactional
     public void delete(Long memberId, Long tagId) {
-        Tag tag = findOwnedTag(memberId, tagId);
+        findOwnedTag(memberId, tagId);   // 소유 검증만. 아래에서 컨텍스트가 비워지므로 참조는 안 들고 간다
 
-        // 연결을 먼저 지운다. 벌크 대신 하나씩 지우는 이유 —
-        // 벌크는 영속성 컨텍스트를 우회해서 아래 delete(tag)와 상태가 어긋난다
-        backlogEntryTagRepository.findByTagId(tagId)
-                .forEach(backlogEntryTagRepository::delete);
+        // FK가 backlog_entry에 직접 있으므로 붙어 있는 항목부터 떼야 Tag를 지울 수 있다
+        backlogEntryRepository.clearTag(tagId, LocalDateTime.now());
 
-        tagRepository.delete(tag);
+        // 다시 읽는 이유 — clearTag가 clearAutomatically로 영속성 컨텍스트를 통째로 비운다.
+        // 위에서 잡아둔 Tag는 그 순간 준영속이 되고, 준영속 엔티티에 delete()를 부르면
+        // 스프링이 remove 전에 merge를 돌린다 (설계 원칙 5번 위반)
+        tagRepository.findById(tagId).ifPresent(tagRepository::delete);
     }
 
     private Tag findOrCreate(Member member, String name) {
@@ -121,16 +101,5 @@ public class TagService {
         }
 
         return tag;
-    }
-
-    /** LinkedHashSet — 입력 순서를 유지하면서 중복을 제거한다 */
-    private Set<String> normalizeNames(List<String> names) {
-        if (names == null) {
-            return Set.of();
-        }
-        return names.stream()
-                .map(TextValues::normalize)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 }

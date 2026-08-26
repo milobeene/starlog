@@ -14,11 +14,11 @@ type Folder = { key: string; label: string; count: number; cards: BacklogCard[] 
 /**
  * 태그로 묶어 보는 뷰. **폴더 박스를 고르면 그 안만 본다** (아코디언 아님).
  *
- * 카드 DTO에 태그가 없어서(§6.7 — 태그는 카드에 안 뿌린다) 태그별로 한 번씩 부른다.
- * 태그 수만큼 요청이 나가지만 개인 사전이라 몇 개 안 되고, 뷰를 열 때만 돈다.
+ * 태그가 항목당 하나가 되면서(§6.7 v1.6) 카드가 태그를 싣고 온다 —
+ * 예전에는 태그마다 목록 API를 한 번씩 때렸다(1+N). 이제 한 방으로 받아 클라에서 묶는다.
  *
  * **"지정된 태그 없음" 폴더가 반드시 필요하다** — 실데이터는 태그 안 붙은 항목이 더 많아서
- * 이게 없으면 게임이 사라져 보인다. 대응 필터가 없어 전체에서 빼는 방식으로 만든다
+ * 이게 없으면 게임이 사라져 보인다
  */
 export default function FolderView({ facets }: { facets: FacetsResponse }) {
   const [folders, setFolders] = useState<Folder[] | null>(null);
@@ -28,24 +28,16 @@ export default function FolderView({ facets }: { facets: FacetsResponse }) {
     let cancelled = false;
 
     async function load() {
-      const [all, ...tagged] = await Promise.all([
-        api.get<PageResponse<BacklogCard>>("/api/backlog?size=100&sort=name"),
-        ...facets.tags.map((tag) =>
-          api.get<PageResponse<BacklogCard>>(`/api/backlog?tagId=${tag.id}&size=100&sort=name`),
-        ),
-      ]);
+      const all = await api.get<PageResponse<BacklogCard>>("/api/backlog?size=100&sort=name");
       if (cancelled) return;
 
-      const taggedIds = new Set(tagged.flatMap((page) => page.items.map((card) => card.entryId)));
-      const untagged = all.items.filter((card) => !taggedIds.has(card.entryId));
+      // 사전 순서(facets)를 그대로 따른다 — 카드 등장 순서로 묶으면 폴더 순서가 데이터에 흔들린다
+      const next: Folder[] = facets.tags.map((tag) => {
+        const cards = all.items.filter((card) => card.tag === tag.name);
+        return { key: `tag-${tag.id}`, label: tag.name, count: cards.length, cards };
+      });
 
-      const next: Folder[] = facets.tags.map((tag, index) => ({
-        key: `tag-${tag.id}`,
-        label: tag.name,
-        count: tagged[index].totalElements,
-        cards: tagged[index].items,
-      }));
-
+      const untagged = all.items.filter((card) => card.tag === null);
       if (untagged.length > 0) {
         next.push({ key: "untagged", label: "Untagged", count: untagged.length, cards: untagged });
       }

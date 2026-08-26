@@ -3,7 +3,7 @@ package com.milobeene.starlog.backlog.dto;
 import java.util.List;
 
 /**
- * 태그·개인 장르 전체 교체 (FR-TAG-01, 05). 둘의 페이로드가 같아 하나로 쓴다.
+ * 개인 장르 전체 교체 (FR-TAG-05). 태그는 항목당 하나가 되면서 TagUpdateRequest로 갈라졌다.
  * 빈 배열을 보내면 전부 떼어진다 — 사전 행은 지우지 않고 조회에서 거른다 (§6.7)
  */
 import jakarta.validation.constraints.NotNull;

@@ -32,7 +32,8 @@ public record BacklogDetailResponse(
         Master master,
         Overrides overrides,
         PersonalRecord personalRecord,
-        List<String> tags,
+        /** 개인 태그. 항목당 최대 하나다 (§6.7 v1.6) */
+        String tag,
         List<String> genres,          // 개인 장르 원본. 폴백 전 값이라 resolved.genres와 다를 수 있다
         List<PlaythroughItem> playthroughs,
         List<AcquisitionItem> acquisitions
@@ -187,14 +188,13 @@ public record BacklogDetailResponse(
     }
 
     /**
-     * 회차·취득·태그를 인자로 받는 이유 — 엔티티의 LAZY 컬렉션을 그냥 훑으면
+     * 회차·취득을 인자로 받는 이유 — 엔티티의 LAZY 컬렉션을 그냥 훑으면
      * 회차마다 기기·계정·에뮬 쿼리가 따라붙는다. 조회 전용 서비스가 join fetch로
      * 미리 뽑아서 넘긴다 (쿼리 개수를 DTO가 아니라 서비스가 통제한다).
      *
      * 컬렉션 복사는 엔티티의 resolved*·getter가 책임진다 — DTO는 감쌀 필요가 없다
      */
     public static BacklogDetailResponse from(BacklogEntry entry, String coverUrl,
-                                             List<String> tagNames,
                                              List<Playthrough> playthroughs,
                                              List<Acquisition> acquisitions) {
         Game game = entry.getGame();
@@ -228,7 +228,7 @@ public record BacklogDetailResponse(
                         entry.getReleasedOnOverride(),
                         MoneyResponse.from(entry.getListPriceOverride())),
                 new PersonalRecord(entry.getRating(), entry.getPlayTimeHours(), entry.getMemo()),
-                tagNames,
+                entry.getTag() == null ? null : entry.getTag().getName(),
                 entry.getGenreLinks().stream().map(link -> link.getGenre().getName()).toList(),
                 playthroughs.stream().map(PlaythroughItem::from).toList(),
                 acquisitions.stream().map(AcquisitionItem::from).toList()

@@ -5,7 +5,6 @@ import com.milobeene.starlog.backlog.domain.AcquisitionCommand;
 import com.milobeene.starlog.backlog.domain.AcquisitionMethod;
 import com.milobeene.starlog.backlog.domain.BacklogEntry;
 import com.milobeene.starlog.backlog.domain.BacklogEntryGenre;
-import com.milobeene.starlog.backlog.domain.BacklogEntryTag;
 import com.milobeene.starlog.backlog.domain.OverrideCommand;
 import com.milobeene.starlog.backlog.domain.Playthrough;
 import com.milobeene.starlog.backlog.domain.PlaythroughCommand;
@@ -127,7 +126,7 @@ public class DataInitializer implements ApplicationRunner {
             Platform steam = byName(member, Platform.class, "Steam");
             InputMethod pad = byName(member, InputMethod.class, "닌텐도 컨트롤러");
 
-            Tag masterpiece = persistTag(member, "명작");   // 두 항목이 같은 태그를 공유한다
+            // 태그는 항목당 하나다 (§6.7 v1.6). 사이드바 그룹을 눌러보려면 2종 + 무태그가 필요하다
 
             // 1) 오버라이드 + 개인 장르 + 진행 중 회차 — 카드가 가장 꽉 찬 경우
             // externalId는 진짜 IGDB id다 — 가짜를 넣으면 재동기화(J-5)를 시드로 눌러볼 수 없다
@@ -147,8 +146,7 @@ public class DataInitializer implements ApplicationRunner {
                     new Money(new BigDecimal("89800"), "KRW")));
             fit.updatePersonalRecord(new BigDecimal("83.0"), 40, "운동 겸 게임");
             linkGenres(fit, member, List.of("피트니스", "기능성"));
-            linkTag(fit, masterpiece);
-            linkTag(fit, persistTag(member, "운동"));
+            fit.changeTag(persistTag(member, "운동"));
             addPlaythrough(fit, 1, LocalDate.of(2022, 1, 1), LocalDate.of(2023, 1, 1),
                     PlaythroughStatus.COMPLETED, nintendoSwitch, pad);
             addPlaythrough(fit, 2, LocalDate.of(2026, 5, 27), null,
@@ -170,13 +168,13 @@ public class DataInitializer implements ApplicationRunner {
             BacklogEntry hollow = BacklogEntry.of(member, hollowKnight);
             em.persist(hollow);
             hollow.updatePersonalRecord(new BigDecimal("95.0"), 62, null);
-            linkTag(hollow, masterpiece);
+            hollow.changeTag(persistTag(member, "명작"));
             addPlaythrough(hollow, 1, LocalDate.of(2024, 3, 1), LocalDate.of(2024, 4, 10),
                     PlaythroughStatus.PAUSED, windowsPc, pad);
             addAcquisition(hollow, AcquisitionMethod.PURCHASED, steam,
                     new BigDecimal("15000"), LocalDate.of(2024, 2, 20));
 
-            // 3) 회차·취득 0개 → WISHLIST. 정렬 키가 전부 null인 행이 하나는 있어야 한다
+            // 3) 회차·취득 0개 → WISHLIST + 무태그. 정렬 키가 전부 null인 행이 하나는 있어야 한다
             Game stardew = Game.manual("Stardew Valley");
             em.persist(stardew);
             em.persist(BacklogEntry.of(member, stardew));
@@ -208,10 +206,6 @@ public class DataInitializer implements ApplicationRunner {
             Tag tag = new Tag(member, name);
             em.persist(tag);
             return tag;
-        }
-
-        private void linkTag(BacklogEntry entry, Tag tag) {
-            em.persist(new BacklogEntryTag(entry, tag));
         }
 
         private void linkGenres(BacklogEntry entry, Member member, List<String> names) {

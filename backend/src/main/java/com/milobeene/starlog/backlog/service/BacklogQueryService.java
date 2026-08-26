@@ -9,7 +9,6 @@ import com.milobeene.starlog.backlog.dto.BacklogSearchCondition;
 import com.milobeene.starlog.backlog.dto.BacklogSort;
 import com.milobeene.starlog.backlog.repository.AcquisitionRepository;
 import com.milobeene.starlog.backlog.repository.BacklogEntryRepository;
-import com.milobeene.starlog.backlog.repository.BacklogEntryTagRepository;
 import com.milobeene.starlog.backlog.repository.CoverImageRepository;
 import com.milobeene.starlog.backlog.repository.PlaythroughRepository;
 import com.milobeene.starlog.common.storage.FileStoragePort;
@@ -40,7 +39,6 @@ public class BacklogQueryService {
     private static final int MAX_SIZE = 100;
 
     private final BacklogEntryRepository backlogEntryRepository;
-    private final BacklogEntryTagRepository backlogEntryTagRepository;
     private final PlaythroughRepository playthroughRepository;
     private final AcquisitionRepository acquisitionRepository;
     private final BacklogEntryFinder backlogEntryFinder;
@@ -69,7 +67,8 @@ public class BacklogQueryService {
     }
 
     /**
-     * 상세 (화면 2). 회차·취득·태그를 각각 한 방씩 미리 뽑아 DTO에 넘긴다.
+     * 상세 (화면 2). 회차·취득을 각각 한 방씩 미리 뽑아 DTO에 넘긴다.
+     * 태그는 findOwnedWithGame이 join fetch로 같이 끌고 온다 — ToOne이라 한 방에 붙는다.
      * 엔티티의 LAZY 컬렉션을 그냥 훑으면 회차마다 기기·계정·에뮬 쿼리가 따라붙는다
      */
     public BacklogDetailResponse findDetail(Long memberId, Long entryId) {
@@ -82,7 +81,6 @@ public class BacklogQueryService {
         return BacklogDetailResponse.from(
                 entry,
                 coverUrl,
-                backlogEntryTagRepository.findTagNames(entryId),
                 playthroughRepository.findAllWithReferences(entryId),
                 acquisitionRepository.findAllWithReferences(entryId));
     }

@@ -78,7 +78,24 @@ class PostgresSchemaTest {
         assertThat(jdbc.queryForObject(
                 "select count(*) from information_schema.tables where table_schema = 'public'"
                         + " and table_type = 'BASE TABLE'", Integer.class))
-                .isEqualTo(25);
+                .isEqualTo(24);   // 태그 조인 테이블이 사라져 25 → 24 (§6.7 v1.6)
+    }
+
+    @Test
+    void 태그가_backlog_entry의_nullable_FK다() {
+        //given — 조인 테이블이 아니라 항목이 태그를 직접 문다. null이 "태그 없음"이다
+        //when
+        String nullable = jdbc.queryForObject(
+                "select is_nullable from information_schema.columns"
+                        + " where table_name = 'backlog_entry' and column_name = 'tag_id'",
+                String.class);
+
+        //then
+        assertThat(nullable).isEqualTo("YES");
+        assertThat(jdbc.queryForObject(
+                "select count(*) from information_schema.table_constraints"
+                        + " where constraint_name = 'fk_backlog_entry_tag'", Integer.class))
+                .isEqualTo(1);
     }
 
     @Test

@@ -7,6 +7,7 @@ import com.milobeene.starlog.common.exception.InvalidInputException;
 import com.milobeene.starlog.common.util.TextValues;
 import com.milobeene.starlog.game.domain.Game;
 import com.milobeene.starlog.member.domain.Member;
+import com.milobeene.starlog.tag.domain.Tag;
 import jakarta.persistence.*;
 import lombok.Getter;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -30,7 +31,8 @@ import java.util.List;
                 @Index(name = "idx_backlog_member_status", columnList = "member_id, status"),
                 @Index(name = "idx_backlog_member_last_played", columnList = "member_id, last_played_on"),
                 @Index(name = "idx_backlog_member_display_name", columnList = "member_id, display_name"),
-                @Index(name = "idx_backlog_member_released_on", columnList = "member_id, released_on_resolved")
+                @Index(name = "idx_backlog_member_released_on", columnList = "member_id, released_on_resolved"),
+                @Index(name = "idx_backlog_member_tag", columnList = "member_id, tag_id")
         })
 public class BacklogEntry extends BaseEntity {
 
@@ -114,6 +116,15 @@ public class BacklogEntry extends BaseEntity {
     @JoinColumn(name = "last_playthrough_id")
     private Playthrough lastPlaythrough;
 
+    /**
+     * 개인 태그 (FR-TAG-01). **항목당 최대 하나다** — 태그는 설명용 메타데이터가 아니라
+     * 라이브러리를 묶는 장치라서(design-request.md), 다중 소속은 사이드바에 같은 게임을
+     * 여러 번 띄울 뿐이다. 서술용 다중값은 개인 장르가 맡는다
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "tag_id")
+    private Tag tag;
+
     private LocalDateTime deletedAt;
 
     // 역방향(읽기 전용). mappedBy = 상대 엔티티의 필드명
@@ -125,7 +136,7 @@ public class BacklogEntry extends BaseEntity {
     private List<Acquisition> acquisitions = new ArrayList<>();
 
     // 장르만 컬렉션을 둔다. 마스터 폴백 계산이 엔티티 안에서 일어나야 하기 때문 (§5.2).
-    // 태그는 폴백도 파생 상태도 없어 리포지토리로만 다룬다 — 비대칭은 의도된 것
+    // 태그는 단일 ToOne이라 컬렉션 자체가 없다
     @OneToMany(mappedBy = "backlogEntry")
     private List<BacklogEntryGenre> genreLinks = new ArrayList<>();
 
@@ -224,6 +235,11 @@ public class BacklogEntry extends BaseEntity {
 
     public void removeGenreLink(BacklogEntryGenre link) {
         this.genreLinks.remove(link);
+    }
+
+    /** 태그 교체 (FR-TAG-01). null이면 태그를 뗀다 — 사전 행은 남고 조회에서 걸러진다 (§6.7) */
+    public void changeTag(Tag tag) {
+        this.tag = tag;
     }
 
     /**

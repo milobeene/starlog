@@ -4,6 +4,7 @@ import com.milobeene.starlog.backlog.domain.BacklogEntry;
 import com.milobeene.starlog.game.domain.Game;
 import com.milobeene.starlog.common.repository.BaseRepository;
 import com.milobeene.starlog.backlog.dto.BacklogNameResponse;
+import com.milobeene.starlog.backlog.dto.FacetCount;
 import com.milobeene.starlog.backlog.dto.StatusCount;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -110,6 +111,7 @@ public interface BacklogEntryRepository
      */
     @Query(value = "select b from BacklogEntry b" +
             " join fetch b.game" +
+            " left join fetch b.tag" +
             " left join fetch b.lastPlaythrough p" +
             " left join fetch p.device" +
             " left join fetch p.emulator" +
@@ -123,6 +125,7 @@ public interface BacklogEntryRepository
      * 어차피 전부 읽는다. 프록시로 두면 첫 접근에서 한 방이 더 나간다
      */
     @Query("select b from BacklogEntry b join fetch b.game" +
+            " left join fetch b.tag" +
             " where b.id = :entryId and b.deletedAt is null")
     Optional<BacklogEntry> findDetailById(@Param("entryId") Long entryId);
 
@@ -133,6 +136,30 @@ public interface BacklogEntryRepository
             " group by b.status" +
             " order by b.status asc")
     List<StatusCount> countByStatus(@Param("memberId") Long memberId);
+
+    /**
+     * 태그별 항목 수 (H-4, 사이드바 그룹). 태그가 항목당 하나라 조인 테이블이 없어졌고,
+     * 그래서 count(distinct)도 필요 없다 — 행 하나가 항목 하나다
+     */
+    @Query("select new com.milobeene.starlog.backlog.dto.FacetCount(" +
+            "   b.tag.id, b.tag.name, count(b))" +
+            " from BacklogEntry b" +
+            " where b.member.id = :memberId and b.deletedAt is null and b.tag is not null" +
+            " group by b.tag.id, b.tag.name" +
+            " order by b.tag.name asc")
+    List<FacetCount> countByTag(@Param("memberId") Long memberId);
+
+    /**
+     * 태그 삭제 전파 (FR-TAG-02). 조인 행을 지우던 자리를 벌크 update가 대신한다.
+     *
+     * 벌크는 영속성 컨텍스트를 우회한다 → updatedAt을 SET 절에 직접 쓰고
+     * (@LastModifiedDate 콜백이 안 돈다), 실행 뒤 컨텍스트를 비워야
+     * 뒤따르는 Tag 물리 삭제가 아직 tag를 물고 있는 항목과 충돌하지 않는다.
+     * 소프트 삭제된 항목도 함께 떼는 이유 — 남겨두면 FK가 살아 있어 Tag를 못 지운다
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("update BacklogEntry b set b.tag = null, b.updatedAt = :now where b.tag.id = :tagId")
+    int clearTag(@Param("tagId") Long tagId, @Param("now") LocalDateTime now);
 
     /**
      * 마스터 이름 전파 (A-7, FR-ADM-01). 이름 오버라이드가 없는 항목만 대상이다.

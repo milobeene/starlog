@@ -12,7 +12,8 @@
 - `docs/api-design-v0.2.md` — API 설계서 (Phase 2). 화면에서 역산한 엔드포인트
 - `docs/dto-design-v0.1.md` — DTO 설계 원칙 (H-1). 변환 위치·null 규약·검증 두 겹
 - `docs/design-system.md` — **디자인 시스템 (Phase 8). 모든 화면이 이걸 따른다.** 색·타이포·공통 컴포넌트
-- `docs/phase8-handoff.md` — **⚠️ 이어서 작업할 때 여기부터 읽을 것.** 진행 중이던 항목·함정·미결
+- `docs/next-session-plan.md` — **⚠️ 이어서 작업할 때 여기부터.** 남은 작업의 실행 계획
+- `docs/phase8-handoff.md` — 진행 이력·함정·미결
 - `docs/design-request.md` — **디자인 요청서**. 입구·대시보드·라이브러리 3화면의 확정 구성. 서비스명 **STARLOG**
 - `docs/frontend-brief.md` — **화면 브리프 (Phase 8, 디자인용)**. 페이지별로 어떤 섹션이 들어가는지
 - `docs/frontend-impl-notes.md` — 프론트 구현 메모. 화면별 API·함정

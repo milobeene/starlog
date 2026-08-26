@@ -42,7 +42,6 @@ public class MemberPurgeService {
 
     /** 자식 → 부모 순서. 이 목록의 순서가 곧 명세다 */
     private static final List<String> DELETE_ORDER = List.of(
-            "delete from BacklogEntryTag x where x.backlogEntry in (select b from BacklogEntry b where b.member.id = :memberId)",
             "delete from BacklogEntryGenre x where x.backlogEntry in (select b from BacklogEntry b where b.member.id = :memberId)",
             "delete from CoverImage x where x.backlogEntry in (select b from BacklogEntry b where b.member.id = :memberId)",
             "delete from Acquisition x where x.backlogEntry in (select b from BacklogEntry b where b.member.id = :memberId)",

@@ -11,7 +11,9 @@ import java.util.List;
 /**
  * 목록 카드 (화면 1, API 설계서 §1.1).
  *
- * 태그는 일부러 없다 — 카드에 뿌리는 값이 아니라 폴더처럼 묶는 탐색 수단이다 (§6.7)
+ * 태그가 실려 있지만 **카드에 뿌리라고 준 게 아니다** — 사이드바·폴더 뷰가 묶는 데 쓴다 (§6.7).
+ * 항목당 하나라 카드에 얹어도 행이 안 늘어나고, 태그 수만큼 목록 API를 때리던
+ * 폴더 뷰의 1+N 요청이 이걸로 한 방이 된다
  */
 public record BacklogCardResponse(
         Long entryId,
@@ -22,7 +24,9 @@ public record BacklogCardResponse(
         BacklogStatus status,
         LastPlaythrough lastPlaythrough,
         /** 마스터 커버 id (IGDB). 개인 커버가 없을 때의 폴백 (§6.10) */
-        String coverImageId
+        String coverImageId,
+        /** 그룹핑 키. 태그가 없으면 null — 화면은 "태그 없음" 그룹으로 몬다 */
+        String tag
 ) {
 
     /** 회차가 0개면 통째로 null이다 */
@@ -69,7 +73,8 @@ public record BacklogCardResponse(
                 entry.getRating(),
                 entry.getStatus(),
                 LastPlaythrough.from(entry.getLastPlaythrough()),
-                entry.getGame().getCoverImageId()
+                entry.getGame().getCoverImageId(),
+                entry.getTag() == null ? null : entry.getTag().getName()
         );
     }
 }

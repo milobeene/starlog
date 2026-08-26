@@ -77,18 +77,20 @@ GET /api/backlog
         "finishedOn": null,
         "deviceName": "Nintendo Switch",
         "emulatorName": null
-      }
+      },
+      "tag": "운동"
     }
   ]
 }
 ```
 
-**태그는 카드에 넣지 않는다.** 폴더/모음집처럼 묶는 탐색 수단이다 (§6.7).
+**태그는 카드에 넣지 않는다** — 뿌리는 값이 아니라는 뜻이다. v1.6에서 항목당 하나가 되면서
+카드에 `tag`(그룹핑 키)가 실리기 시작했지만 용도는 그대로 폴더/사이드바 묶기다 (§6.7).
 
 #### 쿼리 예산 — 5방 (Phase 6 L-3에서 재측정)
 
 ```
-1방  항목 + game + lastPlaythrough + device + emulator   전부 ~ToOne → join fetch (페이징 유지)
+1방  항목 + game + tag + lastPlaythrough + device + emulator  전부 ~ToOne → join fetch (페이징 유지)
 1방  개인 장르 연결 (backlog_entry_genre, batch size)
 1방  장르 본체     (genre, batch size)          ← v0.1이 빠뜨린 자리
 1방  마스터 장르   (game_master_genre, batch size)
@@ -99,7 +101,8 @@ GET /api/backlog
 `mappedBy @OneToOne`은 지연 로딩이 안 되어 두면 항목마다 SELECT가 나간다.
 그래서 페이지의 entryId를 모아 `IN`으로 한 번에 읽는다.
 
-**검색·필터를 걸어도 5방 그대로다** — 태그·장르·기기·계정 필터가 전부 `exists` 서브쿼리라
+**검색·필터를 걸어도 5방 그대로다** — 장르·기기·계정 필터가 전부 `exists` 서브쿼리라
+(태그만 v1.6부터 `backlog_entry.tag_id` 직접 비교라 서브쿼리도 없다)
 별도 쿼리가 아니라 `where` 절에 들어간다. 상세는 12방이고, **회차 수가 늘어도 안 는다.**
 
 이 숫자는 `QueryCountTest`가 Hibernate 통계로 감시한다 — 절대값이 아니라
@@ -302,7 +305,7 @@ GET /api/backlog/{entryId}
   },
 
   "personalRecord": { "rating": 83.0, "playTimeHours": 40, "memo": "..." },
-  "tags":   ["명작", "운동"],
+  "tag":    "운동",                           // 항목당 하나. 없으면 null (v1.6)
   "genres": ["피트니스", "기능성"],            // 개인 장르 원본 (폴백 전)
 
   "playthroughs": [
@@ -322,7 +325,7 @@ GET /api/backlog/{entryId}
 }
 ```
 
-> **쿼리 11방** (v0.2 측정). 항목+game / 태그 / 회차(ToOne join fetch) / 취득(ToOne join fetch) +
+> **쿼리 10방** (v1.6 기준). 항목+game+tag(한 방에 join fetch) / 회차(ToOne join fetch) / 취득(ToOne join fetch) +
 > `@ElementCollection` 7종. 회차 수에는 비례하지 않는다.
 
 > **삭제된 플랫폼 계정도 그대로 실린다.** 과거 기록에서는 계정 이름이 계속 보여야 한다 (§6.5). 선택지 목록(§1.5)에서만 빠진다.
@@ -387,7 +390,7 @@ GET /api/me/options
 | `DELETE` | `/api/backlog/{id}` | `delete` (소프트) |
 | `PUT` | `/api/backlog/{id}/personal-record` | `updatePersonalRecord` |
 | `PUT` | `/api/backlog/{id}/overrides` | `updateOverrides` |
-| `PUT` | `/api/backlog/{id}/tags` | `replaceTags` |
+| `PUT` | `/api/backlog/{id}/tag` | `changeTag` — 본문 `{ "name": "명작" }`. null이면 뗀다 |
 | `PUT` | `/api/backlog/{id}/genres` | `replaceGenres` |
 
 `POST /api/backlog` 본문 (J-3에서 외부 id 추가):
@@ -714,7 +717,7 @@ PUT    /api/me/genres/{id}
 DELETE /api/me/genres/{id}
 ```
 
-서비스에는 있는데 v0.1에 대응 경로가 없던 것. 태그를 **붙이고 떼는** 건 `PUT /api/backlog/{id}/tags`,
+서비스에는 있는데 v0.1에 대응 경로가 없던 것. 태그를 **붙이고 떼는** 건 `PUT /api/backlog/{id}/tag` (단일값, v1.6),
 여기는 **사전 자체**를 고치는 곳이라 `/api/me` 아래다.
 
 ### 2.6 관리자 (인가는 Phase 3 / I-9)

@@ -149,7 +149,9 @@
 ```
 tags[]  genres[]  statuses[]  devices[]  platformAccounts[]     ← 전부 count 포함
 ```
-- **태그는 카드에 안 뿌린다.** 폴더/모음집처럼 묶는 탐색 수단이다 (스펙 §6.7)
+- **태그는 카드에 안 뿌린다.** 폴더/모음집처럼 묶는 탐색 수단이다 (스펙 §6.7).
+  카드 DTO에 `tag`가 실려 오지만 **표시용이 아니라 그룹핑 키다** — 사이드바·폴더 뷰가 이걸로 묶는다
+- **태그는 항목당 하나다** (§6.7 v1.6). 편집은 `PUT /api/backlog/{id}/tag` `{ name }`, null이면 뗀다
 - 사용 중인 것만 나온다 (안 붙은 태그, 삭제된 항목에만 붙은 태그는 빠짐)
 
 **카드** — 커버 · 이름 · 장르 · 평점(있으면) · 상태 · **마지막 회차**(번호 · 시작일 · 종료일 · 기기)
@@ -211,6 +213,7 @@ POST /api/backlog       담기
 | 보유 기기 | `/api/me/devices` CRUD |
 | 구독 | `/api/me/subscriptions` CRUD (서비스명 · 기간 · 요금 · 주기 · 활성) |
 | 태그 · 장르 사전 | `PUT\|DELETE /api/me/{tags,genres}/{id}` — **이름 수정과 삭제만** |
+| 항목의 태그 | `PUT /api/backlog/{id}/tag` `{ name }` — 단일값. 장르만 `{ names: [] }`다 |
 | 계정 | 구글 연결(`/oauth2/authorization/google`) · 해제(`DELETE /api/me/google`) · **탈퇴**(`DELETE /api/me`) |
 
 - 폼 선택지는 `GET /api/me/options` 한 방 (플랫폼 · 기기 · 에뮬 · 계정 · 구독 · 태그/장르 자동완성)

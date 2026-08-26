@@ -45,12 +45,13 @@ class FlywayMigrationTest {
 
     @Test
     void V1이_유니크_제약을_전부_만든다() {
-        //given — 2026-08-26 V1 기준. 스키마를 늘리면 이 목록도 같이 늘려야 한다
+        //given — 2026-08-26 V1 기준. 스키마를 늘리면 이 목록도 같이 늘려야 한다.
+        // uk_backlog_entry_tag가 없는 이유 — 태그가 항목당 하나가 되면서 조인 테이블이 사라졌다
         List<String> expected = List.of(
                 "uk_member_email", "uk_member_google_subject", "uk_auth_token_hash",
                 "uk_game_source_external_id", "uk_platform", "uk_device", "uk_emulator",
                 "uk_input_method", "uk_platform_account", "uk_tag_member_name",
-                "uk_genre_member_name", "uk_backlog_entry_member_game", "uk_backlog_entry_tag",
+                "uk_genre_member_name", "uk_backlog_entry_member_game",
                 "uk_backlog_entry_genre", "uk_playthrough_sequence", "uk_cover_image_backlog_entry");
 
         //when
@@ -74,13 +75,14 @@ class FlywayMigrationTest {
 
     @Test
     void V1이_외래키를_전부_만든다() {
-        //given — 34개 전부를 나열하는 대신 개수로 본다. FK는 이름보다 "빠진 게 없는가"가 중요하고,
+        //given — 33개 전부를 나열하는 대신 개수로 본다. FK는 이름보다 "빠진 게 없는가"가 중요하고,
         // 이름 목록은 스키마가 늘 때마다 갱신 비용이 크다
         //when
         int count = constraintNamesOf("FOREIGN KEY").size();
 
         //then
-        assertThat(count).isEqualTo(34);
+        // 34 → 33: 조인 테이블 FK 2개가 빠지고 backlog_entry.tag_id 1개가 들어왔다
+        assertThat(count).isEqualTo(33);
     }
 
     @Test

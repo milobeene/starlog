@@ -170,21 +170,43 @@ class BacklogWriteControllerTest extends ControllerTestSupport {
     }
 
     @Test
-    public void 태그를_전체_교체한다() throws Exception {
+    public void 태그를_바꾼다() throws Exception {
         //given
         Member member = saveMember();
         Long entryId = backlogService.addToBacklog(member.getId(), saveGame("Celeste").getId());
 
         //when
-        mockMvc.perform(put("/api/backlog/{entryId}/tags", entryId)
+        mockMvc.perform(put("/api/backlog/{entryId}/tag", entryId)
                         .header("X-Member-Id", member.getId())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"names\":[\"명작\",\"고난이도\"]}"))
+                        .content("{\"name\":\"명작\"}"))
                 .andExpect(status().isOk());
 
         //then
         mockMvc.perform(get("/api/backlog/{entryId}", entryId).header("X-Member-Id", member.getId()))
-                .andExpect(jsonPath("$.tags.length()").value(2));
+                .andExpect(jsonPath("$.tag").value("명작"));
+    }
+
+    @Test
+    public void 태그를_null로_보내면_떼어진다() throws Exception {
+        //given — @NotNull이 없다. "없음"이 유효한 값이라서다
+        Member member = saveMember();
+        Long entryId = backlogService.addToBacklog(member.getId(), saveGame("Gris").getId());
+        mockMvc.perform(put("/api/backlog/{entryId}/tag", entryId)
+                .header("X-Member-Id", member.getId())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"명작\"}"));
+
+        //when
+        mockMvc.perform(put("/api/backlog/{entryId}/tag", entryId)
+                        .header("X-Member-Id", member.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":null}"))
+                .andExpect(status().isOk());
+
+        //then
+        mockMvc.perform(get("/api/backlog/{entryId}", entryId).header("X-Member-Id", member.getId()))
+                .andExpect(jsonPath("$.tag").doesNotExist());
     }
 
     @Test
