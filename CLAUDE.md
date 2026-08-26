@@ -8,11 +8,14 @@
 - `docs/entity-design-v1.0.md` — 엔티티 설계서 (Phase 9 전면 개정)
 - `docs/db-baseline-v1.md` — 스키마 베이스라인 설계 근거. **DDL을 고치기 전에 읽을 것**
 - `docs/code-review-2026-08-26.md` — 멀티에이전트 리뷰 결과·조치·알려진 한계
-- `docs/capacity-planning.md` — 무료 티어 한도와 사용량 제한 설계 (미구현 권고안)
+- `docs/capacity-planning.md` — 무료 티어 한도와 사용량 제한 설계 (v1.0에서 대부분 무효)
 - `docs/api-design-v0.2.md` — API 설계서 (Phase 2). 화면에서 역산한 엔드포인트
 - `docs/dto-design-v0.1.md` — DTO 설계 원칙 (H-1). 변환 위치·null 규약·검증 두 겹
 - `docs/design-system.md` — **디자인 시스템 (Phase 8). 모든 화면이 이걸 따른다.** 색·타이포·공통 컴포넌트
-- `docs/next-session-plan.md` — **⚠️ 이어서 작업할 때 여기부터.** 남은 작업의 실행 계획
+- `docs/v1.0-decisions.md` — **⚠️ 이어서 작업할 때 여기부터.** v1.0 결정 필요 목록 (답 비어 있음)
+- `docs/v1.0-plan.md` — v1.0(일렉트론) 구성안·조사 결과·작업 순서
+- `docs/web-only-inventory.md` — 웹 전용 항목 전수 조사. 로컬 앱 전환 때 뗄 것
+- `docs/next-session-plan.md` — v0.1 작업 기록 (**닫힘**). 밟았던 함정 목록이 여기 있다
 - `docs/phase8-handoff.md` — 진행 이력·함정·미결
 - `docs/design-request.md` — **디자인 요청서**. 입구·대시보드·라이브러리 3화면의 확정 구성. 서비스명 **STARLOG**
 - `docs/frontend-brief.md` — **화면 브리프 (Phase 8, 디자인용)**. 페이지별로 어떤 섹션이 들어가는지
