@@ -25,6 +25,26 @@
 }
 
 /*
+ * 입구 로딩 연출. 배경(FluidBackground)이 흐르는 그라디언트라 스피너처럼 도는 물건은
+ * 결이 어긋난다 — **가로로 훑고 지나가는 빛**이 그 흐름과 같은 방향이라 겉돌지 않는다.
+ *
+ * 폭을 40%로 두고 -60% → 160%까지 밀어 양끝에서 완전히 사라지게 한다.
+ * 0%~100%로 두면 선 끝에 빛이 걸려 멈춘 것처럼 보인다
+ */
+@keyframes starlog-sweep {
+  0%   { transform: translateX(-60%); opacity: 0; }
+  15%  { opacity: 1; }
+  85%  { opacity: 1; }
+  100% { transform: translateX(160%); opacity: 0; }
+}
+
+/* 라벨은 빛보다 느리게 숨쉰다 — 같은 주기면 둘이 붙어 보여 산만하다 */
+@keyframes starlog-breathe {
+  0%, 100% { opacity: 0.28; }
+  50%      { opacity: 0.62; }
+}
+
+/*
  * 엘리먼트 리셋은 반드시 @layer base 안에 둔다.
  * 레이어 밖에 있으면 캐스케이드 레이어 규칙상 **모든 레이어를 이겨서**
  * `button { background: none }` 하나가 bg-white 같은 유틸리티를 전부 무력화한다

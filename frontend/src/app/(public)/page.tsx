@@ -1,16 +1,44 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import EntryLoader from "@/components/ui/EntryLoader";
 import { logout, useSession } from "@/lib/session";
 
 /**
  * 표지 한 장. 서비스 이름이 주인공이고 버튼은 둘뿐이다.
  *
- * 버튼 영역이 살짝 늦게 뜬다 — 로그인 여부를 확인하고 나서 그려지기 때문.
- * 배경 연출이 그 시간을 덮는다
+ * 버튼 영역은 로그인 여부를 확인한 뒤에 그려진다. 그 사이를 EntryLoader가 채운다 —
+ * Render 무료 티어가 잠들어 있으면 **3분까지** 걸리므로 빈 자리로 두면 고장 난 줄 안다.
  */
+
+/**
+ * 로더 최소 노출 시간.
+ *
+ * 서버가 깨어 있으면 판정이 0.2초 만에 끝난다. 그대로 두면 로더가 번쩍이고 사라져
+ * 없는 것만 못하다. 빛이 한 번 훑는 데 1.9초라, 3초면 한 번 반을 보고 넘어간다
+ */
+const MIN_LOADER_MS = 3000;
+
 export default function LandingPage() {
   const session = useSession();
+
+  /*
+   * 재방문이면 useSession이 캐시된 답을 들고 첫 렌더에 온다 → 처음부터 ready.
+   * 대시보드에 갔다 돌아올 때마다 로더가 뜨면 성가시다
+   */
+  const [ready, setReady] = useState(session.status !== "loading");
+  const mountedAt = useRef(0);
+  if (mountedAt.current === 0) mountedAt.current = Date.now();
+
+  useEffect(() => {
+    if (ready || session.status === "loading") return;
+
+    // 판정이 언제 끝났든 마운트 기준 MIN_LOADER_MS는 채운다
+    const remain = Math.max(0, MIN_LOADER_MS - (Date.now() - mountedAt.current));
+    const timer = setTimeout(() => setReady(true), remain);
+    return () => clearTimeout(timer);
+  }, [ready, session.status]);
 
   return (
     <main className="relative flex h-full w-full flex-col items-center justify-center">
@@ -22,27 +50,45 @@ export default function LandingPage() {
           플레이한 게임을 기록하고 되돌아보는 개인 아카이브입니다.
         </p>
 
-        {/* 판정 중에도 높이를 차지한다 — 버튼이 나타날 때 글자가 밀려 올라가면 안 된다 */}
-        <div className="flex h-[46px] items-center space-x-6">
-          {session.status === "loading" ? null : session.status === "member" ? (
-            <>
-              <Link href="/dashboard" className={BUTTON}>
-                Continue as {session.me.profile.nickname}
-              </Link>
-              <button onClick={() => void logout()} className={BUTTON}>
-                Log out
-              </button>
-            </>
-          ) : (
-            <>
-              <Link href="/login" className={BUTTON}>
-                Log in
-              </Link>
-              <Link href="/signup" className={BUTTON}>
-                Sign up
-              </Link>
-            </>
-          )}
+        {/*
+          판정 중에도 높이를 차지한다 — 버튼이 나타날 때 글자가 밀려 올라가면 안 된다.
+          로더와 버튼을 같은 칸에 겹쳐 두고 투명도만 교차시킨다: 자리를 뺏고 뺏기지 않아
+          전환이 흔들리지 않는다
+        */}
+        <div className="relative flex h-[46px] w-full items-center justify-center">
+          <div
+            className={`absolute transition-opacity duration-500 ${
+              ready ? "pointer-events-none opacity-0" : "opacity-100"
+            }`}
+          >
+            <EntryLoader />
+          </div>
+
+          <div
+            className={`absolute flex items-center space-x-6 transition-opacity duration-700 ${
+              ready ? "opacity-100" : "pointer-events-none opacity-0"
+            }`}
+          >
+            {session.status === "member" ? (
+              <>
+                <Link href="/dashboard" className={BUTTON}>
+                  Continue as {session.me.profile.nickname}
+                </Link>
+                <button onClick={() => void logout()} className={BUTTON}>
+                  Log out
+                </button>
+              </>
+            ) : (
+              <>
+                <Link href="/login" className={BUTTON}>
+                  Log in
+                </Link>
+                <Link href="/signup" className={BUTTON}>
+                  Sign up
+                </Link>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
