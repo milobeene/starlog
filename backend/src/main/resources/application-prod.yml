@@ -37,6 +37,21 @@ spring:
     console:
       enabled: false
 
+# **크로스 사이트 배포의 핵심 스위치** (O-3).
+# 프론트는 *.vercel.app, 백엔드는 *.onrender.com — 등록 도메인이 달라 브라우저가
+# "다른 사이트"로 본다. 기본값 Lax면 쿠키가 크로스 사이트 요청에 아예 안 실려서,
+# CORS를 열어도 세션이 안 붙고 로그인 직후부터 계속 401이 난다.
+#
+# None은 Secure를 요구한다(스펙). 둘 다 HTTPS라 문제없다 — 하나라도 http면 쿠키가 통째로 버려진다.
+# 도메인을 사서 api.example.com / example.com으로 합치면 Lax로 되돌릴 수 있다
+server:
+  servlet:
+    session:
+      cookie:
+        same-site: none
+        secure: true
+        http-only: true
+
 logging:
   level:
     org.hibernate.SQL: warn

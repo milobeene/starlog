@@ -38,6 +38,17 @@ spring:
     # 로그인 유지 기간. 기본 30분은 "가끔 들어오는 앱"에 짧다
     timeout: 14d
 
+# 세션 쿠키 (O-3). dev는 프론트·백엔드가 둘 다 localhost라 **동일 사이트**로 취급되어
+# 기본값 Lax로 충분하다. 배포는 vercel.app ↔ onrender.com이라 사이트가 갈리므로
+# application-prod.yml이 SameSite=None으로 덮는다
+server:
+  servlet:
+    session:
+      cookie:
+        same-site: lax
+        secure: false
+        http-only: true
+
 # 배치 주기. 테스트에서는 절대 안 도는 값으로 덮는다 (application-test.yml)
 app:
   # 이메일 가입 허용 목록 (OI-02 후속). **비우면 제한이 풀린다.**

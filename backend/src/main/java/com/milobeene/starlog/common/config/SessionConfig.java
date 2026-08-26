@@ -1,5 +1,6 @@
 package com.milobeene.starlog.common.config;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.core.session.SessionRegistry;
@@ -42,9 +43,22 @@ public class SessionConfig {
      *
      * SecurityConfig가 아니라 여기 있는 이유 — SecurityConfig는 CsrfTokenIssuer를 주입받고,
      * 그 Issuer는 이 저장소를 주입받는다. 같은 클래스에 두면 순환 참조로 기동이 실패한다.
+     *
+     * ⚠️ **세션 쿠키 설정(server.servlet.session.cookie.*)이 이 쿠키에는 안 먹는다.**
+     * 그쪽은 서블릿 세션 쿠키 전용이고, XSRF-TOKEN은 시큐리티가 직접 굽는다.
+     * 그래서 같은 프로퍼티를 읽어 손으로 맞춰준다 — 안 맞추면 크로스 사이트 배포에서
+     * 세션은 붙는데 CSRF 토큰만 안 실려 **쓰기 요청이 전부 403**이 된다 (읽기는 멀쩡해서 더 헷갈린다).
+     *
+     * httpOnly=false는 그대로다. 브라우저가 쿠키에서 꺼내 헤더로 되돌려줘야 하므로 JS가 읽어야 한다
      */
     @Bean
-    public CsrfTokenRepository csrfTokenRepository() {
-        return CookieCsrfTokenRepository.withHttpOnlyFalse();
+    public CsrfTokenRepository csrfTokenRepository(
+            @Value("${server.servlet.session.cookie.same-site:lax}") String sameSite,
+            @Value("${server.servlet.session.cookie.secure:false}") boolean secure) {
+
+        CookieCsrfTokenRepository repository = CookieCsrfTokenRepository.withHttpOnlyFalse();
+        repository.setCookieCustomizer(cookie -> cookie.sameSite(sameSite).secure(secure));
+
+        return repository;
     }
 }
