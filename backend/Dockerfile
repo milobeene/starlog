@@ -17,7 +17,13 @@ RUN chmod +x gradlew && ./gradlew dependencies -q || true
 # 경로를 박아두면 컨텍스트가 틀린 순간 이 줄에서 바로 죽는다
 COPY src src
 
-RUN ./gradlew bootJar -x test -q
+# 진단 — Render 빌드가 "Main class를 못 찾겠다"로 2.6초 만에 죽는데, 로컬(arm64·amd64 둘 다)에서는
+# 통과한다. 컴파일이 아예 안 도는 정황이라 컨텍스트에 뭐가 들어왔는지 눈으로 본다.
+# 원인이 잡히면 이 블록은 지운다
+RUN echo "=== 컨텍스트 최상위 ===" && ls -la  && echo "=== src 트리 (2단계) ===" && find src -maxdepth 2  && echo "=== 자바 파일 수 ===" && find src -name '*.java' | wc -l  && echo "=== settings.gradle ===" && cat settings.gradle
+
+# -q를 뺀다. 조용하면 컴파일이 도는지 안 도는지가 안 보인다
+RUN ./gradlew bootJar -x test
 
 # 산출물이 실제로 나왔는지 확인 — 없으면 여기서 끊어야 런타임까지 안 흘러간다
 RUN test -f build/libs/app.jar || (echo "app.jar가 없다. bootJar 산출물 이름을 확인할 것" && ls -la build/libs && exit 1)
