@@ -39,8 +39,13 @@ cd backend && ./gradlew test              # 421개 초록 (도커 필요 — Pos
 
 **사용자가 할 것** (내가 못 하는 것: 계정·대시보드·환경변수 입력)
 1. Render에서 `New > Web Service` → 이 저장소 연결 → **Root Directory `backend`**
-2. Build: `./gradlew build -x test` / Start: `java -jar build/libs/app.jar`
-   (jar 이름을 버전에서 떼어냈다 — 버전을 올려도 이 명령이 안 깨진다)
+2. **Docker 방식이다** — Render는 Java 네이티브 런타임이 없다(Node/Python/Ruby/Go/Rust만 있음).
+   Root Directory를 backend로 잡으면 Render가 자동으로 Dockerfile을 찾아 Docker Build Context /
+   Dockerfile Path를 `backend/`로 제안한다. `backend/Dockerfile`(멀티스테이지: JDK로 빌드,
+   JRE로 실행)을 이미 만들어뒀고 로컬 `docker build` + 컨테이너 기동으로 검증 완료
+3. Language 필드가 Node로 자동 감지되면 무시해도 된다 — Root Directory를 backend로 지정하는
+   순간 Docker 옵션으로 바뀐다. Build/Start Command 칸은 Dockerfile이 대신하므로 비워둔다
+4. Compute Plan은 **Free** — 계획 전제가 무료 티어다 (그래서 O-4로 세션을 DB로 옮겼다)
 3. 환경변수 입력:
 
 | 키 | 값 |
