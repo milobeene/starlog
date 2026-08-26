@@ -159,12 +159,17 @@ class AcquisitionServiceTest {
 
     // ── C-3: 상태 재계산 (§7.6 완성)
 
+    /**
+     * **2026-08-26 규칙 개정.** 예전엔 NOT_OWNED만 있으면 WISHLIST였다. 그러면 에뮬로 굴릴
+     * 롬을 챙겨둔 것처럼 **손에 닿는 게 분명한 것까지** 위시리스트로 갔다.
+     * 위시리스트는 "아직 아무 기록도 없이 갖고 싶은 것"이어야 한다
+     */
     @Test
-    public void NOT_OWNED만_있으면_WISHLIST를_유지한다() {
+    public void NOT_OWNED라도_취득_기록이_있으면_BACKLOG다() {
         //given
-        Long entryId = givenEntry("아직 안 산 게임");
+        Long entryId = givenEntry("에뮬로 굴릴 게임");
 
-        //when — NOT_OWNED + 회차 없음 = 사실상 위시리스트 (§6.6)
+        //when
         acquisitionService.add(memberId, entryId, new AcquisitionCommand(
                 AcquisitionMethod.NOT_OWNED, null, null, null, null, null, null, null));
 
@@ -172,7 +177,7 @@ class AcquisitionServiceTest {
         em.clear();
 
         //then
-        assertThat(statusOf(entryId)).isEqualTo(BacklogStatus.WISHLIST);
+        assertThat(statusOf(entryId)).isEqualTo(BacklogStatus.BACKLOG);
     }
 
     @Test
@@ -182,7 +187,7 @@ class AcquisitionServiceTest {
         acquisitionService.add(memberId, entryId, new AcquisitionCommand(
                 AcquisitionMethod.NOT_OWNED, null, null, null, null, null, null, null));
 
-        //when — 하나라도 소유를 뜻하면 가진 것
+        //when — 어느 쪽이든 취득 기록이므로 결과는 같다
         acquisitionService.add(memberId, entryId, purchased("29000", "KRW"));
 
         em.flush();
@@ -213,20 +218,20 @@ class AcquisitionServiceTest {
     // ── C-4: 수정·삭제
 
     @Test
-    public void 취득을_NOT_OWNED로_바꾸면_WISHLIST로_되돌아간다() {
+    public void 취득을_NOT_OWNED로_바꿔도_BACKLOG를_유지한다() {
         //given
         Long entryId = givenEntry("Gris");
         Long acquisitionId = acquisitionService.add(memberId, entryId, purchased("19000", "KRW"));
 
-        //when
+        //when — 방식이 바뀔 뿐 취득 기록은 그대로 있다
         acquisitionService.update(memberId, acquisitionId, new AcquisitionCommand(
                 AcquisitionMethod.NOT_OWNED, null, null, null, null, null, null, null));
 
         em.flush();
         em.clear();
 
-        //then
-        assertThat(statusOf(entryId)).isEqualTo(BacklogStatus.WISHLIST);
+        //then — WISHLIST로 돌아가려면 취득을 **지워야** 한다 (아래 테스트)
+        assertThat(statusOf(entryId)).isEqualTo(BacklogStatus.BACKLOG);
     }
 
     @Test

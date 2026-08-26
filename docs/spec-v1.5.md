@@ -644,7 +644,10 @@ DLC는 별도 게임으로 관리하지 않고 **본편의 추가 회차로 흡�
 
 `PURCHASED` | `SUBSCRIPTION` | `FREE` | `GIFT` | `BORROWED` | `DEMO` | `NOT_OWNED`
 
-- `NOT_OWNED` + 회차 없음 = 사실상 위시리스트. **별도 개념을 두지 않는다**
+- `NOT_OWNED`는 **소유 여부만** 나타낸다. 지출 집계에서 빠지고 취득 목록에 방식으로 남는다
+- **위시리스트는 취득 기록이 0건일 때다** (2026-08-26 개정). 예전엔 `NOT_OWNED`만 있으면
+  위시리스트로 봤는데, 그러면 에뮬로 굴릴 롬을 챙겨둔 것처럼 **손에 닿는 게 분명한 것까지**
+  위시리스트로 갔다. 위시리스트는 "아직 아무 기록도 없이 갖고 싶은 것"이어야 한다
 - 실물 구매 등 계정이 없는 경우 `PlatformAccount`는 null이며 `Platform`만 기록할 수 있다
 
 #### 취득 카디널리티 (v1.3)
@@ -1171,7 +1174,8 @@ PostgreSQL의 `WHERE deleted_at IS NULL` 부분 인덱스가 정석 해법이지
 
 | 조건 | `status` |
 |---|---|
-| 회차 없음 + 취득 방식 `NOT_OWNED` | `WISHLIST` |
+| 회차 없음 + 취득 **0건** | `WISHLIST` |
+| 회차 없음 + 취득 1건 이상 (`NOT_OWNED` 포함) | `BACKLOG` |
 | 회차 없음 + 그 외 취득 | `BACKLOG` (쌓아둠) |
 | 진행 중 회차 존재 | `PLAYING` |
 | 최신 회차가 `PAUSED` | `PAUSED` |

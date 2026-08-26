@@ -260,12 +260,19 @@ public class BacklogEntry extends BaseEntity {
             return;
         }
 
-        // 회차 없음 → 취득이 정한다.
-        // NOT_OWNED가 아닌 취득이 하나라도 있으면 가진 것. 취득 0건도 WISHLIST다
+        /*
+         * 회차 없음 → 취득이 정한다.
+         *
+         * **취득 기록이 하나라도 있으면 BACKLOG다** (2026-08-26 개정). 예전엔 NOT_OWNED를
+         * 빼고 셌는데, 그러면 에뮬로 굴릴 롬을 챙겨둔 것처럼 **손에 닿는 게 분명한 것까지
+         * 위시리스트**로 갔다. 위시리스트는 "아직 아무 기록도 없이 갖고 싶은 것"이어야 한다.
+         *
+         * NOT_OWNED는 이제 상태가 아니라 **소유 여부**만 나타낸다 — 지출 집계에서 빠지고
+         * 취득 목록에 방식으로 남는다
+         */
         this.lastPlayedOn = null;
         this.lastPlaythrough = null;
-        boolean owned = acquisitions.stream().anyMatch(Acquisition::impliesOwnership);
-        this.status = owned ? BacklogStatus.BACKLOG : BacklogStatus.WISHLIST;
+        this.status = acquisitions.isEmpty() ? BacklogStatus.WISHLIST : BacklogStatus.BACKLOG;
     }
 
     /**

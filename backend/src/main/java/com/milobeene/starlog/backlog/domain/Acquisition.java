@@ -89,11 +89,6 @@ public class Acquisition extends BaseEntity {
         this.subscription = subscription;
     }
 
-    /** §7.6 — NOT_OWNED만 아니면 "가지고 있다"로 본다 */
-    public boolean impliesOwnership() {
-        return method != AcquisitionMethod.NOT_OWNED;
-    }
-
     private void apply(AcquisitionCommand command) {
         if (command.method() == null) {
             throw new InvalidInputException("취득 방식은 필수입니다");
