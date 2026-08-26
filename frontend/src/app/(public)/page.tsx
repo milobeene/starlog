@@ -29,10 +29,11 @@ export default function LandingPage() {
    * 대시보드에 갔다 돌아올 때마다 로더가 뜨면 성가시다
    */
   const [ready, setReady] = useState(session.status !== "loading");
+  // 렌더 중에 찍으면 안 된다 — ref 쓰기도 Date.now()도 렌더를 불순하게 만든다. effect에서 찍는다
   const mountedAt = useRef(0);
-  if (mountedAt.current === 0) mountedAt.current = Date.now();
 
   useEffect(() => {
+    if (mountedAt.current === 0) mountedAt.current = Date.now();
     if (ready || session.status === "loading") return;
 
     // 판정이 언제 끝났든 마운트 기준 MIN_LOADER_MS는 채운다
@@ -47,8 +48,8 @@ export default function LandingPage() {
         <h1 className="font-display text-[12vw] leading-none font-bold tracking-tighter text-white/90 drop-shadow-2xl select-none">
           STARLOG
         </h1>
-        <p className="mt-4 mb-16 max-w-2xl text-xl font-light text-white/60 md:text-2xl">
-          플레이한 게임을 기록하고 되돌아보는 개인 아카이브입니다.
+        <p className="mb-16 max-w-2xl text-base font-light text-white/60 md:text-lg">
+          플레이한 게임을 기록하고 되돌아보는 개인 아카이브
         </p>
 
         {/*

@@ -204,6 +204,8 @@ export interface Profile {
   googleLinked: boolean;
   /** 비밀번호가 없으면 구글 연결을 해제할 수 없다 (BR-AUTH-01) */
   hasPassword: boolean;
+  /** 관리자 메뉴를 보일지 정하는 데만 쓴다. 진짜 방어선은 서버의 hasRole (AUTH-P2) */
+  role: "USER" | "ADMIN";
 }
 
 /** 마스터에서 고르는 게 아니라 유형·라벨을 직접 적는다. memo는 마크다운 */

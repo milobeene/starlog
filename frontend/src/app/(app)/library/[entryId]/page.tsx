@@ -20,6 +20,7 @@ import OverridesDialog from "@/components/library/OverridesDialog";
 import PlaythroughDialog from "@/components/library/PlaythroughDialog";
 import AcquisitionDialog from "@/components/library/AcquisitionDialog";
 import TagGenreDialog from "@/components/library/TagGenreDialog";
+import MoneyText from "@/components/ui/Money";
 import CoverDialog from "@/components/library/CoverDialog";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { Button, EditButton } from "@/components/ui/Field";
@@ -31,7 +32,6 @@ import {
   ACQUISITION_METHOD_LABEL,
   PLAYTHROUGH_STATUS_LABEL,
   formatList,
-  formatMoney,
   formatRating,
 } from "@/lib/labels";
 import type { Acquisition, BacklogDetail, OptionsResponse, Playthrough } from "@/lib/types";
@@ -294,7 +294,9 @@ export default function BacklogDetailPage({
                       <td className="px-4 py-3 text-white/90">
                         {ACQUISITION_METHOD_LABEL[item.method]}
                       </td>
-                      <td className="num px-4 py-3 text-white/60">{formatMoney(item.price)}</td>
+                      <td className="num px-4 py-3 text-white/60">
+                        <MoneyText money={item.price} />
+                      </td>
                       <td className="num px-4 py-3 text-white/60">{item.acquiredOn ?? "—"}</td>
                       <td className="px-4 py-3 text-white/60">
                         {item.subscription?.serviceName ?? item.platform?.name ?? "—"}
@@ -359,7 +361,16 @@ export default function BacklogDetailPage({
                     value={<span className="num">{resolved.releasedOn ?? "—"}</span>}
                     overridden={overrides.releasedOn != null}
                   />
-                  <InfoRow label="Genres" value={formatList(resolved.genres)} />
+                  {/*
+                    개인 장르가 하나라도 있으면 마스터를 덮은 것이다 (§6.7).
+                    resolved.genres는 폴백이 끝난 값이라 여기서는 판단이 안 된다 —
+                    덮었는지는 원본(data.genres)이 비었는지로만 알 수 있다
+                  */}
+                  <InfoRow
+                    label="Genres"
+                    value={formatList(resolved.genres)}
+                    overridden={data.genres.length > 0}
+                  />
                   {master.releasePlatforms.length > 0 && (
                     <InfoRow label="Platforms" value={formatList(master.releasePlatforms)} />
                   )}

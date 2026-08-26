@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { MonthlySpending } from "@/lib/types";
+import type { Money, MonthlySpending } from "@/lib/types";
+import MoneyText from "@/components/ui/Money";
 
 /**
  * 월별 지출 꺾은선.
@@ -220,7 +221,11 @@ export default function MonthlySpendingChart({ data }: { data: MonthlySpending }
                       className="inline-block h-0.5 w-3"
                       style={{ background: LINE_COLORS[index % LINE_COLORS.length] }}
                     />
-                    <span className="num">{formatAmount(series[hover]?.[currency] ?? 0, currency)}</span>
+                    <span className="num">
+                      <MoneyText
+                        money={{ amount: series[hover]?.[currency] ?? 0, currency } as Money}
+                      />
+                    </span>
                   </span>
                 ))
               )}
@@ -243,12 +248,4 @@ function compact(value: number): string {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
   if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
   return value.toFixed(0);
-}
-
-function formatAmount(value: number, currency: string): string {
-  return new Intl.NumberFormat("ko-KR", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: currency === "KRW" ? 0 : 2,
-  }).format(value);
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import PageHeading from "@/components/ui/PageHeading";
@@ -12,10 +12,11 @@ import { Button, Field, FIELD_DATE, FIELD_INPUT, FIELD_SELECT } from "@/componen
 import SettingsSection, { EmptyRow, Row } from "@/components/settings/SettingsSection";
 import MarkdownTextarea from "@/components/ui/MarkdownTextarea";
 import GoogleResultBanner from "@/components/auth/GoogleResultBanner";
+import MoneyText from "@/components/ui/Money";
 import { useApi } from "@/lib/useApi";
 import { api, ApiError, ERROR, errorMessage } from "@/lib/api";
 import { logout } from "@/lib/session";
-import { BILLING_CYCLE_LABEL, formatMoney } from "@/lib/labels";
+import { BILLING_CYCLE_LABEL } from "@/lib/labels";
 import type {
   CompanyDictionary,
   FacetCount,
@@ -69,7 +70,7 @@ function SettingsContent() {
   const facets = useApi<FacetsResponse>("/api/backlog/facets");
   const companies = useApi<CompanyDictionary>("/api/backlog/companies");
   const [dialog, setDialog] = useState<Dialog>(null);
-  const [unlinking, setUnlinking] = useState(false);
+  const [unlinkRequested, setUnlinkRequested] = useState(false);
   const [unlinkError, setUnlinkError] = useState<string | null>(null);
 
   const refresh = () => {
@@ -82,27 +83,25 @@ function SettingsContent() {
    * 구글 연결 해제 (FR-AUTH-08). 서버가 비밀번호 유무를 다시 검사하므로
    * 화면의 disabled는 편의일 뿐 방어선이 아니다 — 실패 메시지를 그대로 보여준다.
    *
-   * **성공했을 때 unlinking을 여기서 끄지 않는다.** 끄면 refresh()가 돌아오기 전이라
-   * me.data는 아직 googleLinked=true다 → "해제하는 중"이 잠깐 "연결 해제"로 되돌아갔다가
-   * 데이터가 도착해야 "연결"로 바뀐다. 사용자 눈에는 실패했다 성공한 것처럼 깜빡인다.
-   * 그래서 **데이터가 실제로 바뀔 때까지** 켜둔 채 두고, 아래 effect가 끈다
+   * **"해제하는 중"은 상태가 아니라 파생값이다.** 응답이 온 순간에 끄면 refresh()가
+   * 돌아오기 전이라 me.data는 아직 googleLinked=true다 → "해제하는 중"이 잠깐
+   * "연결 해제"로 되돌아갔다가 데이터가 도착해야 "연결"로 바뀐다. 실패했다 성공한 것처럼 깜빡인다.
+   * 그래서 **눌렀는가**만 상태로 두고, 데이터가 실제로 바뀌면 파생값이 저절로 꺼지게 한다
+   * (effect에서 setState로 끄면 렌더가 한 번 더 돌고 리액트가 연쇄 렌더로 경고한다)
    */
+  const unlinking = unlinkRequested && (me.data?.profile.googleLinked ?? true);
+
   const unlinkGoogle = async () => {
-    setUnlinking(true);
+    setUnlinkRequested(true);
     setUnlinkError(null);
     try {
       await api.del("/api/me/google");
       refresh();
     } catch (caught) {
       setUnlinkError(errorMessage(caught, "연결을 해제하지 못했습니다."));
-      setUnlinking(false);   // 실패는 즉시 푼다 — 되돌아갈 상태가 원래 상태다
+      setUnlinkRequested(false);   // 실패는 즉시 푼다 — 되돌아갈 상태가 원래 상태다
     }
   };
-
-  // 해제가 서버에 반영되어 내려온 순간에만 대기 상태를 푼다
-  useEffect(() => {
-    if (unlinking && me.data && !me.data.profile.googleLinked) setUnlinking(false);
-  }, [unlinking, me.data]);
 
   if (me.error) return <ErrorNotice error={me.error} onRetry={me.reload} />;
 
@@ -295,7 +294,7 @@ function SettingsContent() {
                 <Row key={subscription.subscriptionId}>
                   <span className="flex-1">{subscription.serviceName}</span>
                   <span className="num text-xs text-white/50">
-                    {formatMoney(subscription.fee)} / {BILLING_CYCLE_LABEL[subscription.billingCycle]}
+                    <MoneyText money={subscription.fee} /> / {BILLING_CYCLE_LABEL[subscription.billingCycle]}
                   </span>
                   <span className="num text-xs text-white/30">
                     {subscription.startedOn} ~ {subscription.endedOn ?? ""}

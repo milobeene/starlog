@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!--
+    STARLOG 파비콘.
+
+    **currentColor를 쓰지 않는다.** 파비콘은 문서 안이 아니라 단독 이미지로 렌더되므로
+    currentColor가 상속받을 색이 없어 검정으로 떨어진다 — 다크 모드 탭에서 안 보인다.
+    그래서 색을 명시하고, prefers-color-scheme으로 밝은 탭/어두운 탭 양쪽에 대응한다.
+  -->
+  <style>
+    path { fill: #0A0A0A; }
+    @media (prefers-color-scheme: dark) { path { fill: #FAFAFA; } }
+  </style>
+  <path fill-rule="evenodd" d="M50 3 Q60.5 39.5 97 50 Q60.5 60.5 50 97 Q39.5 60.5 3 50 Q39.5 39.5 50 3 Z M50 33 Q55 45 67 50 Q55 55 50 67 Q45 55 33 50 Q45 45 50 33 Z"/>
+</svg>

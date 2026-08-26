@@ -51,13 +51,21 @@ const CURRENCY_LOCALE: Record<Money["currency"], string> = {
   JPY: "ja-JP",
 };
 
-export function formatMoney(money: Money | null): string {
-  if (!money) return "—";
-  return new Intl.NumberFormat(CURRENCY_LOCALE[money.currency], {
+function moneyFormatter(currency: Money["currency"]) {
+  return new Intl.NumberFormat(CURRENCY_LOCALE[currency], {
     style: "currency",
-    currency: money.currency,
-    maximumFractionDigits: money.currency === "USD" ? 2 : 0,
-  }).format(money.amount);
+    currency,
+    maximumFractionDigits: currency === "USD" ? 2 : 0,
+  });
+}
+
+/**
+ * 금액을 조각으로 쪼갠다 — 통화 기호와 숫자를 다른 폰트로 그리기 위해서다 (components/ui/Money).
+ * 문자열을 직접 자르지 않는 이유는 통화마다 기호 위치가 다르기 때문이다 (₩1,000 / 1 000 €)
+ */
+export function moneyParts(money: Money | null): Intl.NumberFormatPart[] | null {
+  if (!money) return null;
+  return moneyFormatter(money.currency).formatToParts(money.amount);
 }
 
 export function formatDate(date: string | null): string {

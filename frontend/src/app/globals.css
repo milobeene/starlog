@@ -12,10 +12,16 @@
   /* Syncopate은 700 하나만 받아온다 — 기본 굵기를 토큰에 붙여야 폴백으로 안 샌다 */
   --font-display: var(--font-syncopate), sans-serif;
   --font-display--font-weight: 700;
-  --font-sans: var(--font-inter), "Apple SD Gothic Neo", sans-serif;
+  /*
+   * 본문. **영문 Switzer → 한글 Pretendard 순서가 중요하다** —
+   * 브라우저는 글자마다 앞에서부터 훑어 그 글자를 가진 첫 폰트를 쓴다.
+   * Switzer에 한글이 없으므로 한글만 자동으로 Pretendard로 넘어간다.
+   * 순서를 뒤집으면 영문까지 Pretendard가 그려서 Switzer가 안 보인다
+   */
+  --font-sans: var(--font-switzer), var(--font-pretendard), sans-serif;
 
-  /* 숫자 전용. 나중에 폭이 균일한 모노 폰트로 갈아끼운다 — 이 한 줄만 바꾸면 된다 */
-  --font-num: var(--font-inter), ui-monospace, monospace;
+  /* 숫자 전용. 폭이 균일해 표에서 자릿수가 맞고, 0에 사선이 있어 O와 안 헷갈린다 */
+  --font-num: var(--font-jetbrains), ui-monospace, monospace;
 }
 
 :root {

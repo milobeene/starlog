@@ -2,6 +2,7 @@ package com.milobeene.starlog.member.dto;
 
 import com.milobeene.starlog.common.dto.MoneyResponse;
 import com.milobeene.starlog.member.domain.Member;
+import com.milobeene.starlog.member.domain.MemberRole;
 import com.milobeene.starlog.platform.domain.Device;
 import com.milobeene.starlog.platform.domain.Emulator;
 import com.milobeene.starlog.platform.domain.InputMethod;
@@ -34,13 +35,19 @@ public record MeResponse(
      * `googleSubject` 자체를 내리지 않는 건 구글 계정 식별자라 밖에 나갈 값이 아니기 때문
      */
     public record Profile(Long memberId, String email, String nickname, String memo,
-                          boolean googleLinked, boolean hasPassword) {
+                          boolean googleLinked, boolean hasPassword, MemberRole role) {
 
+        /**
+         * `role`은 화면이 관리자 메뉴를 보일지 정하는 데만 쓴다 — **방어선이 아니다.**
+         * /api/admin/** 는 서버가 hasRole("ADMIN")으로 막는다. 여기 값을 조작해도
+         * 메뉴가 보일 뿐 호출은 403이다 (AUTH-P2)
+         */
         static Profile from(Member member) {
             return new Profile(member.getId(), member.getEmail(),
                     member.getNickname(), member.getMemo(),
                     member.getGoogleSubject() != null,
-                    member.hasPassword());
+                    member.hasPassword(),
+                    member.getRole());
         }
     }
 
