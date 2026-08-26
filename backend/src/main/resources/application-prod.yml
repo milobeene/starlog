@@ -37,6 +37,21 @@ spring:
     console:
       enabled: false
 
+  # 구글 로그인 (FR-AUTH-06~08). **여기 없으면 구글 로그인이 통째로 사라진다** —
+  # SecurityConfig가 `clientRegistrations != null`일 때만 oauth2Login을 체인에 붙이므로,
+  # 등록이 없으면 /oauth2/authorization/google이 아무 필터에도 안 걸려 401이 된다.
+  # 지금까지 이 블록은 application-local.yml(git 미포함)에만 있어서 배포에 안 올라갔다.
+  #
+  # 기본값을 안 준다 — 없으면 기동이 "placeholder를 못 찾겠다"로 즉시 죽는다.
+  # 가입이 구글 전용이라 이게 없는 배포는 아무도 못 들어오는 껍데기다. 조용히 뜨는 것보다 낫다
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+
 # **크로스 사이트 배포의 핵심 스위치** (O-3).
 # 프론트는 *.vercel.app, 백엔드는 *.onrender.com — 등록 도메인이 달라 브라우저가
 # "다른 사이트"로 본다. 기본값 Lax면 쿠키가 크로스 사이트 요청에 아예 안 실려서,
@@ -45,6 +60,12 @@ spring:
 # None은 Secure를 요구한다(스펙). 둘 다 HTTPS라 문제없다 — 하나라도 http면 쿠키가 통째로 버려진다.
 # 도메인을 사서 api.example.com / example.com으로 합치면 Lax로 되돌릴 수 있다
 server:
+  # **Render는 TLS를 프록시에서 끊는다.** 톰캣이 보는 요청은 http라, 이게 없으면 구글에 보낼
+  # redirect_uri가 http://starlog.onrender.com/... 로 생성돼 콘솔에 등록한 https 주소와
+  # 안 맞아 redirect_uri_mismatch로 죽는다.
+  # framework: 스프링이 X-Forwarded-* 헤더를 읽어 원래 스킴·호스트를 복원한다
+  forward-headers-strategy: framework
+
   servlet:
     session:
       cookie:

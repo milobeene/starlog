@@ -24,7 +24,20 @@ export class ApiError extends Error {
   }
 }
 
-/** CSRF 쿠키는 httpOnly=false로 내려온다 — 그래서 JS가 읽어 헤더로 되돌려줄 수 있다 */
+/**
+ * 서버가 응답 헤더로 알려준 최신 CSRF 토큰.
+ *
+ * **쿠키만으로는 배포에서 안 된다.** `document.cookie`는 그 문서의 도메인이 심은 쿠키만 읽는다 —
+ * vercel.app에서 도는 이 코드는 onrender.com이 내려준 XSRF-TOKEN을 볼 수 없다.
+ * 로컬에서 멀쩡했던 건 쿠키가 포트를 구분하지 않아 :3000과 :8080이 같은 저장소를 쓰기 때문이다.
+ *
+ * 그래서 서버가 같은 값을 `X-XSRF-TOKEN` 응답 헤더로도 내려주고(CORS로 노출), 여기 담아둔다.
+ * 대조는 여전히 서버가 쿠키 ↔ 헤더로 한다 — 쿠키는 브라우저가 자동으로 싣고,
+ * 이 값은 헤더에 실어 보낼 용도다
+ */
+let csrfToken: string | null = null;
+
+/** 같은 도메인 배포(로컬)에서의 폴백. 헤더를 아직 못 받은 첫 요청을 위해 남겨둔다 */
 function readCookie(name: string): string | null {
   if (typeof document === "undefined") return null;
   const hit = document.cookie
@@ -49,7 +62,7 @@ async function request<T>(path: string, options: Options = {}): Promise<T> {
 
   // GET은 CSRF 대상이 아니다
   if (method !== "GET") {
-    const token = readCookie("XSRF-TOKEN");
+    const token = csrfToken ?? readCookie("XSRF-TOKEN");
     if (token) headers["X-XSRF-TOKEN"] = token;
   }
 
@@ -69,6 +82,10 @@ async function request<T>(path: string, options: Options = {}): Promise<T> {
     credentials: "include",
     signal: options.signal,
   });
+
+  // 서버는 매 응답에 현재 토큰을 실어준다. 로그인·로그아웃 때 회전하므로 항상 최신으로 덮는다
+  const rotated = res.headers.get("X-XSRF-TOKEN");
+  if (rotated) csrfToken = rotated;
 
   if (res.status === 204) return undefined as T;
 

@@ -20,6 +20,10 @@ import org.springframework.stereotype.Component;
  * 다음 쓰기 요청이 전부 403이 된다 — 로그아웃 직후 로그인조차 못 하게 된다.
  *
  * 요청 속성에 남은 토큰을 읽는 것으로는 부족하다(이미 삭제된 뒤다). 새로 만들어 저장한다.
+ *
+ * **헤더도 같이 갱신해야 한다** (O-3). CsrfCookieFilter가 체인 앞에서 헤더에 박아둔 값은
+ * 회전 **전**의 옛 토큰이다. 여기서 덮지 않으면 쿠키는 새 토큰인데 프론트가 읽는 헤더는
+ * 옛 토큰이라, 로그인 직후 첫 쓰기 요청부터 403이 난다
  */
 @Component
 @RequiredArgsConstructor
@@ -30,5 +34,6 @@ public class CsrfTokenIssuer {
     public void issueFresh(HttpServletRequest request, HttpServletResponse response) {
         CsrfToken fresh = csrfTokenRepository.generateToken(request);
         csrfTokenRepository.saveToken(fresh, request, response);
+        response.setHeader(CsrfCookieFilter.HEADER, fresh.getToken());
     }
 }
