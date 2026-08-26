@@ -73,6 +73,16 @@ server:
         secure: true
         http-only: true
 
+# **p6spy를 운영에서 벗긴다.** 개발 도구인데 implementation 스코프라 배포에도 딸려갔고,
+# 실제로 첫 배포 로그가 SQL로 도배됐다. 쿼리마다 바인딩 값을 채워 문자열을 조립하는 비용이
+# 0.1 CPU에서는 공짜가 아니다.
+#
+# enable-logging: false가 아니라 enabled: false인 이유 — 전자는 로그만 끄고 DataSource
+# 프록시는 그대로 씌운 채 둔다. 운영에서는 래퍼 자체가 없는 편이 낫다
+decorator:
+  datasource:
+    enabled: false
+
 logging:
   level:
     org.hibernate.SQL: warn
