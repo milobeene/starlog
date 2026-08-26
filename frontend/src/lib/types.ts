@@ -279,6 +279,18 @@ export interface BacklogName {
   displayName: string;
 }
 
+/* ── 삭제한 항목 (GET /api/backlog/deleted) ────────────────── */
+
+/**
+ * **만료 시각이 없다.** 삭제한 항목은 기한 없이 남는다 — 지우는 배치가 없다.
+ * 30일은 게임이 아니라 회원 탈퇴 유예(FR-AUTH-09)의 기간이다
+ */
+export interface DeletedEntry {
+  entryId: number;
+  displayName: string;
+  deletedAt: string;
+}
+
 /* ── 게임 검색 (GET /api/games?q=) ────────────────────────── */
 
 /**
@@ -380,7 +392,8 @@ export interface QuotaStatus {
   kind: "GAME_SEARCH" | "GAME_ADD" | "COVER_UPLOAD";
   label: string;
   used: number;
-  limit: number;
+  /** **null이면 무제한**(관리자). 0·-1 같은 마법값 대신 타입이 분기를 강제한다 */
+  limit: number | null;
 }
 
 /* ── 관리자 (GET /api/admin/**) ────────────────────────────── */
@@ -401,7 +414,8 @@ export interface SystemStatus {
     kind: string;
     label: string;
     used: number;
-    limit: number;
+    /** null이면 무제한(관리자) */
+    limit: number | null;
   }[];
 }
 

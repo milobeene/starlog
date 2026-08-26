@@ -1,7 +1,38 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { api, ApiError } from "./api";
+
+/**
+ * 전역 무효화 버스.
+ *
+ * **왜 필요한가** — 화면마다 useApi가 자기 사본을 들고 있어서, 상세에서 이름을 바꿔도
+ * 사이드바는 알 방법이 없었다. 각자가 스냅숏이지 구독이 아니었기 때문이다
+ * (`useSession`이 스토어가 아니었던 것과 같은 문제).
+ *
+ * 경로별로 나누지 않고 **한 번에 전부** 다시 읽는다. 지금 한 화면에 떠 있는 조회가
+ * 서넛뿐이라 정교하게 나누는 값을 못 한다 — 게다가 게임 하나를 고치면 상세·사이드바·
+ * 파셋·통계가 실제로 다 바뀐다. 나눠 봐야 결국 다 부른다
+ */
+let version = 0;
+const listeners = new Set<() => void>();
+
+/** 쓰기 뒤에 부른다. 지금 떠 있는 모든 useApi가 다시 읽는다 */
+export function invalidateQueries() {
+  version += 1;
+  listeners.forEach((listener) => listener());
+}
+
+function subscribeVersion(listener: () => void) {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+const getVersion = () => version;
+// 서버 렌더에는 무효화라는 개념이 없다 — 항상 0이어야 hydration이 안 어긋난다
+const getServerVersion = () => 0;
 
 type State<T> = {
   data: T | null;
@@ -24,6 +55,7 @@ export function useApi<T>(path: string | null): State<T> & { reload: () => void 
     loading: path !== null,
   });
   const [nonce, setNonce] = useState(0);
+  const globalVersion = useSyncExternalStore(subscribeVersion, getVersion, getServerVersion);
 
   const reload = useCallback(() => setNonce((n) => n + 1), []);
 
@@ -53,7 +85,7 @@ export function useApi<T>(path: string | null): State<T> & { reload: () => void 
       });
 
     return () => controller.abort();
-  }, [path, nonce]);
+  }, [path, nonce, globalVersion]);
 
   // 조건부 조회(path === null)는 상태를 건드리지 않고 여기서 비워 내보낸다
   if (path === null) return { data: null, error: null, loading: false, reload };

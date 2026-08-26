@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
 import com.milobeene.starlog.common.exception.TooManyRequestsException;
+import com.milobeene.starlog.common.util.AppClock;
 import com.milobeene.starlog.member.domain.Member;
 import com.milobeene.starlog.support.ControllerTestSupport;
 import org.junit.jupiter.api.Test;
@@ -120,7 +121,47 @@ class QuotaGuardTest extends ControllerTestSupport {
                 .satisfies(row -> assertThat(row.used()).isZero());
     }
 
+    @Test
+    public void 관리자는_한도가_없지만_횟수는_센다() {
+        //given — 쿼터의 목적은 공용 IGDB 키를 한 사람이 다 쓰는 걸 막는 것이다.
+        //        관리자는 재동기화·병합처럼 연달아 부르는 일을 해서 거기서 막히면 작업이 끊긴다
+        Member admin = saveMember();
+        admin.promoteToAdmin();
+        em.flush();
+
+        int limit = quotaProperties.limitOf(QuotaKind.COVER_UPLOAD);
+        for (int i = 0; i < limit + 3; i++) {
+            quotaGuard.consume(admin.getId(), QuotaKind.COVER_UPLOAD);
+        }
+
+        //then — 안 막힌다
+        assertThat(usedOf(admin, QuotaKind.COVER_UPLOAD)).isEqualTo(limit + 3);
+
+        //then — 그래도 세긴 센다. 안 세면 /admin에서 부하를 만든 사람만 안 보인다
+        assertThat(quotaGuard.statusOf(admin.getId()))
+                .filteredOn(row -> row.kind() == QuotaKind.COVER_UPLOAD)
+                .singleElement()
+                .satisfies(row -> {
+                    assertThat(row.used()).isEqualTo(limit + 3);
+                    assertThat(row.limit()).as("null이 무제한이다").isNull();
+                });
+    }
+
+    @Test
+    public void 하루_기준이_한국_시간이다() {
+        //given — LocalDate.now()를 그냥 쓰면 JVM 타임존(Render는 UTC)을 따라
+        //        한국 시간 오전 9시에 초기화된다. 화면 문구와 동작이 어긋난다
+        Member member = saveMember();
+        em.flush();
+        quotaGuard.consume(member.getId(), QuotaKind.GAME_SEARCH);
+
+        //when //then
+        assertThat(usageQuotaRepository.findUsed(
+                member.getId(), LocalDate.now(AppClock.ZONE), QuotaKind.GAME_SEARCH))
+                .contains(1);
+    }
+
     private int usedOf(Member member, QuotaKind kind) {
-        return usageQuotaRepository.findUsed(member.getId(), LocalDate.now(), kind).orElse(0);
+        return usageQuotaRepository.findUsed(member.getId(), AppClock.today(), kind).orElse(0);
     }
 }

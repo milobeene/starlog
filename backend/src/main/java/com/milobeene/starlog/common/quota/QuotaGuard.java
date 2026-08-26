@@ -22,5 +22,10 @@ public interface QuotaGuard {
     /** 설정 화면의 "오늘 검색 12/200". 쿼터가 없는 빌드에서는 빈 목록이다 */
     List<QuotaStatus> statusOf(Long memberId);
 
-    record QuotaStatus(QuotaKind kind, String label, int used, int limit) {}
+    /**
+     * `limit`이 **null이면 무제한**이다 (관리자). 0이나 -1 같은 마법값을 안 쓰는 이유 —
+     * 화면이 `12 / 200`을 그리다가 `12 / -1`을 만나면 그냥 이상한 숫자가 보인다.
+     * null이면 타입이 강제로 분기를 만들게 한다
+     */
+    record QuotaStatus(QuotaKind kind, String label, int used, Integer limit) {}
 }

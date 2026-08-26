@@ -1,5 +1,6 @@
 "use client";
 
+import DateField from "@/components/ui/DateField";
 import { useState } from "react";
 import PageHeading from "@/components/ui/PageHeading";
 import ErrorNotice from "@/components/ui/ErrorNotice";
@@ -11,7 +12,7 @@ import AdminGameMaster from "@/components/admin/AdminGameMaster";
 import AdminSystemTab from "@/components/admin/AdminSystemTab";
 import { useApi } from "@/lib/useApi";
 import { api, qs } from "@/lib/api";
-import { Button, FIELD_DATE, FIELD_INPUT } from "@/components/ui/Field";
+import { Button, FIELD_INPUT } from "@/components/ui/Field";
 import type { AdminMember, AuditLog, PageResponse } from "@/lib/types";
 
 const TABS = [
@@ -125,24 +126,21 @@ function MembersTab() {
             className={FIELD_INPUT}
           />
         </label>
-        <label className="flex flex-col gap-1">
+        {/* label이 아니라 div다 — 안이 button이라 label이면 클릭이 두 번 먹는다 */}
+        <div className="flex flex-col gap-1">
           <span className="text-[10px] tracking-widest text-white/35 uppercase">가입일 From</span>
-          <input
-            type="date"
+          <DateField
             value={draft.joinedFrom}
-            onChange={(event) => setDraft({ ...draft, joinedFrom: event.target.value })}
-            className={FIELD_DATE}
+            onChange={(value) => setDraft({ ...draft, joinedFrom: value })}
           />
-        </label>
-        <label className="flex flex-col gap-1">
+        </div>
+        <div className="flex flex-col gap-1">
           <span className="text-[10px] tracking-widest text-white/35 uppercase">가입일 To</span>
-          <input
-            type="date"
+          <DateField
             value={draft.joinedTo}
-            onChange={(event) => setDraft({ ...draft, joinedTo: event.target.value })}
-            className={FIELD_DATE}
+            onChange={(value) => setDraft({ ...draft, joinedTo: value })}
           />
-        </label>
+        </div>
         <Button type="submit" variant="primary">
           검색
         </Button>

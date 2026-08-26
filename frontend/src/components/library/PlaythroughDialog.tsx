@@ -1,9 +1,10 @@
 "use client";
 
+import DateField from "@/components/ui/DateField";
 import { useState } from "react";
 import Modal from "@/components/ui/Modal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
-import { Button, Field, FIELD_DATE, FIELD_INPUT, FIELD_SELECT } from "@/components/ui/Field";
+import { Button, Field, FIELD_INPUT, FIELD_SELECT } from "@/components/ui/Field";
 import { api, errorMessage } from "@/lib/api";
 import { PLAYTHROUGH_STATUS_LABEL } from "@/lib/labels";
 import { withCurrent } from "@/lib/options";
@@ -121,21 +122,11 @@ export default function PlaythroughDialog({
     >
       <div className="flex flex-col gap-4">
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Started">
-            <input
-              type="date"
-              value={startedOn}
-              onChange={(event) => setStartedOn(event.target.value)}
-              className={FIELD_DATE}
-            />
+          <Field label="Started" composite>
+            <DateField value={startedOn} onChange={setStartedOn} />
           </Field>
-          <Field label="Finished" hint="비워 두시면 진행 중으로 표시됩니다">
-            <input
-              type="date"
-              value={finishedOn}
-              onChange={(event) => setFinishedOn(event.target.value)}
-              className={FIELD_DATE}
-            />
+          <Field label="Finished" hint="비워 두시면 진행 중으로 표시됩니다" composite>
+            <DateField value={finishedOn} onChange={setFinishedOn} />
           </Field>
         </div>
 

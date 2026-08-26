@@ -29,14 +29,20 @@ public interface AcquisitionRepository extends BaseRepository<Acquisition, Long>
      * 회차의 계정은 "그때 어느 계정으로 플레이했나"라서 의미가 다르다.
      * 삭제된 계정도 세지 않는다 — 선택지 목록에서 이미 빠져 고를 수 없기 때문이다
      */
+    /*
+     * 이름에 플랫폼을 붙여 내린다 — `Beene (Steam)`. 라벨만으로는 못 고른다:
+     * 같은 라벨("Beene")을 여러 플랫폼에 쓰는 게 흔해서 선택지에 같은 글자가 여러 줄 뜬다.
+     * FacetCount의 모양을 안 바꾸는 쪽을 택했다 — 필드를 늘리면 파셋 다섯 종이 전부 따라 바뀐다
+     */
     @Query("select new com.milobeene.starlog.backlog.dto.FacetCount(" +
-            "   a.platformAccount.id, a.platformAccount.accountLabel," +
+            "   a.platformAccount.id," +
+            "   concat(a.platformAccount.accountLabel, ' (', a.platformAccount.platform.name, ')')," +
             "   count(distinct a.backlogEntry.id))" +
             " from Acquisition a" +
             " where a.backlogEntry.member.id = :memberId" +
             "   and a.backlogEntry.deletedAt is null" +
             "   and a.platformAccount is not null and a.platformAccount.deletedAt is null" +
-            " group by a.platformAccount.id, a.platformAccount.accountLabel" +
+            " group by a.platformAccount.id, a.platformAccount.accountLabel, a.platformAccount.platform.name" +
             " order by a.platformAccount.accountLabel asc")
     List<FacetCount> countByPlatformAccount(@Param("memberId") Long memberId);
 }

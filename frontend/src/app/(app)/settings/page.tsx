@@ -1,5 +1,6 @@
 "use client";
 
+import DateField from "@/components/ui/DateField";
 import { Suspense, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -8,7 +9,7 @@ import ErrorNotice from "@/components/ui/ErrorNotice";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Modal from "@/components/ui/Modal";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { Button, Field, FIELD_DATE, FIELD_INPUT, FIELD_SELECT } from "@/components/ui/Field";
+import { Button, Field, FIELD_INPUT, FIELD_SELECT } from "@/components/ui/Field";
 import SettingsSection, { EmptyRow, Row } from "@/components/settings/SettingsSection";
 import MarkdownTextarea from "@/components/ui/MarkdownTextarea";
 import GoogleResultBanner from "@/components/auth/GoogleResultBanner";
@@ -18,6 +19,7 @@ import { api, ApiError, ERROR, errorMessage } from "@/lib/api";
 import { logout, refreshSession } from "@/lib/session";
 import PaletteEditor from "@/components/settings/PaletteEditor";
 import QuotaSection from "@/components/settings/QuotaSection";
+import DeletedEntriesSection from "@/components/settings/DeletedEntriesSection";
 import { paletteOf, toPayload } from "@/lib/palette";
 import { BILLING_CYCLE_LABEL } from "@/lib/labels";
 import type {
@@ -136,6 +138,9 @@ function SettingsContent() {
               </div>
             )}
           </SettingsSection>
+
+          {/* 삭제한 게 없으면 스스로 아무것도 안 그린다 */}
+          <DeletedEntriesSection />
 
           {/* WEB-ONLY: 쿼터가 없는 빌드에서는 스스로 아무것도 안 그린다 */}
           <QuotaSection />
@@ -847,7 +852,12 @@ function ProfileDialog({
             />
           </Field>
 
-          <Field label="Background" hint="고르는 즉시 위 창에 반영됩니다 · 저장을 눌러야 실제로 바뀝니다">
+          <Field
+            label="Background"
+            hint="고르는 즉시 위 창에 반영됩니다 · 저장을 눌러야 실제로 바뀝니다"
+            // 색 선택기가 다섯이라 label로 감싸면 빈 곳 클릭이 첫 칸(기조)을 연다
+            composite
+          >
             <PaletteEditor colors={colors} onChange={setColors} />
           </Field>
         </>
@@ -1218,21 +1228,11 @@ function SubscriptionDialog({
         />
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Started">
-          <input
-            type="date"
-            value={startedOn}
-            onChange={(event) => setStartedOn(event.target.value)}
-            className={FIELD_DATE}
-          />
+        <Field label="Started" composite>
+          <DateField value={startedOn} onChange={setStartedOn} />
         </Field>
-        <Field label="Ended" hint="비우면 구독 중">
-          <input
-            type="date"
-            value={endedOn}
-            onChange={(event) => setEndedOn(event.target.value)}
-            className={FIELD_DATE}
-          />
+        <Field label="Ended" hint="비우면 구독 중" composite>
+          <DateField value={endedOn} onChange={setEndedOn} />
         </Field>
       </div>
       <div className="grid grid-cols-[1fr_auto_auto] gap-3">

@@ -103,11 +103,14 @@ app:
     access-key: ${STORAGE_ACCESS_KEY:}
     secret-key: ${STORAGE_SECRET_KEY:}
     public-base-url: ${STORAGE_PUBLIC_BASE_URL:}
+  # 정리 배치 시각. ⚠️ **이것만으로는 사실상 안 돈다** — 무료 티어는 15분 무활동에 잠들어
+  # 새벽에 깨어 있지 않다. 실제 정리는 StartupCleanup(기동 시 따라잡기)이 한다.
+  # 아래 크론은 언젠가 상시 켜진 서버가 됐을 때를 위해 남겨둔다 (도커 TZ가 Asia/Seoul이다)
   cleanup:
-    auth-token-cron: "0 30 4 * * *"      # 매일 04:30
-    audit-log-cron: "0 0 5 * * *"        # 매일 05:00
+    auth-token-cron: "0 30 4 * * *"      # 매일 04:30 KST
+    audit-log-cron: "0 0 5 * * *"        # 매일 05:00 KST
   withdrawal:
-    purge-cron: "0 0 3 * * *"            # 매일 03:00
+    purge-cron: "0 0 3 * * *"            # 매일 03:00 KST
 
 logging:
   level:

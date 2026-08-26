@@ -35,5 +35,9 @@ WORKDIR /app
 COPY --from=build /app/build/libs/app.jar app.jar
 
 # Render가 $PORT로 리스닝 포트를 알려준다. 로컬에서 그냥 돌릴 때를 위해 8080을 기본값으로 둔다
+# 타임존을 한국으로 박는다. 기본(UTC)이면 일일 쿼터가 한국 시간 오전 9시에 초기화되고,
+# 정리 배치의 "새벽 3시"도 오후로 밀린다 — 화면 문구와 실제가 어긋난다
+ENV TZ=Asia/Seoul
+
 EXPOSE 8080
 ENTRYPOINT ["sh", "-c", "java -jar app.jar --server.port=${PORT:-8080}"]

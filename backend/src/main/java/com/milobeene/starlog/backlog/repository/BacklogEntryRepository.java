@@ -4,6 +4,7 @@ import com.milobeene.starlog.backlog.domain.BacklogEntry;
 import com.milobeene.starlog.game.domain.Game;
 import com.milobeene.starlog.common.repository.BaseRepository;
 import com.milobeene.starlog.backlog.dto.BacklogNameResponse;
+import com.milobeene.starlog.backlog.dto.DeletedEntryResponse;
 import com.milobeene.starlog.backlog.dto.FacetCount;
 import com.milobeene.starlog.backlog.dto.StatusCount;
 import org.springframework.data.domain.Page;
@@ -67,6 +68,19 @@ public interface BacklogEntryRepository
      * lower()는 영문 대소문자 정렬 때문 ('alba'가 'Baba' 뒤로 밀리면 안 된다),
      * id asc는 같은 이름을 지웠다 다시 담았을 때 순서 고정용이다
      */
+    /**
+     * 삭제한 항목 목록 (§7.4 되살리기).
+     *
+     * 최근에 지운 것부터 — 되살리려는 건 방금 잘못 지운 것일 확률이 높다.
+     * 페이징이 없다: 삭제는 드물고, 많아지면 그건 목록이 아니라 다른 문제다
+     */
+    @Query("select new com.milobeene.starlog.backlog.dto.DeletedEntryResponse("
+            + "   b.id, b.displayName, b.deletedAt)"
+            + " from BacklogEntry b"
+            + " where b.member.id = :memberId and b.deletedAt is not null"
+            + " order by b.deletedAt desc")
+    List<DeletedEntryResponse> findDeleted(@Param("memberId") Long memberId);
+
     @Query("select new com.milobeene.starlog.backlog.dto.BacklogNameResponse(b.id, b.displayName)" +
             " from BacklogEntry b" +
             " where b.member.id = :memberId and b.deletedAt is null" +

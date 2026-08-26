@@ -1,12 +1,13 @@
 "use client";
 
+import DateField from "@/components/ui/DateField";
 import { useState } from "react";
 import Modal from "@/components/ui/Modal";
 import GameCover from "@/components/ui/GameCover";
 import Pagination from "@/components/ui/Pagination";
 import ErrorNotice from "@/components/ui/ErrorNotice";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { Button, Field, FIELD_DATE, FIELD_INPUT } from "@/components/ui/Field";
+import { Button, Field, FIELD_INPUT } from "@/components/ui/Field";
 import { useApi } from "@/lib/useApi";
 import { api, errorMessage, qs } from "@/lib/api";
 import type {
@@ -389,13 +390,8 @@ function InfoDialog({
           className={FIELD_INPUT}
         />
       </Field>
-      <Field label="Released On">
-        <input
-          type="date"
-          value={releasedOn}
-          onChange={(event) => setReleasedOn(event.target.value)}
-          className={FIELD_DATE}
-        />
+      <Field label="Released On" composite>
+        <DateField value={releasedOn} onChange={setReleasedOn} />
       </Field>
     </AdminFormDialog>
   );

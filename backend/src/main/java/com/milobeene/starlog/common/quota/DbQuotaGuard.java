@@ -1,6 +1,9 @@
 package com.milobeene.starlog.common.quota;
 
 import com.milobeene.starlog.common.exception.TooManyRequestsException;
+import com.milobeene.starlog.common.util.AppClock;
+import com.milobeene.starlog.member.domain.MemberRole;
+import com.milobeene.starlog.member.repository.MemberRepository;
 import org.springframework.context.annotation.Profile;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -27,10 +30,29 @@ public class DbQuotaGuard implements QuotaGuard {
 
     private final UsageQuotaRepository repository;
     private final QuotaProperties properties;
+    private final MemberRepository memberRepository;
 
-    public DbQuotaGuard(UsageQuotaRepository repository, QuotaProperties properties) {
+    public DbQuotaGuard(UsageQuotaRepository repository, QuotaProperties properties,
+                        MemberRepository memberRepository) {
         this.repository = repository;
         this.properties = properties;
+        this.memberRepository = memberRepository;
+    }
+
+    /**
+     * 관리자는 한도가 없다.
+     *
+     * 쿼터의 목적은 **한 사람이 공용 IGDB 키를 다 쓰는 걸 막는 것**인데, 관리자는 마스터
+     * 재동기화·병합처럼 원래 여러 건을 연달아 부르는 일을 한다. 거기서 막히면
+     * 관리 작업이 중간에 끊긴다.
+     *
+     * **세기는 센다** — 무제한이라고 안 세면 /admin 시스템 탭에서 누가 얼마나 썼는지가
+     * 빈칸이 되어, 정작 부하를 만든 사람만 안 보인다
+     */
+    private boolean unlimited(Long memberId) {
+        return memberRepository.findById(memberId)
+                .map(member -> member.getRole() == MemberRole.ADMIN)
+                .orElse(false);
     }
 
     /**
@@ -45,7 +67,8 @@ public class DbQuotaGuard implements QuotaGuard {
     @Override
     @Transactional
     public void consume(Long memberId, QuotaKind kind) {
-        LocalDate today = LocalDate.now();
+        LocalDate today = AppClock.today();
+        boolean unlimited = unlimited(memberId);
         int limit = properties.limitOf(kind);
 
         /*
@@ -55,7 +78,7 @@ public class DbQuotaGuard implements QuotaGuard {
          * 동시 요청 둘이 한도 직전에 같이 통과해 1을 넘길 수는 있다. 쿼터에서 하나 넘치는 건
          * 아무 의미가 없어 락을 걸지 않는다 — 락 비용이 얻는 것보다 크다
          */
-        if (usedOf(memberId, today, kind) >= limit) {
+        if (!unlimited && usedOf(memberId, today, kind) >= limit) {
             throw new TooManyRequestsException("QUOTA_EXCEEDED",
                     "오늘 %s 한도(%d회)를 모두 쓰셨습니다. 자정에 다시 채워집니다".formatted(kind.label(), limit));
         }
@@ -77,16 +100,18 @@ public class DbQuotaGuard implements QuotaGuard {
     @Override
     public List<QuotaStatus> statusOf(Long memberId) {
         Map<QuotaKind, Integer> limits = properties.all();
-        List<UsageQuota> today = repository.findDay(memberId, LocalDate.now());
+        boolean unlimited = unlimited(memberId);
+        List<DailyUsage> today = repository.findDay(memberId, AppClock.today());
 
         List<QuotaStatus> result = new ArrayList<>();
         for (QuotaKind kind : QuotaKind.values()) {
             int used = today.stream()
-                    .filter(row -> row.getId().kind() == kind)
-                    .mapToInt(UsageQuota::getUsed)
+                    .filter(row -> row.kind() == kind)
+                    .mapToInt(DailyUsage::used)
                     .findFirst()
                     .orElse(0);
-            result.add(new QuotaStatus(kind, kind.label(), used, limits.get(kind)));
+            result.add(new QuotaStatus(kind, kind.label(), used,
+                    unlimited ? null : limits.get(kind)));
         }
         return result;
     }

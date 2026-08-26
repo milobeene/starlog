@@ -1,8 +1,9 @@
 "use client";
 
+import DateField from "@/components/ui/DateField";
 import { useState } from "react";
 import Modal from "@/components/ui/Modal";
-import { Button, Field, FIELD_DATE, FIELD_INPUT } from "@/components/ui/Field";
+import { Button, Field, FIELD_INPUT } from "@/components/ui/Field";
 import ChipInput from "@/components/ui/ChipInput";
 import { useApi } from "@/lib/useApi";
 import { api, errorMessage } from "@/lib/api";
@@ -90,7 +91,8 @@ export default function OverridesDialog({
           />
         </Field>
 
-        <Field label="Developers" hint="비워 두시면 원본 정보로 돌아갑니다">
+        {/* ChipInput은 칩(× 버튼)이 입력보다 먼저 그려진다 — composite가 없으면 빈 곳 클릭이 첫 칩을 지운다 */}
+        <Field label="Developers" hint="비워 두시면 원본 정보로 돌아갑니다" composite>
           <ChipInput
             values={developers}
             onChange={setDevelopers}
@@ -99,7 +101,7 @@ export default function OverridesDialog({
           />
         </Field>
 
-        <Field label="Publishers" hint="비워 두시면 원본 정보로 돌아갑니다">
+        <Field label="Publishers" hint="비워 두시면 원본 정보로 돌아갑니다" composite>
           <ChipInput
             values={publishers}
             onChange={setPublishers}
@@ -108,7 +110,7 @@ export default function OverridesDialog({
           />
         </Field>
 
-        <Field label="Genres" hint="하나라도 입력하시면 원본 장르를 대신합니다">
+        <Field label="Genres" hint="하나라도 입력하시면 원본 장르를 대신합니다" composite>
           <ChipInput
             values={genres}
             onChange={setGenres}
@@ -117,13 +119,8 @@ export default function OverridesDialog({
           />
         </Field>
 
-        <Field label="Release Date">
-          <input
-            type="date"
-            value={releasedOn}
-            onChange={(event) => setReleasedOn(event.target.value)}
-            className={FIELD_DATE}
-          />
+        <Field label="Release Date" composite>
+          <DateField value={releasedOn} onChange={setReleasedOn} />
         </Field>
         {master.releasedOn && (
           <span className="-mt-2 text-[11px] text-white/30">원본: {master.releasedOn}</span>

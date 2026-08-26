@@ -32,11 +32,13 @@ public interface UsageQuotaRepository extends BaseRepository<UsageQuota, UsageQu
                   @Param("date") LocalDate date,
                   @Param("kind") QuotaKind kind);
 
+    /** 설정 화면의 하루치. **스칼라 프로젝션이다** — 이유는 DailyUsage의 주석 참고 */
     @Query("""
-            select q from UsageQuota q
+            select new com.milobeene.starlog.common.quota.DailyUsage(q.id.kind, q.used)
+              from UsageQuota q
              where q.id.memberId = :memberId and q.id.usageDate = :date
             """)
-    List<UsageQuota> findDay(@Param("memberId") Long memberId, @Param("date") LocalDate date);
+    List<DailyUsage> findDay(@Param("memberId") Long memberId, @Param("date") LocalDate date);
 
     /**
      * 한도 검사 전용. **엔티티가 아니라 스칼라를 뽑는다** —
@@ -51,7 +53,10 @@ public interface UsageQuotaRepository extends BaseRepository<UsageQuota, UsageQu
                                @Param("date") LocalDate date,
                                @Param("kind") QuotaKind kind);
 
-    /** 관리자 시스템 탭 — 오늘 누가 얼마나 썼나. 날짜 인덱스를 탄다 */
+    /**
+     * 관리자 시스템 탭 — 오늘 누가 얼마나 썼나. 날짜 인덱스를 탄다.
+     * 여기는 회원 id도 필요해 엔티티로 읽는다 — 읽기 전용 요청이라 캐시 오염 경로가 없다
+     */
     @Query("select q from UsageQuota q where q.id.usageDate = :date order by q.used desc")
     List<UsageQuota> findAllOn(@Param("date") LocalDate date);
 }

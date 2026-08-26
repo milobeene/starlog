@@ -115,12 +115,12 @@ export default function PersonalRecordDialog({
           </p>
         )}
 
-        <Field label="Memo" hint="마크다운을 지원합니다 · Enter로 목록 이어쓰기, Tab으로 들여쓰기 · 2,000자 이내">
+        <Field label="Memo" hint="마크다운을 지원합니다 · Enter로 목록 이어쓰기, Tab으로 들여쓰기 · 5,000자 이내">
           <MarkdownTextarea
             value={memo}
             onChange={setMemo}
             rows={10}
-            maxLength={2000}
+            maxLength={5000}
             placeholder={"# 총평\n- 좋았던 점\n- 아쉬운 점"}
           />
         </Field>

@@ -3,6 +3,7 @@ package com.milobeene.starlog.backlog.service;
 import com.milobeene.starlog.backlog.domain.BacklogEntry;
 import com.milobeene.starlog.backlog.dto.BacklogCardResponse;
 import com.milobeene.starlog.backlog.dto.BacklogNameResponse;
+import com.milobeene.starlog.backlog.dto.DeletedEntryResponse;
 import com.milobeene.starlog.backlog.dto.CompanyDictionary;
 import com.milobeene.starlog.backlog.dto.BacklogDetailResponse;
 import com.milobeene.starlog.backlog.dto.BacklogSearchCondition;
@@ -88,6 +89,11 @@ public class BacklogQueryService {
     /** 사이드바 전체 목록 (Phase 8). 페이징 없음 — 프로젝션 두 컬럼이라 전량이어도 가볍다 */
     public List<BacklogNameResponse> findNames(Long memberId) {
         return backlogEntryRepository.findNames(memberId);
+    }
+
+    /** 삭제한 항목 (§7.4). 되살리기 화면이 유일한 소비자다 */
+    public List<DeletedEntryResponse> findDeleted(Long memberId) {
+        return backlogEntryRepository.findDeleted(memberId);
     }
 
     /**

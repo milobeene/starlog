@@ -3,12 +3,14 @@ package com.milobeene.starlog.admin.service;
 import com.milobeene.starlog.admin.dto.SystemStatusResponse;
 import com.milobeene.starlog.backlog.repository.CoverImageRepository;
 import com.milobeene.starlog.common.quota.QuotaProperties;
+import com.milobeene.starlog.common.util.AppClock;
 import com.milobeene.starlog.common.quota.UsageQuota;
 import com.milobeene.starlog.common.quota.UsageQuotaRepository;
 import com.milobeene.starlog.game.client.GameCatalogClient;
 import com.milobeene.starlog.game.client.HttpIgdbClient;
 import com.milobeene.starlog.game.client.IgdbProperties;
 import com.milobeene.starlog.member.domain.Member;
+import com.milobeene.starlog.member.domain.MemberRole;
 import com.milobeene.starlog.member.repository.MemberRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Profile;
@@ -102,23 +104,28 @@ public class SystemStatusService {
      * 읽기 두 번이라 각자의 트랜잭션으로 충분하다
      */
     private List<SystemStatusResponse.QuotaRow> quotaToday() {
-        List<UsageQuota> rows = usageQuotaRepository.findAllOn(LocalDate.now());
+        List<UsageQuota> rows = usageQuotaRepository.findAllOn(AppClock.today());
         if (rows.isEmpty()) {
             return List.of();
         }
 
-        // 닉네임을 붙이려고 회원을 한 번에 읽는다 — 줄마다 findById면 그게 N+1이다
-        Map<Long, String> nicknames = memberRepository.findAll().stream()
-                .collect(Collectors.toMap(Member::getId, Member::getNickname, (a, b) -> a));
+        // 닉네임·권한을 붙이려고 회원을 한 번에 읽는다 — 줄마다 findById면 그게 N+1이다
+        Map<Long, Member> members = memberRepository.findAll().stream()
+                .collect(Collectors.toMap(Member::getId, member -> member, (a, b) -> a));
 
         return rows.stream()
-                .map(row -> new SystemStatusResponse.QuotaRow(
-                        row.getId().memberId(),
-                        nicknames.getOrDefault(row.getId().memberId(), "(삭제됨)"),
-                        row.getId().kind().name(),
-                        row.getId().kind().label(),
-                        row.getUsed(),
-                        quotaProperties.limitOf(row.getId().kind())))
+                .map(row -> {
+                    Member member = members.get(row.getId().memberId());
+                    // 관리자는 한도가 없다 → null. 세기는 세므로 used는 그대로 보인다
+                    boolean unlimited = member != null && member.getRole() == MemberRole.ADMIN;
+                    return new SystemStatusResponse.QuotaRow(
+                            row.getId().memberId(),
+                            member == null ? "(삭제됨)" : member.getNickname(),
+                            row.getId().kind().name(),
+                            row.getId().kind().label(),
+                            row.getUsed(),
+                            unlimited ? null : quotaProperties.limitOf(row.getId().kind()));
+                })
                 .toList();
     }
 }

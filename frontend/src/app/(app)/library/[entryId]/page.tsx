@@ -26,7 +26,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { Button, EditButton } from "@/components/ui/Field";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
-import { useApi } from "@/lib/useApi";
+import { invalidateQueries, useApi } from "@/lib/useApi";
 import { bannerSrc } from "@/lib/cover";
 import {
   ACQUISITION_METHOD_LABEL,
@@ -88,9 +88,13 @@ export default function BacklogDetailPage({
   const [dialog, setDialog] = useState<Dialog>(null);
 
   // 저장 뒤엔 상세를 다시 읽는다 — 회차를 고치면 서버가 상태·lastPlaythrough를 재계산한다
+  /*
+   * **전역 무효화다.** 예전엔 이 페이지의 조회 둘만 다시 읽어서, 이름을 바꿔도
+   * 사이드바는 옛 이름을 그대로 들고 있었다. 게임 하나를 고치면 사이드바·파셋·통계가
+   * 실제로 같이 바뀌므로 전부 다시 읽는 게 맞다
+   */
   const refresh = () => {
-    reload();
-    options.reload();
+    invalidateQueries();
   };
 
   if (error) return <ErrorNotice error={error} onRetry={reload} />;

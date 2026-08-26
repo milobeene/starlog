@@ -1,9 +1,10 @@
 "use client";
 
+import DateField from "@/components/ui/DateField";
 import { useState } from "react";
 import Modal from "@/components/ui/Modal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
-import { Button, Field, FIELD_DATE, FIELD_INPUT, FIELD_SELECT } from "@/components/ui/Field";
+import { Button, Field, FIELD_INPUT, FIELD_SELECT } from "@/components/ui/Field";
 import { api, errorMessage } from "@/lib/api";
 import { ACQUISITION_METHOD_LABEL } from "@/lib/labels";
 import { withCurrent } from "@/lib/options";
@@ -185,13 +186,8 @@ export default function AcquisitionDialog({
           </Field>
         </div>
 
-        <Field label="Acquired On" hint="지출 통계가 이 날짜를 기준으로 집계됩니다">
-          <input
-            type="date"
-            value={acquiredOn}
-            onChange={(event) => setAcquiredOn(event.target.value)}
-            className={FIELD_DATE}
-          />
+        <Field label="Acquired On" hint="지출 통계가 이 날짜를 기준으로 집계됩니다" composite>
+          <DateField value={acquiredOn} onChange={setAcquiredOn} />
         </Field>
 
         <div className="grid grid-cols-2 gap-4">

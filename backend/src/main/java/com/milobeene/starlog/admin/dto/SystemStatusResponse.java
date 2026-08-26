@@ -24,7 +24,7 @@ public record SystemStatusResponse(Igdb igdb, Storage storage, Database database
 
     public record Database(String product, Long sizeBytes) {}
 
-    /** 오늘 누가 무엇을 얼마나 썼나 */
+    /** 오늘 누가 무엇을 얼마나 썼나. `limit`이 null이면 무제한(관리자)이다 */
     public record QuotaRow(Long memberId, String nickname, String kind, String label,
-                           int used, int limit) {}
+                           int used, Integer limit) {}
 }

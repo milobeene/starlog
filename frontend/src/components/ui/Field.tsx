@@ -10,23 +10,40 @@ export const FIELD_SELECT = `${FIELD_INPUT} [&>option]:bg-neutral-900`;
 /** 달력 아이콘이 기본 검정이라 어두운 배경에서 안 보인다 — invert로 뒤집는다 */
 export const FIELD_DATE = `${FIELD_INPUT} num [&::-webkit-calendar-picker-indicator]:invert`;
 
+/**
+ * 라벨 + 입력 한 칸.
+ *
+ * 기본은 `<label>`이다 — 캡션을 눌러도 입력에 포커스가 간다.
+ *
+ * **`composite`가 필요한 이유** — `htmlFor` 없는 `<label>`은 안에 있는 **첫 번째 조작
+ * 가능한 요소**로 클릭을 넘긴다(`button`도 그 대상이다). 컨트롤이 여럿 든 칸에서는 버그가 된다:
+ *   - 배경 편집: 빈 곳을 누르면 첫 색상 선택기가 열렸다
+ *   - 장르 편집: 빈 곳을 누르면 첫 칩의 × 가 눌렸다
+ * 게다가 label에 마우스를 올리면 그 컨트롤에 `:hover`까지 붙어, 손대지도 않은 × 가 밝아졌다.
+ *
+ * 그래서 **컨트롤이 둘 이상이면 `composite`를 준다** — `<div>`로 그려 그 위임을 끊는다
+ */
 export function Field({
   label,
   hint,
+  composite = false,
   children,
 }: {
   label: string;
   hint?: string;
+  composite?: boolean;
   children: React.ReactNode;
 }) {
+  const Tag = composite ? "div" : "label";
+
   return (
-    <label className="flex flex-col gap-1.5">
+    <Tag className="flex flex-col gap-1.5">
       <span className="text-[10px] font-semibold tracking-widest text-white/40 uppercase">
         {label}
       </span>
       {children}
       {hint && <span className="text-[11px] text-white/30">{hint}</span>}
-    </label>
+    </Tag>
   );
 }
 

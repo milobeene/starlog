@@ -71,7 +71,8 @@ export default function TagGenreDialog(props: Props) {
             장르를 하나라도 입력하시면 <span className="text-white/70">원본 장르를 대신합니다.</span>{" "}
             비워 두시면 원본 정보로 돌아갑니다.
           </p>
-          <Field label="Genres">
+          {/* 칩의 × 가 첫 컨트롤이라 composite가 필요하다 (Field 주석 참고) */}
+          <Field label="Genres" composite>
             <ChipInput
               values={names}
               onChange={setNames}

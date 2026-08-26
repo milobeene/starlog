@@ -44,6 +44,19 @@ export default function MarkdownTextarea({
     const node = event.currentTarget;
     const { selectionStart: start, selectionEnd: end } = node;
 
+    /*
+     * **한글(IME) 조합 중에는 손대지 않는다.**
+     *
+     * 조합 중 Enter는 두 번 온다 — 먼저 "조합을 확정하는 Enter", 그다음 "줄바꿈 Enter".
+     * 둘 다 목록 로직을 태우면 항목이 한 번에 두 줄 생기고, 첫 줄에 마지막 글자만 남은 채
+     * 커서는 그다음 줄에 가 있었다. 조합 확정은 브라우저에 맡기고 두 번째만 처리한다.
+     *
+     * 영문은 조합 자체가 없어서 이 분기에 걸리지 않는다 — 그래서 한글에서만 났다
+     */
+    if (event.nativeEvent.isComposing) {
+      return;
+    }
+
     if (event.key === "Tab") {
       event.preventDefault();
       const lineStart = value.lastIndexOf("\n", start - 1) + 1;

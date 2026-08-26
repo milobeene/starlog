@@ -68,22 +68,22 @@ export default function AdminSystemTab() {
         {quotaToday.length === 0 ? (
           <Empty>오늘은 아직 아무도 쓰지 않았습니다</Empty>
         ) : (
-          <DataTable headers={["회원", "종류", "사용", "한도", ""]}>
+          <DataTable headers={["회원", "종류", "사용", "한도"]}>
             {quotaToday.map((row) => (
               <tr key={`${row.memberId}-${row.kind}`} className="border-t border-white/5">
                 <td className="px-4 py-2.5 text-sm">{row.nickname}</td>
                 <td className="px-4 py-2.5 text-sm text-white/60">{row.label}</td>
-                <td className="num px-4 py-2.5 text-sm">{row.used}</td>
-                <td className="num px-4 py-2.5 text-sm text-white/40">{row.limit}</td>
-                <td className="w-32 px-4 py-2.5">
-                  <div className="h-1 w-full overflow-hidden rounded-full bg-white/10">
-                    <div
-                      className={`h-full rounded-full ${
-                        row.used >= row.limit ? "bg-red-400" : "bg-white/50"
-                      }`}
-                      style={{ width: `${Math.min(100, (row.used / row.limit) * 100)}%` }}
-                    />
-                  </div>
+                {/* 관리자는 한도가 없다(null). 그래도 몇 번 썼는지는 세어 보여준다 —
+                    안 세면 정작 부하를 만든 사람만 목록에서 사라진다 */}
+                <td
+                  className={`num px-4 py-2.5 text-sm ${
+                    row.limit !== null && row.used >= row.limit ? "text-red-400" : ""
+                  }`}
+                >
+                  {row.used}
+                </td>
+                <td className="num px-4 py-2.5 text-sm text-white/40">
+                  {row.limit === null ? "무제한" : row.limit}
                 </td>
               </tr>
             ))}

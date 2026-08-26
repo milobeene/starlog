@@ -5,6 +5,7 @@ import com.milobeene.starlog.backlog.dto.BacklogAddRequest;
 import com.milobeene.starlog.backlog.dto.BacklogCardResponse;
 import com.milobeene.starlog.backlog.dto.BacklogDetailResponse;
 import com.milobeene.starlog.backlog.dto.BacklogNameResponse;
+import com.milobeene.starlog.backlog.dto.DeletedEntryResponse;
 import com.milobeene.starlog.backlog.dto.CompanyDictionary;
 import com.milobeene.starlog.backlog.dto.BacklogSearchCondition;
 import com.milobeene.starlog.backlog.dto.BacklogSort;
@@ -111,6 +112,18 @@ public class BacklogController {
     @GetMapping("/names")
     public List<BacklogNameResponse> names(@LoginMember Long memberId) {
         return backlogQueryService.findNames(memberId);
+    }
+
+    /**
+     * 삭제한 항목 목록 (§7.4).
+     *
+     * 되살리기 자체는 예전부터 있었지만 **들어가는 문이 담기 화면 하나뿐이었다** —
+     * 같은 게임을 다시 담으려 할 때만 "되살릴까요"가 떴다. 그래서 사용자 눈에는
+     * 되돌릴 방법이 없어 보였다. 이 목록이 그 문을 하나 더 낸다
+     */
+    @GetMapping("/deleted")
+    public List<DeletedEntryResponse> deleted(@LoginMember Long memberId) {
+        return backlogQueryService.findDeleted(memberId);
     }
 
     /** 개발사·유통사 사전 (Phase 8) — 필터·편집 폼의 자동완성 선택지 */

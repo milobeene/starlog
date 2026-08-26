@@ -22,32 +22,31 @@ export default function QuotaSection() {
     <SettingsSection
       title="오늘 사용량"
       icon="note"
-      description="게임 정보는 외부 데이터베이스에서 가져옵니다. 그쪽 한도가 서비스 전체 기준이라 하루치를 나눠 씁니다. 자정에 다시 채워집니다."
+      description="게임 정보는 외부 데이터베이스에서 가져옵니다. 그쪽 한도가 서비스 전체 기준이라 하루치를 나눠 씁니다. 매일 자정(한국 시간)에 다시 채워집니다."
     >
       <ul className="flex flex-col gap-2">
         {quota.data.map((row) => {
-          const ratio = row.limit > 0 ? Math.min(1, row.used / row.limit) : 0;
+          const unlimited = row.limit === null;
           // 다 쓰기 전에 미리 알려준다 — 막히고 나서 아는 것보다 낫다
-          const tone =
-            ratio >= 1 ? "bg-red-400" : ratio >= 0.8 ? "bg-amber-400" : "bg-white/50";
+          const tone = unlimited
+            ? "text-white/70"
+            : row.used >= row.limit!
+              ? "text-red-400"
+              : row.used >= row.limit! * 0.8
+                ? "text-amber-400"
+                : "text-white/70";
 
           return (
             <li
               key={row.kind}
-              className="rounded-lg border border-white/10 bg-white/5 px-4 py-3"
+              className="flex items-baseline justify-between rounded-lg border border-white/10 bg-white/5 px-4 py-3"
             >
-              <div className="mb-2 flex items-baseline justify-between">
-                <span className="text-sm">{row.label}</span>
-                <span className="num text-xs text-white/50">
-                  {row.used} / {row.limit}
-                </span>
-              </div>
-              <div className="h-1 w-full overflow-hidden rounded-full bg-white/10">
-                <div
-                  className={`h-full rounded-full transition-[width] duration-500 ${tone}`}
-                  style={{ width: `${ratio * 100}%` }}
-                />
-              </div>
+              <span className="text-sm">{row.label}</span>
+              <span className={`num text-sm ${tone}`}>
+                {row.used}
+                {/* 관리자는 한도가 없다. 그래도 몇 번 썼는지는 보여준다 */}
+                <span className="text-white/30"> / {unlimited ? "무제한" : row.limit}</span>
+              </span>
             </li>
           );
         })}
