@@ -7,6 +7,18 @@
 > 이 문서는 **설계 판단이 남지 않을 정도로** 촘촘하게 쓴 것이다. `[결정 필요]` 표시가 붙은 곳만
 > 사용자 답이 있어야 하고, 나머지는 그대로 실행하면 된다.
 
+## 배포 주소 (2026-08-26)
+
+| 대상 | 주소 | 비고 |
+|---|---|---|
+| 프론트 (사용자가 접속) | https://starlog-xi.vercel.app | Vercel — 배포·환경변수는 대시보드에서 |
+| 백엔드 (API) | https://starlog.onrender.com | Render 무료 — 15분 무활동 시 슬립, 콜드스타트 최대 50초+ |
+| DB | Neon (`ep-restless-recipe-azqn40hd`) | 접속정보는 `backend/src/main/resources/application-local.yml` (git 미포함) |
+
+`starlog.vercel.app`(접미사 없는 깔끔한 이름)은 선점되어 있어 `-xi`가 자동으로 붙었다.
+Vercel 프로젝트 → Settings → Domains에서 다른 이름으로 재시도 가능 — 바꾸면 Render의
+`CORS_ALLOWED_ORIGINS`·`FRONTEND_BASE_URL`도 같이 갱신해야 한다.
+
 ---
 
 ## 0. 세션 시작 시 30초 점검
