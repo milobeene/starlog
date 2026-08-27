@@ -37,6 +37,8 @@ import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import jakarta.validation.Valid;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -280,11 +282,20 @@ public class BacklogController {
                 memberId, entryId, file.getOriginalFilename(), file.getBytes(), takenAt);
     }
 
-    /** 원본. 이름이 경로에 들어가므로 서비스가 폴더 밖으로 못 나가게 막는다 */
+    /**
+     * 원본. 이름이 경로에 들어가므로 서비스가 폴더 밖으로 못 나가게 막는다.
+     *
+     * ## `byte[]`가 아니라 `Resource`다 (2026-08-28)
+     *
+     * 영상 상한이 200MB다. `byte[]`로 내보내면 **읽은 배열 + 응답 버퍼**로 힙을 두 벌
+     * 잡을 뿐 아니라, Range 요청을 처리할 방법이 없어 **재생 막대를 끌 수가 없다.**
+     * `Resource`를 돌려주면 스프링(`HttpEntityMethodProcessor`)이 Range 헤더를 보고
+     * 필요한 구간만 잘라 보낸다 — `Accept-Ranges`를 켜줘야 브라우저가 시도한다
+     */
     @GetMapping("/{entryId}/screenshots/{fileName}")
-    public ResponseEntity<byte[]> screenshot(@LoginMember Long memberId,
-                                             @PathVariable Long entryId,
-                                             @PathVariable String fileName) {
+    public ResponseEntity<Resource> screenshot(@LoginMember Long memberId,
+                                               @PathVariable Long entryId,
+                                               @PathVariable String fileName) {
         /*
          * DB에 행이 없어 타입을 저장해둔 곳이 없다 → 확장자에서 되돌린다.
          * 저장할 때 확장자와 매직 넘버를 대조했으므로 확장자를 믿어도 된다.
@@ -293,7 +304,9 @@ public class BacklogController {
         return ResponseEntity.ok()
                 .header("Content-Type", MediaFileValidator.contentTypeOf(fileName))
                 .header("Cache-Control", "private, max-age=31536000, immutable")
-                .body(screenshotService.read(memberId, entryId, fileName));
+                .header("Accept-Ranges", "bytes")
+                .body(new FileSystemResource(
+                        screenshotService.resolve(memberId, entryId, fileName)));
     }
 
     /**

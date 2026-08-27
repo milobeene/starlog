@@ -58,6 +58,16 @@ public class LocalFileStore {
         return Files.isRegularFile(safeResolve(directory, fileName));
     }
 
+    /**
+     * 검증을 마친 경로. **바이트로 읽지 않고 경로만 필요한 쪽**이 쓴다 (영상 스트리밍).
+     *
+     * `read`를 안 쓰고 이걸 쓰면 파일이 힙에 안 올라오고, 컨트롤러가 `Resource`로 내보내
+     * 스프링이 Range 요청까지 처리한다. 200MB 영상을 `byte[]`로 다루던 것을 대신한다
+     */
+    public Path resolve(Path directory, String fileName) {
+        return safeResolve(directory, fileName);
+    }
+
     /** 실패해도 예외를 던지지 않는다 — 이미 없는 파일을 지우는 것도 성공이다 */
     public void delete(Path directory, String fileName) {
         try {

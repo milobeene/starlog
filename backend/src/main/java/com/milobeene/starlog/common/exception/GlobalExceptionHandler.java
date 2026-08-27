@@ -13,6 +13,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.io.UncheckedIOException;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -111,6 +112,28 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleTooLarge(MaxUploadSizeExceededException e) {
         return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
                 .body(new ErrorResponse("FILE_TOO_LARGE", "파일이 너무 큽니다"));
+    }
+
+    /**
+     * 500 — 파일을 읽거나 쓰지 못했다 (v1.0 6·7단계).
+     *
+     * **이 핸들러가 없으면 형태 없는 500이 나간다** — `MaxUploadSizeExceededException`이
+     * 그래서 "올리지 못했습니다"만 뱉었던 것과 정확히 같은 실패 모양이다. 화면은 우리
+     * `ErrorResponse`만 알아보므로, 형태가 다르면 코드도 메시지도 못 꺼낸다.
+     *
+     * ⚠️ **일부러 만든 시나리오가 아니다.** 데이터 루트를 외장 디스크에 두는 걸 설계에
+     * 넣어놨는데(`paths.js`), 그 디스크를 뽑으면 커버·스크린샷 조회가 전부 여기로 온다.
+     * 디스크가 꽉 차거나 권한이 막혀도 마찬가지다.
+     *
+     * 원인 메시지를 그대로 안 내보내는 이유는 절대 경로가 새기 때문이다 — 로그에는 남긴다
+     */
+    @ExceptionHandler(UncheckedIOException.class)
+    public ResponseEntity<ErrorResponse> handleFileIo(UncheckedIOException e) {
+        log.warn("파일을 다루지 못했습니다", e);
+
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new ErrorResponse("FILE_IO_ERROR",
+                        "파일을 읽거나 저장하지 못했습니다. 데이터 폴더를 쓸 수 있는지 확인해 주세요"));
     }
 
     /** 400 — Bean Validation 실패 (H-6) */

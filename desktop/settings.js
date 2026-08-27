@@ -28,7 +28,7 @@ const SETTINGS_DEFAULT = {
 
 const CONNECTIONS_DEFAULT = { version: 1, profiles: [] };
 
-function readJson(file, fallback) {
+function readJson(file, fallback, mode) {
   try {
     const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
     // 배열이나 문자열이 들어 있으면 형식 불일치다. 그것도 "깨짐"으로 친다
@@ -37,12 +37,19 @@ function readJson(file, fallback) {
     }
     return { ...fallback, ...parsed };
   } catch {
-    writeJson(file, fallback);
+    writeJson(file, fallback, mode);
     return { ...fallback };
   }
 }
 
-function writeJson(file, value) {
+/**
+ * @param mode 파일 권한. 자격증명 파일에는 `0o600`을 준다.
+ *
+ * ⚠️ **평문으로 두는 건 결정 13이지만, 그게 "아무나 읽어도 된다"는 뜻은 아니다.**
+ * 기본값(0644)이면 **같은 컴퓨터의 다른 계정이 그냥 읽는다.** 암호화를 안 하기로 한
+ * 이상 파일 권한이 남은 유일한 울타리다 — 한 줄이고 잃을 게 없다
+ */
+function writeJson(file, value, mode = 0o644) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   /*
    * 임시 파일에 쓰고 이름을 바꾼다. 그냥 덮어쓰면 쓰는 중에 앱이 죽었을 때
@@ -50,9 +57,15 @@ function writeJson(file, value) {
    * rename은 같은 볼륨 안에서 원자적이라 "옛것 아니면 새것"만 존재한다
    */
   const tmp = `${file}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(value, null, 2), "utf8");
+  // 권한은 **만들 때** 준다. 쓰고 나서 바꾸면 그 사이에 열려 있는 순간이 생긴다
+  fs.writeFileSync(tmp, JSON.stringify(value, null, 2), { encoding: "utf8", mode });
   fs.renameSync(tmp, file);
+  // 이미 있던 파일을 물려받은 경우까지 맞춘다 — 첫 저장 전에 만들어진 것이 있다
+  try { fs.chmodSync(file, mode); } catch { /* 윈도우는 의미가 없다. 무시한다 */ }
 }
+
+/** 자격증명 파일은 주인만 읽는다 */
+const SECRET_MODE = 0o600;
 
 /** 저장된 그대로. `dataRoot: null`은 "정한 적 없음"이라는 뜻이 살아 있다 */
 function readSettings() {
@@ -79,7 +92,7 @@ function patchSettings(patch) {
 }
 
 function getConnections() {
-  const c = readJson(CONNECTIONS_FILE, CONNECTIONS_DEFAULT);
+  const c = readJson(CONNECTIONS_FILE, CONNECTIONS_DEFAULT, SECRET_MODE);
   return Array.isArray(c.profiles) ? c.profiles : [];
 }
 
@@ -95,13 +108,13 @@ function saveConnection(profile) {
   const at = profiles.findIndex((p) => p.name === profile.name);
   if (at >= 0) profiles[at] = profile;
   else profiles.push(profile);
-  writeJson(CONNECTIONS_FILE, { version: 1, profiles });
+  writeJson(CONNECTIONS_FILE, { version: 1, profiles }, SECRET_MODE);
   return profiles;
 }
 
 function removeConnection(name) {
   const profiles = getConnections().filter((p) => p.name !== name);
-  writeJson(CONNECTIONS_FILE, { version: 1, profiles });
+  writeJson(CONNECTIONS_FILE, { version: 1, profiles }, SECRET_MODE);
   return profiles;
 }
 

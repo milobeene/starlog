@@ -240,7 +240,25 @@ function waitForBackend(port, timeoutMs = 90_000, isAlive = () => backend !== nu
  * PATH에 자바가 없으면 그냥 일어나는 일이고, 10단계에서 JRE를 번들해도 **경로가 틀리면
  * 똑같다.** 여기서 받아 `exit`과 같은 모양(진단 코드)으로 바꿔 흘려보낸다
  */
+/**
+ * 로그가 너무 커졌으면 한 번 밀어둔다.
+ *
+ * 기동마다 스프링 부트 로그가 통째로 쌓이는데 지우는 데가 없었다. 지금은 문제가 아니지만
+ * **로그를 보라고 안내하는 화면이 여럿**이라(진단 실패, 백엔드 종료) 수백 MB짜리 파일을
+ * 열게 만들면 그 안내가 무의미해진다. 한 세대만 남긴다 — 두 벌이면 충분하다
+ */
+const LOG_MAX_BYTES = 5 * 1024 * 1024;
+
+function rotateLog() {
+  try {
+    if (fs.statSync(paths.LOG_FILE).size <= LOG_MAX_BYTES) return;
+    fs.rmSync(`${paths.LOG_FILE}.1`, { force: true });
+    fs.renameSync(paths.LOG_FILE, `${paths.LOG_FILE}.1`);
+  } catch { /* 없으면 밀 것도 없다 */ }
+}
+
 function spawnJava(port, config) {
+  rotateLog();
   const out = fs.createWriteStream(paths.LOG_FILE, { flags: "a" });
   out.write(`\n===== ${new Date().toISOString()} port=${port} mode=${config.mode} =====\n`);
 
@@ -543,8 +561,14 @@ function registerIpc() {
    */
   ipcMain.handle("shell:openPath", (_e, target) => {
     const dirs = dataDirs();
+    const root = path.resolve(dirs.root);
     const resolved = path.resolve(target);
-    if (!resolved.startsWith(path.resolve(dirs.root))) {
+    /*
+     * ⚠️ **구분자까지 봐야 한다.** `startsWith(root)`만 쓰면 데이터 루트가 `~/starlog`일 때
+     * **형제 폴더인 `~/starlog-비밀`도 통과한다** — 이름이 접두사로 겹칠 뿐 남의 폴더다.
+     * 바로 위 `resolveWebFile`은 처음부터 `WEB + path.sep`으로 제대로 하고 있었다
+     */
+    if (resolved !== root && !resolved.startsWith(root + path.sep)) {
       throw new Error("데이터 폴더 밖은 열 수 없습니다");
     }
     shell.openPath(resolved);
@@ -659,13 +683,20 @@ function registerIpc() {
      * ⚠️ **시험용의 생사를 넘겨야 한다.** 기본값은 전역 `backend`를 보는데 시험용은 거기 없어서,
      * 안 넘기면 즉시 "죽었다"로 판정하고 **DB가 성공한 것처럼** 보고한다
      */
-    const ready = await Promise.race([
+    /*
+     * ⚠️ **실패를 `diagnostic: null`로 접으면 안 된다** (2026-08-28).
+     *
+     * 예전엔 TIMEOUT만 코드로 바꾸고 나머지를 null로 뒀는데, 아래 판정이
+     * `!done?.diagnostic`이라 **null = 성공**이다. 즉 시험용이 진단 코드도 못 찍고 죽으면
+     * (자바가 없다, jar가 없다) **"DB는 연결됐습니다"라고 보고했다.** 이 화면에서 이미
+     * 한 번 났던 실패 모양이라 같은 자리에 두 번 만들지 않는다
+     */
+    const done = await Promise.race([
       probe.exited,
       waitForBackend(port, 90_000, probe.isAlive)
         .then(() => ({ code: 0, diagnostic: null }))
-        .catch((e) => ({ code: -1, diagnostic: e.message === "TIMEOUT" ? "TIMEOUT" : null })),
+        .catch((e) => ({ code: -1, diagnostic: e.message || "BACKEND_DIED" })),
     ]);
-    const done = ready;
 
     /*
      * DB가 떴으면 스토리지·IGDB도 실제로 눌러본다.

@@ -14,8 +14,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.util.UriUtils;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -67,7 +69,14 @@ public class ScreenshotService {
         Path file = folder.resolve(name);
         return new ScreenshotResponse(
                 name,
-                "/api/backlog/%d/screenshots/%s".formatted(entryId, name),
+                /*
+                 * ⚠️ **이름을 URL에 그대로 붙이면 안 된다.** 우리가 만든 이름은 `001.png`라
+                 * 안전하지만, **사람이 탐색기로 직접 넣는 게 설계된 사용법**이다(§10-1).
+                 * `내 스샷 #1.png`가 들어오면 `#`부터가 조각(fragment)으로 잘려나가
+                 * 서버까지 오지도 못한다 — 화면에는 깨진 그림만 뜬다
+                 */
+                "/api/backlog/%d/screenshots/%s".formatted(
+                        entryId, UriUtils.encodePathSegment(name, StandardCharsets.UTF_8)),
                 sizeOf(file),
                 MediaFileValidator.contentTypeOf(name),
                 takenAt(file));
@@ -114,12 +123,22 @@ public class ScreenshotService {
         return describe(entryId, folder, stored);
     }
 
-    public byte[] read(Long memberId, Long entryId, String fileName) {
+    /**
+     * 원본 파일의 경로. **바이트가 아니라 경로를 준다** (2026-08-28).
+     *
+     * 예전엔 `byte[]`로 통째로 읽어 돌려줬는데, 영상 상한이 200MB라 그게 힘에 부친다 —
+     * 읽은 배열 한 벌에 응답 버퍼 한 벌이라 **한 번 재생에 힙을 수백 MB** 잡는다.
+     *
+     * 더 큰 문제는 **탐색(seek)이 안 된다**는 것이다. `byte[]`로 내보내면 Range 요청을
+     * 처리할 방법이 없어서 브라우저가 영상 중간으로 못 건너뛴다. 컨트롤러가 `Resource`로
+     * 내보내면 스프링이 Range를 알아서 처리한다 — 재생 막대를 끌 수 있게 된다
+     */
+    public Path resolve(Long memberId, Long entryId, String fileName) {
         Path folder = folderOf(memberId, entryId, false);
         if (folder == null || !localFileStore.exists(folder, fileName)) {
             throw new InvalidInputException("스크린샷이 없습니다: " + fileName);
         }
-        return localFileStore.read(folder, fileName);
+        return localFileStore.resolve(folder, fileName);
     }
 
     /** 여러 장 한 번에. 화면이 체크박스로 고른 것을 통째로 넘긴다 */
