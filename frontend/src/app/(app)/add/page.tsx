@@ -96,7 +96,7 @@ export default function AddPage() {
         gameId: game.gameId,
         externalId: game.externalId,
       });
-      router.push(`/library/${created.id}`);
+      router.push(`/library/detail?entry=${created.id}`);
     } catch (caught) {
       if (caught instanceof ApiError && caught.code === ERROR.REVIVABLE) {
         const body = caught.body as Revivable | undefined;
@@ -190,7 +190,7 @@ export default function AddPage() {
                 variant="primary"
                 onClick={async () => {
                   await api.post(`/api/backlog/${revive.targetId}/revive`);
-                  router.push(`/library/${revive.targetId}`);
+                  router.push(`/library/detail?entry=${revive.targetId}`);
                 }}
               >
                 되살리기

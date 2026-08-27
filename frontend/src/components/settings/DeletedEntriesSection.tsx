@@ -48,7 +48,7 @@ export default function DeletedEntriesSection() {
     try {
       await api.post(`/api/backlog/${entryId}/revive`);
       invalidateQueries();   // 사이드바·파셋·이 목록이 전부 바뀐다
-      router.push(`/library/${entryId}`);
+      router.push(`/library/detail?entry=${entryId}`);
     } catch (caught) {
       setError(errorMessage(caught, "되살리지 못했습니다."));
       setBusy(null);
