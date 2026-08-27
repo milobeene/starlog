@@ -138,6 +138,7 @@ function LibraryContent() {
       {/* 툴바 + 필터 박스 */}
       <div className="page-x flex flex-col gap-4 pb-5">
         {/* 폰에서는 검색창이 좁아져 글자가 잘린다 — 정렬을 아래로 내린다 */}
+        {/* 폰에서는 검색창이 좁아져 글자가 잘린다 — 정렬을 아래로 내린다 */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <SearchInput value={query} onChange={setQuery} />
           <Dropdown
@@ -251,7 +252,7 @@ function ViewSwitch({
   }, [view]);
 
   return (
-    <div className="relative flex shrink-0 gap-1 rounded-lg border border-white/10 bg-white/5 p-1">
+    <div className="relative flex w-fit shrink-0 gap-1 self-start rounded-lg border border-white/10 bg-white/5 p-1">
       {box && (
         <span
           aria-hidden

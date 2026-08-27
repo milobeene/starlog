@@ -51,7 +51,7 @@ export default function AppHeader() {
         {/* 워드마크. 홈으로 나가는 유일한 출구다 */}
         <Link
           href="/"
-          className="pointer-events-auto flex h-full shrink-0 items-center font-display text-sm font-bold tracking-[0.15em] text-white sm:text-base sm:tracking-[0.2em] lg:text-lg"
+          className="pointer-events-auto flex h-full shrink-0 items-center font-display text-sm leading-none font-bold tracking-[0.15em] text-white sm:text-base sm:tracking-[0.2em] lg:text-lg"
         >
           STARLOG
         </Link>
@@ -111,7 +111,17 @@ export default function AppHeader() {
             <div className="flex items-center space-x-2 py-2 text-sm font-semibold text-white">
               {/* 폰에서는 닉네임을 접는다 — 가운데 메뉴 줄과 자리를 다툰다 */}
               <span className="hidden max-w-[9rem] truncate sm:inline">{profile?.nickname || " "}</span>
-              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              {/* 이름이 없으면 화살표만 덩그러니 남아 무엇을 여는 메뉴인지 안 보인다 → 사람 아이콘 */}
+              <svg className="h-5 w-5 sm:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="1.8"
+                  d="M16 20v-1a4 4 0 00-4-4H8a4 4 0 00-4 4v1M14 7a4 4 0 11-8 0 4 4 0 018 0z"
+                  transform="translate(2 0)"
+                />
+              </svg>
+              <svg className="hidden h-3.5 w-3.5 sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 9l-7 7-7-7" />
               </svg>
             </div>

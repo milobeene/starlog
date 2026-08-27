@@ -3,16 +3,19 @@ export default function Chip({
   label,
   onRemove,
   rounded = false,
+  className = "",
 }: {
   label: string;
   onRemove?: () => void;
   rounded?: boolean;
+  /** 폭에 따라 숨기는 것처럼 바깥에서 표시를 제어할 때 */
+  className?: string;
 }) {
   return (
     <span
       className={`inline-flex items-center gap-1.5 bg-white/10 px-2 py-0.5 text-[10px] text-white/70 ${
         rounded ? "rounded-full border border-white/10 px-2.5 py-1 text-xs text-white/80" : "rounded"
-      }`}
+      } ${className}`}
     >
       {label}
       {onRemove && (

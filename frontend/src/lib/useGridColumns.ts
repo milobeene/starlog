@@ -12,9 +12,9 @@ import { useEffect, useState } from "react";
  * 내림차순으로 두고 처음 맞는 것을 쓴다. 위에서부터 넓은 화면이다
  */
 const BREAKPOINTS = [
-  { query: "(min-width: 1280px)", columns: 8 },   // xl
-  { query: "(min-width: 1024px)", columns: 6 },   // lg
-  { query: "(min-width: 768px)", columns: 4 },    // md
+  { query: "(min-width: 1280px)", columns: 8 },   // xl — PC 풀사이즈. 여기는 그대로 둔다
+  { query: "(min-width: 1024px)", columns: 4 },   // lg — 사이드바가 나타나는 폭. 6→4
+  { query: "(min-width: 768px)", columns: 3 },    // md — 4→3
   { query: "(min-width: 640px)", columns: 3 },    // sm
 ] as const;
 
@@ -23,7 +23,9 @@ const NARROWEST_COLUMNS = 2;
 /** 라이브러리 게임 그리드. 위 BREAKPOINTS와 열 수가 같아야 한다 */
 export const GAME_GRID =
   // 폰에서는 간격을 줄인다 — 390px에서 gap-x-6이면 카드가 그만큼 더 작아진다
-  "grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 sm:gap-x-6 sm:gap-y-10 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8";
+  // 중간 단계(md·lg)에서 칸이 너무 작아 커버가 안 읽혔다 — 두 칸씩 줄였다.
+  // xl(PC 풀사이즈) 8열은 그대로다
+  "grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 sm:gap-x-6 sm:gap-y-10 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8";
 
 function measure(): number {
   // SSR에는 matchMedia가 없다. 첫 렌더는 가장 좁은 값으로 두고 마운트 후 교정한다

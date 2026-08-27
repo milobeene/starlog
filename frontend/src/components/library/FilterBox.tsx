@@ -125,7 +125,7 @@ export default function FilterBox({
     >
       {/* 상태 — 복수 선택 */}
       <div className="flex items-start gap-4">
-        <span className="w-20 shrink-0 pt-1.5 text-[10px] font-semibold tracking-widest text-white/35 uppercase">
+        <span className="w-14 shrink-0 pt-1.5 text-[10px] font-semibold tracking-widest text-white/35 uppercase sm:w-20">
           Status
         </span>
         <div className="flex flex-wrap gap-1.5">

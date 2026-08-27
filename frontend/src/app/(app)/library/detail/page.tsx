@@ -186,23 +186,30 @@ function BacklogDetail() {
                 {resolved.name}
               </h1>
 
-              <div className="flex flex-wrap items-center gap-3">
+              {/* 장르가 먼저, 별점은 아래 줄이다 — 한 줄에 섞으면 장르가 길 때 별이 밀려난다 */}
+              <div className="flex flex-col items-start gap-2.5">
+                {/* 표시값 장르다 — 개인 장르가 있으면 그것이 마스터를 덮은 결과 (§6.7) */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {resolved.genres.map((genre) => (
+                    <Chip key={genre} label={genre} rounded />
+                  ))}
+                </div>
                 {personalRecord.rating != null && (
                   <span className="flex items-center gap-1.5 text-lg font-medium text-yellow-500 drop-shadow-sm">
                     <StarIcon className="h-[1.05em] w-[1.05em] -translate-y-[1px]" />
                     <span className="num">{formatRating(personalRecord.rating)}</span>
                   </span>
                 )}
-                {/* 표시값 장르다 — 개인 장르가 있으면 그것이 마스터를 덮은 결과 (§6.7) */}
-                {resolved.genres.map((genre) => (
-                  <Chip key={genre} label={genre} rounded />
-                ))}
               </div>
             </div>
           </div>
 
           {/* 요약 스탯 한 줄 */}
-          <div className="mb-10 grid grid-cols-2 divide-x divide-y divide-white/15 border-t-line border-b-line py-6 md:grid-cols-4 md:divide-y-0">
+          {/*
+            divide-x/divide-y는 "첫 항목만 빼고 전부"라 2열↔4열 전환에서 선이 어긋난다
+            (2열일 때 두 번째 칸 위에도 가로선이 그어졌다). 몇 번째 칸인지로 직접 긋는다
+          */}
+          <div className="mb-10 grid grid-cols-2 border-t-line border-b-line py-6 md:grid-cols-4 [&>*]:border-white/15 [&>*:nth-child(2n)]:border-l [&>*:nth-child(n+3)]:border-t md:[&>*]:border-l md:[&>*:first-child]:border-l-0 md:[&>*:nth-child(n+3)]:border-t-0">
             <Stat
               label="Total Playtime"
               value={totalPlaytime ?? "—"}
@@ -226,8 +233,14 @@ function BacklogDetail() {
           </div>
 
           <div className="grid grid-cols-1 gap-10 lg:grid-cols-3">
+            {/*
+              ## 폰에서는 순서가 뒤집힌다 (order)
+              좁은 화면에서 About·회차·구매·메모를 다 지나야 개발사/플랫폼이 나오면
+              "이 게임이 뭔지"를 보려고 한참 스크롤해야 한다. 게임 정보를 위로 올린다.
+              **삭제만 예외로 맨 아래** — 위에 두면 실수로 누른다
+            */}
             {/* 좌 — About · 회차 · 구매 · 메모 (설계서 §2.9 순서) */}
-            <div className="flex flex-col gap-10 lg:col-span-2">
+            <div className="order-2 flex flex-col gap-10 lg:order-none lg:col-span-2">
               <section>
                 <h3 className="mb-4 flex items-center gap-2 text-lg font-medium text-white/90">
                   <SectionIcon name="about" />
@@ -251,7 +264,7 @@ function BacklogDetail() {
               <Timeline detail={data} />
 
               <section>
-                <h3 className="mb-4 flex items-end justify-between text-lg font-medium text-white/90">
+                <h3 className="mb-4 flex items-center justify-between gap-3 text-lg font-medium text-white/90">
                   <span className="flex items-center gap-2">
                     <SectionIcon name="play" />
                     Playthrough Records
@@ -292,7 +305,7 @@ function BacklogDetail() {
               </section>
 
               <section>
-                <h3 className="mb-4 flex items-end justify-between text-lg font-medium text-white/90">
+                <h3 className="mb-4 flex items-center justify-between gap-3 text-lg font-medium text-white/90">
                   <span className="flex items-center gap-2">
                     <SectionIcon name="purchase" />
                     Purchase History
@@ -332,7 +345,7 @@ function BacklogDetail() {
 
               {/* 내 기록은 제일 아래 — 읽는 순서상 게임 정보를 다 본 뒤에 온다 */}
               <section>
-                <h3 className="mb-4 flex items-end justify-between text-lg font-medium text-white/90">
+                <h3 className="mb-4 flex items-center justify-between gap-3 text-lg font-medium text-white/90">
                   <span className="flex items-center gap-2">
                     <SectionIcon name="note" />
                     My Notes
@@ -358,7 +371,7 @@ function BacklogDetail() {
             </div>
 
             {/* 우 — 게임 정보 · 사람들 클리어 시간 · 태그 · 액션 */}
-            <div className="flex flex-col gap-8">
+            <div className="order-1 flex flex-col gap-8 lg:order-none">
               <div className="rounded-lg border border-white/10 bg-black/20 p-6">
                 <h4 className="mb-4 flex items-center justify-between text-xs tracking-wider text-white/40 uppercase">
                   <span className="flex items-center gap-2">
@@ -469,14 +482,15 @@ function BacklogDetail() {
                 상태를 고르는 드롭다운이 없는 게 의도다 —
                 상태는 회차·취득에서 파생된다. 여기서 직접 못 바꾼다 (§7.2)
               */}
-              <div className="mt-2">
-                <button
-                  onClick={() => setDialog({ kind: "delete" })}
-                  className="w-full rounded py-2.5 text-sm text-red-400 transition-all hover:bg-white/5"
-                >
-                  Delete Entry
-                </button>
+              {/* 데스크탑에서는 우측 열 끝에 붙는다 */}
+              <div className="mt-2 hidden lg:block">
+                <DeleteEntryButton onClick={() => setDialog({ kind: "delete" })} />
               </div>
+            </div>
+
+            {/* 폰에서는 메모까지 다 지난 맨 아래 (order-3) */}
+            <div className="order-3 lg:hidden">
+              <DeleteEntryButton onClick={() => setDialog({ kind: "delete" })} />
             </div>
           </div>
         </div>
@@ -565,6 +579,18 @@ function BacklogDetail() {
 /** 시간 값 — null이면 대시 */
 function hours(value: number | null): string {
   return value == null ? "—" : `${value}h`;
+}
+
+/** 항목 삭제. 데스크탑은 우측 열 끝, 폰은 화면 맨 아래에 같은 버튼이 놓인다 */
+function DeleteEntryButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full rounded py-2.5 text-sm text-red-400 transition-all hover:bg-white/5"
+    >
+      Delete Entry
+    </button>
+  );
 }
 
 function Stat({ label, value, unit }: { label: string; value: React.ReactNode; unit?: string }) {

@@ -103,17 +103,23 @@ export default function LibrarySidebar() {
         onClick={() => setOpen((v) => !v)}
         aria-label={open ? "목록 닫기" : "게임 목록 열기"}
         aria-expanded={open}
-        className="fixed bottom-4 left-4 z-40 flex items-center gap-2 rounded-full border border-white/20 bg-black/70 px-4 py-2.5 text-xs font-medium tracking-wider text-white/90 uppercase backdrop-blur-md transition-colors hover:bg-black/85 lg:hidden"
+        /*
+         * 열리면 숨긴다 — 사이드바가 이 자리를 덮어 버튼과 목록이 겹쳐 보였다.
+         * 닫는 건 배경막을 누르면 된다 (위 button)
+         */
+        className={`fixed bottom-4 left-4 z-40 flex items-center gap-2 rounded-full border border-white/20 bg-black/70 px-4 py-2.5 text-xs font-medium tracking-wider text-white/90 uppercase backdrop-blur-md transition-opacity hover:bg-black/85 lg:hidden ${
+          open ? "pointer-events-none opacity-0" : "opacity-100"
+        }`}
       >
         <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
             strokeWidth="2"
-            d={open ? "M6 18L18 6M6 6l12 12" : "M4 6h16M4 12h16M4 18h16"}
+            d="M4 6h16M4 12h16M4 18h16"
           />
         </svg>
-        {open ? "닫기" : "목록"}
+        목록
       </button>
 
     <aside

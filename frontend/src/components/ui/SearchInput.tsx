@@ -10,7 +10,7 @@ export default function SearchInput({
   placeholder?: string;
 }) {
   return (
-    <div className="relative flex-1 md:max-w-md">
+    <div className="relative flex-1 sm:max-w-md">
       <svg
         className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-white/40"
         fill="none"

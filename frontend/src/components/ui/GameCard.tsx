@@ -37,7 +37,21 @@ export default function GameCard({ card }: { card: BacklogCard }) {
         {card.displayName}
       </h4>
 
-      <div className="mb-1.5 flex min-h-[18px] flex-wrap gap-1">
+      {/*
+        **무조건 한 줄이다.** flex-wrap이면 카드마다 높이가 달라져 그리드 줄이 어긋난다.
+        칩 두 개가 안 들어가는 폭에서는 두 번째를 CSS로 숨긴다 —
+        개수를 자바스크립트로 재면 폭마다 다시 재야 하고 그만큼 리렌더가 붙는다
+      */}
+      {/*
+        **무조건 한 줄이다.** flex-wrap이면 카드마다 높이가 달라져 그리드 줄이 어긋난다.
+        좁은 칸(md 미만)에서는 두 번째 칩을 숨긴다 — 두 개가 나란히 들어갈 폭이 안 나온다.
+
+        Chip에 클래스를 넘기지 않고 **부모 선택자**로 숨기는 이유 —
+        Chip의 기본 클래스에 `inline-flex`가 있어서 자식에 `hidden`을 붙여도
+        같은 우선순위끼리 부딪혀 CSS 출력 순서에 따라 진다.
+        `[&>*:nth-child(2)]:hidden`은 자손 선택자라 우선순위가 한 단계 높아 확실히 이긴다
+      */}
+      <div className="mb-1.5 flex min-h-[18px] gap-1 overflow-hidden [&>*]:shrink-0 [&>*:nth-child(2)]:hidden md:[&>*:nth-child(2)]:inline-flex">
         {card.genres.slice(0, 2).map((genre) => (
           <Chip key={genre} label={genre} />
         ))}

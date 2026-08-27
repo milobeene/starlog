@@ -58,6 +58,7 @@ export default function DashboardPage() {
       <div className="grid w-full grid-cols-1 divide-y divide-white/15 border-b-line sm:grid-cols-2 sm:divide-x lg:grid-cols-4 lg:divide-y-0">
         <StatTile
           label="Total Games"
+          icon="book"
           value={facets.loading ? <Skeleton className="h-12 w-24" /> : totalGames}
           hint="Games in your library"
         />
@@ -65,6 +66,7 @@ export default function DashboardPage() {
         {/* 다른 타일과 같은 구조여야 숫자 베이스라인이 맞는다 — 이름 목록도 hint 자리로 */}
         <StatTile
           label="Currently Playing"
+          icon="play"
           value={facets.loading ? <Skeleton className="h-12 w-16" /> : playingCount}
           hint={
             playing.data && playing.data.items.length > 0
@@ -83,12 +85,14 @@ export default function DashboardPage() {
 
         <StatTile
           label="Completed"
+          icon="check"
           value={facets.loading ? <Skeleton className="h-12 w-20" /> : completed}
           hint={`${completionRate}% completion rate`}
         />
 
         <StatTile
           label="Total Hours"
+          icon="clock"
           value={
             playtime.loading ? (
               <Skeleton className="h-12 w-32" />
@@ -137,7 +141,7 @@ export default function DashboardPage() {
       />
 
       {/* 차트 — 월별 지출 하나뿐 */}
-      <div className="mb-10 w-full p-10">
+      <div className="page-x mb-10 w-full py-8 sm:py-10">
         <h3 className="mb-8 text-2xl font-medium tracking-tight text-white/90">Monthly Spending</h3>
         {spending.loading ? (
           <Skeleton className="h-72 w-full" />
@@ -175,7 +179,7 @@ function GameRow({
   );
 
   return (
-    <section className="w-full border-b-line p-10">
+    <section className="page-x w-full border-b-line py-8 sm:py-10">
       {/* More는 줄 오른쪽 끝에 있다 — 머리에도 두면 한 섹션에 같은 링크가 둘이 된다 */}
       <SectionHeader title={title} />
       {loading ? (
@@ -186,7 +190,7 @@ function GameRow({
          * gap이 1rem이니 (칸수-1)rem을 빼고 나눈다. 마스크의 %도 폭 기준이라
          * 같은 식을 그대로 넣을 수 있다 — 칸 수가 바뀌어도 페이드가 따라온다
          */
-        <div className="relative [--card:calc((100%_-_5rem)_/_6)] lg:[--card:calc((100%_-_7rem)_/_8)] xl:[--card:calc((100%_-_9rem)_/_10)]">
+        <div className="relative [--card:calc((100%_-_2rem)_/_3)] sm:[--card:calc((100%_-_3rem)_/_4)] md:[--card:calc((100%_-_5rem)_/_6)] lg:[--card:calc((100%_-_7rem)_/_8)] xl:[--card:calc((100%_-_9rem)_/_10)]">
           <div
             className="overflow-hidden [mask-image:linear-gradient(to_right,#000_calc(100%_-_var(--card)_*_0.7),transparent_calc(100%_-_var(--card)_*_0.05))]"
           >

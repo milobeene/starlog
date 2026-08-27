@@ -45,10 +45,10 @@ export default function LandingPage() {
   return (
     <main className="relative flex h-full w-full flex-col items-center justify-center">
       <div className="page-x flex w-full flex-col items-center text-center">
-        <h1 className="font-display text-[12vw] leading-none font-bold tracking-tighter text-white/90 drop-shadow-2xl select-none">
+        <h1 className="font-display text-[15.5vw] leading-none font-bold tracking-tighter text-white/90 drop-shadow-2xl select-none min-[860px]:text-[12vw]">
           STARLOG
         </h1>
-        <p className="mb-16 max-w-2xl text-base font-light text-white/60 md:text-lg">
+        <p className="mb-16 max-w-2xl text-[12px] font-light text-white/60 sm:text-base md:text-lg">
           플레이한 게임을 기록하고 되돌아보는 개인 아카이브
         </p>
 
