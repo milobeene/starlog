@@ -18,6 +18,7 @@
  */
 const fs = require("fs");
 const path = require("path");
+const names = require("./saveName");
 
 /**
  * 보존 한도 (사용자 결정 2026-08-28).
@@ -152,7 +153,11 @@ function prune(dirs, saveName) {
  * 되돌리기 — 백업을 **새 세이브파일로** 복사한다.
  *
  * ⚠️ **원본을 덮어쓰지 않는다.** "되돌렸는데 그게 잘못이었다"는 실제로 일어나는데,
- * 덮어쓰면 그 순간 돌아갈 곳이 사라진다. 이름이 겹치면 뒤에 번호를 붙인다
+ * 덮어쓰면 그 순간 돌아갈 곳이 사라진다. 이름이 겹치면 뒤에 번호를 붙인다.
+ *
+ * ⚠️ **만든 이름이 `assertSaveName`을 통과해야 한다** (2026-08-28). 예전엔 ` (2)`를
+ * 붙였는데 괄호가 허용 문자에 없어서, 같은 백업을 두 번 되돌리면 **열 수도 지울 수도 없는**
+ * 세이브파일이 생겼다. 이름이 50자를 넘어도 같았다. 이제 `saveName.js`의 `fit`이 다듬는다
  */
 function restore(dirs, saveName, fileName) {
   const source = path.join(folderOf(dirs, saveName), path.basename(fileName));
@@ -160,10 +165,10 @@ function restore(dirs, saveName, fileName) {
     throw new Error("백업 파일을 찾을 수 없습니다");
   }
 
-  const label = path.basename(fileName, ".mv.db");
-  let name = `${saveName} ${label}`;
+  const base = `${saveName} ${path.basename(fileName, ".mv.db")}`;
+  let name = names.fit(base);
   for (let i = 2; fs.existsSync(saveFile(dirs, name)); i += 1) {
-    name = `${saveName} ${label} (${i})`;
+    name = names.fit(base, `-${i}`);
   }
 
   fs.copyFileSync(source, saveFile(dirs, name));

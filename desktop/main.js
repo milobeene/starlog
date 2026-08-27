@@ -134,7 +134,7 @@ function getJson(port, urlPath) {
       res.on("data", (chunk) => { body += chunk; });
       res.on("end", () => {
         if (res.statusCode >= 400) reject(new Error(`${urlPath} → ${res.statusCode}`));
-        else resolve(JSON.parse(body));
+        else parseInto(resolve, reject, urlPath, body);
       });
     }).on("error", reject);
   });
@@ -147,16 +147,35 @@ function postJson(port, urlPath, payload) {
       host: "127.0.0.1", port, path: urlPath, method: "POST",
       headers: { "Content-Type": "application/json", "Content-Length": body.length },
     }, (res) => {
+      // getJson과 같은 이유로 여기도 필요하다 — 한글 응답이 청크 경계에서 쪼개진다
+      res.setEncoding("utf8");
       let text = "";
       res.on("data", (chunk) => { text += chunk; });
       res.on("end", () => {
         if (res.statusCode >= 400) reject(new Error(`${urlPath} → ${res.statusCode} ${text}`));
-        else resolve(text ? JSON.parse(text) : null);
+        else if (!text) resolve(null);
+        else parseInto(resolve, reject, urlPath, text);
       });
     });
     req.on("error", reject);
     req.end(body);
   });
+}
+
+/**
+ * ⚠️ **`JSON.parse`를 여기로 뺀 이유 — 감싸는 Promise가 그 예외를 못 잡는다.**
+ *
+ * `res.on("end")` 콜백은 Promise 실행자가 끝난 **뒤에** 다음 틱에서 돈다. 거기서 던지면
+ * `reject`로 가는 게 아니라 **처리되지 않은 예외**가 되어 일렉트론 메인 프로세스가 통째로
+ * 죽는다 — 창이 안내도 없이 사라진다. 스프링이 200에 HTML 에러 페이지를 주는 순간이 그렇다.
+ * 직접 재현했다: `SyntaxError ... at IncomingMessage.<anonymous>`, 종료코드 1
+ */
+function parseInto(resolve, reject, urlPath, text) {
+  try {
+    resolve(JSON.parse(text));
+  } catch {
+    reject(new Error(`${urlPath} 응답을 읽지 못했습니다 (JSON이 아닙니다)`));
+  }
 }
 
 function progress(payload) {
@@ -207,12 +226,28 @@ function waitForBackend(port, timeoutMs = 90_000, isAlive = () => backend !== nu
  * 진단(`--starlog.diagnose=true`)은 일렉트론이 띄울 때만 켠다 —
  * 개발자가 `bootRun`으로 띄우는 길에는 안 끼어든다
  */
-function startBackend(port, config) {
-  if (!fs.existsSync(JAR)) {
-    throw new Error(`jar가 없습니다: ${JAR}\ntools/build-desktop.sh 를 먼저 실행하세요`);
-  }
+/**
+ * 자바를 띄우는 **단 한 곳** (2026-08-28에 하나로 합쳤다).
+ *
+ * 예전엔 `startBackend`와 `spawnProbe`가 인자·환경변수 조립을 **두 벌** 갖고 있었고,
+ * 그래서 jar 존재 검사가 한쪽에만 있었다. 갈라진 두 벌은 반드시 어긋난다.
+ *
+ * ## ⚠️ `error` 이벤트를 반드시 받는다
+ *
+ * `spawn`은 실행 파일을 못 찾으면 `'error'`를 쏘는데, **아무도 안 받으면 Node가 그걸
+ * 던진다** — 일렉트론 메인 프로세스가 통째로 죽어서 창이 안내도 없이 사라진다.
+ * 직접 재현했다: `Error: spawn java ENOENT / Unhandled 'error' event`, 종료코드 1.
+ * PATH에 자바가 없으면 그냥 일어나는 일이고, 10단계에서 JRE를 번들해도 **경로가 틀리면
+ * 똑같다.** 여기서 받아 `exit`과 같은 모양(진단 코드)으로 바꿔 흘려보낸다
+ */
+function spawnJava(port, config) {
   const out = fs.createWriteStream(paths.LOG_FILE, { flags: "a" });
   out.write(`\n===== ${new Date().toISOString()} port=${port} mode=${config.mode} =====\n`);
+
+  if (!fs.existsSync(JAR)) {
+    out.end(`STARLOG_DIAGNOSTIC: JAR_MISSING (${JAR})\n`);
+    return { proc: null, exited: Promise.resolve({ code: -1, diagnostic: "JAR_MISSING" }) };
+  }
 
   const args = [
     "-jar", JAR,
@@ -230,33 +265,53 @@ function startBackend(port, config) {
     if (value) env[key] = value;
   }
 
-  stoppingOnPurpose = false;
-  backend = spawn(paths.javaBin(), args, { stdio: ["ignore", "pipe", "pipe"], env });
-  backendPort = port;
+  const proc = spawn(paths.javaBin(), args, { stdio: ["ignore", "pipe", "pipe"], env });
 
   /*
    * 진단 결과를 stdout에서 긁는다. 로그 파일로도 그대로 흘려보내므로
    * 나중에 사람이 로그만 봐도 같은 줄이 있다
    */
   let diagnostic = null;
-  backend.stdout.on("data", (chunk) => {
-    const text = chunk.toString();
-    const found = text.match(/STARLOG_DIAGNOSTIC:\s*([A-Z_]+)/);
+  proc.stdout.on("data", (chunk) => {
+    const found = chunk.toString().match(/STARLOG_DIAGNOSTIC:\s*([A-Z_]+)/);
     if (found) diagnostic = found[1];
   });
-  backend.stdout.pipe(out);
-  backend.stderr.pipe(out);
+  proc.stdout.pipe(out);
+  proc.stderr.pipe(out);
 
   const exited = new Promise((resolve) => {
-    backend.on("exit", (code) => {
-      backend = null;
-      backendPort = null;
-      resolve({ code, diagnostic });
-      if (!stoppingOnPurpose) onBackendDied(code, diagnostic);
+    const finish = (result) => {
+      // 로그 스트림을 닫는다 — 안 닫으면 기동·연결테스트마다 fd가 하나씩 샌다
+      out.end();
+      resolve(result);
+    };
+    proc.once("error", (e) => {
+      const code = e.code === "ENOENT" ? "JAVA_NOT_FOUND" : "BACKEND_DIED";
+      out.write(`STARLOG_DIAGNOSTIC: ${code} (${e.message})\n`);
+      finish({ code: -1, diagnostic: diagnostic ?? code });
     });
+    proc.once("exit", (code) => finish({ code, diagnostic }));
   });
 
-  return { exited, getDiagnostic: () => diagnostic };
+  return { proc, exited };
+}
+
+function startBackend(port, config) {
+  stoppingOnPurpose = false;
+  const { proc, exited } = spawnJava(port, config);
+  backend = proc;
+  backendPort = proc ? port : null;
+
+  const done = exited.then((result) => {
+    // 그 사이에 새 백엔드가 떴으면 그건 남의 것이다 — 내가 죽었다고 남을 지우면 안 된다
+    if (backend !== proc) return result;
+    backend = null;
+    backendPort = null;
+    if (!stoppingOnPurpose) onBackendDied(result.code, result.diagnostic);
+    return result;
+  });
+
+  return { exited: done };
 }
 
 /**
@@ -288,48 +343,35 @@ function onBackendDied(code, diagnostic) {
  * 붙이면 매번 "서버가 예기치 않게 종료됐습니다"가 뜬다
  */
 function spawnProbe(port, config) {
-  const args = [
-    "-jar", JAR,
-    `--server.port=${port}`,
-    "--spring.profiles.active=desktop",
-    "--starlog.diagnose=true",
-    `--spring.datasource.url=${config.url}`,
-    `--spring.datasource.driver-class-name=${config.driver}`,
-  ];
-  const env = { ...process.env };
-  env.SPRING_DATASOURCE_USERNAME = config.username ?? "";
-  env.SPRING_DATASOURCE_PASSWORD = config.password ?? "";
-  for (const [key, value] of Object.entries(config.env ?? {})) {
-    if (value) env[key] = value;
-  }
+  const { proc, exited } = spawnJava(port, config);
 
-  const proc = spawn(paths.javaBin(), args, { stdio: ["ignore", "pipe", "pipe"], env });
-  let diagnostic = null;
-  proc.stdout.on("data", (chunk) => {
-    const found = chunk.toString().match(/STARLOG_DIAGNOSTIC:\s*([A-Z_]+)/);
-    if (found) diagnostic = found[1];
-  });
-  // 시험용 로그도 남긴다 — 왜 실패했는지 볼 데가 있어야 한다
-  const out = fs.createWriteStream(paths.LOG_FILE, { flags: "a" });
-  proc.stdout.pipe(out);
-  proc.stderr.pipe(out);
-
-  let running = true;
-  const exited = new Promise((resolve) => {
-    proc.on("exit", (code) => {
-      running = false;
-      resolve({ code, diagnostic });
-    });
+  let running = proc !== null;
+  const done = exited.then((result) => {
+    running = false;
+    return result;
   });
 
   return {
-    exited,
+    exited: done,
     isAlive: () => running,
-    stop() {
+    /**
+     * ⚠️ **끝까지 기다린다.** 예전엔 신호만 보내고 넘어갔는데, 이제 이걸 **로컬 세이브파일을
+     * 만드는 데도 쓴다** — H2가 `.mv.db` 잠금을 놓기 전에 돌아가면 사용자가 곧바로 열었을 때
+     * `DB_IN_USE`다. `stopBackend`가 본 백엔드에 대해 하는 것과 같은 이유다.
+     *
+     * SIGKILL 타이머도 여기서 지운다. 안 지우면 이미 죽은 pid에 3초 뒤 신호를 쏜다
+     */
+    async stop() {
+      if (!proc || !running) return;
       proc.kill("SIGTERM");
-      setTimeout(() => {
+      const killer = setTimeout(() => {
         try { proc.kill("SIGKILL"); } catch { /* 이미 죽었으면 무시 */ }
       }, 3000);
+      try {
+        await done;
+      } finally {
+        clearTimeout(killer);
+      }
     },
   };
 }
@@ -418,16 +460,13 @@ function createWindow() {
 
 // ───────────────────────── IPC ─────────────────────────
 
-const SAVE_NAME = /^[가-힣a-zA-Z0-9 _.-]{1,50}$/;
-
-/** 이름이 곧 파일명이다. 경로 구분자나 `..`이 섞이면 saves/ 밖으로 나간다 */
-function assertSaveName(name) {
-  const trimmed = (name ?? "").trim();
-  if (!SAVE_NAME.test(trimmed) || trimmed.includes("..")) {
-    throw new Error("이름은 한글·영문·숫자·공백·_-. 만 쓸 수 있습니다 (50자 이내)");
-  }
-  return trimmed;
-}
+/**
+ * 이름 규칙은 `saveName.js`가 소유한다 (2026-08-28).
+ *
+ * 여기 두면 **이름을 만들어내는 `backup.js`가 그걸 못 본다** — 되돌리기가 규칙을 어긴
+ * 이름을 만들어 열지도 지우지도 못하는 세이브파일이 생겼다
+ */
+const { assertSaveName } = require("./saveName");
 
 function dataDirs() {
   return paths.ensureDataRoot(store.getSettings().dataRoot);
@@ -656,7 +695,7 @@ function registerIpc() {
       }
     }
 
-    probe.stop();
+    await probe.stop();
 
     return {
       ok: !done?.diagnostic && (igdb?.ok ?? true) && (storage?.ok ?? true),
@@ -761,42 +800,46 @@ function registerIpc() {
       throw new Error("같은 이름의 세이브파일이 이미 있습니다");
     }
 
-    progress({ phase: "starting" });
     const dump = await getJson(backendPort, "/api/me/export");
 
-    // 클라우드 연결은 그대로 둔다 — 뽑기가 실패해도 보던 화면으로 돌아갈 수 있어야 한다
-    const cloudPort = backendPort;
-    const cloudSession = session;
-    await stopBackend();
-
-    progress({ phase: "waiting" });
+    /*
+     * ## 🔴 지금 쓰는 백엔드를 안 건드린다 (2026-08-28 전면 수정)
+     *
+     * 예전엔 클라우드 백엔드를 죽이고 → 로컬을 띄워 부어넣고 → **새 포트로** 클라우드를
+     * 되살렸다. 그런데 창을 옮기는 줄이 없었다. 이 기능은 앱 안(`/settings`)에서 부르므로
+     * 창은 **죽은 옛 포트**를 계속 보게 되고, 뽑기가 성공한 그 순간부터 앱 전체가
+     * `Failed to fetch`가 됐다. 연결 테스트에서 고쳤던 것과 똑같은 실수다.
+     *
+     * 죽일 이유가 애초에 없다 — 상대는 **다른 DB의 다른 포트**다. 시험용과 같은 방식으로
+     * 격리해서 띄우고 내리면 창도 세션도 그대로다
+     */
     const port = await freePort();
-    const { exited } = startBackend(port, localConfig(clean));
+    const probe = spawnProbe(port, localConfig(clean));
     try {
-      await waitForBackend(port);
+      await waitForBackend(port, 90_000, probe.isAlive);
       await postJson(port, "/api/me/import", dump);
     } catch (e) {
-      await stopBackend();
-      const result = await exited;
-      progress({ phase: "error", code: result?.diagnostic ?? "BACKEND_DIED" });
-      throw e;
+      await probe.stop();
+      /*
+       * ⚠️ **반쯤 만들어진 세이브파일을 치운다.** Flyway가 스키마까지는 만들어놨으므로
+       * 파일이 남는데, 그러면 같은 이름으로 다시 시도할 수가 없다 — "이미 있습니다"만 뜬다.
+       * 사용자 눈에는 아무것도 안 생겼는데 이름만 잠긴 꼴이다
+       */
+      for (const suffix of [".mv.db", ".trace.db"]) {
+        const file = path.join(dirs.saves, `${clean}${suffix}`);
+        if (fs.existsSync(file)) fs.rmSync(file, { force: true });
+      }
+      /*
+       * 진단 코드가 있으면 그걸 준다 — `JAVA_NOT_FOUND`처럼 원인이 분명한 경우가 있고,
+       * 그때 "가져오기 실패"만 뜨면 어디를 봐야 할지 알 수가 없다
+       */
+      const result = await probe.exited;
+      throw new Error(result?.diagnostic
+        ? `세이브파일을 만들지 못했습니다 (${result.diagnostic})`
+        : (e.message || String(e)));
     }
-    await stopBackend();
-
-    /*
-     * 뽑기 전에 보던 클라우드로 되돌린다. 포트가 바뀌므로 다시 띄워야 한다 —
-     * 그래도 **사용자가 고르는 단계를 다시 밟게 하지는 않는다**
-     */
-    void cloudPort;
-    const back = await freePort();
-    startBackend(back, cloudConfig(findProfile(cloudSession.target)));
-    try {
-      await waitForBackend(back);
-      session = cloudSession;
-      progress({ phase: "ready" });
-    } catch {
-      progress({ phase: "error", code: "BACKEND_DIED" });
-    }
+    // 잠금이 풀릴 때까지 기다린다 — 바로 열러 갈 수 있어야 한다
+    await probe.stop();
 
     return { saveName: clean };
   });

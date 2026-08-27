@@ -201,6 +201,18 @@ export const DIAGNOSTIC_MESSAGE: Record<string, { title: string; hint: string }>
     title: "앱 서버가 예기치 않게 종료됐습니다",
     hint: "다시 시도해 주세요. 반복되면 로그 파일을 확인해 주세요.",
   },
+  /*
+   * 아래 둘은 DB가 아니라 **앱이 자기 몸을 못 찾는** 경우다 (2026-08-28).
+   * 예전엔 이 상황에서 일렉트론이 그냥 죽어 창이 안내도 없이 사라졌다
+   */
+  JAVA_NOT_FOUND: {
+    title: "자바를 찾지 못했습니다",
+    hint: "STARLOG를 실행하려면 자바 21 이상이 필요합니다. 설치 후 앱을 다시 열어 주세요.",
+  },
+  JAR_MISSING: {
+    title: "앱 서버 파일이 없습니다",
+    hint: "설치가 온전하지 않습니다. 앱을 다시 설치해 주세요.",
+  },
 };
 
 export function diagnosticOf(code: string | undefined | null) {
