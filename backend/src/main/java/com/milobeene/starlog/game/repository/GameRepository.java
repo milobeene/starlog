@@ -71,4 +71,17 @@ public interface GameRepository extends BaseRepository<Game, Long> {
      */
     Optional<Game> findByMediaFolder(String mediaFolder);
 
+
+    /**
+     * 오래된 마스터 (일괄 동기화, §10-2).
+     *
+     * `lastSyncedAt`이 null인 것도 대상이다 — 한 번도 동기화한 적이 없다는 뜻이라
+     * 3개월이 지난 것보다 더 오래된 셈이다. 이름순으로 줘야 진행이 눈에 보인다
+     */
+    @Query("select g from Game g"
+            + " where g.source = :source"
+            + "   and (g.lastSyncedAt is null or g.lastSyncedAt < :threshold)"
+            + " order by g.name asc")
+    List<Game> findOutdated(@Param("source") GameSource source,
+                            @Param("threshold") java.time.LocalDateTime threshold);
 }

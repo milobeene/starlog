@@ -211,12 +211,46 @@
 }
 
 /* ── 커버 자리 ─────────────────────────────────────────── */
+/*
+ * 커버가 없는 자리.
+ *
+ * 사선 무늬만 있으면 **비어 있다**가 아니라 **고장 났다**로 읽힌다.
+ * 그리드 호버에 쓰는 흰 빛을 한 방향으로 천천히 훑게 해서 "여긴 자리다"를 보여준다
+ * (2026-08-28). 6초는 눈에 안 걸리는 속도다 — 빠르면 로딩처럼 보이고, 로딩이 아니다.
+ */
 .image-placeholder {
+  position: relative;
+  overflow: hidden;
   background-color: rgba(255, 255, 255, 0.05);
   background-image: repeating-linear-gradient(
     45deg, transparent, transparent 10px,
     rgba(255, 255, 255, 0.02) 10px, rgba(255, 255, 255, 0.02) 20px
   );
+}
+
+.image-placeholder::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 40%,
+    rgba(255, 255, 255, 0.07) 50%,
+    transparent 60%
+  );
+  transform: translateX(-100%);
+  animation: placeholder-sweep 6s ease-in-out infinite;
+}
+
+/* 움직임을 줄이는 설정을 켠 사람에게는 안 훑는다 — 장식이라 없어도 뜻이 안 바뀐다 */
+@media (prefers-reduced-motion: reduce) {
+  .image-placeholder::after { animation: none; }
+}
+
+@keyframes placeholder-sweep {
+  0%   { transform: translateX(-100%); }
+  55%  { transform: translateX(100%); }
+  100% { transform: translateX(100%); }
 }
 
 /* ── 스크롤바 ─────────────────────────────────────────── */

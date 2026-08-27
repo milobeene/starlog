@@ -17,9 +17,11 @@ import type { ApiUsage } from "@/lib/types";
  */
 export default function ApiUsagePanel({
   usage,
+  storage,
   retentionDays,
 }: {
   usage: ApiUsage[];
+  storage: { coverCount: number; totalBytes: number; configured: boolean };
   retentionDays: number;
 }) {
   return (
@@ -33,7 +35,15 @@ export default function ApiUsagePanel({
             </h3>
 
             <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <Stat label="최근 1분" value={item.lastMinute} />
+              {/*
+                **스토리지는 "최근 1분"이 뜻이 없다.** 초당 한도가 걸리는 건 IGDB고,
+                스토리지에서 궁금한 건 "얼마나 쌓였나"다 — 그 자리에 보관량을 놓는다
+              */}
+              {item.provider === "STORAGE" ? (
+                <Stat label="커버 용량" value={formatBytes(storage.totalBytes)} raw />
+              ) : (
+                <Stat label="최근 1분" value={item.lastMinute} />
+              )}
               <Stat label="최근 1시간" value={item.lastHour} />
               <Stat label="최근 24시간" value={item.lastDay} />
               <Stat label={`최근 ${retentionDays}일`} value={item.lastMonth} />
@@ -71,15 +81,33 @@ export default function ApiUsagePanel({
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+function Stat({
+  label,
+  value,
+  raw,
+}: {
+  label: string;
+  value: number | string;
+  /** 숫자 서식을 안 씌운다 (이미 "412 KB" 같은 문자열) */
+  raw?: boolean;
+}) {
   return (
     <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-3">
       <div className="text-[10px] font-semibold tracking-widest text-white/40 uppercase">
         {label}
       </div>
-      <div className="num mt-1 text-xl font-light text-white/90">{value.toLocaleString()}</div>
+      <div className="num mt-1 text-xl font-light text-white/90">
+        {raw || typeof value === "string" ? value : value.toLocaleString()}
+      </div>
     </div>
   );
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }
 
 function formatDate(iso: string) {

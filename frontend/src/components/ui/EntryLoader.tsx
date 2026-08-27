@@ -7,7 +7,7 @@
  * Render 무료 티어는 15분 무활동이면 잠들고 깨는 데 **3분까지** 걸린다.
  * 그동안 "멈춘 것"이 아니라 "일하는 중"으로 보여야 해서, 빛이 계속 왕복한다
  */
-export default function EntryLoader() {
+export default function EntryLoader({ label = "기록을 여는 중" }: { label?: string }) {
   return (
     <div className="flex flex-col items-center gap-3" role="status" aria-live="polite">
       <div className="relative h-px w-56 overflow-hidden bg-white/12">
@@ -21,7 +21,7 @@ export default function EntryLoader() {
         className="text-[10px] tracking-[0.32em] text-white/40 uppercase"
         style={{ animation: "starlog-breathe 2.8s ease-in-out infinite" }}
       >
-        기록을 여는 중
+        {label}
       </span>
     </div>
   );

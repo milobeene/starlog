@@ -198,7 +198,7 @@ public class HttpIgdbClient implements GameCatalogClient {
         try {
             T body = igdbRestClient.post()
                     .uri("/" + endpoint)
-                    .header("Client-ID", properties.clientId())
+                    .header("Client-ID", tokenProvider.credentials().clientId())
                     .header("Authorization", "Bearer " + token)
                     .body(query)
                     .retrieve()

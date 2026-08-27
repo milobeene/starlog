@@ -129,6 +129,36 @@ class LocalMediaTest extends ControllerTestSupport {
     }
 
     @Test
+    public void 스토리지_커버가_섞여_있어도_목록이_살아있다() throws Exception {
+        /*
+         * given — 클라우드에서 뽑은 세이브파일이 정확히 이 상태다. 커버는 버킷에 있는데
+         * 로컬에는 자격증명이 없어 **주소를 만들 수가 없다**.
+         *
+         * `Collectors.toMap`은 값이 null이면 NPE라, 예전 구현은 **커버 한 장 때문에
+         * 목록 전체가 500**이었다. 사이드바 이름은 다른 API라 살아남고 상세는 null을 견뎌서
+         * "썸네일만 안 나온다"처럼 보였다
+         */
+        Member member = saveMember();
+        Long entryId = entry(member);
+        em.createQuery("""
+                        update CoverImage c
+                           set c.location = com.milobeene.starlog.backlog.domain.CoverLocation.EXTERNAL,
+                               c.storageKey = 'covers/1/1/gone.png'
+                         where c.backlogEntry.id = :id
+                        """)
+                .setParameter("id", entryId)
+                .executeUpdate();
+        uploadCover(member, entryId);   // 먼저 만들어 두고 위에서 EXTERNAL로 바꾼다
+        em.flush();
+        em.clear();
+
+        //when //then — 주소를 못 만드는 커버는 빼고 나머지를 그린다
+        mockMvc.perform(get("/api/backlog").header("X-Member-Id", member.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1));
+    }
+
+    @Test
     public void 스크린샷은_폴더에_쌓이고_번호가_이어진다() throws Exception {
         //given — DB에 행이 없다. 폴더를 읽는 게 곧 목록이다
         Member member = saveMember();

@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import EntryPanel from "./EntryPanel";
-import ConnectionForm from "./ConnectionForm";
+import ConnectionDialog from "./ConnectionDialog";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { Button } from "@/components/ui/Field";
 import { getBridge, type ConnectionProfile } from "@/lib/desktop";
 
@@ -22,6 +23,8 @@ export default function ConnectionList({
   const [profiles, setProfiles] = useState<ConnectionProfile[] | null>(null);
   const [editing, setEditing] = useState<ConnectionProfile | null>(null);
   const [adding, setAdding] = useState(false);
+  /* 삭제는 되돌릴 수 없다 — 예전엔 안내도 없이 그냥 사라졌다 */
+  const [deleting, setDeleting] = useState<ConnectionProfile | null>(null);
 
   const reload = () => getBridge()?.connections.list().then(setProfiles);
   useEffect(() => { reload(); }, []);
@@ -32,25 +35,29 @@ export default function ConnectionList({
     reload();
   };
 
-  if (adding || editing) {
-    return (
-      <EntryPanel
-        title={editing ? "연결 수정" : "새 연결"}
-        subtitle="데이터베이스만 채우면 시작할 수 있습니다."
-        onBack={closeForm}
-      >
-        <ConnectionForm initial={editing ?? undefined} onCancel={closeForm} onSaved={closeForm} />
-      </EntryPanel>
-    );
-  }
-
   return (
     <EntryPanel
-      title="클라우드 모드"
+      title="데이터베이스 연결"
       subtitle="내가 준비한 데이터베이스에 연결합니다."
       onBack={onBack}
     >
       <div className="flex flex-col gap-2">
+        {/*
+          ⚠️ **평문 저장은 명시적 결정이었다** (결정 13). 그 대가를 사용자가 알고 있어야
+          규칙이 선다 — 파일을 갈라둔 이유(§7)가 "이건 복사하지 마"를 규칙으로 만들려던 것인데,
+          어디 있는 파일인지 말해주지 않으면 그 규칙을 지킬 수가 없다
+        */}
+        <p className="mb-1 rounded-md border border-amber-400/20 bg-amber-400/[0.06] px-3 py-2.5 text-[11px] leading-relaxed text-amber-200/70">
+          여기 넣으신 주소와 키는 이 컴퓨터의 앱 폴더에 <b className="text-amber-100">암호화 없이</b>{" "}
+          저장됩니다. 앱 폴더를 통째로 남에게 주거나 공유 폴더에 두지 마세요.
+          <button
+            onClick={() => getBridge()!.openFolder("appData")}
+            className="ml-1.5 underline underline-offset-2 hover:text-amber-100"
+          >
+            위치 보기
+          </button>
+        </p>
+
         {profiles === null && <div className="h-16 animate-pulse rounded-lg bg-white/5" />}
 
         {profiles?.map((profile) => (
@@ -70,10 +77,7 @@ export default function ConnectionList({
               수정
             </button>
             <button
-              onClick={async () => {
-                await getBridge()!.connections.remove(profile.name);
-                reload();
-              }}
+              onClick={() => setDeleting(profile)}
               className="shrink-0 text-[11px] text-white/0 transition-colors group-hover:text-white/30 hover:!text-red-400"
             >
               삭제
@@ -93,6 +97,29 @@ export default function ConnectionList({
           </Button>
         </div>
       </div>
+
+      {/* 팝업이라 목록 위에 겹친다 — 수정을 누르면 이 자리가 그대로 폼이 된다 */}
+      {(adding || editing) && (
+        <ConnectionDialog
+          initial={editing ?? undefined}
+          onClose={closeForm}
+          onSaved={closeForm}
+        />
+      )}
+
+      {deleting && (
+        <ConfirmDialog
+          title="연결 삭제"
+          message={`${deleting.name} 연결 설정을 지웁니다. 데이터베이스의 내용은 그대로 남고, 이 컴퓨터에 저장된 주소와 키만 사라집니다.`}
+          confirmLabel="삭제"
+          onClose={() => setDeleting(null)}
+          onConfirm={async () => {
+            await getBridge()!.connections.remove(deleting.name);
+            setDeleting(null);
+            reload();
+          }}
+        />
+      )}
     </EntryPanel>
   );
 }

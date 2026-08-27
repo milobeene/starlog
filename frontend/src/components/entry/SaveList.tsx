@@ -46,7 +46,7 @@ export default function SaveList({
 
   return (
     <EntryPanel
-      title="로컬 모드"
+      title="로컬 세이브파일"
       subtitle="세이브파일을 고르면 그게 곧 지금의 기록입니다."
       onBack={onBack}
     >

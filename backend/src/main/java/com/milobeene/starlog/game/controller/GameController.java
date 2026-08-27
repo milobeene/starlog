@@ -79,6 +79,18 @@ public class GameController {
         return gameMasterService.find(q, page, size);
     }
 
+    /**
+     * 일괄 동기화 대상 (§10-2).
+     *
+     * **먼저 목록을 주고 승인을 받는다.** 곧장 돌리면 몇 개가 얼마나 걸릴지 모른 채
+     * IGDB를 수십 번 두드리게 된다. 화면이 이 목록을 팝업으로 보여주고,
+     * 사용자가 확인하면 한 건씩 `/resync`를 부른다 — 진행률은 남은 개수로 나온다
+     */
+    @GetMapping("/outdated")
+    public List<GameMasterResponse> outdated() {
+        return gameMasterService.outdated();
+    }
+
     /** 수동 등록 (FR-GAME-04). IGDB 키가 없어도 앱이 온전히 쓸모 있게 하는 길이다 */
     @PostMapping
     public ResponseEntity<IdResponse> registerManual(@Valid @RequestBody ManualGameRequest request) {

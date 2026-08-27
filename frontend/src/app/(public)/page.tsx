@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import SaveList from "@/components/entry/SaveList";
 import BackupList from "@/components/entry/BackupList";
+import DataRootDialog from "@/components/entry/DataRootDialog";
 import ConnectionList from "@/components/entry/ConnectionList";
 import LaunchOverlay from "@/components/entry/LaunchOverlay";
 import {
@@ -159,15 +160,24 @@ export default function EntryPage() {
               {session && (
                 <button onClick={resume} className={`${BUTTON} mb-4 border-white/45`}>
                   최근 접속 · {session.target}
+                  {/* 이름만으로는 어느 쪽인지 모른다 — 세이브파일과 연결 이름이 섞여 보인다 */}
+                  <span className="ml-1.5 text-white/45 normal-case">
+                    ({session.mode === "local" ? "세이브파일" : "데이터베이스"})
+                  </span>
                 </button>
               )}
 
               <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:gap-4">
+                {/*
+                  이름을 바꿨다 (2026-08-28). "로컬/클라우드"는 **어디 있나**를 말하는데
+                  사용자가 알아야 하는 건 **그게 뭔가**다. 게다가 오른쪽은 자기 서버여도 되니
+                  "클라우드"가 부정확하기도 했다. 설명은 안 붙인다 — 화면이 지저분해진다
+                */}
                 <button onClick={() => setStep("local")} className={BUTTON}>
-                  로컬 모드
+                  로컬 세이브파일
                 </button>
                 <button onClick={() => setStep("cloud")} className={BUTTON}>
-                  클라우드 모드
+                  데이터베이스 연결
                 </button>
               </div>
               {/*
@@ -238,35 +248,47 @@ export default function EntryPage() {
  */
 function DataRootLine() {
   const [root, setRoot] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     getBridge()?.settings.get().then((s) => setRoot(s.dataRoot));
   }, []);
 
-  const change = async () => {
-    const picked = await getBridge()!.pickFolder();
-    if (!picked) return;
-    await getBridge()!.settings.setDataRoot(picked);
-    setRoot(picked);
-  };
-
   if (!root) return null;
 
   /*
-   * 어두운 알약 위에 올린다 — 배경이 사용자 팔레트라 **밝은 색이 나오면 흰 글씨가 사라진다.**
-   * 큰 제목은 drop-shadow로 버티지만 11px짜리 경로는 그걸로 안 된다
+   * 모드 버튼과 같은 재질로 맞춘다 (2026-08-28). 검은 알약 하나만 다른 톤이라
+   * **혼자 튀어 보였다** — 배경이 밝아도 읽히게 하려던 건데 재질이 어긋나는 값이 더 컸다.
+   * 대신 글자를 키우고 흰 테두리를 줘서 대비를 확보한다
    */
   return (
-    <div className="mt-10 flex max-w-full items-center gap-2 rounded-full bg-black/30 px-3.5 py-1.5 text-[11px] text-white/50 backdrop-blur-sm">
-      <span className="shrink-0">데이터 폴더</span>
-      <span className="truncate font-mono">{root}</span>
+    <>
       <button
-        onClick={change}
-        className="shrink-0 underline underline-offset-2 transition-colors hover:text-white"
+        onClick={() => setOpen(true)}
+        className="mt-10 flex max-w-full items-center gap-2 rounded-full border border-white/20 px-4 py-2 text-[11px] text-white/60 transition-all duration-300 hover:border-white/40 hover:text-white"
       >
-        바꾸기
+        <FolderIcon />
+        <span className="shrink-0">데이터 폴더</span>
+        <span className="max-w-[40vw] truncate font-mono text-white/40">{root}</span>
       </button>
-    </div>
+
+      {open && (
+        <DataRootDialog
+          current={root}
+          onClose={() => setOpen(false)}
+          onChanged={setRoot}
+        />
+      )}
+    </>
+  );
+}
+
+function FolderIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"
+         className="h-3.5 w-3.5 shrink-0 opacity-70">
+      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />
+    </svg>
   );
 }
 

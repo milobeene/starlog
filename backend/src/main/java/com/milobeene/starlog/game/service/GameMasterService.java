@@ -3,12 +3,14 @@ package com.milobeene.starlog.game.service;
 import com.milobeene.starlog.common.dto.PageResponse;
 import com.milobeene.starlog.common.util.TextValues;
 import com.milobeene.starlog.game.dto.GameMasterResponse;
+import com.milobeene.starlog.game.domain.GameSource;
 import com.milobeene.starlog.game.repository.GameRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -40,5 +42,26 @@ public class GameMasterService {
                 gameRepository.searchPage(normalized, PageRequest.of(
                                 Math.max(page, 0), Math.min(Math.max(size, 1), MAX_SIZE)))
                         .map(GameMasterResponse::from));
+    }
+
+    /**
+     * 일괄 동기화 대상 (architecture §10-2).
+     *
+     * **3개월이 지난 IGDB 게임**이다. 고정값이다 — 설정으로 빼면 화면과 저장할 곳이 같이 는다.
+     *
+     * `MANUAL`은 애초에 목록에 안 담는다. 원본이 없어서 재동기화가 뜻이 없고,
+     * 단건 API는 400을 던진다.
+     *
+     * ## 진행 상태를 저장하지 않는다
+     *
+     * `lastSyncedAt`이 이미 상태다 — 50개였는데 3개 끝났으면 다음에 물어보면 47개가 나온다.
+     * 중간에 끊겨도 다시 누르면 남은 것만 잡히고, 재개 로직도 상태 테이블도 필요 없다
+     */
+    public List<GameMasterResponse> outdated() {
+        return gameRepository.findOutdated(
+                        GameSource.IGDB, java.time.LocalDateTime.now().minusMonths(3))
+                .stream()
+                .map(GameMasterResponse::from)
+                .toList();
     }
 }

@@ -15,6 +15,7 @@ import com.milobeene.starlog.backlog.dto.CoverUploadUrlRequest;
 import com.milobeene.starlog.backlog.dto.CoverUploadTarget;
 import com.milobeene.starlog.backlog.dto.ScreenshotResponse;
 import com.milobeene.starlog.backlog.service.CoverImageService;
+import com.milobeene.starlog.backlog.service.MediaFileValidator;
 import com.milobeene.starlog.backlog.service.ScreenshotService;
 import com.milobeene.starlog.backlog.dto.FacetsResponse;
 import com.milobeene.starlog.backlog.dto.NameListRequest;
@@ -263,14 +264,20 @@ public class BacklogController {
         return screenshotService.list(memberId, entryId);
     }
 
-    /** 한 장 저장. 드롭·클릭·붙여넣기가 전부 이 경로로 온다 */
+    /**
+     * 한 장 저장. 드롭·클릭·붙여넣기가 전부 이 경로로 온다. **영상도 같은 문으로 들어온다.**
+     *
+     * `takenAt`은 브라우저가 읽은 **원본 파일의 수정시각**이다. 이게 없으면 옛 스크린샷을
+     * 한꺼번에 넣었을 때 전부 "지금"이 되어 순서가 뭉개진다
+     */
     @PostMapping("/{entryId}/screenshots")
     public ScreenshotResponse addScreenshot(@LoginMember Long memberId,
                                             @PathVariable Long entryId,
-                                            @RequestParam("file") MultipartFile file)
+                                            @RequestParam("file") MultipartFile file,
+                                            @RequestParam(required = false) Long takenAt)
             throws IOException {
         return screenshotService.save(
-                memberId, entryId, file.getOriginalFilename(), file.getBytes());
+                memberId, entryId, file.getOriginalFilename(), file.getBytes(), takenAt);
     }
 
     /** 원본. 이름이 경로에 들어가므로 서비스가 폴더 밖으로 못 나가게 막는다 */
@@ -279,11 +286,12 @@ public class BacklogController {
                                              @PathVariable Long entryId,
                                              @PathVariable String fileName) {
         /*
-         * 스크린샷은 DB에 행이 없어 타입을 저장해둔 곳이 없다 → 확장자에서 되돌린다.
-         * 저장할 때 확장자와 매직 넘버를 대조했으므로 확장자를 믿어도 된다
+         * DB에 행이 없어 타입을 저장해둔 곳이 없다 → 확장자에서 되돌린다.
+         * 저장할 때 확장자와 매직 넘버를 대조했으므로 확장자를 믿어도 된다.
+         * **영상은 이게 없으면 브라우저가 재생을 아예 안 한다**
          */
         return ResponseEntity.ok()
-                .header("Content-Type", ScreenshotService.contentTypeOf(fileName))
+                .header("Content-Type", MediaFileValidator.contentTypeOf(fileName))
                 .header("Cache-Control", "private, max-age=31536000, immutable")
                 .body(screenshotService.read(memberId, entryId, fileName));
     }

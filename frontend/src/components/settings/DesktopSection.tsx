@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Button, FIELD_INPUT } from "@/components/ui/Field";
 import { getBridge, type SessionInfo } from "@/lib/desktop";
+import { api } from "@/lib/api";
 
 /**
  * 데스크탑 앱에서만 보이는 칸 (v1.0 5단계).
@@ -16,11 +17,9 @@ import { getBridge, type SessionInfo } from "@/lib/desktop";
  * DB 파일 위치가 바뀌는 일이라 **입구**에 있고, 여기는 재시작이 필요 없는 것만 둔다
  */
 export default function DesktopSection() {
-  const [dirs, setDirs] = useState<Record<string, string> | null>(null);
   const [session, setSession] = useState<SessionInfo | null>(null);
 
   useEffect(() => {
-    getBridge()?.settings.get().then((s) => setDirs(s.dirs));
     getBridge()?.session.current().then(setSession);
   }, []);
 
@@ -29,36 +28,21 @@ export default function DesktopSection() {
   return (
     <section className="flex flex-col gap-4">
       <div>
-        <h2 className="text-sm font-medium tracking-wide text-white/80">앱</h2>
+        <h2 className="text-sm font-medium tracking-wide text-white/80">데이터 옮기기</h2>
         <p className="mt-1 text-xs text-white/40">
-          기록이 저장되는 폴더와 앱 시작 지점입니다.
+          앱 설정과 폴더는 <b className="text-white/60">시스템 → 앱 설정</b>에 있습니다.
         </p>
       </div>
 
-      <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-3">
-        <div className="text-[10px] font-semibold tracking-widest text-white/40 uppercase">
-          데이터 폴더
-        </div>
-        <div className="mt-1 font-mono text-[11px] break-all text-white/60">{dirs?.root ?? "…"}</div>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        <Button onClick={() => getBridge()!.openFolder("root")}>폴더 열기</Button>
-        <Button onClick={() => getBridge()!.openFolder("saves")}>세이브파일</Button>
-        <Button onClick={() => getBridge()!.openFolder("backups")}>백업</Button>
-        {/*
-          모드 전환 = 백엔드를 죽이고 입구로 돌아가기다 (결정 61).
-          살아있는 JPA를 갈아끼우지 않고 **다시 띄운다** — 그게 §2의 전부다
-        */}
-        {/*
-          **더 이상 위험한 동작이 아니다** (2026-08-28). 예전엔 여기서 백엔드를 죽였는데,
-          이제 살려둔 채 창만 옮긴다 — [최근 접속]으로 즉시 돌아올 수 있다
-        */}
-        <Button onClick={() => getBridge()!.backToEntry()}>입구로</Button>
-      </div>
-
-      {/* 클라우드로 접속 중일 때만. 로컬 모드에는 이미 세이브파일이 그 자체로 있다 */}
-      {session?.mode === "cloud" && <CloudExtract />}
+      {/* 클라우드로 접속 중일 때만. 로컬은 이미 세이브파일이 그 자체로 있다 */}
+      {session?.mode === "cloud" ? (
+        <CloudExtract />
+      ) : (
+        <p className="text-[11px] leading-relaxed text-white/30">
+          지금은 로컬 세이브파일로 쓰고 계십니다. 백업과 되돌리기는 입구 화면의 세이브파일
+          목록에서 하실 수 있습니다.
+        </p>
+      )}
     </section>
   );
 }
@@ -71,9 +55,17 @@ export default function DesktopSection() {
  */
 function CloudExtract() {
   const [name, setName] = useState("");
+  /* 스토리지를 실제로 쓰고 있나 — 안 쓰면 커버 경고가 겁만 주는 문구가 된다 */
+  const [usesStorage, setUsesStorage] = useState(false);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.get<{ storage: { configured: boolean } }>("/api/system")
+      .then((s) => setUsesStorage(s.storage.configured))
+      .catch(() => setUsesStorage(false));
+  }, []);
 
   const extract = async () => {
     setBusy(true);
@@ -98,15 +90,22 @@ function CloudExtract() {
         </h3>
         <p className="mt-1 text-[11px] leading-relaxed text-white/30">
           지금 연결된 데이터를 이 컴퓨터의 세이브파일로 만듭니다. 만든 뒤에는 인터넷 없이도
-          로컬 모드로 열 수 있습니다.
+          로컬 세이브파일로 열 수 있습니다.
           {/*
             미리 말해줘야 하는 것 — 뽑고 나서 커버가 없어진 걸 발견하면
-            "데이터가 깨졌나" 하고 놀란다
+            "데이터가 깨졌나" 하고 놀란다.
+            ⚠️ **스토리지를 쓸 때만 해당한다** — 안 쓰면 커버가 이미 데이터 폴더에 있어서
+            그대로 따라온다. 조건 없이 띄우면 겁만 주는 문구가 된다
           */}
-          <br />
-          <span className="text-amber-200/60">
-            직접 올리신 커버는 함께 오지 않습니다(스토리지에 있습니다). IGDB 커버로 표시됩니다.
-          </span>
+          {usesStorage && (
+            <>
+              <br />
+              <span className="text-amber-200/60">
+                직접 올리신 커버는 함께 오지 않습니다(스토리지에 있습니다). IGDB 커버로
+                표시됩니다.
+              </span>
+            </>
+          )}
         </p>
       </div>
 
@@ -124,7 +123,7 @@ function CloudExtract() {
 
       {done && (
         <p className="text-xs text-emerald-300/80">
-          <b>{done}</b> 세이브파일을 만들었습니다. 입구의 로컬 모드에서 열 수 있습니다.
+          <b>{done}</b> 세이브파일을 만들었습니다. 입구의 [로컬 세이브파일]에서 열 수 있습니다.
         </p>
       )}
       {error && <p className="text-xs text-red-400">{error}</p>}

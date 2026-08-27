@@ -278,8 +278,14 @@ function BacklogDetail() {
                     </Button>
                   </span>
                 </h3>
+                {/*
+                  **Device 칸을 뺐다** (2026-08-28). 다섯 칸이 들어가니 노트북 폭에서
+                  `2024-03-13 ~ 2025-07-21`이 두 줄로 쪼개지고 `1회차`까지 접혔다.
+                  기기 이름은 계정 라벨에 이미 붙어 있어서(`Beene (한성컴퓨터 PC)`)
+                  같은 정보를 두 칸이 나눠 갖고 있던 셈이다 — 합치면 기간이 한 줄에 들어간다
+                */}
                 <DataTable
-                  headers={["Run", "Period", "Status", "Device", "Account", "Label"]}
+                  headers={["Run", "Period", "Status", "Account", "Label"]}
                   empty={data.playthroughs.length === 0 ? "등록된 회차 기록이 없습니다" : undefined}
                 >
                   {data.playthroughs.map((run) => (
@@ -288,19 +294,22 @@ function BacklogDetail() {
                       onClick={() => setDialog({ kind: "playthrough", run })}
                       className="cursor-pointer transition-colors hover:bg-white/[0.05]"
                     >
-                      <td className="num px-4 py-3 text-white/90">{run.sequenceNo}회차</td>
-                      {/* 회차에서 제일 먼저 읽는 값이라 다른 칸보다 진하게 */}
-                      <td className="num px-4 py-3 font-medium text-white/95">
+                      <td className="num px-4 py-3 whitespace-nowrap text-white/90">
+                        {run.sequenceNo}회차
+                      </td>
+                      {/* 회차에서 제일 먼저 읽는 값이라 다른 칸보다 진하게. 줄바꿈을 막는다 */}
+                      <td className="num w-[38%] px-4 py-3 font-medium whitespace-nowrap text-white/95">
                         {run.startedOn} ~ {run.finishedOn ?? ""}
                       </td>
-                      <td className={`px-4 py-3 ${PLAYTHROUGH_TONE[run.status] ?? "text-white/60"}`}>
+                      <td
+                        className={`px-4 py-3 whitespace-nowrap ${PLAYTHROUGH_TONE[run.status] ?? "text-white/60"}`}
+                      >
                         {PLAYTHROUGH_STATUS_LABEL[run.status]}
                       </td>
-                      <td className="px-4 py-3 text-white/60">
-                        {run.emulator?.name ?? run.device?.name ?? "—"}
+                      <td className="px-4 py-3 text-white/60">{accountOf(run)}</td>
+                      <td className="px-4 py-3 whitespace-nowrap text-white/50">
+                        {run.label ?? "—"}
                       </td>
-                      <td className="px-4 py-3 text-white/60">{run.platformAccount?.label ?? "—"}</td>
-                      <td className="px-4 py-3 text-white/50">{run.label ?? "—"}</td>
                     </tr>
                   ))}
                 </DataTable>
@@ -634,4 +643,23 @@ function DetailSkeleton() {
       </div>
     </main>
   );
+}
+
+
+/**
+ * 계정 + 기기.
+ *
+ * 예전엔 칸을 둘로 나눴는데 노트북 폭에서 기간이 두 줄로 쪼개졌다. 한 칸에 합치면
+ * **`Beene (한성컴퓨터 PC)`**로 같은 정보가 더 짧게 들어간다 — 계정만 있고 기기가 없으면
+ * 괄호를 아예 안 붙인다
+ */
+function accountOf(run: {
+  platformAccount?: { label: string } | null;
+  device?: { name: string } | null;
+  emulator?: { name: string } | null;
+}) {
+  const account = run.platformAccount?.label;
+  const machine = run.emulator?.name ?? run.device?.name;
+  if (account && machine) return `${account} (${machine})`;
+  return account ?? machine ?? "—";
 }

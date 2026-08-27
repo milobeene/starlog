@@ -1,6 +1,7 @@
 package com.milobeene.starlog.backlog.service;
 
 import com.milobeene.starlog.backlog.domain.BacklogEntry;
+import com.milobeene.starlog.backlog.domain.CoverImage;
 import com.milobeene.starlog.backlog.dto.BacklogCardResponse;
 import com.milobeene.starlog.backlog.dto.BacklogNameResponse;
 import com.milobeene.starlog.backlog.dto.DeletedEntryResponse;
@@ -22,6 +23,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -158,12 +160,24 @@ public class BacklogQueryService {
             return Map.of();
         }
 
-        return coverImageRepository.findByBacklogEntryIdIn(entryIds).stream()
-                .collect(Collectors.toMap(
-                        cover -> cover.getBacklogEntry().getId(),
-                        // 위치에 따라 주소가 완전히 다르다 — 버킷 공개 URL이거나 우리 엔드포인트다
-                        coverImageService::publicUrl,
-                        (first, second) -> first));
+        Map<Long, String> urls = new HashMap<>();
+        for (CoverImage cover : coverImageRepository.findByBacklogEntryIdIn(entryIds)) {
+            // 위치에 따라 주소가 완전히 다르다 — 버킷 공개 URL이거나 우리 엔드포인트다
+            String url = coverImageService.publicUrl(cover);
+            /*
+             * ⚠️ **주소를 못 만드는 커버가 있다.** 스토리지에 있던 커버(EXTERNAL)를
+             * 자격증명 없는 로컬 모드에서 열면 `UnconfiguredFileStorage`가 null을 준다 —
+             * 클라우드에서 뽑은 세이브파일이 정확히 그 상태다.
+             *
+             * `Collectors.toMap`은 **값이 null이면 NPE**라서, 이걸 그냥 쓰면 커버 한 장 때문에
+             * **목록 전체가 500이 된다.** 실제로 그랬다. 못 만드는 건 빼고 나머지를 그린다 —
+             * 화면은 커버가 없으면 마스터 커버로 폴백한다
+             */
+            if (url != null) {
+                urls.put(cover.getBacklogEntry().getId(), url);
+            }
+        }
+        return urls;
     }
 
     /** 서버는 클라이언트를 믿지 않는다. size=100000이 오면 그대로 실행하지 않는다 */

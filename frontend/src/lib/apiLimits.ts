@@ -21,13 +21,13 @@ export type ApiLimit = {
 
 export const API_LIMITS: Record<string, ApiLimit> = {
   IGDB: {
-    label: "외부 게임 DB (IGDB)",
+    label: "외부 게임 DB API (IGDB)",
     limits: ["초당 4회", "동시 8건", "월 한도 없음"],
     checkedOn: "2026-08",
     docs: "https://api-docs.igdb.com",
   },
   STORAGE: {
-    label: "커버 스토리지 (S3 호환)",
+    label: "커버 스토리지 API (S3 호환)",
     /*
      * 벤더마다 다르다 — R2·S3·MinIO·B2가 각자 다른 단위로 센다.
      * **하나를 골라 적으면 다른 걸 쓰는 사람에게 틀린 말이 된다.** 그래서 안 적는다

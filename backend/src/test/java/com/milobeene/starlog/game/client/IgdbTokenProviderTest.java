@@ -41,7 +41,8 @@ class IgdbTokenProviderTest {
                 .andExpect(queryParam("client_id", "cid"))
                 .andRespond(withSuccess(TOKEN_BODY, MediaType.APPLICATION_JSON));
 
-        IgdbTokenProvider provider = new IgdbTokenProvider(builder.build(), properties(null));
+        IgdbTokenProvider provider = new IgdbTokenProvider(builder.build(),
+                properties(null), noSettings());
 
         //when
         String first = provider.token();
@@ -64,7 +65,8 @@ class IgdbTokenProviderTest {
         }
 
         IgdbTokenProvider provider =
-                new IgdbTokenProvider(builder.build(), properties(Duration.ofDays(365)));
+                new IgdbTokenProvider(builder.build(),
+                        properties(Duration.ofDays(365)), noSettings());
 
         //when
         provider.token();
@@ -84,7 +86,8 @@ class IgdbTokenProviderTest {
                     .andRespond(withSuccess(TOKEN_BODY, MediaType.APPLICATION_JSON));
         }
 
-        IgdbTokenProvider provider = new IgdbTokenProvider(builder.build(), properties(null));
+        IgdbTokenProvider provider = new IgdbTokenProvider(builder.build(),
+                properties(null), noSettings());
 
         //when
         provider.token();
@@ -101,7 +104,7 @@ class IgdbTokenProviderTest {
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
 
         IgdbTokenProvider provider = new IgdbTokenProvider(builder.build(),
-                new IgdbProperties(null, null, null, null, null, null, 20, null, null, null, null));
+                new IgdbProperties(null, null, null, null, null, null, 20, null, null, null, null), noSettings());
 
         //when //then
         assertThatThrownBy(provider::token)
@@ -118,7 +121,8 @@ class IgdbTokenProviderTest {
         server.expect(requestTo(Matchers.containsString("oauth2/token")))
                 .andRespond(withServerError());
 
-        IgdbTokenProvider provider = new IgdbTokenProvider(builder.build(), properties(null));
+        IgdbTokenProvider provider = new IgdbTokenProvider(builder.build(),
+                properties(null), noSettings());
 
         //when //then — 스프링의 RestClientException이 밖으로 새지 않는다
         assertThatThrownBy(provider::token).isInstanceOf(ExternalApiException.class);
@@ -128,4 +132,36 @@ class IgdbTokenProviderTest {
         return new IgdbProperties(null, "https://id.twitch.tv/oauth2/token", "cid", "secret",
                 null, null, 20, renewMargin, Duration.ZERO, Duration.ZERO, null);
     }
+
+    /**
+     * 앱 설정 서비스가 없는 상태.
+     *
+     * v1.0에서 IGDB 키를 **DB에서도** 읽게 되면서 생긴 의존이다. 이 테스트는 스프링을 안 띄우니
+     * 그 빈이 없고, 없으면 부팅 설정으로 폴백하는 것까지가 규칙이다 — 그 폴백을 여기서 태운다
+     */
+    private static org.springframework.beans.factory.ObjectProvider<
+            com.milobeene.starlog.system.service.AppSettingService> noSettings() {
+        return new org.springframework.beans.factory.ObjectProvider<>() {
+            @Override
+            public com.milobeene.starlog.system.service.AppSettingService getObject() {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public com.milobeene.starlog.system.service.AppSettingService getObject(Object... args) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public com.milobeene.starlog.system.service.AppSettingService getIfAvailable() {
+                return null;
+            }
+
+            @Override
+            public com.milobeene.starlog.system.service.AppSettingService getIfUnique() {
+                return null;
+            }
+        };
+    }
+
 }

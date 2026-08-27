@@ -147,6 +147,16 @@ cd desktop && npm install && npm start
 **클라우드 → 로컬 세이브파일**은 `/api/me/export` → 빈 백엔드 기동 → `/api/me/import`다.
 ⚠️ 커버 실물은 안 따라온다(스토리지에 있다) — 마스터 커버로 폴백된다.
 
+### IGDB 키는 DB에, DB·스토리지 키는 일렉트론에
+
+경계는 **"재시작이 필요한가"**다 (architecture §2). DB·스토리지는 부팅 때 조립되므로
+`connections.json`(일렉트론)에, **IGDB는 런타임에 바꿔도 되므로 `app_setting` 테이블**에 둔다.
+그래서 **로컬 세이브파일에서도 게임 검색이 된다** — 앱의 `시스템 → 앱 설정`에서 관리한다.
+
+⚠️ **업로드 한도가 두 겹이다.** `spring.servlet.multipart.max-file-size`(톰캣)가
+`app.storage.max-*-bytes`(우리 검증)보다 커야 한다. 작으면 톰캣이 먼저 끊어서
+**우리 메시지가 나갈 기회가 없다** — 기본값 1MB 때문에 스크린샷이 통째로 막혔었다.
+
 ### 실사용 프로필은 `desktop`
 
 `dev`가 아니라서 `DataInitializer`(내 개인 시드)가 **안 돈다.** 빈 DB에 들어가는 건

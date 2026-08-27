@@ -22,6 +22,8 @@ contextBridge.exposeInMainWorld("starlog", {
   settings: {
     get: () => ipcRenderer.invoke("settings:get"),
     setDataRoot: (dir) => ipcRenderer.invoke("settings:setDataRoot", dir),
+    /** 바꾸기 전에 살펴본다 — 쓸 수 있는 곳인지, 이미 우리 구조가 있는지 */
+    inspectDataRoot: (dir) => ipcRenderer.invoke("settings:inspectDataRoot", dir),
   },
   pickFolder: () => ipcRenderer.invoke("dialog:pickFolder"),
   openFolder: (which) => ipcRenderer.invoke("shell:openFolder", which),

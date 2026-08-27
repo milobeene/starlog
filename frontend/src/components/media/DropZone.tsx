@@ -26,12 +26,15 @@ export default function DropZone({
   onFiles,
   multiple = false,
   disabled = false,
+  /** 영상까지 받나. 커버는 이미지만, 스크린샷은 영상도 받는다 */
+  video = false,
   hint,
   children,
 }: {
   onFiles: (files: File[]) => void;
   multiple?: boolean;
   disabled?: boolean;
+  video?: boolean;
   hint?: string;
   children?: React.ReactNode;
 }) {
@@ -60,7 +63,9 @@ export default function DropZone({
   }, [onFiles, multiple, disabled]);
 
   const accept = (list: FileList | null) => {
-    const files = Array.from(list ?? []).filter((f) => f.type.startsWith("image/"));
+    const files = Array.from(list ?? []).filter(
+      (f) => f.type.startsWith("image/") || (video && f.type.startsWith("video/")),
+    );
     if (files.length > 0) onFiles(multiple ? files : files.slice(0, 1));
   };
 
@@ -104,7 +109,7 @@ export default function DropZone({
       <input
         ref={input}
         type="file"
-        accept="image/png,image/jpeg,image/webp"
+        accept={video ? "image/png,image/jpeg,image/webp,video/mp4,video/quicktime,video/webm" : "image/png,image/jpeg,image/webp"}
         multiple={multiple}
         onChange={(e) => {
           accept(e.target.files);
@@ -121,7 +126,7 @@ export default function DropZone({
             {over ? "놓으면 됩니다" : "여기에 끌어다 놓거나 클릭해서 고르세요"}
           </p>
           <p className="text-[11px] text-white/35">
-            {hint ?? "붙여넣기(⌘V)도 됩니다 · JPG · PNG · WebP"}
+            {hint ?? (video ? "JPG · PNG · WebP · MP4 · MOV · WebM" : "붙여넣기(⌘V)도 됩니다 · JPG · PNG · WebP")}
           </p>
         </>
       )}

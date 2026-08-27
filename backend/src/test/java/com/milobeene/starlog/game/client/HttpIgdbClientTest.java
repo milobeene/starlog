@@ -250,8 +250,9 @@ class HttpIgdbClientTest {
         int forceRefreshCount;
 
         StubTokenProvider() {
+            /* 앱 설정 서비스는 없다 — 없으면 부팅 설정으로 폴백하는 게 규칙이다 */
             super(RestClient.create(), new IgdbProperties(null, null, "cid", "secret",
-                    null, null, 20, null, Duration.ZERO, Duration.ZERO, null));
+                    null, null, 20, null, Duration.ZERO, Duration.ZERO, null), noSettings());
         }
 
         @Override
@@ -273,6 +274,33 @@ class HttpIgdbClientTest {
             public void record(com.milobeene.starlog.system.domain.ApiProvider provider,
                                String operation, boolean success) {
                 // 아무것도 안 한다
+            }
+        };
+    }
+
+
+    /** 앱 설정 빈이 없는 상태. HttpIgdbClient는 스프링 없이 도는 테스트다 */
+    private static org.springframework.beans.factory.ObjectProvider<
+            com.milobeene.starlog.system.service.AppSettingService> noSettings() {
+        return new org.springframework.beans.factory.ObjectProvider<>() {
+            @Override
+            public com.milobeene.starlog.system.service.AppSettingService getObject() {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public com.milobeene.starlog.system.service.AppSettingService getObject(Object... args) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public com.milobeene.starlog.system.service.AppSettingService getIfAvailable() {
+                return null;
+            }
+
+            @Override
+            public com.milobeene.starlog.system.service.AppSettingService getIfUnique() {
+                return null;
             }
         };
     }

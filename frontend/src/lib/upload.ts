@@ -46,9 +46,19 @@ export async function uploadCover(entryId: number, file: File): Promise<void> {
   await api.put(`/api/backlog/${entryId}/cover`, { storageKey: target.storageKey });
 }
 
-/** 스크린샷은 항상 백엔드를 지난다 (v1.0 7단계) */
-export async function uploadScreenshot(entryId: number, file: File): Promise<void> {
-  await postFile(`/api/backlog/${entryId}/screenshots`, file);
+/**
+ * 스크린샷·영상은 항상 백엔드를 지난다 (v1.0 7단계).
+ *
+ * `takenAt`은 **원본 파일의 수정시각**이다. 서버가 저장한 파일에 그대로 심어서
+ * "찍은 순서"를 만든다 — 안 보내면 옛 스크린샷 스무 장이 전부 "지금"이 된다
+ */
+export async function uploadScreenshot(
+  entryId: number,
+  file: File,
+  takenAt?: number,
+): Promise<void> {
+  const query = takenAt ? `?takenAt=${takenAt}` : "";
+  await postFile(`/api/backlog/${entryId}/screenshots${query}`, file);
 }
 
 /**

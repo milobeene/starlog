@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import ApiUsagePanel from "@/components/system/ApiUsagePanel";
 import GameMasterPanel from "@/components/system/GameMasterPanel";
 import ConnectionPanel from "@/components/system/ConnectionPanel";
+import AppSettingsPanel from "@/components/system/AppSettingsPanel";
 import { useApi } from "@/lib/useApi";
 import type { SystemStatus } from "@/lib/types";
 
@@ -25,6 +26,7 @@ import type { SystemStatus } from "@/lib/types";
 const TABS = [
   { key: "usage", label: "사용량" },
   { key: "games", label: "게임 마스터" },
+  { key: "settings", label: "앱 설정" },
   { key: "keys", label: "연결" },
 ] as const;
 
@@ -63,6 +65,7 @@ export default function SystemPage() {
         */}
         {tab === "usage" && <UsageTab />}
         {tab === "games" && <GameMasterPanel />}
+        {tab === "settings" && <AppSettingsPanel />}
         {tab === "keys" && <ConnectionPanel />}
       </div>
     </main>
@@ -79,26 +82,29 @@ function UsageTab() {
 
   return (
     <div className="flex flex-col gap-10">
-      <ApiUsagePanel usage={apiUsage} retentionDays={retentionDays} />
+      <ApiUsagePanel usage={apiUsage} storage={storage} retentionDays={retentionDays} />
 
+      {/*
+        **저장소에는 데이터베이스만 남긴다** (2026-08-28). 커버 수·용량은 스토리지 사용량이라
+        위의 API 사용량 카드로 옮겼다 — 한 화면에 "저장소"가 둘 있으면 뭐가 뭔지 흐려진다.
+        제품명(`PostgreSQL`)도 뺐다 — JDBC가 알려주는 건 형식뿐이라 Neon인지 Supabase인지는
+        알 방법이 없고, 형식만 적어두면 아는 게 없는 것과 같다
+      */}
       <section>
         <h3 className="text-[11px] font-semibold tracking-widest text-white/50 uppercase">
-          저장소
+          데이터베이스
         </h3>
         <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Stat label="커버 수" value={storage.coverCount.toLocaleString()} />
-          <Stat label="커버 용량" value={formatBytes(storage.totalBytes)} />
-          <Stat label="데이터베이스" value={database.product} />
           <Stat
-            label="DB 크기"
+            label="크기"
             value={database.sizeBytes === null ? "—" : formatBytes(database.sizeBytes)}
           />
         </div>
-        <p className="mt-2 text-[11px] text-white/30">
-          {storage.configured
-            ? "커버 용량은 DB에 기록된 값입니다 — 스토리지에 다시 묻지 않습니다."
-            : "스토리지 연결이 없습니다. 커버와 스크린샷은 데이터 폴더에 저장됩니다."}
-        </p>
+        {database.sizeBytes === null && (
+          <p className="mt-2 text-[11px] text-white/30">
+            지금 데이터베이스는 크기를 알려주지 않습니다.
+          </p>
+        )}
       </section>
     </div>
   );

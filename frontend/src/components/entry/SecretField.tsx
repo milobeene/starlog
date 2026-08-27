@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Field, FIELD_INPUT } from "@/components/ui/Field";
+import { FIELD_INPUT } from "@/components/ui/Field";
 
 /**
  * DB 비번·스토리지 키 칸.
@@ -12,19 +12,34 @@ import { Field, FIELD_INPUT } from "@/components/ui/Field";
  */
 export default function SecretField({
   label,
+  keyName,
   value,
   onChange,
   placeholder,
+  bad,
 }: {
   label: string;
+  /** 실제 설정 키 이름. 벤더 문서와 대조하려면 원래 이름이 필요하다 */
+  keyName?: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  bad?: boolean;
 }) {
   const [shown, setShown] = useState(false);
 
   return (
-    <Field label={label} composite>
+    <div className="flex flex-col gap-1.5">
+      <span className="flex items-baseline gap-1.5">
+        <span
+          className={`text-[10px] font-semibold tracking-widest uppercase ${
+            bad ? "text-red-400" : "text-white/40"
+          }`}
+        >
+          {label}
+        </span>
+        {keyName && <span className="font-mono text-[10px] text-white/20">{keyName}</span>}
+      </span>
       <div className="relative">
         <input
           type={shown ? "text" : "password"}
@@ -33,7 +48,7 @@ export default function SecretField({
           placeholder={placeholder}
           spellCheck={false}
           autoComplete="off"
-          className={`${FIELD_INPUT} pr-10`}
+          className={`${FIELD_INPUT} pr-10 ${bad ? "border-red-500/60" : ""}`}
         />
         <button
           type="button"
@@ -44,7 +59,7 @@ export default function SecretField({
           {shown ? <EyeOff /> : <Eye />}
         </button>
       </div>
-    </Field>
+    </div>
   );
 }
 

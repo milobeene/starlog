@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.milobeene.starlog.common.exception.ExternalApiException;
 import lombok.extern.slf4j.Slf4j;
+import com.milobeene.starlog.system.service.AppSettingService;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -32,12 +34,29 @@ public class IgdbTokenProvider {
 
     private final RestClient tokenRestClient;
     private final IgdbProperties properties;
+    /*
+     * 자격증명만 여기서 받는다 (2026-08-28). 앱 안에서 키를 바꾸면 **다시 띄우지 않고**
+     * 먹어야 해서, 부팅 때 굳은 값(`properties`)이 아니라 매번 물어본다.
+     * `@Lazy`인 이유 — 설정 서비스가 리포지토리를 물고, 그게 다시 이 빈이 있는
+     * 클라이언트 조립과 순서를 다툴 수 있다
+     */
+    private final ObjectProvider<AppSettingService> settings;
 
     private volatile CachedToken cached;
 
-    public IgdbTokenProvider(RestClient igdbTokenRestClient, IgdbProperties properties) {
+    public IgdbTokenProvider(RestClient igdbTokenRestClient, IgdbProperties properties,
+                             ObjectProvider<AppSettingService> settings) {
         this.tokenRestClient = igdbTokenRestClient;
         this.properties = properties;
+        this.settings = settings;
+    }
+
+    /** 지금 유효한 자격증명. DB가 먼저, 없으면 부팅 설정 */
+    public AppSettingService.IgdbCredentials credentials() {
+        AppSettingService service = settings.getIfAvailable();
+        return service != null ? service.igdb()
+                : new AppSettingService.IgdbCredentials(
+                        properties.clientId(), properties.clientSecret());
     }
 
     /** 유효한 토큰. 없거나 만료가 임박하면 새로 받는다 */
@@ -63,7 +82,8 @@ public class IgdbTokenProvider {
             return current.value();
         }
 
-        if (!properties.hasCredentials()) {
+        AppSettingService.IgdbCredentials credentials = credentials();
+        if (!credentials.isPresent()) {
             throw new ExternalApiException(ExternalApiException.Service.GAME_CATALOG, 
                     "IGDB 자격증명이 없습니다 (app.igdb.client-id / client-secret)");
         }
@@ -71,8 +91,8 @@ public class IgdbTokenProvider {
         TokenResponse response;
         try {
             response = tokenRestClient.post()
-                    .uri(uri -> uri.queryParam("client_id", properties.clientId())
-                            .queryParam("client_secret", properties.clientSecret())
+                    .uri(uri -> uri.queryParam("client_id", credentials.clientId())
+                            .queryParam("client_secret", credentials.clientSecret())
                             .queryParam("grant_type", "client_credentials")
                             .build())
                     .retrieve()

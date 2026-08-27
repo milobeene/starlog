@@ -29,6 +29,17 @@ spring:
     console:
       enabled: true
 
+  # 파일 업로드 한도 (v1.0 6·7단계).
+  #
+  # ⚠️ **기본값이 파일 1MB / 요청 10MB다.** 커버는 5MB, 스크린샷은 20MB까지 받기로 해놓고
+  # 이걸 안 올려서 **실제 스크린샷이 서버에 닿기도 전에 잘렸다** — 4K 캡처는 예사로 2~8MB다.
+  # `app.storage.max-*-bytes`가 진짜 검증이고, 여기는 그보다 넉넉해야 그 검증이 의미를 갖는다
+  servlet:
+    multipart:
+      # 영상(200MB)보다 넉넉해야 우리 검증 메시지가 나갈 기회를 얻는다
+      max-file-size: 250MB
+      max-request-size: 260MB
+
 # 배치 주기. 테스트에서는 절대 안 도는 값으로 덮는다 (application-test.yml)
 app:
   igdb:

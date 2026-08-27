@@ -4,6 +4,7 @@ import com.milobeene.starlog.backlog.exception.RevivableEntryException;
 import com.milobeene.starlog.platform.exception.RevivableAccountException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -94,6 +95,22 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleDataIntegrity(DataIntegrityViolationException e) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(new ErrorResponse("CONSTRAINT_VIOLATION", "이미 존재하는 값입니다"));
+    }
+
+    /**
+     * 413 — 업로드 파일이 서블릿 한도를 넘었다 (v1.0).
+     *
+     * **이 핸들러가 없어서 스크린샷 업로드가 "올리지 못했습니다"만 뱉었다.** 예외가 어드바이스에
+     * 안 걸리니 형태 없는 500이 되고, 화면은 코드도 메시지도 못 받아 기본 문구를 띄웠다.
+     *
+     * ⚠️ 이건 `app.storage.max-*-bytes`(우리 규칙)가 아니라 **서블릿 컨테이너의 한도**다.
+     * 톰캣이 본문을 다 읽기도 전에 끊어서 컨트롤러까지 오지도 않는다 —
+     * 그래서 우리 검증 메시지가 아니라 이 문장이 나가야 한다
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handleTooLarge(MaxUploadSizeExceededException e) {
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(new ErrorResponse("FILE_TOO_LARGE", "파일이 너무 큽니다"));
     }
 
     /** 400 — Bean Validation 실패 (H-6) */

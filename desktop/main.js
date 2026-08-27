@@ -121,6 +121,15 @@ function freePort() {
 function getJson(port, urlPath) {
   return new Promise((resolve, reject) => {
     http.get({ host: "127.0.0.1", port, path: urlPath }, (res) => {
+      /*
+       * ⚠️ **`setEncoding`이 없으면 한글이 깨진다.**
+       *
+       * Buffer를 문자열에 더하면 **청크마다 따로** UTF-8로 바뀐다. 한글은 3바이트라
+       * 글자 하나가 64KB 경계에 걸치면 반씩 쪼개져 `??`가 된다 — 실제로 게임 이름
+       * 하나가 그렇게 깨졌고, 경계에 걸린 그 한 줄만 깨져서 원인을 찾기 어려웠다.
+       * `setEncoding`은 StringDecoder를 써서 걸친 바이트를 다음 청크까지 들고 간다
+       */
+      res.setEncoding("utf8");
       let body = "";
       res.on("data", (chunk) => { body += chunk; });
       res.on("end", () => {
@@ -371,12 +380,53 @@ function registerIpc() {
     return store.patchSettings({ dataRoot: dir });
   });
 
+  /**
+   * 경로를 바꾸기 전에 살펴본다.
+   *
+   * **경로가 이상한 걸 저장한 뒤에 알게 하면 안 된다** — 세이브파일이 엉뚱한 데로 가고
+   * 그제서야 "왜 목록이 비었지"가 된다. 만들 수 있는지, 이미 우리 구조가 있는지 미리 답한다
+   */
+  ipcMain.handle("settings:inspectDataRoot", (_e, dir) => {
+    const target = String(dir ?? "").trim();
+    if (!target) {
+      return { ok: false, reason: "경로를 입력해 주세요" };
+    }
+    if (!path.isAbsolute(target)) {
+      return { ok: false, reason: "전체 경로를 입력해 주세요 (/ 로 시작)" };
+    }
+
+    const resolved = path.resolve(target);
+    const parent = path.dirname(resolved);
+    if (!fs.existsSync(parent)) {
+      return { ok: false, reason: "상위 폴더가 없습니다: " + parent };
+    }
+    try {
+      fs.accessSync(parent, fs.constants.W_OK);
+    } catch {
+      return { ok: false, reason: "이 위치에 쓸 권한이 없습니다" };
+    }
+
+    const exists = fs.existsSync(resolved);
+    const dirs = ["saves", "backups", "covers", "media"];
+    const ready = exists && dirs.every((d) => fs.existsSync(path.join(resolved, d)));
+    const saveCount = ready
+      ? fs.readdirSync(path.join(resolved, "saves")).filter((f) => f.endsWith(".mv.db")).length
+      : 0;
+
+    return { ok: true, path: resolved, exists, ready, saveCount };
+  });
+
   ipcMain.handle("dialog:pickFolder", async () => {
     const result = await dialog.showOpenDialog(win, { properties: ["openDirectory", "createDirectory"] });
     return result.canceled ? null : result.filePaths[0];
   });
 
   ipcMain.handle("shell:openFolder", (_e, which) => {
+    // 자격증명이 있는 앱 폴더. **데이터 루트와 다른 곳**이라는 걸 눈으로 보게 한다 (§7)
+    if (which === "appData") {
+      shell.openPath(paths.APP_DATA);
+      return;
+    }
     const dirs = dataDirs();
     shell.openPath(dirs[which] ?? dirs.root);
   });
@@ -487,15 +537,62 @@ function registerIpc() {
    * 버전이 어긋나면 "일렉트론은 되는데 스프링은 안 되는" 상황이 난다 (architecture §3)
    */
   ipcMain.handle("connections:test", async (_e, profile) => {
+    /*
+     * 지금 쓰는 백엔드를 건드리면 안 된다 — 테스트하다가 보던 화면이 죽는다.
+     * 그래서 시험용을 따로 띄우고, 끝나면 원래 것을 되살린다
+     */
+    const keep = session ? { session, port: backendPort } : null;
+    await stopBackend();
+
     const port = await freePort();
     const { exited } = startBackend(port, cloudConfig(profile));
-    // 진단만 하고 죽으라는 뜻이 아니라, 정상이면 뜨므로 뜨는 걸 확인하면 곧장 내린다
     const done = await Promise.race([
       exited,
       waitForBackend(port).then(() => ({ code: 0, diagnostic: null })).catch(() => null),
     ]);
-    stopBackend();
-    return { ok: !done?.diagnostic, code: done?.diagnostic ?? null };
+
+    /*
+     * DB가 떴으면 스토리지·IGDB도 실제로 눌러본다.
+     *
+     * **"연결 실패" 한 줄이면 어디가 문제인지 알 수가 없다** — 사용자가 키를 안 넣고
+     * 접속했다가 빈 화면만 하염없이 본 게 이 기능의 출발점이다
+     */
+    let storage = null;
+    let igdb = null;
+    if (!done?.diagnostic) {
+      const hasStorage = profile.storage?.endpoint && profile.storage?.bucket;
+      const hasIgdb = profile.igdb?.clientId && profile.igdb?.clientSecret;
+      if (hasIgdb) {
+        igdb = await postJson(port, "/api/system/settings/igdb/test", {
+          clientId: profile.igdb.clientId,
+          clientSecret: profile.igdb.clientSecret,
+        }).catch((e) => ({ ok: false, message: String(e.message ?? e) }));
+      }
+      if (hasStorage) {
+        // 스토리지는 기동만 되면 자격증명이 조립됐다는 뜻이다 (StorageConfig)
+        storage = await getJson(port, "/api/system")
+          .then((s) => ({ ok: Boolean(s.storage?.configured) }))
+          .catch(() => ({ ok: false }));
+      }
+    }
+
+    await stopBackend();
+
+    if (keep) {
+      const back = await freePort();
+      startBackend(back, keep.session.mode === "local"
+        ? localConfig(keep.session.target)
+        : cloudConfig(findProfile(keep.session.target)));
+      await waitForBackend(back).then(() => { session = keep.session; }).catch(() => {});
+    }
+
+    return {
+      ok: !done?.diagnostic && (igdb?.ok ?? true) && (storage?.ok ?? true),
+      code: done?.diagnostic ?? null,
+      database: { ok: !done?.diagnostic },
+      storage,
+      igdb,
+    };
   });
 
   ipcMain.handle("launch", async (_e, request) => {
@@ -735,6 +832,11 @@ function appendParam(url, param) {
 // ───────────────────────── 수명 ─────────────────────────
 
 app.whenReady().then(() => {
+  /*
+   * 앱데이터 폴더 이름을 바꾼 뒤 처음 뜨는 경우, 옛 폴더의 설정과 세이브파일을 옮긴다.
+   * 이걸 안 하면 **앱을 켰더니 기록이 통째로 사라진 것**처럼 보인다
+   */
+  paths.migrateLegacyAppData();
   protocol.handle("app", serveWeb);
   registerIpc();
   createWindow();

@@ -84,6 +84,14 @@ export interface BackupUsage {
   keepBytes: number;
 }
 
+export interface ConnectionTestResult {
+  ok: boolean;
+  code: string | null;
+  database: { ok: boolean };
+  storage: { ok: boolean } | null;
+  igdb: { ok: boolean; message?: string } | null;
+}
+
 /** 지금 붙어 있는 대상. `alive`면 [최근 접속]이 즉시 이동이다 */
 export interface SessionInfo {
   mode: LaunchMode;
@@ -95,6 +103,16 @@ export interface StarlogBridge {
   settings: {
     get(): Promise<{ dataRoot: string; dirs: Record<string, string>; lastMode: LaunchMode | null }>;
     setDataRoot(dir: string): Promise<unknown>;
+    /** 바꾸기 전에 살펴본다. `ok: false`면 `reason`을 그대로 보여주면 된다 */
+    inspectDataRoot(dir: string): Promise<{
+      ok: boolean;
+      reason?: string;
+      path?: string;
+      exists?: boolean;
+      /** 네 폴더가 이미 다 있나 */
+      ready?: boolean;
+      saveCount?: number;
+    }>;
   };
   pickFolder(): Promise<string | null>;
   openFolder(which: string): Promise<void>;
@@ -109,7 +127,11 @@ export interface StarlogBridge {
     list(): Promise<ConnectionProfile[]>;
     save(profile: ConnectionProfile): Promise<ConnectionProfile[]>;
     remove(name: string): Promise<ConnectionProfile[]>;
-    test(profile: ConnectionProfile): Promise<{ ok: boolean; code: string | null }>;
+    /**
+     * 연결 테스트. **부분별로 답한다** — "연결 실패" 한 줄이면 DB가 문제인지
+     * 키가 문제인지 알 수가 없다. 안 채운 항목은 `null`(=시험하지 않음)
+     */
+    test(profile: ConnectionProfile): Promise<ConnectionTestResult>;
   };
   backups: {
     usage(saveName: string): Promise<BackupUsage>;

@@ -34,11 +34,12 @@ export default function LaunchOverlay({
   }
 
   return (
-    <div className="flex flex-col items-center gap-4">
-      <EntryLoader />
-      <p className="text-[11px] tracking-widest text-white/30 uppercase">
-        {progress.phase === "starting" ? "앱 서버를 시작하는 중" : "기록을 여는 중"}
-      </p>
-    </div>
+    /*
+      **문구가 하나여야 한다.** `EntryLoader`가 이미 제 문구를 그리는데 여기서 또 그려서
+      "기록을 여는 중"이 두 줄로 겹쳐 보였다. 로더에 문구를 넘기는 쪽으로 합쳤다
+    */
+    <EntryLoader
+      label={progress.phase === "starting" ? "앱 서버를 시작하는 중" : "기록을 여는 중"}
+    />
   );
 }

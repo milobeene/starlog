@@ -8,6 +8,7 @@ import { api, errorMessage } from "@/lib/api";
 import { useApi } from "@/lib/useApi";
 import { uploadScreenshot } from "@/lib/upload";
 import { getBridge } from "@/lib/desktop";
+import MediaViewer from "./MediaViewer";
 
 /**
  * 게임별 스크린샷 (v1.0 7단계, architecture §10-1).
@@ -23,17 +24,31 @@ import { getBridge } from "@/lib/desktop";
  * 스크린샷은 찍으면 클립보드에 있다. 저장하고 → 폴더를 찾고 → 끌어오는 세 단계가
  * ⌘V 하나로 없어진다. `DropZone`이 문서 전체에서 붙여넣기를 듣는 이유가 이것
  */
-type Shot = { fileName: string; url: string; sizeBytes: number };
+type Shot = {
+  fileName: string;
+  url: string;
+  sizeBytes: number;
+  contentType: string;
+  /** 원본을 찍은 시각. 이게 있어야 "넣은 순서"가 아니라 "찍은 순서"로 볼 수 있다 */
+  takenAt: string | null;
+};
 
 export default function ScreenshotSection({ entryId }: { entryId: number }) {
   /* 조회는 화면 전체가 쓰는 훅에 맡긴다 — 로딩·에러·재조회가 이미 한 벌로 들어 있다 */
   const list = useApi<Shot[]>(`/api/backlog/${entryId}/screenshots`);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [zoomed, setZoomed] = useState<Shot | null>(null);
+  const [viewing, setViewing] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const shots = list.data;
+  /*
+   * **찍은 순서로 본다** (사용자 결정 2026-08-28). 서버는 파일명 순(넣은 순)으로 주는데,
+   * 옛 스크린샷 여러 장을 한꺼번에 끌어다 놓으면 도착 순서가 뒤죽박죽이라 그게 안 맞는다.
+   * 원본 시각이 없는 파일(옛 저장분)은 뒤로 보낸다
+   */
+  const shots = list.data
+    ? [...list.data].sort((a, b) => (a.takenAt ?? "9").localeCompare(b.takenAt ?? "9"))
+    : null;
 
   const add = async (files: File[]) => {
     setBusy(true);
@@ -41,7 +56,8 @@ export default function ScreenshotSection({ entryId }: { entryId: number }) {
     try {
       // 한 장씩 순서대로 — 동시에 보내면 서버가 붙이는 번호가 겹친다
       for (const file of files) {
-        await uploadScreenshot(entryId, file);
+        // 원본 시각을 함께 보낸다 — 서버가 파일에 심어 "찍은 순서"를 만든다
+        await uploadScreenshot(entryId, file, file.lastModified);
       }
       list.reload();
     } catch (caught) {
@@ -106,7 +122,7 @@ export default function ScreenshotSection({ entryId }: { entryId: number }) {
 
       {shots && shots.length > 0 && (
         <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-          {shots.map((shot) => {
+          {shots.map((shot, index) => {
             const picked = selected.has(shot.fileName);
             return (
               <div
@@ -115,13 +131,33 @@ export default function ScreenshotSection({ entryId }: { entryId: number }) {
                   picked ? "border-white/70" : "border-white/10 hover:border-white/30"
                 }`}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={shot.url}
-                  alt={shot.fileName}
-                  onClick={() => setZoomed(shot)}
-                  className="h-full w-full cursor-zoom-in object-cover"
-                />
+                {shot.contentType?.startsWith("video/") ? (
+                  /*
+                    영상은 목록에서 재생하지 않는다 — 넉 장만 있어도 화면이 시끄럽다.
+                    `preload="metadata"`면 첫 프레임만 받아 와서 썸네일처럼 쓸 수 있다
+                  */
+                  <video
+                    src={shot.url}
+                    preload="metadata"
+                    onClick={() => setViewing(index)}
+                    className="h-full w-full cursor-zoom-in object-cover"
+                  />
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={shot.url}
+                    alt={shot.fileName}
+                    onClick={() => setViewing(index)}
+                    className="h-full w-full cursor-zoom-in object-cover"
+                  />
+                )}
+                {shot.contentType?.startsWith("video/") && (
+                  <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white/90">
+                      ▶
+                    </span>
+                  </span>
+                )}
                 {/*
                   체크는 늘 보이지 않는다 — 넉 장만 있어도 화면이 체크박스로 뒤덮인다.
                   고른 것은 계속 보이고, 나머지는 마우스를 올렸을 때만
@@ -146,25 +182,20 @@ export default function ScreenshotSection({ entryId }: { entryId: number }) {
       <DropZone
         onFiles={add}
         multiple
+        video
         disabled={busy}
-        hint="스크린샷은 찍으면 클립보드에 있습니다 — ⌘V로 바로 붙여넣으세요"
+        hint="이미지와 영상 · 파일을 끌어다 놓거나, 클립보드에 있으면 ⌘V"
       >
         {busy ? <p className="text-sm text-white/60">올리는 중…</p> : undefined}
       </DropZone>
 
-      {/* 확대 — 모달 컴포넌트를 안 쓴다. 그림만 크게 보면 되고 제목·버튼이 방해가 된다 */}
-      {zoomed && (
-        <div
-          onClick={() => setZoomed(null)}
-          className="fixed inset-0 z-[110] flex cursor-zoom-out items-center justify-center bg-black/85 p-6"
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={zoomed.url}
-            alt={zoomed.fileName}
-            className="max-h-full max-w-full rounded-lg object-contain"
-          />
-        </div>
+      {viewing !== null && shots && (
+        <MediaViewer
+          items={shots}
+          index={viewing}
+          onIndex={setViewing}
+          onClose={() => setViewing(null)}
+        />
       )}
     </section>
   );

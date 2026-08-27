@@ -2,6 +2,7 @@ package com.milobeene.starlog.backlog.service;
 
 import com.milobeene.starlog.backlog.domain.BacklogEntry;
 import com.milobeene.starlog.backlog.dto.ScreenshotResponse;
+import java.nio.file.attribute.FileTime;
 import com.milobeene.starlog.common.exception.InvalidInputException;
 import com.milobeene.starlog.common.storage.LocalFileStore;
 import com.milobeene.starlog.common.storage.MediaPaths;
@@ -10,6 +11,7 @@ import com.milobeene.starlog.common.util.Slugs;
 import com.milobeene.starlog.game.domain.Game;
 import com.milobeene.starlog.game.repository.GameRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,12 +39,13 @@ import java.util.Locale;
  * 한 번 고쳤을 때 폴더를 못 찾아 스크린샷이 사라진 것처럼 보인다
  */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class ScreenshotService {
 
     private final BacklogEntryFinder entryFinder;
-    private final CoverImageValidator validator;
+    private final MediaFileValidator validator;
     private final LocalFileStore localFileStore;
     private final MediaPaths mediaPaths;
     private final StorageProperties storageProperties;
@@ -56,11 +59,18 @@ public class ScreenshotService {
         }
 
         return localFileStore.list(folder).stream()
-                .map(name -> new ScreenshotResponse(
-                        name,
-                        "/api/backlog/%d/screenshots/%s".formatted(entryId, name),
-                        sizeOf(folder.resolve(name))))
+                .map(name -> describe(entryId, folder, name))
                 .toList();
+    }
+
+    private ScreenshotResponse describe(Long entryId, Path folder, String name) {
+        Path file = folder.resolve(name);
+        return new ScreenshotResponse(
+                name,
+                "/api/backlog/%d/screenshots/%s".formatted(entryId, name),
+                sizeOf(file),
+                MediaFileValidator.contentTypeOf(name),
+                takenAt(file));
     }
 
     /**
@@ -70,23 +80,38 @@ public class ScreenshotService {
      * 사람이 폴더를 직접 열어볼 물건이라 `a3f9c1....png`가 늘어서 있으면 못 쓴다.
      * 충돌은 이미 있는 번호 다음을 골라 피한다
      */
+    /**
+     * @param takenAtMillis 원본이 만들어진 시각. **브라우저가 파일의 `lastModified`를 준다.**
+     *                      이걸 파일에 심어야 "찍은 순서"로 정렬할 수 있다 — 여러 장을 한 번에
+     *                      끌어다 놓으면 도착 순서가 뒤죽박죽이라 번호만으로는 순서가 안 맞는다
+     */
     @Transactional
-    public ScreenshotResponse save(Long memberId, Long entryId, String fileName, byte[] bytes) {
-        String contentType = validator.validateAndResolveContentType(
-                fileName, bytes.length, storageProperties.maxScreenshotBytes());
+    public ScreenshotResponse save(Long memberId, Long entryId, String fileName,
+                                   byte[] bytes, Long takenAtMillis) {
+        String contentType = validator.resolveContentType(fileName, bytes.length,
+                storageProperties.maxScreenshotBytes(), storageProperties.maxVideoBytes());
         // 확장자만 믿지 않는다 — 매직 넘버로 실제 형식을 확인한다 (K-3과 같은 검사)
-        validator.validateStored(bytes.length, storageProperties.maxScreenshotBytes(),
-                bytes, contentType);
+        validator.validateMagic(bytes, contentType);
 
         Path folder = folderOf(memberId, entryId, true);
-        String extension = extensionOf(fileName);
-        String stored = nextName(folder, extension);
+        String stored = nextName(folder, extensionOf(fileName));
 
         localFileStore.saveAs(folder, stored, bytes);
 
-        return new ScreenshotResponse(stored,
-                "/api/backlog/%d/screenshots/%s".formatted(entryId, stored),
-                bytes.length);
+        /*
+         * 원본 시각을 파일에 심는다. 안 심으면 "이 폴더에 넣은 순간"이 시각이 되어
+         * **1년 전 스크린샷 스무 장을 한꺼번에 넣으면 전부 같은 시각**이 된다
+         */
+        Path file = folder.resolve(stored);
+        if (takenAtMillis != null && takenAtMillis > 0) {
+            try {
+                Files.setLastModifiedTime(file, FileTime.fromMillis(takenAtMillis));
+            } catch (IOException e) {
+                // 못 심어도 파일은 멀쩡하다. 정렬만 도착 순서가 된다
+                log.warn("원본 시각을 심지 못했습니다. {}", stored, e);
+            }
+        }
+        return describe(entryId, folder, stored);
     }
 
     public byte[] read(Long memberId, Long entryId, String fileName) {
@@ -108,9 +133,21 @@ public class ScreenshotService {
         return fileNames.size();
     }
 
-    /** 탐색기로 열 경로. 일렉트론이 받아서 `shell.openPath`에 넘긴다 */
+    /**
+     * 탐색기로 열 경로. 일렉트론이 받아서 `shell.openPath`에 넘긴다.
+     *
+     * **여기서 폴더를 만든다** (사용자 결정 2026-08-28). 아직 한 장도 안 넣은 게임은 폴더가
+     * 없어서 탐색기가 "없는 경로"라고 하는데, **열어보려는 이유가 대개 직접 넣으려는 것**이다.
+     * 목록·읽기는 여전히 안 만든다 — 그건 만들 이유가 없다
+     */
+    @Transactional
     public String folderPath(Long memberId, Long entryId) {
         Path folder = folderOf(memberId, entryId, true);
+        try {
+            Files.createDirectories(folder);
+        } catch (IOException e) {
+            throw new UncheckedIOException("폴더를 만들지 못했습니다: " + folder, e);
+        }
         return folder.toAbsolutePath().toString();
     }
 
@@ -169,21 +206,6 @@ public class ScreenshotService {
         return "%03d.%s".formatted(max + 1, extension);
     }
 
-    /**
-     * 확장자 → MIME 타입.
-     *
-     * 저장할 때 **확장자와 매직 넘버를 대조**했으므로 여기서는 확장자를 믿어도 된다.
-     * 안 주면 `application/octet-stream`으로 나가서 새 탭에서 열면 다운로드가 된다
-     */
-    public static String contentTypeOf(String fileName) {
-        String ext = fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
-        return switch (ext) {
-            case "png" -> "image/png";
-            case "jpg", "jpeg" -> "image/jpeg";
-            case "webp" -> "image/webp";
-            default -> "application/octet-stream";
-        };
-    }
 
     private String extensionOf(String fileName) {
         return fileName.substring(fileName.lastIndexOf('.') + 1)
@@ -195,6 +217,15 @@ public class ScreenshotService {
             return Files.size(file);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
+        }
+    }
+
+    /** 파일 수정시각 = 원본을 찍은 시각. 저장할 때 심어둔 값이다 */
+    private String takenAt(Path file) {
+        try {
+            return Files.getLastModifiedTime(file).toInstant().toString();
+        } catch (IOException e) {
+            return null;
         }
     }
 }
