@@ -31,6 +31,14 @@ const CONNECTIONS_DEFAULT = { version: 1, profiles: [] };
 function readJson(file, fallback, mode) {
   try {
     const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+    /*
+     * ⚠️ **읽을 때도 권한을 맞춘다.** 쓸 때만 맞추면 **이미 0644로 만들어져 있던 파일은
+     * 다음 저장 전까지 그대로 열려 있다** — 자격증명 파일에는 그 유예가 없어야 한다.
+     * 이미 맞으면 chmod는 아무 일도 안 한다
+     */
+    if (mode !== undefined) {
+      try { fs.chmodSync(file, mode); } catch { /* 윈도우는 의미가 없다 */ }
+    }
     // 배열이나 문자열이 들어 있으면 형식 불일치다. 그것도 "깨짐"으로 친다
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       throw new Error("형식 불일치");
@@ -72,10 +80,21 @@ function readSettings() {
   return readJson(SETTINGS_FILE, SETTINGS_DEFAULT);
 }
 
-/** 쓰는 쪽이 아니라 **읽는 쪽**에서 기본값을 채운다 */
+/**
+ * 쓰는 쪽이 아니라 **읽는 쪽**에서 기본값을 채운다.
+ *
+ * ⚠️ `window`를 따로 합치는 이유 — 위의 병합은 **한 겹뿐이다.** 파일에 `"window": null`
+ * 이나 `{"width": 900}`만 들어 있으면 기본값 객체가 통째로 밀려나고, `createWindow`가
+ * `saved.width`를 읽다가 죽는다. **창이 안 뜨는데 오류도 안 보이는** 상태가 된다.
+ * 사람이 파일을 열어볼 수 있는 이상(그러라고 폴더 열기를 준다) 일어날 수 있는 일이다
+ */
 function getSettings() {
   const s = readSettings();
-  return { ...s, dataRoot: s.dataRoot || DEFAULT_DATA_ROOT };
+  return {
+    ...s,
+    dataRoot: s.dataRoot || DEFAULT_DATA_ROOT,
+    window: { ...SETTINGS_DEFAULT.window, ...(s.window ?? {}) },
+  };
 }
 
 /**

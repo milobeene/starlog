@@ -141,15 +141,22 @@ public class ScreenshotService {
         return localFileStore.resolve(folder, fileName);
     }
 
-    /** 여러 장 한 번에. 화면이 체크박스로 고른 것을 통째로 넘긴다 */
+    /**
+     * 여러 장 한 번에. 화면이 체크박스로 고른 것을 통째로 넘긴다.
+     *
+     * ⚠️ **실제로 지운 개수를 센다.** 예전엔 요청 개수를 그대로 돌려줬는데, 삭제가 실패를
+     * 삼키는 구조라 **한 장도 못 지우고도 "3장 삭제"라고 답할 수 있었다.**
+     * 폴더는 사람이 직접 건드리는 곳이라(§10-1) 목록과 실제가 어긋나는 게 예외가 아니다
+     */
     @Transactional
     public int delete(Long memberId, Long entryId, List<String> fileNames) {
         Path folder = folderOf(memberId, entryId, false);
         if (folder == null) {
             return 0;
         }
-        fileNames.forEach(name -> localFileStore.delete(folder, name));
-        return fileNames.size();
+        return (int) fileNames.stream()
+                .filter(name -> localFileStore.delete(folder, name))
+                .count();
     }
 
     /**

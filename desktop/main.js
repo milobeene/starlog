@@ -416,18 +416,21 @@ function stopBackend() {
 
   return new Promise((resolve) => {
     let done = false;
+    // 타이머를 지운다 — 안 지우면 5초 뒤 **이미 죽은 pid에** SIGKILL을 쏜다
+    let killer = null;
     const finish = () => {
       if (done) return;
       done = true;
+      clearTimeout(killer);
       resolve();
     };
     proc.once("exit", finish);
     proc.kill("SIGTERM");
 
     // 얌전히 안 죽으면 강제로. 그래도 H2 MVStore는 크래시에 견디게 만들어져 있다
-    setTimeout(() => {
+    killer = setTimeout(() => {
       try { proc.kill("SIGKILL"); } catch { /* 이미 죽었으면 무시 */ }
-      setTimeout(finish, 500);
+      killer = setTimeout(finish, 500);
     }, 5000);
   });
 }
@@ -989,5 +992,35 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => app.quit());
-app.on("before-quit", stopBackend);
-process.on("exit", stopBackend);
+
+/**
+ * 나가기 전에 **자바가 정말 죽을 때까지 기다린다.**
+ *
+ * 예전엔 `app.on("before-quit", stopBackend)`였는데, 일렉트론은 핸들러가 돌려준 Promise를
+ * 기다려주지 않는다 — 신호만 보내고 자기는 즉시 끝났다. H2가 `.mv.db` 잠금을 놓기 전에
+ * 일렉트론이 사라지므로, **끄고 바로 다시 켜면 `DB_IN_USE`가 났다.** 재현이 들쭉날쭉해서
+ * "가끔 안 열린다"로만 보이는 부류다.
+ *
+ * `preventDefault`로 종료를 한 번 막고, 다 기다린 뒤 스스로 다시 부른다.
+ * `quitting` 깃발이 없으면 두 번째 `quit()`이 또 여기로 들어와 영영 못 나간다
+ */
+let quitting = false;
+app.on("before-quit", (event) => {
+  if (quitting || !backend) return;
+  event.preventDefault();
+  quitting = true;
+  stopBackend().finally(() => app.quit());
+});
+
+/**
+ * 최후 방어선. `before-quit`을 안 거치는 종료(크래시, 터미널의 Ctrl+C)에서 좀비 자바가
+ * 남지 않게 한다.
+ *
+ * ⚠️ **`exit` 핸들러에서는 동기 코드만 돈다** — `stopBackend`의 기다리는 부분은 여기서
+ * 절대 실행되지 않는다. 그래도 `kill`은 동기라 신호는 나간다. 기다리는 건 위가 맡는다
+ */
+process.on("exit", () => {
+  if (backend) {
+    try { backend.kill("SIGTERM"); } catch { /* 이미 죽었으면 무시 */ }
+  }
+});

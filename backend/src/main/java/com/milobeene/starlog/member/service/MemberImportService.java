@@ -238,6 +238,16 @@ public class MemberImportService {
                            Map<String, Tag> tags,
                            Map<String, Genre> genres) {}
 
+    /**
+     * ⚠️ **`DefaultCatalogSeeder`가 넣는 것과 여기가 짝이 맞아야 한다.**
+     *
+     * 지금 시드는 **기본 플랫폼과 입력방식뿐**이고, 그래서 그 둘만 "있으면 재사용"이다.
+     * 나머지(기기·에뮬·구독·태그·장르)는 빈 계정에 없으니 무조건 만든다.
+     *
+     * 시드에 **한 종류라도 더 넣으면 여기도 같이 고쳐야 한다** — 안 고치면 유니크 제약에
+     * 걸려 **가져오기가 통째로 실패한다.** 실제로 그렇게 났고, 그동안 빈 앱에서는 가져오기가
+     * 아예 불가능했는데 아무도 몰랐다. 조용히 깨지는 종류라 여기 적어둔다
+     */
     private Catalog importCatalog(Member member, MemberExport.Catalog data) {
         Catalog catalog = new Catalog(new HashMap<>(), new HashMap<>(), new HashMap<>(),
                 new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>());

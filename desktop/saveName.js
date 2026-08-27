@@ -16,12 +16,23 @@
 const ALLOWED = /^[가-힣a-zA-Z0-9 _.-]+$/;
 const MAX_LENGTH = 50;
 
+/**
+ * 윈도우가 **파일 이름으로 못 쓰는 이름들** (10단계 대비).
+ *
+ * 장치 이름이라 확장자를 붙여도 안 된다 — `CON.mv.db`도 거부된다. 맥에서는 아무 문제
+ * 없이 만들어지므로 **여기서 안 막으면 윈도우에서만 터진다.** 지금 막는 게 싸다
+ */
+const RESERVED = /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])$/i;
+
 function isValid(name) {
   return typeof name === "string"
     && name.length > 0
     && name.length <= MAX_LENGTH
     && ALLOWED.test(name)
-    && !name.includes("..");
+    && !name.includes("..")
+    // 끝의 공백·점은 윈도우가 조용히 잘라낸다 → 목록의 이름과 실제 파일이 어긋난다
+    && !/[\s.]$/.test(name)
+    && !RESERVED.test(name.split(".")[0]);
 }
 
 /** 사람이 입력한 이름. 규칙을 어기면 거절한다 — 조용히 고쳐주면 목록에서 못 찾는다 */
@@ -45,7 +56,9 @@ function fit(base, suffix = "") {
   const cleaned = String(base).replace(/[^가-힣a-zA-Z0-9 _.-]+/g, "-").replace(/\.{2,}/g, ".");
   const room = Math.max(1, MAX_LENGTH - suffix.length);
   const head = cleaned.slice(0, room).replace(/[\s.]+$/, "") || "backup";
-  return head + suffix;
+  const name = head + suffix;
+  // 다듬고도 규칙을 어기면(예약어 등) 안전한 이름으로 물러난다. 조용히 못 쓰는 파일을 만드느니
+  return isValid(name) ? name : `backup${suffix}`;
 }
 
 module.exports = { assertSaveName, isValid, fit, MAX_LENGTH };

@@ -54,7 +54,7 @@ function publish(next: Task[]) {
   listeners.forEach((l) => l());
 }
 
-/** 시작하거나 갱신한다. 같은 종류는 하나만 둔다 — 두 번 누르면 새것이 이긴다 */
+/** 시작하거나 갱신한다. **같은 `id`는 하나만 둔다** — 두 번 누르면 새것이 이긴다 */
 export function putTask(task: Task) {
   publish([...tasks.filter((t) => t.id !== task.id), task]);
 }

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -223,6 +224,61 @@ class LocalMediaTest extends ControllerTestSupport {
         mockMvc.perform(get("/api/backlog/{id}/screenshots", entryId)
                         .header("X-Member-Id", member.getId()))
                 .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    /**
+     * 리뷰 2026-08-28. **영상 재생 탐색이 되려면 Range를 받아야 한다.**
+     *
+     * 예전엔 `byte[]`로 내보냈다 — Range를 처리할 방법이 아예 없어서 재생 막대를
+     * 끌 수가 없었고, 200MB 영상이 힙에 두 벌 올라갔다. `Resource`로 바꾼 것을 못 박는다
+     */
+    @Test
+    public void 스크린샷은_구간_요청을_받는다() throws Exception {
+        //given
+        Member member = saveMember();
+        Long entryId = entry(member);
+        mockMvc.perform(multipart("/api/backlog/{id}/screenshots", entryId)
+                        .file(new MockMultipartFile("file", "shot.png", "image/png", PNG))
+                        .header("X-Member-Id", member.getId()))
+                .andExpect(status().isOk());
+
+        //when — 앞 4바이트만 달라고 한다
+        mockMvc.perform(get("/api/backlog/{id}/screenshots/001.png", entryId)
+                        .header("X-Member-Id", member.getId())
+                        .header("Range", "bytes=0-3"))
+                //then — 206이 와야 브라우저가 탐색을 시도한다. 200이면 통째로 받는다
+                .andExpect(status().isPartialContent())
+                .andExpect(header().string("Content-Range", "bytes 0-3/" + PNG.length));
+
+        // Range 없이 부르면 여전히 전체다 — Accept-Ranges가 있어야 브라우저가 물어본다
+        mockMvc.perform(get("/api/backlog/{id}/screenshots/001.png", entryId)
+                        .header("X-Member-Id", member.getId()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Accept-Ranges", "bytes"));
+    }
+
+    /**
+     * 리뷰 2026-08-28. 삭제는 실패를 삼키므로 **요청 개수를 그대로 돌려주면 거짓말**이 된다.
+     * 폴더는 사람이 직접 건드리는 곳이라 "목록엔 있는데 파일은 없다"가 예외가 아니다
+     */
+    @Test
+    public void 없는_스크린샷을_지우면_개수에_안_센다() throws Exception {
+        //given
+        Member member = saveMember();
+        Long entryId = entry(member);
+        mockMvc.perform(multipart("/api/backlog/{id}/screenshots", entryId)
+                        .file(new MockMultipartFile("file", "shot.png", "image/png", PNG))
+                        .header("X-Member-Id", member.getId()))
+                .andExpect(status().isOk());
+
+        //when — 있는 것 하나 + 없는 것 둘
+        mockMvc.perform(post("/api/backlog/{id}/screenshots/delete", entryId)
+                        .header("X-Member-Id", member.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("[\"001.png\",\"404.png\",\"405.png\"]"))
+                //then — 3이 아니라 1이다
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.deleted").value(1));
     }
 
     private Long entry(Member member) {

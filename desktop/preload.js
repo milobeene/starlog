@@ -72,7 +72,9 @@ contextBridge.exposeInMainWorld("starlog", {
   launch: (request) => ipcRenderer.invoke("launch", request),
 
   /**
-   * 본 앱 → 입구로 되돌아간다. 백엔드를 죽이고 창을 `app://`로 다시 로드한다.
+   * 본 앱 → 입구로 되돌아간다. 창만 `app://`로 다시 로드한다.
+   *
+   * ⚠️ **백엔드는 안 죽인다** (9단계). 그래야 [최근 접속]이 즉시 복귀다
    *
    * 이 preload는 본 앱(`http://127.0.0.1:포트`)에도 붙는다 — 같은 창이니까.
    * 그래서 앱 안에서도 이 함수를 부를 수 있고, 그게 5단계의 모드 전환 전부다

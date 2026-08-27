@@ -68,12 +68,18 @@ public class LocalFileStore {
         return safeResolve(directory, fileName);
     }
 
-    /** 실패해도 예외를 던지지 않는다 — 이미 없는 파일을 지우는 것도 성공이다 */
-    public void delete(Path directory, String fileName) {
+    /**
+     * 실패해도 예외를 던지지 않는다 — 여러 장을 한 번에 지울 때 하나 때문에 전부 멈추면 안 된다.
+     *
+     * @return 실제로 지웠으면 true. **이미 없었거나 실패했으면 false다** — 부르는 쪽이
+     *         "몇 장 지웠다"를 사실대로 말할 수 있어야 한다
+     */
+    public boolean delete(Path directory, String fileName) {
         try {
-            Files.deleteIfExists(safeResolve(directory, fileName));
+            return Files.deleteIfExists(safeResolve(directory, fileName));
         } catch (IOException | InvalidInputException e) {
             log.warn("파일 삭제 실패 — 무시한다. {}", fileName, e);
+            return false;
         }
     }
 

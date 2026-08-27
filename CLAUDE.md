@@ -18,6 +18,7 @@ v1.0은 "내 앱을 데스크탑으로"가 아니라 **"각자 자기 인프라�
 - `docs/entity-design-v1.0.md` — 엔티티 설계서 (Phase 9 전면 개정)
 - `docs/db-baseline-v1.md` — 스키마 베이스라인 설계 근거. **DDL을 고치기 전에 읽을 것**
 - `docs/code-review-2026-08-26.md`, `docs/code-review-2026-08-27.md` — 리뷰 결과·조치·알려진 한계
+- `docs/code-review-2026-08-28.md` — **v1.0 전수 리뷰(22건 전부 조치).** 남은 미결과 10단계로 넘긴 것
 - `docs/capacity-planning.md` — 무료 티어 한도와 사용량 제한 설계 (v1.0에서 대부분 무효)
 - `docs/api-design-v0.2.md` — API 설계서 (Phase 2). 화면에서 역산한 엔드포인트
 - `docs/dto-design-v0.1.md` — DTO 설계 원칙 (H-1). 변환 위치·null 규약·검증 두 겹

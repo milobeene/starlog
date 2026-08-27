@@ -74,3 +74,8 @@ desktop/node_modules/
 desktop/dist/
 # 입구 화면용 정적 파일 사본 (build-desktop.sh가 만든다)
 desktop/web/
+
+# 편집 중 남는 부산물 — .bak 하나가 실제로 커밋된 적이 있다
+*.bak
+*.orig
+*.rej

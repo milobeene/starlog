@@ -91,7 +91,7 @@ function BacklogDetail() {
       }
     });
   }, []);
-  const { data, error, loading, reload } = useApi<BacklogDetail>(`/api/backlog/${entryId}`);
+  const { data, error, reload } = useApi<BacklogDetail>(`/api/backlog/${entryId}`);
   // 선택지는 편집 폼 전부가 공유한다 (기기·에뮬·계정·플랫폼·구독·사전)
   const options = useApi<OptionsResponse>("/api/me/options");
   const router = useRouter();

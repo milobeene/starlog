@@ -21,7 +21,6 @@ import PaletteEditor from "@/components/settings/PaletteEditor";
 import DeletedEntriesSection from "@/components/settings/DeletedEntriesSection";
 import { paletteOf, toPayload } from "@/lib/palette";
 import { BILLING_CYCLE_LABEL } from "@/lib/labels";
-import { API_BASE } from "@/lib/apiBase";
 import type {
   CompanyDictionary,
   FacetCount,
