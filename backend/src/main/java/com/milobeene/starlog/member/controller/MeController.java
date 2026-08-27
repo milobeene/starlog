@@ -4,14 +4,12 @@ import com.milobeene.starlog.common.quota.QuotaGuard;
 import com.milobeene.starlog.common.web.LoginMember;
 import com.milobeene.starlog.member.dto.MeResponse;
 import com.milobeene.starlog.member.dto.OptionsResponse;
-import com.milobeene.starlog.member.dto.PasswordChangeRequest;
 import com.milobeene.starlog.member.dto.ProfileUpdateRequest;
 import com.milobeene.starlog.common.util.AppClock;
 import com.milobeene.starlog.member.dto.MemberExport;
 import com.milobeene.starlog.member.service.MeQueryService;
 import com.milobeene.starlog.member.service.MemberExportService;
 import com.milobeene.starlog.member.service.MemberImportService;
-import com.milobeene.starlog.auth.service.GoogleAccountService;
 import com.milobeene.starlog.member.service.MemberService;
 import com.milobeene.starlog.member.service.WithdrawalService;
 import jakarta.validation.Valid;
@@ -39,7 +37,6 @@ public class MeController {
     private final MeQueryService meQueryService;
     private final MemberService memberService;
     private final WithdrawalService withdrawalService;
-    private final GoogleAccountService googleAccountService;
     /* WEB-ONLY: 일일 쿼터 (docs/web-only-inventory.md) */
     private final QuotaGuard quotaGuard;
     private final MemberExportService memberExportService;
@@ -105,24 +102,6 @@ public class MeController {
                               @Valid @RequestBody ProfileUpdateRequest request) {
         memberService.updateProfile(memberId, request.nickname(), request.memo(),
                 request.backgroundColors());
-    }
-
-    /**
-     * 구글 연결 해제 (FR-AUTH-08).
-     * 비밀번호가 없으면 거부된다 — 로그인 수단이 하나도 안 남는다 (BR-AUTH-01)
-     */
-    /** 비밀번호 변경·설정 (BR-AUTH-01). 구글 전용 계정이 비밀번호를 만드는 경로이기도 하다 */
-    @PutMapping("/password")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void changePassword(@LoginMember Long memberId,
-                               @Valid @RequestBody PasswordChangeRequest request) {
-        memberService.changePassword(memberId, request.currentPassword(), request.newPassword());
-    }
-
-    @DeleteMapping("/google")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void unlinkGoogle(@LoginMember Long memberId) {
-        googleAccountService.unlink(memberId);
     }
 
     /**

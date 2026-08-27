@@ -12,11 +12,10 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { Button, Field, FIELD_INPUT, FIELD_SELECT } from "@/components/ui/Field";
 import SettingsSection, { EmptyRow, Row } from "@/components/settings/SettingsSection";
 import MarkdownTextarea from "@/components/ui/MarkdownTextarea";
-import GoogleResultBanner from "@/components/auth/GoogleResultBanner";
 import MoneyText from "@/components/ui/Money";
 import { useApi } from "@/lib/useApi";
 import { api, ApiError, ERROR, errorMessage } from "@/lib/api";
-import { logout, refreshSession } from "@/lib/session";
+import { refreshSession } from "@/lib/session";
 import PaletteEditor from "@/components/settings/PaletteEditor";
 import QuotaSection from "@/components/settings/QuotaSection";
 import DeletedEntriesSection from "@/components/settings/DeletedEntriesSection";
@@ -45,10 +44,7 @@ type Dialog =
   | { kind: "device"; edit?: MemberDevice }
   | { kind: "emulator"; edit?: MemberEmulator }
   | { kind: "inputMethod"; edit?: MemberInputMethod }
-  | { kind: "subscription"; edit?: Subscription }
-  | { kind: "password" }
-  | { kind: "unlinkGoogle" }
-  | { kind: "withdraw" };
+  | { kind: "subscription"; edit?: Subscription };
 
 /**
  * 프로필 · 선택지 다섯 종 · 구독 · 사전 · 계정.
@@ -77,37 +73,11 @@ function SettingsContent() {
   const facets = useApi<FacetsResponse>("/api/backlog/facets");
   const companies = useApi<CompanyDictionary>("/api/backlog/companies");
   const [dialog, setDialog] = useState<Dialog>(null);
-  const [unlinkRequested, setUnlinkRequested] = useState(false);
 
   const refresh = () => {
     me.reload();
     facets.reload();
     companies.reload();
-  };
-
-  /*
-   * 구글 연결 해제 (FR-AUTH-08). 서버가 비밀번호 유무를 다시 검사하므로
-   * 화면의 disabled는 편의일 뿐 방어선이 아니다 — 실패 메시지를 그대로 보여준다.
-   *
-   * **"해제하는 중"은 상태가 아니라 파생값이다.** 응답이 온 순간에 끄면 refresh()가
-   * 돌아오기 전이라 me.data는 아직 googleLinked=true다 → "해제하는 중"이 잠깐
-   * "연결 해제"로 되돌아갔다가 데이터가 도착해야 "연결"로 바뀐다. 실패했다 성공한 것처럼 깜빡인다.
-   * 그래서 **눌렀는가**만 상태로 두고, 데이터가 실제로 바뀌면 파생값이 저절로 꺼지게 한다
-   * (effect에서 setState로 끄면 렌더가 한 번 더 돌고 리액트가 연쇄 렌더로 경고한다)
-   */
-  const unlinking = unlinkRequested && (me.data?.profile.googleLinked ?? true);
-
-  const unlinkGoogle = async () => {
-    setUnlinkRequested(true);
-    try {
-      await api.del("/api/me/google");
-      refresh();
-    } catch (caught) {
-      setUnlinkRequested(false);   // 실패는 즉시 푼다 — 되돌아갈 상태가 원래 상태다
-      // **다시 던진다.** ConfirmDialog가 실패를 잡아 창을 열어둔 채 문구를 띄운다 —
-      // 여기서 삼키면 성공한 것처럼 창이 닫히고 아무 일도 안 일어난 화면만 남는다
-      throw caught;
-    }
   };
 
   if (me.error) return <ErrorNotice error={me.error} onRetry={me.reload} />;
@@ -122,7 +92,6 @@ function SettingsContent() {
         />
 
         <div className="mt-8">
-          <GoogleResultBanner basePath="/settings" />
         </div>
 
         <div className="mt-2 flex flex-col gap-10">
@@ -365,105 +334,6 @@ function SettingsContent() {
             </div>
           </SettingsSection>
 
-          <SettingsSection title="계정">
-            <div className="flex flex-col gap-2">
-              {/*
-                이메일은 로그인 아이디라 바꾸려면 새 주소 인증·유니크 검증·pending 상태가 딸린다.
-                스펙(FR-AUTH-01~12)에 없는 기능이라 자리만 두고 막아뒀다
-              */}
-              <button
-                disabled
-                title="준비 중인 기능입니다. 이메일은 로그인 아이디로 사용되어 새 주소 인증 절차가 필요합니다."
-                className="cursor-not-allowed rounded-lg border border-white/10 px-4 py-3 text-left text-sm text-white/35"
-              >
-                이메일 변경
-                <span className="mt-0.5 block text-xs text-white/20">준비 중</span>
-              </button>
-
-              {/*
-                비밀번호가 **없는** 계정(구글 전용)은 새로 만들 수 없다 — 비밀번호가 생기면
-                이메일 로그인 계정이 되는데 그 경로엔 인증 메일이 필요하고, 지금은 보낼 수 없다.
-                이미 비밀번호가 있는 계정의 변경은 그대로 열려 있다
-              */}
-              {me.data?.profile.hasPassword ? (
-                <button
-                  onClick={() => setDialog({ kind: "password" })}
-                  className="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-left text-sm transition-colors hover:border-white/25"
-                >
-                  비밀번호 변경
-                  <span className="mt-0.5 block text-xs text-white/35">
-                    현재 비밀번호를 확인한 뒤 변경합니다
-                  </span>
-                </button>
-              ) : (
-                <button
-                  disabled
-                  title="자체 도메인이 없어 인증 메일을 보내 드릴 수 없습니다. Google 로그인만 이용하실 수 있습니다."
-                  className="cursor-not-allowed rounded-lg border border-white/10 px-4 py-3 text-left text-sm text-white/35"
-                >
-                  비밀번호 설정
-                  <span className="mt-0.5 block text-xs text-white/20">
-                    Google 로그인 전용 계정입니다. 인증 메일을 보내 드릴 수 없어 막혀 있습니다
-                  </span>
-                </button>
-              )}
-
-              {/*
-                연결 해제는 **비밀번호가 있을 때만** 허용한다 (BR-AUTH-01).
-                기준은 "이메일 인증됨"이 아니라 **로그인 수단이 남는가**다 — 구글로 가입하면
-                이메일은 인증돼 있는데 비밀번호가 없어서, 풀면 들어올 방법이 사라진다
-              */}
-              {me.data?.profile.googleLinked ? (
-                <button
-                  disabled={!me.data.profile.hasPassword || unlinking}
-                  // 되돌리려면 구글 재연결을 거쳐야 한다 — 한 번 묻는다
-                  onClick={() => setDialog({ kind: "unlinkGoogle" })}
-                  title={
-                    me.data.profile.hasPassword
-                      ? "해제 후에도 이메일과 비밀번호로 로그인하실 수 있습니다."
-                      : "비밀번호가 없어 해제하시면 로그인 수단이 남지 않습니다."
-                  }
-                  className={
-                    me.data.profile.hasPassword
-                      ? "rounded-lg border border-white/10 px-4 py-3 text-left text-sm transition-colors hover:border-white/25"
-                      : "cursor-not-allowed rounded-lg border border-white/10 px-4 py-3 text-left text-sm text-white/35"
-                  }
-                >
-                  <span className="flex items-center gap-2">
-                    {unlinking ? "해제하는 중" : "Google 계정 연결 해제"}
-                    <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
-                      연결됨
-                    </span>
-                  </span>
-                  <span className="mt-0.5 block text-xs text-white/35">
-                    {me.data.profile.hasPassword
-                      ? "해제하셔도 이메일과 비밀번호로 로그인하실 수 있습니다"
-                      : "비밀번호가 없어 해제하시면 로그인 수단이 남지 않습니다. 계정 정리는 아래 회원 탈퇴로 하실 수 있습니다"}
-                  </span>
-                </button>
-              ) : (
-                <a
-                  href={`${API_BASE}/oauth2/authorization/google`}
-                  className="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm transition-colors hover:border-white/25"
-                >
-                  Google 계정 연결
-                  <span className="mt-0.5 block text-xs text-white/35">
-                    연결하시면 구글 계정으로도 로그인하실 수 있습니다
-                  </span>
-                </a>
-              )}
-
-              <button
-                onClick={() => setDialog({ kind: "withdraw" })}
-                className="rounded-lg border border-red-500/20 px-4 py-3 text-left text-sm text-red-400 transition-colors hover:bg-red-500/10"
-              >
-                회원 탈퇴
-                <span className="mt-0.5 block text-xs text-red-400/50">
-                  탈퇴 요청 후 30일이 지나면 완전히 삭제됩니다
-                </span>
-              </button>
-            </div>
-          </SettingsSection>
 
           {/*
             **맨 아래다.** 되살리기·완전 삭제는 자주 쓰는 기능이 아니고, 위에 두면
@@ -518,43 +388,6 @@ function SettingsContent() {
       )}
       {dialog?.kind === "subscription" && (
         <SubscriptionDialog edit={dialog.edit} onClose={() => setDialog(null)} onSaved={refresh} />
-      )}
-      {dialog?.kind === "password" && (
-        <PasswordDialog onClose={() => setDialog(null)} onSaved={refresh} />
-      )}
-      {dialog?.kind === "unlinkGoogle" && (
-        <ConfirmDialog
-          title="Google 계정 연결 해제"
-          confirmLabel="해제하기"
-          message={
-            <>
-              해제하시면 Google 계정으로는 로그인하실 수 없게 됩니다.
-              <br />
-              이메일과 비밀번호로는 그대로 로그인하실 수 있고, 다시 연결하실 수도 있습니다.
-            </>
-          }
-          onConfirm={unlinkGoogle}
-          onClose={() => setDialog(null)}
-        />
-      )}
-
-      {dialog?.kind === "withdraw" && (
-        <ConfirmDialog
-          title="회원 탈퇴"
-          confirmLabel="탈퇴하기"
-          message={
-            <>
-              탈퇴하시면 <b className="text-white">즉시 로그아웃되며</b> 30일 후 기록이 완전히 삭제됩니다.
-              <br />
-              유예 기간 내에 다시 로그인하시면 복구하실 수 있습니다.
-            </>
-          }
-          onConfirm={async () => {
-            await api.del("/api/me");
-            await logout();
-          }}
-          onClose={() => setDialog(null)}
-        />
       )}
     </main>
   );
@@ -905,68 +738,6 @@ function ProfileDialog({
  * 비밀번호가 없는 계정(구글 가입)은 **현재 비밀번호 칸 자체를 안 보여준다** —
  * 없는 값을 물으면 뭘 넣어야 할지 알 수 없다. 서버도 그 경우엔 대조를 건너뛴다
  */
-/**
- * 비밀번호 **변경** 전용이다.
- *
- * 예전엔 "설정"(구글 전용 계정이 비밀번호를 새로 만드는 경로)도 겸했는데, 인증 메일을 보낼 수
- * 없어 그 경로를 닫으면서 함께 걷어냈다 — 비밀번호가 없는 계정은 버튼 자체가 비활성이라
- * 여기까지 오지 못한다
- */
-function PasswordDialog({
-  onClose,
-  onSaved,
-}: {
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [current, setCurrent] = useState("");
-  const [next, setNext] = useState("");
-  const [confirm, setConfirm] = useState("");
-
-  return (
-    <FormDialog
-      title="비밀번호 변경"
-      onClose={onClose}
-      onSubmit={async () => {
-        if (next !== confirm) throw new Error("새 비밀번호가 서로 다릅니다");
-        if (next.length < 4 || next.length > 64) throw new Error("비밀번호는 4~64자로 입력해 주세요");
-        await api.put("/api/me/password", { currentPassword: current, newPassword: next });
-        onSaved();
-      }}
-    >
-      <Field label="Current Password">
-        <input
-          type="password"
-          autoComplete="current-password"
-          value={current}
-          onChange={(event) => setCurrent(event.target.value)}
-          className={FIELD_INPUT}
-        />
-      </Field>
-
-      <Field label="New Password" hint="4~64자">
-        <input
-          type="password"
-          autoComplete="new-password"
-          value={next}
-          onChange={(event) => setNext(event.target.value)}
-          className={FIELD_INPUT}
-        />
-      </Field>
-
-      <Field label="Confirm">
-        <input
-          type="password"
-          autoComplete="new-password"
-          value={confirm}
-          onChange={(event) => setConfirm(event.target.value)}
-          className={FIELD_INPUT}
-        />
-      </Field>
-    </FormDialog>
-  );
-}
-
 /** 이름 하나뿐인 선택지(플랫폼·입력 방식)의 추가·수정 */
 function NameDialog({
   title,

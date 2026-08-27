@@ -39,7 +39,7 @@ public class AuditLogService {
                         AuditLog.of(actor, action, targetType, targetId, requestIp, userAgent)));
     }
 
-    // AuthTokenCleaner.cleanUp과 같은 이유 — this.purge() 자기호출은 프록시를 안 거치므로
+    // this.purge() 자기호출은 프록시를 안 거치므로
     // 트랜잭션을 여기서 연다. 없으면 @Modifying 벌크가 TransactionRequiredException으로 매일 터진다
     @Transactional
     @Scheduled(cron = "${app.cleanup.audit-log-cron}")

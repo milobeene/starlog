@@ -36,11 +36,6 @@ dependencies {
 	// RestClient 자동 설정(RestClient.Builder 빈). 부트 4에서 HTTP 클라이언트가 모듈로 분리돼
 	// starter-webmvc만으로는 안 딸려온다 — 서버(webmvc)와 클라이언트(restclient)가 별개다
 	implementation 'org.springframework.boot:spring-boot-starter-restclient'
-	implementation 'org.springframework.boot:spring-boot-starter-security'
-	implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
-	// 세션을 DB로 (O-4). Render 무료는 15분 무활동이면 JVM이 죽는데, 메모리 세션이면
-	// 깰 때마다 전원 로그아웃이 된다. 스키마는 Flyway V2가 만든다 (initialize-schema=never)
-	implementation 'org.springframework.boot:spring-boot-starter-session-jdbc'
 	// 동적 쿼리 (L-1). 원본 com.querydsl은 5.1.0에서 멈췄고 Jakarta EE 11 대응이 불확실해
 	// 활발히 유지되는 OpenFeign 포크를 쓴다. Boot 4 / Hibernate 7에서 도는 것을 스파이크로 확인했다
 	implementation 'io.github.openfeign.querydsl:querydsl-jpa:7.0'
@@ -64,9 +59,6 @@ dependencies {
 	 * dev의 H2 TCP 서버도 2.3.232라 드라이버를 맞춰야 한다 —
 	 * 예전에 같은 불일치로 Flyway 메타데이터 조회가 깨진 적이 있다 (O-1)
 	 */
-	// 인증 메일 발송 (OI-02 결정 — Resend). SMTP 대신 HTTP API라 아웃바운드 25번 포트가 막혀도 나간다
-	implementation 'com.resend:resend-java:3.1.0'
-
 	runtimeOnly 'com.h2database:h2:2.3.232'
 	// prod(Neon). dev는 계속 H2라 둘 다 클래스패스에 있고, 프로필이 URL로 가른다
 	runtimeOnly 'org.postgresql:postgresql'
@@ -89,7 +81,6 @@ dependencies {
 	 */
 	testImplementation 'org.testcontainers:testcontainers'
 	testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
-	testImplementation 'org.springframework.boot:spring-boot-starter-security-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
 	testCompileOnly 'org.projectlombok:lombok'

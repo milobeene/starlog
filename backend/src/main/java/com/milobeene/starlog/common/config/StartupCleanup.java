@@ -1,7 +1,6 @@
 package com.milobeene.starlog.common.config;
 
 import com.milobeene.starlog.admin.service.AuditLogService;
-import com.milobeene.starlog.auth.service.AuthTokenCleaner;
 import com.milobeene.starlog.member.service.WithdrawalService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -39,7 +38,6 @@ import org.springframework.stereotype.Component;
 @Order(3)
 public class StartupCleanup implements ApplicationRunner {
 
-    private final AuthTokenCleaner authTokenCleaner;
     private final AuditLogService auditLogService;
     private final WithdrawalService withdrawalService;
 
@@ -49,7 +47,6 @@ public class StartupCleanup implements ApplicationRunner {
          * 셋을 각각 감싼다 — 하나가 실패해도 나머지는 돌아야 하고,
          * 무엇보다 **정리 실패가 기동을 막으면 안 된다.** 서비스는 정리 없이도 멀쩡히 돈다
          */
-        attempt("만료 토큰", authTokenCleaner::cleanUp);
         attempt("감사 로그", auditLogService::cleanUp);
         attempt("탈퇴 유예 만료", withdrawalService::purgeExpired);
     }

@@ -3,11 +3,16 @@ package com.milobeene.starlog.member.repository;
 import com.milobeene.starlog.common.repository.BaseRepository;
 import com.milobeene.starlog.member.domain.Member;
 
+import java.util.Optional;
+
 /**
  * 인터페이스만 선언하면 스프링이 런타임에 구현체를 만들어 빈으로 등록한다.
  * @Repository도 필요 없다 — Repository 상속 자체가 등록 신호다
  */
 public interface MemberRepository extends BaseRepository<Member, Long> {
+
+    /** 이 설치본의 주인 (v1.0). 가장 먼저 만들어진 회원이다 — OwnerService 주석 참고 */
+    Optional<Member> findFirstByOrderByIdAsc();
 
     /**
      * 메서드 이름만으로 쿼리가 만들어진다 (파생 쿼리).

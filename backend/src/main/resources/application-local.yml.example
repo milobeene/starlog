@@ -6,13 +6,6 @@
 # 프로필을 dev와 함께 쓰는 이유 — local은 자격증명만 얹는 파일이고,
 # 시드·H2 설정 같은 개발 환경은 dev가 계속 담당해야 한다.
 spring:
-  security:
-    oauth2:
-      client:
-        registration:
-          google:
-            client-id: 여기에-클라이언트-ID
-            client-secret: 여기에-클라이언트-시크릿
 
 app:
   # ── IGDB (Phase 4). 게임 마스터 데이터 출처.

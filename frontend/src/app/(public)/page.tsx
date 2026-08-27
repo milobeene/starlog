@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import EntryLoader from "@/components/ui/EntryLoader";
-import { logout, useSession } from "@/lib/session";
+import { useSession } from "@/lib/session";
 
 /**
  * 표지 한 장. 서비스 이름이 주인공이고 버튼은 둘뿐이다.
@@ -72,25 +72,16 @@ export default function LandingPage() {
               ready ? "opacity-100" : "pointer-events-none opacity-0"
             }`}
           >
-            {session.status === "member" ? (
-              <>
-                <Link href="/dashboard" className={BUTTON}>
-                  Continue as {session.me.profile.nickname}
-                </Link>
-                <button onClick={() => void logout()} className={BUTTON}>
-                  Log out
-                </button>
-              </>
-            ) : (
-              <>
-                <Link href="/login" className={BUTTON}>
-                  Log in
-                </Link>
-                <Link href="/signup" className={BUTTON}>
-                  Sign up
-                </Link>
-              </>
-            )}
+            {/*
+              ## 임시 화면이다 — 5단계에서 갈아끼운다
+              여기가 v1.0의 **모드 선택** 자리다: [로컬 모드] / [클라우드 모드].
+              그때 이 화면은 스프링이 아니라 **일렉트론이 `app://`로 직접 로드**한다 —
+              백엔드를 띄우기 *전에* 모드를 골라야 하기 때문이다 (architecture §2, 결정 40).
+              지금은 인증만 걷어낸 상태라 들어가는 문 하나만 둔다
+            */}
+            <Link href="/dashboard" className={BUTTON}>
+              들어가기
+            </Link>
           </div>
         </div>
       </div>

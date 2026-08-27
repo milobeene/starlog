@@ -1,6 +1,5 @@
 package com.milobeene.starlog.member.service;
 
-import com.milobeene.starlog.auth.security.SessionInvalidator;
 import com.milobeene.starlog.common.storage.FileStoragePort;
 import com.milobeene.starlog.common.exception.ConflictException;
 import com.milobeene.starlog.common.exception.NotFoundException;
@@ -33,7 +32,6 @@ public class WithdrawalService {
 
     private final MemberRepository memberRepository;
     private final MemberPurgeService memberPurgeService;
-    private final SessionInvalidator sessionInvalidator;
     private final FileStoragePort fileStorage;
 
     @Transactional
@@ -47,7 +45,6 @@ public class WithdrawalService {
 
         // 세션에 실린 권한은 로그인 시점에 굳는다. 안 끊으면 유예 상태인데도
         // 기존 탭에서는 ROLE_USER로 계속 돌아다닐 수 있다
-        sessionInvalidator.expireAllSessionsOf(memberId);
     }
 
     @Transactional
@@ -58,7 +55,6 @@ public class WithdrawalService {
         }
 
         member.restore();
-        sessionInvalidator.expireAllSessionsOf(memberId);   // 권한을 다시 굳히려면 재로그인해야 한다
     }
 
     /**

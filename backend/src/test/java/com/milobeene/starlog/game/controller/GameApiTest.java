@@ -234,17 +234,6 @@ class GameApiTest extends ControllerTestSupport {
                 .andExpect(status().isBadRequest());
     }
 
-    @Test
-    public void 일반_회원은_재동기화할_수_없다() throws Exception {
-        //given
-        Game game = saveCatalogGame("Hollow Knight", "9767");
-
-        //when //then — 인가는 SecurityConfig의 /api/admin/** 규칙이 건다
-        mockMvc.perform(post("/api/admin/games/{gameId}/resync", game.getId())
-                        .header("X-Member-Id", saveMember().getId()))
-                .andExpect(status().isForbidden());
-    }
-
     private Game saveCatalogGame(String name, String externalId) {
         Game game = Game.fromCatalog(name, externalId, LocalDateTime.now());
         gameRepository.persist(game);

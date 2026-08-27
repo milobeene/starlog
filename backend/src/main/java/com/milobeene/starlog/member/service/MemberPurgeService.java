@@ -55,7 +55,6 @@ public class MemberPurgeService {
              * 매일 조용히 실패**했다 — purgeExpired가 예외를 삼키고 로그만 남기기 때문이다
              */
             "delete from UsageQuota q where q.id.memberId = :memberId",
-            "delete from AuthToken t where t.member.id = :memberId",
             "delete from AuditLog l where l.actor.id = :memberId",
             "delete from Subscription s where s.member.id = :memberId",
             // 선택지 5종. 계정이 플랫폼을 참조하므로 계정 → 플랫폼 순서를 지켜야 한다

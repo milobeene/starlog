@@ -4,6 +4,15 @@ import { useSyncExternalStore } from "react";
 import { api, ApiError } from "./api";
 import type { MeResponse } from "./types";
 
+/**
+ * ## v1.0에서 뜻이 바뀌었다
+ *
+ * 예전엔 "로그인했는가"를 담는 세션 상태였다. 로그인이 사라지면서
+ * **"내 프로필을 받아왔는가"**가 됐다 — 닉네임·배경색·역할이 화면 여섯 곳에서 쓰인다.
+ * `guest`는 이제 서버가 401/403을 줄 때만 나오는데, 그런 경로가 없어서
+ * 사실상 loading → member 두 상태만 돈다. 타입은 남겨둔다 —
+ * 백엔드가 안 떴을 때(일렉트론 기동 중)를 loading으로 구분해야 하기 때문이다
+ */
 export type SessionState =
   | { status: "loading"; me: null }
   | { status: "guest"; me: null }
@@ -145,17 +154,4 @@ export function clearSessionCache() {
   generation += 1;
   inFlight = null;
   publish({ status: "loading", me: null });
-}
-
-/** 로그아웃은 성공 시 204. 세션을 무효화하고 JSESSIONID를 지운다 */
-export async function logout(): Promise<void> {
-  try {
-    await api.post("/api/auth/logout");
-  } catch {
-    // 삼킨다 — 호출부가 전부 `void logout()`이라 안 잡으면 unhandled rejection이 뜬다.
-    // 서버가 못 받았어도 아래에서 캐시를 비우고 나가는 편이 낫다
-  } finally {
-    clearSessionCache();          // 캐시를 안 지우면 돌아온 입구가 여전히 로그인 상태로 보인다
-    window.location.href = "/";
-  }
 }

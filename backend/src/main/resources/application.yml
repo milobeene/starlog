@@ -29,58 +29,8 @@ spring:
     console:
       enabled: true
 
-  # 세션 저장소 (O-4). 스키마 주인은 Flyway(V2)라 Spring Session이 제 스크립트를 못 돌리게 막는다.
-  # never가 아니면 기본값 embedded가 H2(dev)에서만 몰래 테이블을 만들어, dev는 되는데
-  # prod에서만 "테이블 없음"으로 죽는 비대칭이 생긴다
-  session:
-    jdbc:
-      initialize-schema: never
-    # 로그인 유지 기간. 기본 30분은 "가끔 들어오는 앱"에 짧다
-    timeout: 14d
-
-# 세션 쿠키 (O-3). dev는 프론트·백엔드가 둘 다 localhost라 **동일 사이트**로 취급되어
-# 기본값 Lax로 충분하다. 배포는 vercel.app ↔ onrender.com이라 사이트가 갈리므로
-# application-prod.yml이 SameSite=None으로 덮는다
-server:
-  servlet:
-    session:
-      cookie:
-        same-site: lax
-        secure: false
-        http-only: true
-
 # 배치 주기. 테스트에서는 절대 안 도는 값으로 덮는다 (application-test.yml)
 app:
-  # 이메일 가입 허용 목록 (OI-02 후속). **비우면 제한이 풀린다.**
-  #
-  # 왜 막았나 — 인증 메일을 보낼 방법이 없다. Resend는 도메인 인증 없이는 계정 소유자에게만
-  # 보내주고, 그 유일한 우회로였던 SMTP는 Render 무료 플랜이 2025-09부터 아웃바운드를 막았다.
-  # 메일이 안 가면 미인증 상태로 남아 **로그인이 영영 403이다**(I-4) — 가입시키는 게 더 나쁘다.
-  # 구글 로그인은 구글이 이메일 소유를 확인해주므로 메일 발송이 필요 없다.
-  # 도메인을 사서 인증하면 이 값을 비우는 것만으로 원복된다
-  signup:
-    email-allowlist: ${SIGNUP_EMAIL_ALLOWLIST:milo.beene@gmail.com}
-
-    # 가입 승인제 (FR-ADM-06). 무료 티어로 배포하므로 아무나 들어오면 용량이 먼저 터진다.
-    # 가입은 열어두되 관리자가 승인해야 로그인이 된다 — 미승인 계정은 세션이 안 생겨서
-    # DB 조회도 커버 업로드도 도달하지 못한다
-    require-approval: ${SIGNUP_REQUIRE_APPROVAL:true}
-
-  # 인증 메일 (OI-02 — Resend). 키가 없으면 콘솔에만 찍힌다.
-  # SMTP가 아니라 HTTP API를 쓴다 — 배포처가 25/587 아웃바운드를 막아도 나간다
-  mail:
-    api-key: ${RESEND_API_KEY:}
-    from: ${MAIL_FROM:onboarding@resend.dev}
-    frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
-
-  # 크로스 도메인 허용 오리진 (N-2). 배포 때 CORS_ALLOWED_ORIGINS로 vercel 도메인을 더한다.
-  # allowCredentials=true라 와일드카드를 못 쓴다 — 반드시 명시 목록
-  cors:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
-
-  # IGDB (J-7). 자격증명은 환경변수 또는 application-local.yml로만 들어온다.
-  # ${VAR:} 는 "없으면 빈 문자열"이라 자격증명 없이도 기동한다 — 호출 시점에 502로 끊긴다.
-  # 나머지 값의 기본값은 IgdbProperties의 compact 생성자가 들고 있다
   igdb:
     client-id: ${IGDB_CLIENT_ID:}
     client-secret: ${IGDB_CLIENT_SECRET:}
@@ -107,7 +57,6 @@ app:
   # 새벽에 깨어 있지 않다. 실제 정리는 StartupCleanup(기동 시 따라잡기)이 한다.
   # 아래 크론은 언젠가 상시 켜진 서버가 됐을 때를 위해 남겨둔다 (도커 TZ가 Asia/Seoul이다)
   cleanup:
-    auth-token-cron: "0 30 4 * * *"      # 매일 04:30 KST
     audit-log-cron: "0 0 5 * * *"        # 매일 05:00 KST
   withdrawal:
     purge-cron: "0 0 3 * * *"            # 매일 03:00 KST

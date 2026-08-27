@@ -6,7 +6,7 @@ import com.milobeene.starlog.backlog.exception.RevivableEntryException;
 import com.milobeene.starlog.backlog.domain.CoverImage;
 import com.milobeene.starlog.backlog.repository.BacklogEntryRepository;
 import com.milobeene.starlog.backlog.repository.CoverImageRepository;
-import com.milobeene.starlog.auth.service.AfterCommit;
+import com.milobeene.starlog.common.util.AfterCommit;
 import com.milobeene.starlog.common.storage.FileStoragePort;
 import jakarta.persistence.EntityManager;
 import com.milobeene.starlog.common.exception.ConflictException;

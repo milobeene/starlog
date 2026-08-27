@@ -143,63 +143,6 @@ class MeControllerTest extends ControllerTestSupport {
     }
 
 
-    @Test
-    public void 현재_비밀번호가_틀리면_변경되지_않는다() throws Exception {
-        //given
-        Member member = saveMember();   // 비밀번호 1111
-
-        //when //then — 세션 탈취만으로 계정을 가져가는 경로를 막는다
-        mockMvc.perform(changePassword(member, "\"wrong\"", "9999"))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    public void 현재_비밀번호가_맞으면_변경된다() throws Exception {
-        //given
-        Member member = saveMember();
-
-        //when
-        mockMvc.perform(changePassword(member, "\"1111\"", "9999"))
-                .andExpect(status().isNoContent());
-        em.flush();
-        em.clear();
-
-        //then — 새 비밀번호로 로그인된다
-        assertThat(passwordEncoder.matches("9999", reloadMember(member).getPassword())).isTrue();
-    }
-
-    @Test
-    public void 구글_전용_계정은_비밀번호를_설정할_수_없다() throws Exception {
-        //given — 비밀번호가 생기면 이메일 로그인 계정이 되는데, 그 경로엔 인증 메일이 필요하다.
-        // 지금은 메일을 보낼 수 없어 막아뒀다 (OI-02 후속)
-        Member member = Member.signUpWithGoogle(
-                "g" + System.nanoTime() + "@example.com", "구글러",
-                "sub-" + System.nanoTime(), true);
-        em.persist(member);
-        em.flush();
-
-        //when //then — currentPassword를 안 보내도 400이다
-        mockMvc.perform(changePassword(member, "null", "9999"))
-                .andExpect(status().isBadRequest());
-        em.clear();
-        assertThat(reloadMember(member).hasPassword()).isFalse();
-    }
-
-    @Test
-    public void 새_비밀번호가_4자_미만이면_400() throws Exception {
-        Member member = saveMember();
-        mockMvc.perform(changePassword(member, "\"1111\"", "123"))
-                .andExpect(status().isBadRequest());
-    }
-
-    private org.springframework.test.web.servlet.RequestBuilder changePassword(
-            Member member, String currentJson, String next) {
-        return put("/api/me/password")
-                .header("X-Member-Id", member.getId())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"currentPassword\":" + currentJson + ",\"newPassword\":\"" + next + "\"}");
-    }
-
     private Member reloadMember(Member member) {
         return em.find(Member.class, member.getId());
     }

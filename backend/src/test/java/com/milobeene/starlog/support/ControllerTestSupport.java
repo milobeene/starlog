@@ -3,8 +3,6 @@ package com.milobeene.starlog.support;
 import com.milobeene.starlog.game.domain.Game;
 import com.milobeene.starlog.game.repository.GameRepository;
 import com.milobeene.starlog.member.domain.Member;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
 import jakarta.persistence.EntityManager;
@@ -82,11 +80,9 @@ public abstract class ControllerTestSupport {
     @Autowired protected FakeFileStorage storage;
 
     /**
-     * 모든 요청에 CSRF 토큰을 기본으로 실어준다.
-     *
-     * I-3에서 CSRF를 켜면서 쓰기 테스트가 전부 403이 됐다. 테스트 100개에 .with(csrf())를
-     * 붙이는 대신 defaultRequest로 한 곳에서 처리한다 — 병합되어 모든 요청에 적용된다.
-     * CSRF 자체가 동작하는지는 CsrfTest에서 토큰 없이 보내 따로 확인한다.
+     * v1.0에서 인증이 사라지면서 `springSecurity()`·`csrf()` 설정이 필요 없어졌다.
+     * 컨트롤러 테스트가 "누구인 척"하는 건 `X-Member-Id` 헤더가 맡는다
+     * (LoginMemberArgumentResolver 주석 참고)
      */
     @BeforeEach
     void setUpMockMvc() {
@@ -94,13 +90,9 @@ public abstract class ControllerTestSupport {
         catalog.reset();
         storage.reset();
 
-        mockMvc = MockMvcBuilders.webAppContextSetup(context)
-                .apply(springSecurity())
-                .defaultRequest(get("/").with(csrf()))
-                .build();
+        mockMvc = MockMvcBuilders.webAppContextSetup(context).build();
     }
     @Autowired protected GameRepository gameRepository;
-    @Autowired protected org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
 
     /**
      * nanoTime으로 이메일 유니크 제약을 피한다 — 한 테스트가 회원을 여럿 만들 수 있다.
@@ -109,7 +101,7 @@ public abstract class ControllerTestSupport {
      */
     protected Member saveMember() {
         Member member = Member.signUpWithEmail(
-                "t" + System.nanoTime() + "@example.com", passwordEncoder.encode("1111"), "테스터");
+                "t" + System.nanoTime() + "@example.com", "(no-login)", "테스터");
         em.persist(member);
         return member;
     }

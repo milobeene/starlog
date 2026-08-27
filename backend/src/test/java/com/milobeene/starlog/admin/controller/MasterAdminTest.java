@@ -93,19 +93,6 @@ class MasterAdminTest extends ControllerTestSupport {
                 .andExpect(status().isBadRequest());
     }
 
-    @Test
-    public void 일반_회원은_병합할_수_없다() throws Exception {
-        //given
-        Member member = saveMember();
-        Game a = saveGame("A");
-        Game b = saveGame("B");
-
-        //when //then
-        mockMvc.perform(post("/api/admin/games/{source}/merge-into/{target}", a.getId(), b.getId())
-                        .header("X-Member-Id", member.getId()))
-                .andExpect(status().isForbidden());
-    }
-
     private Member saveAdmin() {
         Member admin = saveMember();
         admin.promoteToAdmin();

@@ -119,14 +119,6 @@ class BacklogControllerTest extends ControllerTestSupport {
     }
 
     @Test
-    /** I-3 이후 인증 없는 요청은 401이다. 302 리다이렉트가 아니라 JSON이어야 한다 */
-    public void 인증이_없으면_401이다() throws Exception {
-        mockMvc.perform(get("/api/backlog"))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
-    }
-
-    @Test
     public void 지원하지_않는_정렬이면_400이다() throws Exception {
         Member member = saveMember();
 

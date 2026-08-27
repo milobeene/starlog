@@ -110,13 +110,5 @@ class ValidationTest extends ControllerTestSupport {
                 .andExpect(status().isBadRequest());
     }
 
-    @Test
-    /** dev 헤더가 숫자가 아니면 인증을 못 채운다 → 400이 아니라 401 (I-3) */
-    public void 회원_헤더가_숫자가_아니면_401이다() throws Exception {
-        mockMvc.perform(get("/api/backlog").header("X-Member-Id", "abc"))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
-    }
-
 
 }

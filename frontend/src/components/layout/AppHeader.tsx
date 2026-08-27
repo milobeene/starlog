@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Dropdown from "@/components/ui/Dropdown";
 import HeaderSymbol from "./HeaderSymbol";
-import { logout, useSession } from "@/lib/session";
+import { useSession } from "@/lib/session";
 
 const LEFT = [{ href: "/dashboard", label: "Dashboard" }];
 const RIGHT = [
@@ -135,25 +135,14 @@ export default function AppHeader() {
               </Link>
 
               {/*
-                관리자에게만 보인다. **화면 숨김은 편의일 뿐 방어선이 아니다** —
-                /api/admin/** 는 서버가 hasRole("ADMIN")으로 막는다 (AUTH-P2)
+                v1.0에는 권한이 없다 — 자기 DB의 주인이니 전부 열려 있다.
+                이 메뉴는 8단계에서 게임 마스터 편집이 일반 기능으로 승격되면 사라진다
               */}
               {profile?.role === "ADMIN" && (
                 <Link href="/admin" onClick={close} className="menu-item">
                   Admin
                 </Link>
               )}
-
-              <div className="my-1 border-t border-white/10" />
-              <button
-                onClick={() => {
-                  close();
-                  void logout();
-                }}
-                className="menu-item !text-red-400 hover:!text-red-300"
-              >
-                Sign out
-              </button>
             </>
           )}
         </Dropdown>

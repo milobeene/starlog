@@ -1,13 +1,11 @@
 package com.milobeene.starlog.admin.web;
 
 import com.milobeene.starlog.admin.service.AuditLogService;
-import com.milobeene.starlog.auth.security.MemberPrincipal;
+import com.milobeene.starlog.member.service.OwnerService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
@@ -25,19 +23,17 @@ import org.springframework.web.servlet.HandlerInterceptor;
 public class AuditLogInterceptor implements HandlerInterceptor {
 
     private final AuditLogService auditLogService;
+    private final OwnerService ownerService;
 
     @Override
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response,
                                 Object handler, Exception ex) {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null
-                || !(authentication.getPrincipal() instanceof MemberPrincipal principal)) {
-            return;
-        }
+        // v1.0에는 로그인이 없다. 행위자는 언제나 이 설치본의 주인이다
+        Long actorId = ownerService.ownerId();
 
         try {
             auditLogService.record(
-                    principal.getMemberId(),
+                    actorId,
                     "%s %s".formatted(request.getMethod(), request.getRequestURI()),
                     "HTTP",
                     null,

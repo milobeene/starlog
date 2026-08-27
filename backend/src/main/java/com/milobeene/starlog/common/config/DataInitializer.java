@@ -29,7 +29,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Profile;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -61,9 +60,11 @@ public class DataInitializer implements ApplicationRunner {
     @RequiredArgsConstructor
     static class InitService {
 
+        /** v1.0에는 로그인이 없다 — 비밀번호 자리에 넣을 것이 없다 */
+        private static final String NO_PASSWORD = "(no-login)";
+
         private final EntityManager em;
-        private final PasswordEncoder passwordEncoder;
-        private final DefaultCatalogSeeder defaultCatalogSeeder;
+            private final DefaultCatalogSeeder defaultCatalogSeeder;
 
         /**
          * 선택지는 이제 전역 마스터가 아니라 **회원 소유**다. 그래서 회원을 만든 뒤에 붙인다 —
@@ -77,7 +78,7 @@ public class DataInitializer implements ApplicationRunner {
             }
             // 원문 저장 금지 (AUTH-P3). 시드도 예외가 아니다 — dev DB를 그대로 덤프해도 원문이 안 남는다
             Member member = Member.signUpWithEmail(
-                    "milo.beene@gmail.com", passwordEncoder.encode("1111"), "Milo Beene");
+                    "milo.beene@gmail.com", NO_PASSWORD, "Milo Beene");
             member.verifyEmail();   // 시드 계정은 바로 로그인되게 (I-4 이후 미인증은 로그인 403)
             member.approve(LocalDateTime.now());   // 승인제(FR-ADM-06)에 시드가 잠기지 않게
             /*
@@ -95,7 +96,7 @@ public class DataInitializer implements ApplicationRunner {
              * 만들지만(OI-07), 로컬에서 매번 환경변수를 넣기 번거로워 dev 시드에 하나 둔다.
              * 이메일 자리에 "admin"을 넣는다 — 형식 검증은 가입 DTO에만 있고 로그인은 안 본다
              */
-            Member admin = Member.signUpWithEmail("admin", passwordEncoder.encode("1111"), "관리자");
+            Member admin = Member.signUpWithEmail("admin", NO_PASSWORD, "관리자");
             admin.verifyEmail();
             admin.approve(LocalDateTime.now());
             admin.promoteToAdmin();
