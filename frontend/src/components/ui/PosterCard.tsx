@@ -19,7 +19,7 @@ export default function PosterCard({
   metaClassName?: string;
 }) {
   return (
-    <Link href={`/library/${entryId}`} className="group flex cursor-pointer flex-col">
+    <Link href={`/library/detail?entry=${entryId}`} className="group flex cursor-pointer flex-col">
       <div className="mb-4">
         <GameCover coverUrl={coverUrl} coverImageId={coverImageId} name={name} />
       </div>

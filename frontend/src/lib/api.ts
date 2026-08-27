@@ -1,3 +1,5 @@
+import { API_BASE } from "@/lib/apiBase";
+
 /**
  * 백엔드 호출 단일 창구.
  *
@@ -7,7 +9,7 @@
  *   3. { code, message }       백엔드가 전 계층에서 통일해 주는 에러 형태
  */
 
-const BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
+const BASE = API_BASE;
 
 /** dev 편의 — 백엔드 dev 프로필의 X-Member-Id 헤더 인증. prod엔 이 빈이 없다 */
 const DEV_MEMBER_ID = process.env.NEXT_PUBLIC_DEV_MEMBER_ID;

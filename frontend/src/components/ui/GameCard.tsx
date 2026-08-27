@@ -16,7 +16,7 @@ export default function GameCard({ card }: { card: BacklogCard }) {
   const lastLine = formatLastPlaythrough(card.lastPlaythrough);
 
   return (
-    <Link href={`/library/${card.entryId}`} className="group flex cursor-pointer flex-col">
+    <Link href={`/library/detail?entry=${card.entryId}`} className="group flex cursor-pointer flex-col">
       <div className="relative mb-3">
         <GameCover
           coverUrl={card.coverUrl}

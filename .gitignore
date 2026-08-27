@@ -66,3 +66,9 @@ design-assets/
 ### DB 백업 ###
 # Neon 덤프. 자격증명은 없지만 실데이터라 저장소에 안 올린다
 backups/
+
+# 데스크탑 빌드 생성물 — 프론트 정적 파일을 백엔드 리소스로 복사한 것
+backend/src/main/resources/static/
+frontend/out/
+desktop/node_modules/
+desktop/dist/

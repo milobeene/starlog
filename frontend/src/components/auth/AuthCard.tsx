@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { API_BASE } from "@/lib/apiBase";
 
 /**
  * 로그인 전 화면의 공통 껍데기. 안내성 화면 4종이 생김새가 같아 한 컴포넌트로 묶었다.
@@ -47,7 +48,7 @@ export function AuthLink({ href, children }: { href: string; children: React.Rea
 
 /** 구글은 fetch가 아니라 **브라우저 통째 이동**이다 — OAuth 리다이렉트라 XHR로는 못 탄다 */
 export function GoogleButton({ label }: { label: string }) {
-  const base = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
+  const base = API_BASE;
   return (
     <a
       href={`${base}/oauth2/authorization/google`}

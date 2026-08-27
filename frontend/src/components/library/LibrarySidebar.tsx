@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useApi } from "@/lib/useApi";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -25,8 +25,8 @@ const UNTAGGED = "\u0000untagged";
 export default function LibrarySidebar() {
   const names = useApi<BacklogName[]>("/api/backlog/names");
   const covers = useApi<PageResponse<BacklogCard>>("/api/backlog?size=100&sort=name");
-  const params = useParams<{ entryId?: string }>();
-  const currentId = params?.entryId;
+  // 상세 경로가 `/library/detail?entry=57`로 바뀌었다 (정적 내보내기 때문)
+  const currentId = useSearchParams().get("entry") ?? undefined;
 
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
@@ -129,7 +129,7 @@ export default function LibrarySidebar() {
                         return (
                           <li key={entry.entryId}>
                             <Link
-                              href={`/library/${entry.entryId}`}
+                              href={`/library/detail?entry=${entry.entryId}`}
                               className={`flex items-center gap-2.5 rounded px-2 py-1.5 text-sm transition-colors ${
                                 active
                                   ? "bg-white/10 text-white"

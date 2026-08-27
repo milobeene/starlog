@@ -104,6 +104,19 @@ cd backend && ./gradlew bootRun --args="--spring.profiles.active=dev,local \
 ⚠️ **`NEXT_PUBLIC_DEV_MEMBER_ID`는 기본으로 꺼져 있다.** 켜면 로그인 없이 들어가지지만
 헤더 인증이 매 요청을 다시 통과시켜 **로그아웃이 먹지 않는다**(세션은 실제로 끊긴다).
 
+## 데스크탑 앱 (v1.0)
+
+```bash
+./tools/build-desktop.sh          # 프론트 정적 빌드 → 백엔드 리소스 복사 → jar
+cd desktop && npm install && npm start
+```
+
+일렉트론이 **빈 포트를 골라 jar를 띄우고** 그 주소를 창에 로드한다.
+백엔드 로그는 `~/Library/Application Support/starlog-desktop/backend.log`.
+
+⚠️ **프론트를 고쳤으면 `build-desktop.sh`를 다시 돌려야 한다** — jar 안에 정적 파일이 들어간다.
+⚠️ 상세 화면 경로는 **`/library/detail?entry=57`**이다 (동적 경로는 정적 내보내기가 못 만든다).
+
 ## 프론트 ↔ 백엔드 계약 검사
 
 프론트에는 테스트가 없어 DTO가 바뀌면 **조용히 어긋난다.** 실제로 네 번 겪었다.

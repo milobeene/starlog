@@ -22,6 +22,7 @@ import QuotaSection from "@/components/settings/QuotaSection";
 import DeletedEntriesSection from "@/components/settings/DeletedEntriesSection";
 import { paletteOf, toPayload } from "@/lib/palette";
 import { BILLING_CYCLE_LABEL } from "@/lib/labels";
+import { API_BASE } from "@/lib/apiBase";
 import type {
   CompanyDictionary,
   FacetCount,
@@ -433,7 +434,7 @@ function SettingsContent() {
                 </button>
               ) : (
                 <a
-                  href={`${process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080"}/oauth2/authorization/google`}
+                  href={`${API_BASE}/oauth2/authorization/google`}
                   className="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm transition-colors hover:border-white/25"
                 >
                   Google 계정 연결

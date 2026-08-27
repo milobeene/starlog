@@ -97,7 +97,16 @@ public class SecurityConfig {
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         // 유예 중 계정은 ROLE_USER가 아니라 ROLE_PENDING_DELETION이라 여기서 걸린다
                         .requestMatchers("/api/**").hasAnyRole("USER", "ADMIN")
-                        .anyRequest().authenticated())
+                        /*
+                         * 프론트 정적 파일은 누구나 받을 수 있어야 한다 (v1.0 데스크탑, StaticSiteConfig).
+                         *
+                         * **HTML·JS·CSS에는 비밀이 없다.** 데이터는 전부 /api/**를 통해서만 나가고
+                         * 거기는 위에서 이미 막혀 있다. 여기를 막으면 로그인 화면조차 못 받아
+                         * 401 JSON만 뜬다 — 정확히 웹에서 /login이 열려야 하는 것과 같은 이유다.
+                         *
+                         * 순서가 중요하다. /api/** 규칙 **뒤**에 와야 API가 먼저 걸린다
+                         */
+                        .anyRequest().permitAll())
 
                 /*
                  * 폼 로그인이라 컨트롤러 메서드가 없다. loginProcessingUrl 경로로 오는 요청을

@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { use, useCallback, useRef, useState } from "react";
+import { Suspense, useCallback, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import GameCover from "@/components/ui/GameCover";
@@ -55,12 +56,24 @@ const PLAYTHROUGH_TONE: Record<string, string> = {
   DROPPED: "text-red-400",
 };
 
-export default function BacklogDetailPage({
-  params,
-}: {
-  params: Promise<{ entryId: string }>;
-}) {
-  const { entryId } = use(params);
+/**
+ * 상세는 `/library/detail?entry=57`이다. 예전엔 `/library/[entryId]`였는데
+ * **정적 내보내기(v1.0 데스크탑)가 동적 경로에 generateStaticParams를 요구해서** 쿼리로 옮겼다.
+ * 빌드 시점에 entryId를 알 수 없으니 애초에 만들 수 없는 요구다.
+ *
+ * useSearchParams는 프리렌더 때 값을 모르므로 Suspense 경계가 필요하다 —
+ * 없으면 빌드가 통째로 실패한다
+ */
+export default function BacklogDetailPage() {
+  return (
+    <Suspense fallback={null}>
+      <BacklogDetail />
+    </Suspense>
+  );
+}
+
+function BacklogDetail() {
+  const entryId = useSearchParams().get("entry") ?? "";
   const bannerRef = useRef<HTMLDivElement>(null);
 
   /**
