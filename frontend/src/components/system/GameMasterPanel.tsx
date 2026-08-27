@@ -1,7 +1,7 @@
 "use client";
 
 import DateField from "@/components/ui/DateField";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Modal from "@/components/ui/Modal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import GameCover from "@/components/ui/GameCover";
@@ -46,7 +46,9 @@ export default function GameMasterMaster() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   /** 일괄 동기화 — 대상을 먼저 보여주고 승인을 받는다 (§10-2) */
   const [syncTargets, setSyncTargets] = useState<GameMaster[] | null>(null);
-  const [syncing, setSyncing] = useState<{ done: number; total: number } | null>(null);
+  const [syncing, setSyncing] = useState<{ done: number; total: number; name: string } | null>(null);
+  /** 중단 신호. 루프가 매 바퀴 확인한다 — 되돌릴 게 없어서 그냥 멈추면 된다 */
+  const abort = useRef(false);
   const [dialog, setDialog] = useState<{ kind: "name" | "info"; game: GameRow } | null>(null);
 
   const masterList = useApi<PageResponse<GameMaster>>(
@@ -118,7 +120,7 @@ export default function GameMasterMaster() {
           }}
           disabled={Boolean(syncing)}
         >
-          {syncing ? `동기화 중 ${syncing.done} / ${syncing.total}` : "일괄 동기화"}
+          일괄 동기화
         </Button>
         {selected.size > 0 && (
           <>
@@ -309,14 +311,16 @@ export default function GameMasterMaster() {
             setSyncTargets(null);
             if (targets.length === 0) return;
 
-            setSyncing({ done: 0, total: targets.length });
+            abort.current = false;
+            setSyncing({ done: 0, total: targets.length, name: targets[0].name });
             for (const [i, game] of targets.entries()) {
+              if (abort.current) break;
+              setSyncing({ done: i, total: targets.length, name: game.name });
               try {
                 await api.post(`/api/games/${game.gameId}/resync`);
               } catch {
                 // 한 건이 실패해도 나머지는 돈다 — 다음에 다시 누르면 그것만 다시 잡힌다
               }
-              setSyncing({ done: i + 1, total: targets.length });
               // IGDB는 초당 4회다. 한 건씩 여유를 두고 부른다
               await new Promise((r) => setTimeout(r, 300));
             }
@@ -324,6 +328,44 @@ export default function GameMasterMaster() {
             masterList.reload();
           }}
         />
+      )}
+
+      {/*
+        진행을 **모달로 잡아둔다** (2026-08-28). 예전엔 버튼 글자만 바뀌어서, 다른 탭으로
+        옮기면 UI는 사라지는데 동기화는 계속 돌았다 — 사용자는 멈춘 줄 알고 또 누른다.
+        모달이면 어디로도 못 가고, 그만두고 싶으면 [중단]이 있다
+      */}
+      {syncing && (
+        <Modal title="일괄 동기화" onClose={() => {}}>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="min-w-0 flex-1 truncate text-sm text-white/70">{syncing.name}</span>
+              <span className="num shrink-0 text-sm text-white/90">
+                {syncing.done} / {syncing.total}
+              </span>
+            </div>
+            <div className="h-1 w-full overflow-hidden rounded-full bg-white/10">
+              <div
+                className="h-full rounded-full bg-white/70 transition-all duration-300"
+                style={{ width: `${(syncing.done / syncing.total) * 100}%` }}
+              />
+            </div>
+            <p className="text-[11px] leading-relaxed text-white/30">
+              외부 데이터베이스를 한 건씩 부르고 있습니다. 중단하셔도 지금까지 끝난 것은
+              그대로 남고, 다시 누르시면 남은 것만 다시 잡힙니다.
+            </p>
+            <div className="flex justify-end">
+              <Button
+                variant="danger"
+                onClick={() => {
+                  abort.current = true;
+                }}
+              >
+                중단
+              </Button>
+            </div>
+          </div>
+        </Modal>
       )}
 
       {bulkDeleting && (

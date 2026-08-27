@@ -3,7 +3,11 @@
  * 장식이 아니라 기능이다
  */
 export function Skeleton({ className = "" }: { className?: string }) {
-  return <div className={`animate-pulse rounded bg-white/[0.06] ${className}`} />;
+  /*
+   * `animate-pulse`만 있으면 **박스가 전부 같은 박자로 깜빡여서** 하나로 뭉쳐 보인다.
+   * 흰 빛이 한 방향으로 훑고 지나가면 개수와 모양이 눈에 들어온다 (2026-08-28)
+   */
+  return <div className={`skeleton-sweep rounded bg-white/[0.06] ${className}`} />;
 }
 
 export function CardGridSkeleton({ count = 10 }: { count?: number }) {

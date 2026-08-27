@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import EntryPanel from "./EntryPanel";
 import { Button, FIELD_INPUT } from "@/components/ui/Field";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { getBridge, type SaveFile } from "@/lib/desktop";
 
 /**
@@ -23,6 +24,8 @@ export default function SaveList({
 }) {
   const [saves, setSaves] = useState<SaveFile[] | null>(null);
   const [newName, setNewName] = useState("");
+  /* 되돌릴 수 없다 — 예전엔 안내도 없이 백업까지 통째로 사라졌다 */
+  const [deleting, setDeleting] = useState<SaveFile | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const reload = () => getBridge()?.saves.list().then(setSaves);
@@ -38,11 +41,7 @@ export default function SaveList({
     }
   };
 
-  const remove = async (name: string) => {
-    // 백업 폴더도 함께 사라진다 — 일렉트론이 처리한다. 남겨두면 주인 없는 폴더가 쌓인다
-    await getBridge()!.saves.remove(name);
-    reload();
-  };
+
 
   return (
     <EntryPanel
@@ -51,7 +50,7 @@ export default function SaveList({
       onBack={onBack}
     >
       <div className="flex flex-col gap-2">
-        {saves === null && <div className="h-16 animate-pulse rounded-lg bg-white/5" />}
+        {saves === null && <div className="h-16 skeleton-sweep rounded-lg bg-white/[0.06]" />}
 
         {saves?.map((save) => (
           <div
@@ -72,7 +71,7 @@ export default function SaveList({
               백업
             </button>
             <button
-              onClick={() => remove(save.name)}
+              onClick={() => setDeleting(save)}
               aria-label={`${save.name} 삭제`}
               /* 지우기는 눈에 안 띄어야 한다 — 고르러 온 화면에서 삭제가 먼저 보이면 안 된다 */
               className="shrink-0 text-[11px] text-white/0 transition-colors group-hover:text-white/30 hover:!text-red-400"
@@ -103,6 +102,32 @@ export default function SaveList({
 
         {error && <p className="text-xs text-red-400">{error}</p>}
       </div>
+
+      {deleting && (
+        <ConfirmDialog
+          title="세이브파일 삭제"
+          confirmLabel="삭제"
+          message={
+            <>
+              <b className="text-white">{deleting.name}</b>을(를) 완전히 지웁니다. 이 기록의
+              게임·회차·메모가 전부 사라지며 되돌릴 수 없습니다.
+              {/*
+                ⚠️ 백업까지 사라진다는 걸 반드시 말해야 한다 — "백업이 있으니 괜찮겠지"가
+                이 화면에서 가장 자연스러운 오해다
+              */}
+              <span className="mt-2 block text-amber-200/70">
+                이 세이브파일의 백업도 함께 지워집니다.
+              </span>
+            </>
+          }
+          onClose={() => setDeleting(null)}
+          onConfirm={async () => {
+            await getBridge()!.saves.remove(deleting.name);
+            setDeleting(null);
+            reload();
+          }}
+        />
+      )}
     </EntryPanel>
   );
 }

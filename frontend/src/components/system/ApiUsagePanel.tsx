@@ -40,7 +40,12 @@ export default function ApiUsagePanel({
                 스토리지에서 궁금한 건 "얼마나 쌓였나"다 — 그 자리에 보관량을 놓는다
               */}
               {item.provider === "STORAGE" ? (
-                <Stat label="커버 용량" value={formatBytes(storage.totalBytes)} raw />
+                <Stat
+                  label="커버"
+                  /* 개수와 용량을 한 칸에 — 따로 두면 카드가 다섯이 되어 줄이 깨진다 */
+                  value={`${storage.coverCount.toLocaleString()}장 · ${formatBytes(storage.totalBytes)}`}
+                  raw
+                />
               ) : (
                 <Stat label="최근 1분" value={item.lastMinute} />
               )}
@@ -96,7 +101,7 @@ function Stat({
       <div className="text-[10px] font-semibold tracking-widest text-white/40 uppercase">
         {label}
       </div>
-      <div className="num mt-1 text-xl font-light text-white/90">
+      <div className="num mt-1 text-xl font-light break-keep text-white/90">
         {raw || typeof value === "string" ? value : value.toLocaleString()}
       </div>
     </div>

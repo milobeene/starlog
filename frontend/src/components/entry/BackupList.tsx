@@ -62,7 +62,7 @@ export default function BackupList({
       onBack={onBack}
     >
       <div className="flex flex-col gap-2">
-        {usage === null && <div className="h-16 animate-pulse rounded-lg bg-white/5" />}
+        {usage === null && <div className="h-16 skeleton-sweep rounded-lg bg-white/[0.06]" />}
 
         {usage?.items.map((item) => (
           <div
@@ -110,6 +110,8 @@ export default function BackupList({
         )}
 
         <div className="mt-3 flex items-center gap-3">
+          {/* 파일을 직접 옮기거나 다른 데 복사해두고 싶을 때 — 여기가 그 자리다 */}
+          <Button onClick={() => getBridge()!.openFolder("backups")}>폴더 열기</Button>
           <Button
             onClick={() =>
               run("백업", async () => {

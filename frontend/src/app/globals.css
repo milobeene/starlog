@@ -212,15 +212,10 @@
 
 /* ── 커버 자리 ─────────────────────────────────────────── */
 /*
- * 커버가 없는 자리.
- *
- * 사선 무늬만 있으면 **비어 있다**가 아니라 **고장 났다**로 읽힌다.
- * 그리드 호버에 쓰는 흰 빛을 한 방향으로 천천히 훑게 해서 "여긴 자리다"를 보여준다
- * (2026-08-28). 6초는 눈에 안 걸리는 속도다 — 빠르면 로딩처럼 보이고, 로딩이 아니다.
+ * 커버가 없는 자리. **여긴 안 움직인다** — 로딩이 아니라 "커버가 없다"는 사실이라
+ * 훑는 빛을 넣으면 계속 기다리라는 뜻으로 읽힌다
  */
 .image-placeholder {
-  position: relative;
-  overflow: hidden;
   background-color: rgba(255, 255, 255, 0.05);
   background-image: repeating-linear-gradient(
     45deg, transparent, transparent 10px,
@@ -228,28 +223,39 @@
   );
 }
 
-.image-placeholder::after {
+/*
+ * 데이터를 기다리는 자리 (`Skeleton`).
+ *
+ * `animate-pulse`만 있으면 **박스 전체가 같이 깜빡여서** 몇 개가 있는지도 안 보인다.
+ * 그리드 호버에 쓰는 흰 빛을 한 방향으로 훑게 하면 "받아오는 중"이 눈에 들어온다.
+ * 1.6초 — 로딩이라 빨라야 한다. 느리면 멈춘 것처럼 보인다
+ */
+.skeleton-sweep {
+  position: relative;
+  overflow: hidden;
+}
+
+.skeleton-sweep::after {
   content: "";
   position: absolute;
   inset: 0;
   background: linear-gradient(
     100deg,
-    transparent 40%,
-    rgba(255, 255, 255, 0.07) 50%,
-    transparent 60%
+    transparent 35%,
+    rgba(255, 255, 255, 0.09) 50%,
+    transparent 65%
   );
   transform: translateX(-100%);
-  animation: placeholder-sweep 6s ease-in-out infinite;
+  animation: skeleton-sweep 1.6s ease-in-out infinite;
 }
 
 /* 움직임을 줄이는 설정을 켠 사람에게는 안 훑는다 — 장식이라 없어도 뜻이 안 바뀐다 */
 @media (prefers-reduced-motion: reduce) {
-  .image-placeholder::after { animation: none; }
+  .skeleton-sweep::after { animation: none; }
 }
 
-@keyframes placeholder-sweep {
+@keyframes skeleton-sweep {
   0%   { transform: translateX(-100%); }
-  55%  { transform: translateX(100%); }
   100% { transform: translateX(100%); }
 }
 

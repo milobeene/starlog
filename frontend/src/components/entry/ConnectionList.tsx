@@ -58,7 +58,7 @@ export default function ConnectionList({
           </button>
         </p>
 
-        {profiles === null && <div className="h-16 animate-pulse rounded-lg bg-white/5" />}
+        {profiles === null && <div className="h-16 skeleton-sweep rounded-lg bg-white/[0.06]" />}
 
         {profiles?.map((profile) => (
           <div

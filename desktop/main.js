@@ -271,6 +271,58 @@ function onBackendDied(code, diagnostic) {
  * 맥에서는 일렉트론만 죽여도 java가 따라 죽는 것까지 확인했다
  */
 /**
+ * 시험용 백엔드 (2026-08-28).
+ *
+ * **본 백엔드(`backend`)와 완전히 따로 논다.** 전역 상태를 안 건드리는 게 요점이다 —
+ * 예전엔 연결 테스트가 본 백엔드를 죽였다 되살렸고, 그때 **포트가 바뀌어서** 창이
+ * 옛 포트를 보며 `Failed to fetch`를 뱉었다.
+ *
+ * 죽음 감지(`onBackendDied`)도 안 붙인다. 시험용은 끝나면 죽는 게 정상이라
+ * 붙이면 매번 "서버가 예기치 않게 종료됐습니다"가 뜬다
+ */
+function spawnProbe(port, config) {
+  const args = [
+    "-jar", JAR,
+    `--server.port=${port}`,
+    "--spring.profiles.active=desktop",
+    "--starlog.diagnose=true",
+    `--spring.datasource.url=${config.url}`,
+    `--spring.datasource.driver-class-name=${config.driver}`,
+  ];
+  const env = { ...process.env };
+  env.SPRING_DATASOURCE_USERNAME = config.username ?? "";
+  env.SPRING_DATASOURCE_PASSWORD = config.password ?? "";
+  for (const [key, value] of Object.entries(config.env ?? {})) {
+    if (value) env[key] = value;
+  }
+
+  const proc = spawn(paths.javaBin(), args, { stdio: ["ignore", "pipe", "pipe"], env });
+  let diagnostic = null;
+  proc.stdout.on("data", (chunk) => {
+    const found = chunk.toString().match(/STARLOG_DIAGNOSTIC:\s*([A-Z_]+)/);
+    if (found) diagnostic = found[1];
+  });
+  // 시험용 로그도 남긴다 — 왜 실패했는지 볼 데가 있어야 한다
+  const out = fs.createWriteStream(paths.LOG_FILE, { flags: "a" });
+  proc.stdout.pipe(out);
+  proc.stderr.pipe(out);
+
+  const exited = new Promise((resolve) => {
+    proc.on("exit", (code) => resolve({ code, diagnostic }));
+  });
+
+  return {
+    exited,
+    stop() {
+      proc.kill("SIGTERM");
+      setTimeout(() => {
+        try { proc.kill("SIGKILL"); } catch { /* 이미 죽었으면 무시 */ }
+      }, 3000);
+    },
+  };
+}
+
+/**
  * 백엔드를 내리고 **완전히 죽을 때까지 기다린다.**
  *
  * ⚠️ **기다리는 게 요점이다.** 신호만 보내고 넘어가면 H2가 아직 `.mv.db` 잠금을 쥔 채인데
@@ -536,18 +588,24 @@ function registerIpc() {
    * Node에서 직접 붙어보는 방법도 있지만 **PG 드라이버를 Node에도 또 넣어야** 하고,
    * 버전이 어긋나면 "일렉트론은 되는데 스프링은 안 되는" 상황이 난다 (architecture §3)
    */
+  /**
+   * 연결 테스트 (2026-08-28 전면 수정).
+   *
+   * ## 🔴 지금 쓰는 백엔드를 절대 안 건드린다
+   *
+   * 예전엔 죽였다가 되살렸는데, **되살릴 때 포트가 바뀐다.** 창은 옛 포트를 보고 있으니
+   * 그 뒤로 앱 전체가 `TypeError: Failed to fetch`가 됐다 — 새로고침하면 검은 화면.
+   * "다음에 들어올 때 적용됩니다"라고 해놓고 사실상 재접속을 강제한 셈이었다.
+   *
+   * 죽일 이유도 없었다. 시험 대상은 **PostgreSQL이라 동시 접속이 된다** —
+   * H2 파일 잠금 같은 게 없다. 그냥 다른 포트에 시험용을 하나 더 띄우고 내리면 끝이다
+   */
   ipcMain.handle("connections:test", async (_e, profile) => {
-    /*
-     * 지금 쓰는 백엔드를 건드리면 안 된다 — 테스트하다가 보던 화면이 죽는다.
-     * 그래서 시험용을 따로 띄우고, 끝나면 원래 것을 되살린다
-     */
-    const keep = session ? { session, port: backendPort } : null;
-    await stopBackend();
-
     const port = await freePort();
-    const { exited } = startBackend(port, cloudConfig(profile));
+    const probe = spawnProbe(port, cloudConfig(profile));
+
     const done = await Promise.race([
-      exited,
+      probe.exited,
       waitForBackend(port).then(() => ({ code: 0, diagnostic: null })).catch(() => null),
     ]);
 
@@ -576,15 +634,7 @@ function registerIpc() {
       }
     }
 
-    await stopBackend();
-
-    if (keep) {
-      const back = await freePort();
-      startBackend(back, keep.session.mode === "local"
-        ? localConfig(keep.session.target)
-        : cloudConfig(findProfile(keep.session.target)));
-      await waitForBackend(back).then(() => { session = keep.session; }).catch(() => {});
-    }
+    probe.stop();
 
     return {
       ok: !done?.diagnostic && (igdb?.ok ?? true) && (storage?.ok ?? true),

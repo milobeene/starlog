@@ -85,7 +85,7 @@ export default function AppSettingsPanel() {
     }
   };
 
-  if (!loaded) return <div className="h-40 animate-pulse rounded-lg bg-white/5" />;
+  if (!loaded) return <div className="h-40 skeleton-sweep rounded-lg bg-white/[0.06]" />;
 
   return (
     <div className="flex flex-col gap-8">

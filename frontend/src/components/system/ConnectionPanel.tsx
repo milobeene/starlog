@@ -53,19 +53,21 @@ export default function ConnectionPanel() {
   }
 
   if (!profile) {
-    return <div className="h-40 animate-pulse rounded-lg bg-white/5" />;
+    return <div className="h-40 skeleton-sweep rounded-lg bg-white/[0.06]" />;
   }
 
   return (
     <div className="flex flex-col gap-4">
+      {/*
+        **안내를 한 곳에 모은다.** 예전엔 이 경고가 맨 위, 저장 결과가 그 아래, 테스트 결과가
+        폼 한가운데에 있어서 방금 누른 것의 답이 어디 있는지 알 수가 없었다.
+        지금은 경고만 위에 있고 나머지는 전부 버튼 옆(폼 아래)에 모인다
+      */}
       <p className="rounded-md border border-amber-400/20 bg-amber-400/[0.06] px-3 py-2.5 text-[11px] leading-relaxed text-amber-200/80">
         여기서 고친 값은 <b className="text-amber-100">다음에 이 연결로 들어올 때</b>부터
-        적용됩니다. 데이터베이스와 스토리지는 앱이 시작할 때 한 번 연결되기 때문입니다.
+        적용됩니다. 데이터베이스와 스토리지는 앱이 시작할 때 한 번 연결되기 때문입니다 —
+        지금 보고 계신 화면은 그대로 씁니다.
       </p>
-
-      {saved && (
-        <p className="text-xs text-emerald-300/80">저장했습니다.</p>
-      )}
 
       {/*
         팝업이 아니라 **탭 안에 그대로 편다.** 앱 안에서는 연결이 하나뿐이라
@@ -74,6 +76,7 @@ export default function ConnectionPanel() {
       <ConnectionDialog
         initial={profile}
         inline
+        notice={saved ? "저장했습니다. 다음에 이 연결로 들어오실 때부터 적용됩니다." : null}
         onClose={() => {}}
         onSaved={(next) => {
           setProfile(next);

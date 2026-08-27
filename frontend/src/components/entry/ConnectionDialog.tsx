@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Modal from "@/components/ui/Modal";
+import EntryLoader from "@/components/ui/EntryLoader";
 import SecretField from "./SecretField";
 import { Button, Field, FIELD_INPUT } from "@/components/ui/Field";
 import {
@@ -45,6 +46,7 @@ const IGDB_FIELDS = ["clientId", "clientSecret"] as const;
 export default function ConnectionDialog({
   initial,
   inline = false,
+  notice = null,
   onClose,
   onSaved,
 }: {
@@ -56,6 +58,8 @@ export default function ConnectionDialog({
    * **취소 버튼이 뜻을 잃는다.** 입구에서는 여러 개 중 하나를 고르므로 팝업이 맞다
    */
   inline?: boolean;
+  /** 바깥에서 온 알림(저장 완료 등). 결과·진행과 **같은 자리**에 모아 보여준다 */
+  notice?: string | null;
   onClose: () => void;
   onSaved: (profile: ConnectionProfile) => void;
 }) {
@@ -130,13 +134,31 @@ export default function ConnectionDialog({
 
   const bad = (key: string) => showGaps && gaps.includes(key);
 
-  const actions = (
+  /*
+   * **결과와 진행은 버튼 옆에 둔다.** 스크롤되는 본문 안에 두면 폼이 길어서
+   * 눌러놓고 아래로 내려가야 보였다 — 방금 누른 것의 답이 화면 밖에 있으면 안 된다
+   */
+  const status = (
     <>
-      {!canSave && (
+      {testing && (
+        <div className="mr-auto">
+          <EntryLoader label="연결을 확인하는 중" />
+        </div>
+      )}
+      {!testing && result && <TestReport result={result} />}
+      {!testing && !result && notice && (
+        <span className="mr-auto text-[11px] text-emerald-300/80">{notice}</span>
+      )}
+      {!testing && !result && !notice && !canSave && (
         <span className="mr-auto text-[11px] text-white/35">
           {canTest ? "연결 테스트를 통과해야 저장할 수 있습니다" : "필수 항목을 채워 주세요"}
         </span>
       )}
+    </>
+  );
+
+  const actions = (
+    <>
       {!inline && (
         <Button onClick={onClose} disabled={testing}>
           취소
@@ -307,8 +329,6 @@ export default function ConnectionDialog({
           </div>
         </Section>
 
-        {result && <TestReport result={result} />}
-
         {showGaps && gaps.length > 0 && (
           <p className="text-[11px] leading-relaxed text-red-400">
             빨갛게 표시된 칸을 채워 주세요. 스토리지나 IGDB를 쓰지 않으시려면 그 묶음을
@@ -322,8 +342,9 @@ export default function ConnectionDialog({
     return (
       <div className="flex flex-col gap-5">
         {body}
-        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-white/8 pt-5">
-          {actions}
+        <div className="flex flex-col gap-3 border-t border-white/8 pt-5">
+          {status}
+          <div className="flex flex-wrap items-center justify-end gap-2">{actions}</div>
         </div>
       </div>
     );
@@ -335,7 +356,12 @@ export default function ConnectionDialog({
       width="max-w-2xl"
       /* ⚠️ 테스트 중에는 못 닫는다 — 닫는 순간 백엔드가 오가는 중이라 상태가 꼬인다 */
       onClose={testing ? () => {} : onClose}
-      footer={actions}
+      footer={
+        <div className="flex w-full flex-col gap-3">
+          {status}
+          <div className="flex flex-wrap items-center justify-end gap-2">{actions}</div>
+        </div>
+      }
     >
       {body}
     </Modal>
@@ -351,7 +377,7 @@ export default function ConnectionDialog({
 function TestReport({ result }: { result: ConnectionTestResult }) {
   return (
     <div
-      className={`flex flex-col gap-1.5 rounded-md border px-3 py-2.5 text-xs ${
+      className={`flex w-full flex-col gap-1.5 rounded-md border px-3 py-2.5 text-xs ${
         result.ok
           ? "border-emerald-500/30 bg-emerald-500/5"
           : "border-red-500/30 bg-red-500/5"
