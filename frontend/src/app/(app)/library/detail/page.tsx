@@ -242,7 +242,7 @@ function BacklogDetail() {
             {/* 좌 — About · 회차 · 구매 · 메모 (설계서 §2.9 순서) */}
             <div className="order-2 flex flex-col gap-10 lg:order-none lg:col-span-2">
               <section>
-                <h3 className="mb-4 flex items-center gap-2 text-lg font-medium text-white/90">
+                <h3 className="mb-4 flex items-center gap-2 text-base font-medium text-white/90 sm:text-lg">
                   <SectionIcon name="about" />
                   About
                 </h3>
@@ -264,7 +264,7 @@ function BacklogDetail() {
               <Timeline detail={data} />
 
               <section>
-                <h3 className="mb-4 flex items-center justify-between gap-3 text-lg font-medium text-white/90">
+                <h3 className="mb-4 flex items-center justify-between gap-3 text-base font-medium text-white/90 sm:text-lg">
                   <span className="flex items-center gap-2">
                     <SectionIcon name="play" />
                     Playthrough Records
@@ -305,7 +305,7 @@ function BacklogDetail() {
               </section>
 
               <section>
-                <h3 className="mb-4 flex items-center justify-between gap-3 text-lg font-medium text-white/90">
+                <h3 className="mb-4 flex items-center justify-between gap-3 text-base font-medium text-white/90 sm:text-lg">
                   <span className="flex items-center gap-2">
                     <SectionIcon name="purchase" />
                     Purchase History
@@ -345,7 +345,7 @@ function BacklogDetail() {
 
               {/* 내 기록은 제일 아래 — 읽는 순서상 게임 정보를 다 본 뒤에 온다 */}
               <section>
-                <h3 className="mb-4 flex items-center justify-between gap-3 text-lg font-medium text-white/90">
+                <h3 className="mb-4 flex items-center justify-between gap-3 text-base font-medium text-white/90 sm:text-lg">
                   <span className="flex items-center gap-2">
                     <SectionIcon name="note" />
                     My Notes
@@ -595,8 +595,13 @@ function DeleteEntryButton({ onClick }: { onClick: () => void }) {
 
 function Stat({ label, value, unit }: { label: string; value: React.ReactNode; unit?: string }) {
   return (
-    /* 폰에서는 칸이 반으로 줄어 날짜(2016-02-26)가 세 줄로 깨진다 — 글자와 좌우 여백을 줄인다 */
-    <div className="flex flex-col justify-center px-3 sm:px-6">
+    /*
+     * 폰에서는 칸이 반으로 줄어 날짜(2016-02-26)가 세 줄로 깨진다 — 글자와 좌우 여백을 줄인다.
+     *
+     * py는 **두 줄로 접힐 때만** 필요하다. 바깥 테두리는 컨테이너의 py-6만큼 떨어져 있는데
+     * 줄 사이 가로선만 위 숫자에 딱 붙어 어색했다. 한 줄이 되는 md부터는 다시 0
+     */
+    <div className="flex flex-col justify-center px-3 py-2.5 sm:px-6 md:py-0">
       <div className="mb-1 text-[10px] tracking-wider text-white/40 uppercase sm:text-xs">{label}</div>
       <div className="num text-lg font-normal sm:text-2xl">
         {value}

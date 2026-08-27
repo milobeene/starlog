@@ -51,7 +51,7 @@ export default function AppHeader() {
         {/* 워드마크. 홈으로 나가는 유일한 출구다 */}
         <Link
           href="/"
-          className="pointer-events-auto flex h-full shrink-0 items-center font-display text-sm leading-none font-bold tracking-[0.15em] text-white sm:text-base sm:tracking-[0.2em] lg:text-lg"
+          className="pointer-events-auto flex h-full shrink-0 translate-y-[0.09em] items-center font-display text-sm leading-none font-bold tracking-[0.15em] text-white sm:text-base sm:tracking-[0.2em] lg:text-lg"
         >
           STARLOG
         </Link>
@@ -189,7 +189,12 @@ function NavLink({
   return (
     <Link
       href={href}
-      className={`pointer-events-auto flex h-full items-center text-white uppercase transition-transform duration-100 ease-out hover:scale-110 ${
+      /*
+       * -translate-y-[0.15em] — 워드마크와 같은 이유다. 기본 line-height(1.43)의
+       * 남는 여백이 위아래로 고르게 안 갈려서 잉크가 박스 중앙보다 아래에 앉는다.
+       * 둘 다 **각자 박스 중앙**에 맞추면 글자 크기가 달라도 서로 높이가 맞는다
+       */
+      className={`pointer-events-auto flex h-full -translate-y-[0.15em] items-center text-white uppercase transition-transform duration-100 ease-out hover:scale-110 ${
         compact ? "px-2 text-[10px] tracking-wider" : "px-4 text-sm tracking-wide"
       } ${active ? "font-bold" : "font-medium"}`}
     >

@@ -142,6 +142,11 @@ function LibraryContent() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <SearchInput value={query} onChange={setQuery} />
           <Dropdown
+            /*
+             * 왼쪽 정렬 — 이 트리거는 줄 **왼쪽**에 있다. 기본값(right)이면 패널이
+             * 트리거의 오른쪽 모서리에서 왼쪽으로 펼쳐져 화면 밖으로 잘려 나간다
+             */
+            align="left"
             trigger={() => (
               <div className="flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm transition-colors hover:bg-white/10">
                 <span className="text-white/60">Sort:</span>

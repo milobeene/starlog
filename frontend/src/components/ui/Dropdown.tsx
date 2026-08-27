@@ -123,7 +123,12 @@ export default function Dropdown({
     );
 
   return (
-    <div ref={rootRef} className="relative">
+    /*
+     * w-fit — 이 루트가 **패널의 기준**이다(비포탈 경로의 `right-0`).
+     * 기본 block이면 flex 컬럼 안에서 부모 폭만큼 늘어나고, 그러면 `right-0`이
+     * 트리거의 오른쪽이 아니라 **줄 전체의 오른쪽 끝**이 되어 패널이 멀리 날아간다
+     */
+    <div ref={rootRef} className="relative w-fit">
       <button type="button" onClick={() => setOpen((prev) => !prev)} aria-expanded={open}>
         {trigger(open)}
       </button>
