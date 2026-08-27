@@ -116,8 +116,14 @@ const getSnapshot = () => state;
  *
  * 클라이언트 스냅숏을 그대로 쓰면 안 된다 — 모듈 상태가 서버 프로세스에 남아
  * **다른 사용자의 세션이 초기 HTML에 섞여 나갈 수 있다**
+ *
+ * ⚠️ **매번 새 객체를 만들면 안 된다.** useSyncExternalStore는 스냅숏을 `Object.is`로
+ * 비교해서 바뀐 걸 판단하는데, 호출마다 새 리터럴을 주면 늘 "바뀌었다"가 되어
+ * 리렌더가 꼬리를 문다. React가 콘솔로 경고하는 것도 그 이유다.
+ * 상수 하나를 돌려줘도 의미는 같다 — 서버에서는 언제나 loading이다
  */
-const getServerSnapshot = (): SessionState => ({ status: "loading", me: null });
+const SERVER_SNAPSHOT: SessionState = { status: "loading", me: null };
+const getServerSnapshot = (): SessionState => SERVER_SNAPSHOT;
 
 export function useSession(): SessionState {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);

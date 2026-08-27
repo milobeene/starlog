@@ -139,7 +139,24 @@ export default function FluidCanvas({
       canvas.removeEventListener("webglcontextrestored", onRestored);
       gl.deleteBuffer(positionBuffer);
       gl.deleteProgram(program);
-      gl.getExtension("WEBGL_lose_context")?.loseContext();
+
+      /*
+       * ⚠️ loseContext는 **진짜 언마운트일 때만** 부른다.
+       *
+       * StrictMode(dev)는 마운트 → 정리 → 마운트를 연달아 돌리는데,
+       * 같은 캔버스의 getContext는 **같은 컨텍스트를 돌려준다**(위 주석과 같은 사실).
+       * 여기서 무조건 죽이면 두 번째 마운트가 죽은 컨텍스트를 받아
+       * `compileShader`가 통째로 실패한다 — 로그도 null로 나와 원인이 안 보이고
+       * 화면에는 배경만 검게 뜬다. 실제로 그렇게 한 번 깨뜨렸다.
+       *
+       * 정리 시점에는 캔버스가 아직 DOM에 붙어 있어 재마운트인지 구분할 수 없다.
+       * 그래서 한 틱 미뤄 확인한다 — 그때도 문서에 남아 있으면 재마운트다
+       */
+      setTimeout(() => {
+        if (!canvas.isConnected) {
+          gl.getExtension("WEBGL_lose_context")?.loseContext();
+        }
+      }, 0);
     };
   }, []);
 
