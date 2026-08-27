@@ -12,8 +12,10 @@ import com.milobeene.starlog.backlog.dto.BacklogSearchCondition;
 import com.milobeene.starlog.backlog.dto.BacklogSort;
 import com.milobeene.starlog.backlog.dto.CoverConfirmRequest;
 import com.milobeene.starlog.backlog.dto.CoverUploadUrlRequest;
-import com.milobeene.starlog.backlog.dto.CoverUploadUrlResponse;
+import com.milobeene.starlog.backlog.dto.CoverUploadTarget;
+import com.milobeene.starlog.backlog.dto.ScreenshotResponse;
 import com.milobeene.starlog.backlog.service.CoverImageService;
+import com.milobeene.starlog.backlog.service.ScreenshotService;
 import com.milobeene.starlog.backlog.dto.FacetsResponse;
 import com.milobeene.starlog.backlog.dto.NameListRequest;
 import com.milobeene.starlog.backlog.dto.TagUpdateRequest;
@@ -22,8 +24,6 @@ import com.milobeene.starlog.backlog.dto.PersonalRecordRequest;
 import com.milobeene.starlog.backlog.service.BacklogFacetQueryService;
 import com.milobeene.starlog.backlog.service.BacklogService;
 import com.milobeene.starlog.common.dto.IdResponse;
-import com.milobeene.starlog.common.quota.QuotaGuard;
-import com.milobeene.starlog.common.quota.QuotaKind;
 import com.milobeene.starlog.game.service.GameResolver;
 import com.milobeene.starlog.tag.service.GenreService;
 import com.milobeene.starlog.tag.service.TagService;
@@ -34,6 +34,7 @@ import lombok.RequiredArgsConstructor;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -45,6 +46,9 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
 
 @RestController
 @RequestMapping("/api/backlog")
@@ -56,16 +60,9 @@ public class BacklogController {
     private final BacklogService backlogService;
     private final GameResolver gameResolver;
     private final CoverImageService coverImageService;
+    private final ScreenshotService screenshotService;
     private final TagService tagService;
     private final GenreService genreService;
-    /*
-     * WEB-ONLY: 일일 쿼터 (docs/web-only-inventory.md).
-     *
-     * **컨트롤러에 두는 이유** — 쿼터는 도메인 규칙이 아니라 "한 서버를 여럿이 나눠 쓴다"에서
-     * 나온 웹 엣지의 정책이다. 서비스 안에 넣으면 로컬 앱으로 갈 때 도메인을 헤집어야 한다.
-     * 여기 있으면 이 줄들만 지우면 된다
-     */
-    private final QuotaGuard quotaGuard;
 
     /**
      * 백로그 목록 (화면 1). 검색·필터·정렬·페이징 (FR-QRY-01~04).
@@ -181,8 +178,6 @@ public class BacklogController {
     @PostMapping
     public ResponseEntity<IdResponse> add(@LoginMember Long memberId,
                                           @Valid @RequestBody BacklogAddRequest request) {
-        quotaGuard.consume(memberId, QuotaKind.GAME_ADD);   // WEB-ONLY
-
         Long gameId = gameResolver.resolve(request.gameId(), request.externalId());
         Long entryId = backlogService.addToBacklog(memberId, gameId);
 
@@ -198,17 +193,15 @@ public class BacklogController {
      * 서명에 포함된 값이라 다르면 스토리지가 403을 준다
      */
     @PostMapping("/{entryId}/cover/upload-url")
-    public CoverUploadUrlResponse issueCoverUploadUrl(
+    public CoverUploadTarget prepareCoverUpload(
             @LoginMember Long memberId, @PathVariable Long entryId,
             @Valid @RequestBody CoverUploadUrlRequest request) {
-        quotaGuard.consume(memberId, QuotaKind.COVER_UPLOAD);   // WEB-ONLY
-
-        return coverImageService.issueUploadUrl(
+        return coverImageService.prepare(
                 memberId, entryId, request.fileName(), request.sizeBytes());
     }
 
     /**
-     * 커버 업로드 2단계 — 확정 (K-2, K-3).
+     * 커버 업로드 2단계 — 확정 (K-2, K-3). **EXTERNAL 경로에서만 쓴다.**
      *
      * PUT인 이유 — 같은 storageKey로 여러 번 불러도 결과가 같다. 교체도 이 경로다.
      * 서버는 클라이언트의 "올렸어요"를 믿지 않고 HEAD와 매직 넘버로 실물을 확인한다
@@ -216,7 +209,36 @@ public class BacklogController {
     @PutMapping("/{entryId}/cover")
     public void confirmCover(@LoginMember Long memberId, @PathVariable Long entryId,
                              @Valid @RequestBody CoverConfirmRequest request) {
-        coverImageService.confirm(memberId, entryId, request.storageKey());
+        coverImageService.confirmExternal(memberId, entryId, request.storageKey());
+    }
+
+    /**
+     * LOCAL 업로드 (v1.0 6단계). 바이트가 백엔드를 지나간다.
+     *
+     * 프리사인드를 쓰던 이유(무료 티어 메모리 512MB)가 데스크탑에는 없다 —
+     * 커버는 최대 5MB고 올리는 사람은 한 명이다. 대신 **왕복이 셋에서 하나로 줄었다**
+     */
+    @PostMapping("/{entryId}/cover/file")
+    public void uploadCoverFile(@LoginMember Long memberId, @PathVariable Long entryId,
+                                @RequestParam("file") MultipartFile file) throws IOException {
+        coverImageService.saveLocal(
+                memberId, entryId, file.getOriginalFilename(), file.getBytes());
+    }
+
+    /**
+     * LOCAL 커버 원본.
+     *
+     * `?v=` 쿼리는 서버가 안 읽는다 — **브라우저 캐시를 깨려고** URL에 넣는 값이라
+     * 여기서는 존재만으로 제 몫을 한다. 커버를 교체해도 주소가 같아서 안 붙이면 옛 그림이 남는다
+     */
+    @GetMapping("/{entryId}/cover/file")
+    public ResponseEntity<byte[]> coverFile(@LoginMember Long memberId,
+                                            @PathVariable Long entryId) {
+        CoverImageService.LocalFile file = coverImageService.readLocal(memberId, entryId);
+        return ResponseEntity.ok()
+                .header("Content-Type", file.contentType())
+                .header("Cache-Control", "private, max-age=31536000, immutable")
+                .body(file.bytes());
     }
 
     /** 커버 삭제 (FR-MED-03). 마스터 커버로 폴백된다 */
@@ -225,6 +247,70 @@ public class BacklogController {
         coverImageService.delete(memberId, entryId);
 
         return ResponseEntity.noContent().build();
+    }
+
+    // ───────────────────────── 스크린샷 (v1.0 7단계) ─────────────────────────
+
+    /**
+     * 목록.
+     *
+     * **DB를 안 본다 — 폴더를 읽는다.** 캡션도 순서도 없으니 저장할 게 파일 말고 없고,
+     * 탐색기 열기를 주기로 한 이상 사람이 직접 지운다는 뜻이라 파일이 진실이어야 한다
+     */
+    @GetMapping("/{entryId}/screenshots")
+    public List<ScreenshotResponse> screenshots(@LoginMember Long memberId,
+                                                @PathVariable Long entryId) {
+        return screenshotService.list(memberId, entryId);
+    }
+
+    /** 한 장 저장. 드롭·클릭·붙여넣기가 전부 이 경로로 온다 */
+    @PostMapping("/{entryId}/screenshots")
+    public ScreenshotResponse addScreenshot(@LoginMember Long memberId,
+                                            @PathVariable Long entryId,
+                                            @RequestParam("file") MultipartFile file)
+            throws IOException {
+        return screenshotService.save(
+                memberId, entryId, file.getOriginalFilename(), file.getBytes());
+    }
+
+    /** 원본. 이름이 경로에 들어가므로 서비스가 폴더 밖으로 못 나가게 막는다 */
+    @GetMapping("/{entryId}/screenshots/{fileName}")
+    public ResponseEntity<byte[]> screenshot(@LoginMember Long memberId,
+                                             @PathVariable Long entryId,
+                                             @PathVariable String fileName) {
+        /*
+         * 스크린샷은 DB에 행이 없어 타입을 저장해둔 곳이 없다 → 확장자에서 되돌린다.
+         * 저장할 때 확장자와 매직 넘버를 대조했으므로 확장자를 믿어도 된다
+         */
+        return ResponseEntity.ok()
+                .header("Content-Type", ScreenshotService.contentTypeOf(fileName))
+                .header("Cache-Control", "private, max-age=31536000, immutable")
+                .body(screenshotService.read(memberId, entryId, fileName));
+    }
+
+    /**
+     * 일괄 삭제 (architecture §10-1 "보기와 삭제만 준다").
+     *
+     * DELETE에 본문을 싣는 건 규격상 회색지대라 POST로 받는다 —
+     * 이름을 쿼리로 나열하면 수십 장을 고를 때 URL 길이에 걸린다
+     */
+    @PostMapping("/{entryId}/screenshots/delete")
+    public Map<String, Integer> deleteScreenshots(@LoginMember Long memberId,
+                                                  @PathVariable Long entryId,
+                                                  @RequestBody List<String> fileNames) {
+        return Map.of("deleted", screenshotService.delete(memberId, entryId, fileNames));
+    }
+
+    /**
+     * 스크린샷 폴더의 실제 경로.
+     *
+     * **일렉트론이 탐색기로 연다** — 브라우저는 로컬 경로를 못 여니 이 값은 데스크탑에서만 쓰인다.
+     * 서버가 경로를 알려주고 여는 건 네이티브 쪽이 한다 (architecture §2 경계표)
+     */
+    @GetMapping("/{entryId}/screenshots/folder")
+    public Map<String, String> screenshotFolder(@LoginMember Long memberId,
+                                                @PathVariable Long entryId) {
+        return Map.of("path", screenshotService.folderPath(memberId, entryId));
     }
 
     /** 되살리기 (§7.4). 멱등하지 않아서(이미 살아있으면 409) PUT이 아니라 POST다 */

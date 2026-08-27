@@ -2,23 +2,31 @@
 
 import { useState } from "react";
 import Modal from "@/components/ui/Modal";
+import DropZone from "@/components/media/DropZone";
 import { Button } from "@/components/ui/Field";
 import { api, ApiError, errorMessage } from "@/lib/api";
+import { uploadCover } from "@/lib/upload";
 import type { CoverInfo } from "@/lib/types";
 
 /**
- * 커버 업로드 — **3단계다** (스펙 §6.10, K-1~K-5).
+ * 커버 업로드 (v1.0 6단계에서 다시 만듦).
  *
- *   1. 서버에 presigned URL 요청 (파일명·크기를 서버가 먼저 검증)
- *   2. 그 URL로 스토리지에 **직접** PUT — 파일이 우리 서버를 안 거친다
- *   3. storageKey를 서버에 확정 통보
+ * ## 🐛 예전에 무엇이 잘못됐나
  *
- * 2단계가 우리 API가 아니라서 `api` 래퍼를 안 쓴다 (CSRF 헤더도 붙이면 안 된다).
- * 로컬에서는 스토리지가 설정돼 있지 않아 1단계에서 막힌다 — 그때 에러가 그대로 뜬다
+ * `<input type="file">` 하나뿐인데 박스를 넓게 스타일링해둬서 **아무 데나 눌러도 될 것처럼
+ * 보였고**, 실제로는 왼쪽의 작은 기본 버튼만 동작했다. 드래그앤드롭은 아예 없었다.
+ * → `DropZone`으로 갈아끼웠다 (드롭·클릭·붙여넣기).
+ *
+ * ## 업로드 경로가 둘이다
+ *
+ * 어디에 올릴지는 **서버가 정한다** (`lib/upload.ts`). 자격증명이 있는지, 체크박스가
+ * 켜졌는지가 전부 서버에만 있어서, 화면이 판정하려면 설정을 또 내려받아야 한다.
+ *
+ * ## 고르자마자 올린다
+ *
+ * 예전에는 고르고 [올리기]를 또 눌러야 했다. 드롭으로 놓는 동작 자체가 이미 "이걸 쓰겠다"는
+ * 뜻이라 확인을 한 번 더 받는 게 어색하다 — 되돌리려면 다시 고르면 된다
  */
-const MAX_BYTES = 5 * 1024 * 1024;
-const ALLOWED = ["image/jpeg", "image/png", "image/webp"];
-
 export default function CoverDialog({
   entryId,
   cover,
@@ -30,37 +38,17 @@ export default function CoverDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const upload = async () => {
+  const handle = async (files: File[]) => {
+    const file = files[0];
     if (!file) return;
-    if (!ALLOWED.includes(file.type)) {
-      setError("JPG · PNG · WebP 형식만 업로드하실 수 있습니다");
-      return;
-    }
-    if (file.size > MAX_BYTES) {
-      setError("5MB 이하만 업로드하실 수 있습니다");
-      return;
-    }
 
     setBusy(true);
     setError(null);
     try {
-      const ticket = await api.post<{ uploadUrl: string; storageKey: string; contentType: string }>(
-        `/api/backlog/${entryId}/cover/upload-url`,
-        { fileName: file.name, sizeBytes: file.size },
-      );
-
-      const uploaded = await fetch(ticket.uploadUrl, {
-        method: "PUT",
-        headers: { "Content-Type": ticket.contentType },
-        body: file,
-      });
-      if (!uploaded.ok) throw new Error(`이미지 업로드에 실패했습니다 (${uploaded.status})`);
-
-      await api.put(`/api/backlog/${entryId}/cover`, { storageKey: ticket.storageKey });
+      await uploadCover(entryId, file);
       onSaved();
       onClose();
     } catch (caught) {
@@ -88,16 +76,17 @@ export default function CoverDialog({
       onClose={onClose}
       footer={
         <>
-          {error && <span className="mr-auto max-w-[55%] truncate text-xs text-red-400" title={error}>{error}</span>}
+          {error && (
+            <span className="mr-auto max-w-[55%] truncate text-xs text-red-400" title={error}>
+              {error}
+            </span>
+          )}
           {cover.source === "PERSONAL" && (
             <Button variant="danger" onClick={removeCover} disabled={busy}>
               커버 삭제
             </Button>
           )}
-          <Button onClick={onClose}>취소</Button>
-          <Button variant="primary" onClick={upload} disabled={busy || !file}>
-            {busy ? "업로드 중" : "올리기"}
-          </Button>
+          <Button onClick={onClose}>닫기</Button>
         </>
       }
     >
@@ -105,22 +94,19 @@ export default function CoverDialog({
         <p className="text-[11px] leading-relaxed text-white/45">
           현재 커버는{" "}
           <span className="text-white/70">
-            {cover.source === "PERSONAL" ? "직접 올린 이미지" : cover.source === "MASTER" ? "IGDB 이미지" : "없음"}
+            {cover.source === "PERSONAL"
+              ? "직접 올린 이미지"
+              : cover.source === "MASTER"
+                ? "IGDB 이미지"
+                : "없음"}
           </span>
-          입니다. 직접 올리신 이미지는 IGDB 커버를 대신하며, 삭제하시면 다시 IGDB 이미지로 돌아갑니다.
+          입니다. 직접 올리신 이미지는 IGDB 커버를 대신하며, 삭제하시면 다시 IGDB 이미지로
+          돌아갑니다.
         </p>
 
-        <input
-          type="file"
-          accept={ALLOWED.join(",")}
-          onChange={(event) => {
-            setFile(event.target.files?.[0] ?? null);
-            setError(null);
-          }}
-          className="w-full rounded-md border border-white/10 bg-white/5 p-3 text-sm text-white/70 file:mr-3 file:rounded file:border-0 file:bg-white/15 file:px-3 file:py-1.5 file:text-xs file:text-white hover:file:bg-white/25"
-        />
-
-        <p className="text-[11px] text-white/30">JPG · PNG · WebP · 5MB 이하</p>
+        <DropZone onFiles={handle} disabled={busy} hint="붙여넣기(⌘V)도 됩니다 · 5MB 이하">
+          {busy ? <p className="text-sm text-white/60">올리는 중…</p> : undefined}
+        </DropZone>
       </div>
     </Modal>
   );

@@ -152,14 +152,13 @@ export default function AppHeader() {
               </Link>
 
               {/*
-                v1.0에는 권한이 없다 — 자기 DB의 주인이니 전부 열려 있다.
-                이 메뉴는 8단계에서 게임 마스터 편집이 일반 기능으로 승격되면 사라진다
+                **권한 조건이 사라졌다** (v1.0 8단계). 자기 DB의 주인이니 늘 열려 있다.
+                예전엔 `role === "ADMIN"`으로 가렸는데, 화면을 숨기는 건 애초에 보안이 아니었고
+                (실제 방어선은 서버의 403이었다) 이제 막을 상대도 없다
               */}
-              {profile?.role === "ADMIN" && (
-                <Link href="/admin" onClick={close} className="menu-item">
-                  Admin
-                </Link>
-              )}
+              <Link href="/system" onClick={close} className="menu-item">
+                System
+              </Link>
             </>
           )}
         </Dropdown>

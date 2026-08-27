@@ -83,8 +83,12 @@ class FlywayMigrationTest {
         //then
         // 태그 단일화로 34 → 33 (조인 FK 2개 빠지고 tag_id 1개 추가),
         // 세션 테이블(V2)의 spring_session_attributes_fk가 더해져 34,
-        // V3의 fk_usage_quota_member가 더해져 35
-        assertThat(count).isEqualTo(35);
+        // V3의 fk_usage_quota_member가 더해져 35.
+        //
+        // **V5에서 셋이 한꺼번에 빠져 32** — audit_log·usage_quota·spring_session을 지웠다.
+        // 감사 로그와 쿼터는 물어볼 상황이 없어서, 세션은 로그인이 없어서 (architecture §9).
+        // api_call_log는 회원을 안 물어서 FK를 늘리지 않는다
+        assertThat(count).isEqualTo(32);
     }
 
     @Test
@@ -101,8 +105,9 @@ class FlywayMigrationTest {
                 "idx_backlog_member_status", "idx_backlog_member_last_played",
                 "idx_backlog_member_display_name", "idx_backlog_member_released_on",
                 "idx_backlog_member_rating", "idx_backlog_member_play_time",
-                "idx_auth_token_used_at", "idx_audit_log_created_at",
-                "idx_playthrough_input_method");
+                "idx_playthrough_input_method",
+                // V5 — 정렬 키(§10-5)와 API 호출 기록. 둘 다 이 인덱스로만 훑는다
+                "idx_backlog_entry_sort_key", "idx_api_call_log_provider_called");
 
         //when
         List<String> actual = jdbc.queryForList(

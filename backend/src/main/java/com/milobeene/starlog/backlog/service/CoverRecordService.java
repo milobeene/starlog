@@ -2,6 +2,7 @@ package com.milobeene.starlog.backlog.service;
 
 import com.milobeene.starlog.backlog.domain.BacklogEntry;
 import com.milobeene.starlog.backlog.domain.CoverImage;
+import com.milobeene.starlog.backlog.domain.CoverLocation;
 import com.milobeene.starlog.backlog.repository.CoverImageRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -29,11 +30,10 @@ public class CoverRecordService {
         entryFinder.findOwned(memberId, entryId);
     }
 
-    public Optional<String> findStorageKey(Long memberId, Long entryId) {
+    public Optional<CoverImage> find(Long memberId, Long entryId) {
         entryFinder.findOwned(memberId, entryId);
 
-        return coverImageRepository.findByBacklogEntryId(entryId)
-                .map(CoverImage::getStorageKey);
+        return coverImageRepository.findByBacklogEntryId(entryId);
     }
 
     /**
@@ -45,16 +45,19 @@ public class CoverRecordService {
      * @return 스토리지에서 지워야 할 예전 key. 신규면 비어 있다
      */
     @Transactional
-    public Optional<String> attach(Long memberId, Long entryId, String storageKey,
-                                   String contentType, long sizeBytes) {
+    public Optional<CoverImage.Replaced> attach(Long memberId, Long entryId, String storageKey,
+                                                String contentType, long sizeBytes,
+                                                CoverLocation location) {
         BacklogEntry entry = entryFinder.findOwned(memberId, entryId);
 
         Optional<CoverImage> existing = coverImageRepository.findByBacklogEntryId(entryId);
         if (existing.isPresent()) {
-            return Optional.of(existing.get().replaceWith(storageKey, contentType, sizeBytes));
+            return Optional.of(existing.get()
+                    .replaceWith(storageKey, contentType, sizeBytes, location));
         }
 
-        coverImageRepository.persist(CoverImage.of(entry, storageKey, contentType, sizeBytes));
+        coverImageRepository.persist(
+                CoverImage.of(entry, storageKey, contentType, sizeBytes, location));
 
         return Optional.empty();
     }
@@ -65,14 +68,16 @@ public class CoverRecordService {
      * @return 스토리지에서 지워야 할 key. 커버가 없었으면 비어 있다
      */
     @Transactional
-    public Optional<String> detach(Long memberId, Long entryId) {
+    public Optional<CoverImage.Replaced> detach(Long memberId, Long entryId) {
         entryFinder.findOwned(memberId, entryId);
 
         return coverImageRepository.findByBacklogEntryId(entryId)
                 .map(cover -> {
-                    String key = cover.getStorageKey();
+                    // 행이 사라지기 전에 위치까지 챙긴다 — key만으로는 어디서 지울지 모른다
+                    CoverImage.Replaced target =
+                            new CoverImage.Replaced(cover.getStorageKey(), cover.getLocation());
                     coverImageRepository.delete(cover);
-                    return key;
+                    return target;
                 });
     }
 }

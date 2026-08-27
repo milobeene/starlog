@@ -314,6 +314,22 @@ function registerIpc() {
     shell.openPath(dirs[which] ?? dirs.root);
   });
 
+  /**
+   * 절대 경로를 탐색기로 연다 (스크린샷 폴더).
+   *
+   * 백엔드가 경로를 알려주고 여는 것은 네이티브가 한다 — 브라우저는 로컬 경로를 못 연다.
+   * ⚠️ **데이터 루트 안인지 확인한다.** 경로가 화면을 거쳐 오므로,
+   * 확인 없이 열면 `openPath("/etc")` 같은 요청도 그대로 통한다
+   */
+  ipcMain.handle("shell:openPath", (_e, target) => {
+    const dirs = dataDirs();
+    const resolved = path.resolve(target);
+    if (!resolved.startsWith(path.resolve(dirs.root))) {
+      throw new Error("데이터 폴더 밖은 열 수 없습니다");
+    }
+    shell.openPath(resolved);
+  });
+
   ipcMain.handle("saves:list", () => {
     const { saves } = dataDirs();
     return fs.readdirSync(saves)
@@ -427,7 +443,16 @@ function localConfig(saveName) {
      * 커버를 여기에 쓴다 — 지금은 백엔드가 무시하지만, 경로를 정하는 주체가
      * 일렉트론이라는 구조는 지금 세워둔다
      */
-    env: { STARLOG_DATA_ROOT: dataRoot },
+    /*
+     * 로컬 모드에는 스토리지가 아예 없다 — 명시적으로 꺼서 넘긴다.
+     * 안 넘기면 스프링 기본값(false)에 기대게 되는데, **기본값에 기대는 것과
+     * 값을 정해서 주는 것은 다르다** — 기본값이 바뀌면 조용히 동작이 바뀐다
+     */
+    env: {
+      STARLOG_DATA_ROOT: dataRoot,
+      STARLOG_MEDIA_USE_STORAGE_FOR_COVERS: "false",
+      STARLOG_MEDIA_USE_STORAGE_FOR_SCREENSHOTS: "false",
+    },
   };
 }
 
@@ -448,6 +473,13 @@ function cloudConfig(profile) {
     password: db.password,
     env: {
       STARLOG_DATA_ROOT: dataRoot,
+      /*
+       * 무엇을 스토리지에 올릴지 (사용자 결정 2026-08-28).
+       * 체크 안 한 것은 데이터 루트에 저장된다. **자격증명이 없으면 백엔드가 무시한다** —
+       * 올릴 데가 없는데 켜져 있으면 업로드가 502로 실패할 뿐이다 (MediaTargets)
+       */
+      STARLOG_MEDIA_USE_STORAGE_FOR_COVERS: String(!!profile.mediaTargets?.covers),
+      STARLOG_MEDIA_USE_STORAGE_FOR_SCREENSHOTS: String(!!profile.mediaTargets?.screenshots),
       APP_STORAGE_ENDPOINT: storage.endpoint,
       APP_STORAGE_BUCKET: storage.bucket,
       APP_STORAGE_ACCESS_KEY: storage.accessKey,

@@ -14,7 +14,6 @@ import com.milobeene.starlog.backlog.repository.AcquisitionRepository;
 import com.milobeene.starlog.backlog.repository.BacklogEntryRepository;
 import com.milobeene.starlog.backlog.repository.CoverImageRepository;
 import com.milobeene.starlog.backlog.repository.PlaythroughRepository;
-import com.milobeene.starlog.common.storage.FileStoragePort;
 import com.milobeene.starlog.common.dto.PageResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -46,7 +45,8 @@ public class BacklogQueryService {
     private final AcquisitionRepository acquisitionRepository;
     private final BacklogEntryFinder backlogEntryFinder;
     private final CoverImageRepository coverImageRepository;
-    private final FileStoragePort fileStorage;
+    /* 커버 주소 조합. 위치(LOCAL/EXTERNAL)를 아는 쪽이 여기 하나여야 한다 */
+    private final CoverImageService coverImageService;
 
     /**
      * 목록 (화면 1). L-1에서 검색·필터가 붙으며 QueryDSL 경로로 옮겼다.
@@ -78,7 +78,7 @@ public class BacklogQueryService {
         BacklogEntry entry = backlogEntryFinder.findOwnedWithGame(memberId, entryId);
 
         String coverUrl = coverImageRepository.findByBacklogEntryId(entryId)
-                .map(cover -> fileStorage.publicUrl(cover.getStorageKey()))
+                .map(coverImageService::publicUrl)
                 .orElse(null);
 
         return BacklogDetailResponse.from(
@@ -161,7 +161,8 @@ public class BacklogQueryService {
         return coverImageRepository.findByBacklogEntryIdIn(entryIds).stream()
                 .collect(Collectors.toMap(
                         cover -> cover.getBacklogEntry().getId(),
-                        cover -> fileStorage.publicUrl(cover.getStorageKey()),
+                        // 위치에 따라 주소가 완전히 다르다 — 버킷 공개 URL이거나 우리 엔드포인트다
+                        coverImageService::publicUrl,
                         (first, second) -> first));
     }
 

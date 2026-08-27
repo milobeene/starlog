@@ -22,6 +22,8 @@ const EMPTY: ConnectionProfile = {
   db: { url: "", user: "", password: "", schema: "" },
   storage: { endpoint: "", bucket: "", accessKey: "", secretKey: "", publicBaseUrl: "" },
   igdb: { clientId: "", clientSecret: "" },
+  // 기본은 둘 다 로컬. 아무것도 설정 안 한 사람이 바로 쓸 수 있어야 한다 (§1)
+  mediaTargets: { covers: false, screenshots: false },
 };
 
 export default function ConnectionForm({
@@ -44,6 +46,14 @@ export default function ConnectionForm({
     setForm((f) => ({ ...f, storage: { ...f.storage, ...patch } }));
   const setIgdb = (patch: Partial<NonNullable<ConnectionProfile["igdb"]>>) =>
     setForm((f) => ({ ...f, igdb: { ...f.igdb, ...patch } }));
+  const setTargets = (patch: Partial<NonNullable<ConnectionProfile["mediaTargets"]>>) =>
+    setForm((f) => ({
+      ...f,
+      mediaTargets: { covers: false, screenshots: false, ...f.mediaTargets, ...patch },
+    }));
+
+  /* 올릴 데가 없으면 체크가 뜻이 없다 — 백엔드도 자격증명이 없으면 무시한다 (MediaTargets) */
+  const storageReady = Boolean(form.storage?.endpoint?.trim() && form.storage?.bucket?.trim());
 
   const ready = form.name.trim() && form.db.url.trim() && form.db.user.trim();
 
@@ -156,6 +166,36 @@ export default function ConnectionForm({
             onChange={(v) => setStorage({ secretKey: v })}
           />
         </div>
+
+        {/*
+          **무엇을 올릴지 고른다** (사용자 결정 2026-08-28).
+          커버와 스크린샷을 따로 켜는 이유 — 스크린샷은 장당 2~5MB에 수백 장이라
+          버킷이 먼저 찬다. 하나로 묶으면 "커버만 클라우드에"가 표현이 안 된다
+        */}
+        <div className="rounded-md border border-white/10 bg-white/[0.03] px-3.5 py-3">
+          <div className="text-[10px] font-semibold tracking-widest text-white/40 uppercase">
+            스토리지 사용
+          </div>
+          <div className="mt-2.5 flex flex-wrap gap-x-5 gap-y-2">
+            <Check
+              label="커버"
+              checked={Boolean(form.mediaTargets?.covers)}
+              disabled={!storageReady}
+              onChange={(v) => setTargets({ covers: v })}
+            />
+            <Check
+              label="스크린샷"
+              checked={Boolean(form.mediaTargets?.screenshots)}
+              disabled={!storageReady}
+              onChange={(v) => setTargets({ screenshots: v })}
+            />
+          </div>
+          <p className="mt-2.5 text-[11px] leading-relaxed text-white/30">
+            {storageReady
+              ? "체크하지 않은 것은 데이터 폴더에 저장됩니다 — 입구 화면 아래에 그 경로가 있습니다."
+              : "엔드포인트와 버킷을 채우시면 켤 수 있습니다. 지금은 모두 데이터 폴더에 저장됩니다."}
+          </p>
+        </div>
       </Section>
 
       <Section title="IGDB" hint="비워두면 게임 검색 대신 직접 등록으로 씁니다">
@@ -207,6 +247,41 @@ export default function ConnectionForm({
         <Button onClick={onCancel}>취소</Button>
       </div>
     </div>
+  );
+}
+
+/**
+ * 체크박스 한 칸.
+ *
+ * 기본 `<input type="checkbox">`는 OS가 그리는 물건이라 어두운 화면에서 흰 사각형이 뜬다.
+ * `appearance-none`으로 그림을 지우고 우리가 그린다 — `Field`가 select에 하는 것과 같은 이유
+ */
+function Check({
+  label,
+  checked,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <label
+      className={`flex items-center gap-2 text-sm ${
+        disabled ? "cursor-not-allowed text-white/25" : "cursor-pointer text-white/80"
+      }`}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+        className="h-4 w-4 appearance-none rounded border border-white/25 bg-white/5 transition-colors checked:border-white checked:bg-white disabled:opacity-40"
+      />
+      {label}
+    </label>
   );
 }
 

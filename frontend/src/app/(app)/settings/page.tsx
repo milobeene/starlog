@@ -18,7 +18,6 @@ import { useApi } from "@/lib/useApi";
 import { api, ApiError, ERROR, errorMessage } from "@/lib/api";
 import { refreshSession } from "@/lib/session";
 import PaletteEditor from "@/components/settings/PaletteEditor";
-import QuotaSection from "@/components/settings/QuotaSection";
 import DeletedEntriesSection from "@/components/settings/DeletedEntriesSection";
 import { paletteOf, toPayload } from "@/lib/palette";
 import { BILLING_CYCLE_LABEL } from "@/lib/labels";
@@ -110,9 +109,6 @@ function SettingsContent() {
               </div>
             )}
           </SettingsSection>
-
-          {/* WEB-ONLY: 쿼터가 없는 빌드에서는 스스로 아무것도 안 그린다 */}
-          <QuotaSection />
 
           {/*
             메모는 자유 서식이라 프로필 폼 한 줄로는 좁다.

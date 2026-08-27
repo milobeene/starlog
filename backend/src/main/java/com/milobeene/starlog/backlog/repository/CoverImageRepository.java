@@ -24,8 +24,8 @@ public interface CoverImageRepository extends BaseRepository<CoverImage, Long> {
     void delete(CoverImage coverImage);
 
     /**
-     * WEB-ONLY: /admin 시스템 탭 — R2 사용량. **DB만으로 계산된다**
-     * (스토리지에 물어보지 않는다 — 무료 티어에서 또 다른 외부 호출을 만들 이유가 없다).
+     * 시스템 화면의 저장소 사용량. **DB만으로 계산한다** — 스토리지에 물어보면
+     * 사용량을 보러 들어갈 때마다 외부 호출이 하나씩 늘고, 그건 한도를 보러 와서 한도를 쓰는 꼴이다.
      * 한 건도 없으면 sum이 null이라 coalesce로 0을 만든다
      */
     @Query("select coalesce(sum(c.sizeBytes), 0) from CoverImage c")

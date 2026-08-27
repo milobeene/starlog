@@ -31,6 +31,8 @@ type Options = {
   body?: unknown;
   /** 로그인만 form 형식이다 (JSON이 아니다) */
   form?: Record<string, string>;
+  /** 파일 업로드용. 있으면 Content-Type을 안 붙인다 (브라우저가 boundary와 함께 채운다) */
+  multipart?: FormData;
   signal?: AbortSignal;
 };
 
@@ -40,12 +42,14 @@ async function request<T>(path: string, options: Options = {}): Promise<T> {
 
   if (DEV_MEMBER_ID) headers["X-Member-Id"] = DEV_MEMBER_ID;
 
-  // GET은 CSRF 대상이 아니다
-  if (method !== "GET") {
-  }
-
   let payload: BodyInit | undefined;
-  if (options.form) {
+  if (options.multipart) {
+    /*
+     * **Content-Type을 직접 안 쓴다.** 손으로 쓰면 boundary가 빠져서 서버가 파싱을 못 한다 —
+     * FormData를 body로 주면 브라우저가 boundary까지 붙여 알아서 채운다
+     */
+    payload = options.multipart;
+  } else if (options.form) {
     headers["Content-Type"] = "application/x-www-form-urlencoded";
     payload = new URLSearchParams(options.form).toString();
   } else if (options.body !== undefined) {
@@ -95,6 +99,9 @@ export const api = {
   del: <T>(path: string) => request<T>(path, { method: "DELETE" }),
   postForm: <T>(path: string, form: Record<string, string>) =>
     request<T>(path, { method: "POST", form }),
+  /** 파일 업로드 (v1.0 6·7단계). 커버 로컬 저장과 스크린샷이 쓴다 */
+  postMultipart: <T>(path: string, multipart: FormData) =>
+    request<T>(path, { method: "POST", multipart }),
 };
 
 /** 화면이 분기해야 하는 에러 코드만 모아둔다 */

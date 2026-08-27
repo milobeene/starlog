@@ -1,6 +1,7 @@
 package com.milobeene.starlog.backlog.domain;
 
 import com.milobeene.starlog.common.entity.BaseEntity;
+import com.milobeene.starlog.common.util.SortKeys;
 import com.milobeene.starlog.common.entity.Money;
 import com.milobeene.starlog.common.exception.ConflictException;
 import com.milobeene.starlog.common.exception.InvalidInputException;
@@ -92,6 +93,16 @@ public class BacklogEntry extends BaseEntity {
     // ── 비정규화 (갱신 책임은 서비스 계층)
     @Column(name = "display_name", nullable = false, length = 300)
     private String displayName;
+
+    /**
+     * 정렬 전용 칸 (v1.0 8단계, architecture §10-5).
+     *
+     * ⚠️ **`displayName`이 바뀌는 경로가 둘이다** — 이 엔티티의 `refreshDisplayName()`과
+     * 리포지토리의 벌크 `updateDisplayNameByGameId`. 벌크는 엔티티를 안 거치므로
+     * **거기서도 이 칸을 같이 써야 한다.** 한쪽만 고치면 이름과 정렬이 조용히 어긋난다
+     */
+    @Column(name = "display_name_sort_key", length = 320)
+    private String displayNameSortKey;
 
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.VARCHAR)
@@ -295,6 +306,7 @@ public class BacklogEntry extends BaseEntity {
      */
     public void refreshDisplayName() {
         this.displayName = (nameOverride != null) ? nameOverride : game.getName();
+        this.displayNameSortKey = SortKeys.of(this.displayName);
     }
 
     /**

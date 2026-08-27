@@ -44,7 +44,12 @@ class HttpIgdbClientTest {
         RestClient.Builder builder = RestClient.builder().baseUrl("https://api.igdb.com/v4");
         server = MockRestServiceServer.bindTo(builder).build();
         tokens = new StubTokenProvider();
-        client = new HttpIgdbClient(builder.build(), tokens, properties());
+        /*
+         * 호출 기록은 이 테스트의 관심사가 아니라 아무것도 안 하는 것을 넣는다.
+         * **null이 아니라 빈 구현인 이유** — 클라이언트가 finally에서 무조건 부르므로
+         * null이면 그 자리에서 NPE가 나고, 진짜 검증하려던 것(요청 본문·재시도)이 안 보인다
+         */
+        client = new HttpIgdbClient(builder.build(), tokens, properties(), noRecorder());
     }
 
     @Test
@@ -260,4 +265,16 @@ class HttpIgdbClientTest {
             return "tok-2";
         }
     }
+
+    /** 호출 기록을 안 하는 기록기. DB 없이 도는 테스트라 진짜 빈을 쓸 수 없다 */
+    private static com.milobeene.starlog.system.service.ApiCallRecorder noRecorder() {
+        return new com.milobeene.starlog.system.service.ApiCallRecorder(null) {
+            @Override
+            public void record(com.milobeene.starlog.system.domain.ApiProvider provider,
+                               String operation, boolean success) {
+                // 아무것도 안 한다
+            }
+        };
+    }
+
 }

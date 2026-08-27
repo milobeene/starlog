@@ -31,8 +31,26 @@ public class CoverImage extends BaseEntity {
     @JoinColumn(name = "backlog_entry_id", nullable = false)
     private BacklogEntry backlogEntry;
 
+    /**
+     * 파일을 가리키는 키.
+     *
+     * **위치에 따라 뜻이 다르다** — EXTERNAL이면 버킷 안의 오브젝트 키,
+     * LOCAL이면 `covers/` 폴더 안의 파일명이다. 같은 칸을 쓰는 이유는 둘 다
+     * "그 저장소 안에서 이 파일을 찾는 문자열"이고, 저장소를 아는 쪽(포트 구현체)만
+     * 해석하면 되기 때문이다
+     */
     @Column(nullable = false, length = 300)
     private String storageKey;
+
+    /**
+     * 어디에 있는가 (v1.0 6단계).
+     *
+     * ⚠️ **`@Enumerated(STRING)`이다.** 기본값인 ORDINAL은 enum에 상수를 끼워 넣는
+     * 순간 기존 행의 뜻이 통째로 바뀐다 — DB에 숫자만 남아 되돌릴 방법이 없다
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private CoverLocation location;
 
     @Column(nullable = false, length = 100)
     private String contentType;
@@ -46,12 +64,13 @@ public class CoverImage extends BaseEntity {
     protected CoverImage() {}
 
     public static CoverImage of(BacklogEntry backlogEntry, String storageKey,
-                                String contentType, long sizeBytes) {
+                                String contentType, long sizeBytes, CoverLocation location) {
         CoverImage cover = new CoverImage();
         cover.backlogEntry = backlogEntry;
         cover.storageKey = storageKey;
         cover.contentType = contentType;
         cover.sizeBytes = sizeBytes;
+        cover.location = location;
         return cover;
     }
 
@@ -62,13 +81,23 @@ public class CoverImage extends BaseEntity {
      *
      * @return 스토리지에서 지워야 할 예전 key
      */
-    public String replaceWith(String storageKey, String contentType, long sizeBytes) {
-        String previousKey = this.storageKey;
+    public Replaced replaceWith(String storageKey, String contentType, long sizeBytes,
+                                CoverLocation location) {
+        Replaced previous = new Replaced(this.storageKey, this.location);
 
         this.storageKey = storageKey;
         this.contentType = contentType;
         this.sizeBytes = sizeBytes;
+        this.location = location;
 
-        return previousKey;
+        return previous;
     }
+
+    /**
+     * 지워야 할 옛 파일.
+     *
+     * **키만으로는 못 지운다** — 어느 저장소에 있었는지 알아야 하고, 교체 전후로 위치가
+     * 바뀔 수 있다(스토리지를 껐다가 로컬로 다시 올리는 경우). key와 location은 짝이다
+     */
+    public record Replaced(String storageKey, CoverLocation location) {}
 }

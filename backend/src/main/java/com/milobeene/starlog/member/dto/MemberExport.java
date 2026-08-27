@@ -17,8 +17,10 @@ import java.util.List;
  *   해시가 실려 다니면 안 된다. 가져오면 계정 자체는 새로 만들어진 것을 쓴다
  * - **파생 상태** — `status`·`displayName`·`lastPlayedOn`·`lastPlaythrough`·`releasedOnResolved`.
  *   원본에서 계산되는 값이라 담으면 두 개의 진실이 생긴다. 가져온 뒤 다시 계산한다
- * - **커버 실물** — `storageKey`만 담는다. 바이트는 R2에 있다.
- *   ⚠️ **R2까지 버리면 이 키는 무용지물이 된다.** 그때는 이미지 내보내기가 따로 필요하다
+ * - **커버 실물** — `storageKey`와 `location`만 담는다. 바이트는 스토리지나 로컬 폴더에 있다.
+ *   ⚠️ **다른 기계로 옮기면 LOCAL 커버는 따라오지 않는다** — 그 파일은 데이터 루트의
+ *   `covers/` 폴더에 있다. 가져오기가 파일을 못 찾으면 커버 없이 넣고 마스터 커버로 폴백한다.
+ *   architecture §6이 말한 대로 **온전한 단위는 이 JSON이 아니라 데이터 루트 폴더**다
  * - **id** — 새 DB에서 어차피 새로 발급된다. 참조는 이름·순번으로 잇는다
  *
  * ## 참조를 잇는 방식
@@ -114,7 +116,8 @@ public record MemberExport(
     ) {}
 
     /** 실물은 R2에 남는다 — 클래스 주석의 경고 참고 */
-    public record Cover(String storageKey, String contentType, long sizeBytes) {}
+    /** location은 v1.0 6단계에 생겼다. 옛 파일에는 없어서 null이면 EXTERNAL로 읽는다 */
+    public record Cover(String storageKey, String contentType, long sizeBytes, String location) {}
 
     public record Playthrough(int sequenceNo, LocalDate startedOn, LocalDate finishedOn,
                               String status, String label,

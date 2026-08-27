@@ -61,4 +61,14 @@ public interface GameRepository extends BaseRepository<Game, Long> {
     List<Game> searchByNameAndSource(@Param("keyword") String keyword,
                                      @Param("source") GameSource source,
                                      Pageable pageable);
+
+    /**
+     * 이 폴더 이름을 이미 쓰는 게임.
+     *
+     * ⚠️ **이름이 같은 게임이 둘 있을 수 있다** — IGDB에서 가져온 `Hollow Knight`와
+     * 검색이 안 돼서 직접 등록한 `Hollow Knight`. slug가 같으면 **스크린샷 폴더가 겹쳐서
+     * 두 게임의 사진이 한 폴더에 섞인다.** 그래서 폴더를 정하기 전에 확인한다
+     */
+    Optional<Game> findByMediaFolder(String mediaFolder);
+
 }

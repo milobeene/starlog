@@ -37,11 +37,24 @@ export interface StorageConfig {
   publicBaseUrl?: string;
 }
 
+/**
+ * 무엇을 스토리지에 올릴 것인가 (사용자 결정 2026-08-28).
+ *
+ * **커버와 스크린샷을 따로 켠다.** 커버는 몇 KB지만 스크린샷은 장당 2~5MB에 수백 장이라
+ * 무료 티어 버킷이 먼저 찬다 — 하나로 묶으면 "커버만 클라우드에"가 표현이 안 된다.
+ * 체크 안 한 것은 데이터 폴더에 저장된다
+ */
+export interface MediaTargets {
+  covers: boolean;
+  screenshots: boolean;
+}
+
 export interface ConnectionProfile {
   name: string;
   db: DbConfig;
   storage?: StorageConfig;
   igdb?: { clientId?: string; clientSecret?: string };
+  mediaTargets?: MediaTargets;
 }
 
 export type LaunchProgress =
@@ -57,6 +70,8 @@ export interface StarlogBridge {
   };
   pickFolder(): Promise<string | null>;
   openFolder(which: string): Promise<void>;
+  /** 스크린샷 폴더처럼 백엔드가 알려준 절대 경로. 데이터 루트 밖은 일렉트론이 거부한다 */
+  openPath(target: string): Promise<void>;
   saves: {
     list(): Promise<SaveFile[]>;
     create(name: string): Promise<string>;

@@ -1,55 +1,33 @@
 package com.milobeene.starlog.common.config;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
-
-import com.milobeene.starlog.common.quota.NoOpQuotaGuard;
-import com.milobeene.starlog.common.quota.QuotaGuard;
-import com.milobeene.starlog.common.quota.QuotaKind;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
 /**
- * **로컬 앱 빌드가 실제로 뜨는지** 확인한다 (docs/web-only-inventory.md §5).
+ * **데스크탑 빌드가 실제로 뜨는지** 확인한다.
  *
- * `@Profile("!desktop")`을 하나씩 붙여 두는 것만으로는 부족하다 —
- * 그 빈을 `final` 필드로 물고 있는 쪽에 게이트가 없으면 컨텍스트가 통째로 죽는다.
- * 실제로 `AdminController`가 `SystemStatusService`를 물고 있어서 그랬다.
+ * ## 왜 아직 필요한가
  *
- * **이 테스트가 v1.0으로 가는 길의 안전망이다.** WEB-ONLY 표시를 늘릴 때마다
- * 여기가 먼저 깨져서 알려 준다.
+ * 원래는 `@Profile("!desktop")`이 붙은 웹 전용 빈을 누가 무심코 물어서 컨텍스트가
+ * 통째로 죽는 걸 잡던 그물이었다 (실제로 `AdminController`가 `SystemStatusService`를 물었다).
+ * **v1.0 8단계에서 그 프로필 게이트가 전부 사라졌다** — 웹 전용 빈 자체가 없어졌기 때문이다.
+ *
+ * 그래도 남긴다. 이제 잡는 것은 다른 부류다 — `desktop` 프로필로 뜰 때만 갈리는 설정
+ * (`application-desktop.yml`의 커넥션 풀·로깅)이 컨텍스트를 깨뜨리지 않는지 본다.
+ *
+ * ⚠️ **프로필 순서가 뜻을 갖는다.** 프로필 파일은 활성 순서대로 위에 쌓이므로 `test`가
+ * 뒤에 와야 `application-test.yml`(인메모리·ddl-auto:create)이 이긴다.
+ * 반대로 뒀다가 컨텍스트가 통째로 안 떴다
  */
 @SpringBootTest(properties = {
         "spring.datasource.url=jdbc:h2:mem:desktop;MODE=PostgreSQL;DB_CLOSE_DELAY=-1"
 })
-/*
- * ⚠️ **순서가 뜻을 갖는다.** 프로필 파일은 활성 순서대로 위에 쌓이므로 `test`가 뒤에 와야
- * `application-test.yml`(인메모리·ddl-auto:create)이 `application-desktop.yml`을 이긴다.
- * 반대로 뒀다가 컨텍스트가 통째로 안 떴다
- */
 @ActiveProfiles({"desktop", "test"})
 class DesktopProfileTest {
 
-    @Autowired QuotaGuard quotaGuard;
-
     @Test
-    void 로컬_앱_프로필로도_기동된다() {
-        // 검증은 컨텍스트 기동 자체 — 웹 전용 빈을 누가 무심코 물면 여기 못 온다
-    }
-
-    @Test
-    void 쿼터가_아무것도_안_한다() {
-        //given //when //then — 나 혼자 쓰는 앱에 하루 200번 제한을 둘 이유가 없다
-        assertThat(quotaGuard).isInstanceOf(NoOpQuotaGuard.class);
-        assertThatCode(() -> {
-            for (int i = 0; i < 500; i++) {
-                quotaGuard.consume(1L, QuotaKind.GAME_SEARCH);
-            }
-        }).doesNotThrowAnyException();
-
-        //then — 빈 목록이면 화면이 그 섹션을 통째로 안 그린다
-        assertThat(quotaGuard.statusOf(1L)).isEmpty();
+    void 데스크탑_프로필로도_기동된다() {
+        // 검증은 컨텍스트 기동 자체다
     }
 }

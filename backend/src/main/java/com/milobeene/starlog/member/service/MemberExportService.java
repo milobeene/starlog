@@ -175,7 +175,8 @@ public class MemberExportService {
 
     private MemberExport.Cover cover(Long entryId) {
         return coverImageRepository.findByBacklogEntryId(entryId)
-                .map(c -> new MemberExport.Cover(c.getStorageKey(), c.getContentType(), c.getSizeBytes()))
+                .map(c -> new MemberExport.Cover(c.getStorageKey(), c.getContentType(),
+                        c.getSizeBytes(), c.getLocation().name()))
                 .orElse(null);
     }
 

@@ -202,13 +202,19 @@ public interface BacklogEntryRepository
      * flushAutomatically: 실행 전 컨텍스트 전체를 flush. 자동 flush는 이 쿼리가
      * 건드리는 테이블(backlog_entry)과 겹치는 변경만 밀어내므로, 이게 없으면
      * 같은 트랜잭션에서 바꾼 Game.name이 안 밀린 채 clear에 날아간다.
-     * clearAutomatically: 실행 후 컨텍스트를 비워 옛 displayName을 버린다
+     * clearAutomatically: 실행 후 컨텍스트를 비워 옛 displayName을 버린다.
+     *
+     * ⚠️ **정렬 키도 여기서 같이 쓴다.** 엔티티의 refreshDisplayName()과 이 쿼리가
+     * displayName을 바꾸는 두 경로인데, 벌크는 엔티티를 안 거치므로 콜백에 기댈 수 없다.
+     * 한쪽만 고치면 **이름은 바뀌었는데 정렬만 옛 이름 자리에 남는다**
      */
     @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query("update BacklogEntry b set b.displayName = :newName, b.updatedAt = :now" +
+    @Query("update BacklogEntry b set b.displayName = :newName," +
+            " b.displayNameSortKey = :sortKey, b.updatedAt = :now" +
             " where b.game.id = :gameId and b.nameOverride is null")
     int updateDisplayNameByGameId(@Param("gameId") Long gameId,
                                   @Param("newName") String newName,
+                                  @Param("sortKey") String sortKey,
                                   @Param("now") LocalDateTime now);
 
     /**

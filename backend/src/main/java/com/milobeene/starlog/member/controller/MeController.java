@@ -1,6 +1,5 @@
 package com.milobeene.starlog.member.controller;
 
-import com.milobeene.starlog.common.quota.QuotaGuard;
 import com.milobeene.starlog.common.web.LoginMember;
 import com.milobeene.starlog.member.dto.MeResponse;
 import com.milobeene.starlog.member.dto.OptionsResponse;
@@ -11,7 +10,6 @@ import com.milobeene.starlog.member.service.MeQueryService;
 import com.milobeene.starlog.member.service.MemberExportService;
 import com.milobeene.starlog.member.service.MemberImportService;
 import com.milobeene.starlog.member.service.MemberService;
-import com.milobeene.starlog.member.service.WithdrawalService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
@@ -36,9 +34,6 @@ public class MeController {
 
     private final MeQueryService meQueryService;
     private final MemberService memberService;
-    private final WithdrawalService withdrawalService;
-    /* WEB-ONLY: 일일 쿼터 (docs/web-only-inventory.md) */
-    private final QuotaGuard quotaGuard;
     private final MemberExportService memberExportService;
     private final MemberImportService memberImportService;
 
@@ -46,19 +41,6 @@ public class MeController {
     @GetMapping
     public MeResponse me(@LoginMember Long memberId) {
         return meQueryService.findMe(memberId);
-    }
-
-    /**
-     * WEB-ONLY: 오늘 남은 쿼터 (docs/capacity-planning.md §2-B).
-     *
-     * **"모르고 막히는 것"보다 "하루에 몇 건까지인지 보이는 것"이 낫다**는 방침의 화면 쪽 절반이다.
-     *
-     * 쿼터가 없는 빌드에서는 `NoOpQuotaGuard`가 빈 목록을 준다 — 404가 아니라 빈 배열인 이유는
-     * 프론트가 `length === 0`으로 섹션을 통째로 안 그리면 되기 때문이다. 에러 처리가 안 늘어난다
-     */
-    @GetMapping("/quota")
-    public List<QuotaGuard.QuotaStatus> quota(@LoginMember Long memberId) {
-        return quotaGuard.statusOf(memberId);
     }
 
     /**
@@ -104,20 +86,4 @@ public class MeController {
                 request.backgroundColors());
     }
 
-    /**
-     * 탈퇴 요청 (FR-AUTH-09). 30일 유예 후 배치가 물리 삭제한다.
-     * 요청 즉시 세션이 끊긴다 — 다시 로그인하면 복구 화면으로 유도된다
-     */
-    @DeleteMapping
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void withdraw(@LoginMember Long memberId) {
-        withdrawalService.withdraw(memberId);
-    }
-
-    /** 유예 중 복구 (FR-AUTH-10). 이 경로만 ROLE_PENDING_DELETION으로 열려 있다 */
-    @PostMapping("/restore")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void restore(@LoginMember Long memberId) {
-        withdrawalService.restore(memberId);
-    }
 }

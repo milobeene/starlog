@@ -180,7 +180,7 @@ class GameApiTest extends ControllerTestSupport {
                 LocalDate.of(2017, 2, 24), "cobfzp", 30));
 
         //when
-        mockMvc.perform(post("/api/admin/games/{gameId}/resync", game.getId())
+        mockMvc.perform(post("/api/games/{gameId}/resync", game.getId())
                         .header("X-Member-Id", admin.getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.nameChanged").value(true))
@@ -202,7 +202,7 @@ class GameApiTest extends ControllerTestSupport {
         Game game = saveCatalogGame("Hollow Knight", "9767");
 
         mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-                .put("/api/admin/games/{gameId}", game.getId())
+                .put("/api/games/{gameId}", game.getId())
                 .header("X-Member-Id", admin.getId())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"listPrice\": {\"amount\": 16500, \"currency\": \"KRW\"}}"));
@@ -211,7 +211,7 @@ class GameApiTest extends ControllerTestSupport {
         catalog.willFind("9767", "Hollow Knight", LocalDate.of(2017, 2, 24));
 
         //when
-        mockMvc.perform(post("/api/admin/games/{gameId}/resync", game.getId())
+        mockMvc.perform(post("/api/games/{gameId}/resync", game.getId())
                         .header("X-Member-Id", admin.getId()))
                 .andExpect(status().isOk());
 
@@ -229,7 +229,7 @@ class GameApiTest extends ControllerTestSupport {
         Game game = saveGame("동네 오락실 게임");
 
         //when //then
-        mockMvc.perform(post("/api/admin/games/{gameId}/resync", game.getId())
+        mockMvc.perform(post("/api/games/{gameId}/resync", game.getId())
                         .header("X-Member-Id", admin.getId()))
                 .andExpect(status().isBadRequest());
     }

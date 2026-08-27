@@ -3,7 +3,7 @@ package com.milobeene.starlog;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
-import com.milobeene.starlog.admin.service.AdminQueryService;
+import com.milobeene.starlog.game.service.GameMasterService;
 import com.milobeene.starlog.backlog.dto.BacklogSearchCondition;
 import com.milobeene.starlog.backlog.dto.BacklogSort;
 import com.milobeene.starlog.backlog.repository.BacklogEntryRepository;
@@ -79,7 +79,7 @@ class PostgresSchemaTest {
     }
 
     @Autowired JdbcTemplate jdbc;
-    @Autowired AdminQueryService adminQueryService;
+    @Autowired GameMasterService gameMasterService;
     @Autowired TagService tagService;
     @Autowired BacklogService backlogService;
     @Autowired BacklogEntryRepository backlogEntryRepository;
@@ -96,8 +96,10 @@ class PostgresSchemaTest {
                         + " and table_type = 'BASE TABLE'", Integer.class))
                 // 25 → 24: 태그 조인 테이블이 사라졌다 (§6.7 v1.6)
                 // 24 → 26: V2가 spring_session 2개를 더한다 (O-4)
-                // 26 → 27: V3이 usage_quota를 더한다 (일일 쿼터, WEB-ONLY)
-                .isEqualTo(27);
+                // 26 → 27: V3이 usage_quota를 더한다 (일일 쿼터)
+                // 27 → 23: **V5가 넷을 지우고 하나를 더한다** — audit_log·usage_quota·
+                //          spring_session 2개가 나가고 api_call_log가 들어온다
+                .isEqualTo(23);
     }
 
     @Test
@@ -188,19 +190,17 @@ class PostgresSchemaTest {
     }
 
     @Test
-    void 관리자_검색이_빈_조건에서도_PostgreSQL을_통과한다() {
+    void 마스터_검색이_빈_조건에서도_PostgreSQL을_통과한다() {
         /*
-         * `:param is null or …` 관용구가 여기서 죽었다. 빈 조건(검색어·날짜 없음)이
-         * 가장 흔한 호출인데 그게 500이었다 — H2는 전부 통과시켰다
+         * `:param is null or …` 관용구가 여기서 죽었다. 빈 조건(검색어 없음)이 가장 흔한
+         * 호출인데 그게 500이었다 — H2는 전부 통과시켰다.
+         *
+         * 회원 검색은 v1.0 8단계에서 사라졌다(관리할 남이 없다). **남은 절반은 그대로 지킨다** —
+         * 빈 문자열 바인딩이 PG에서 죽는 부류는 마스터 검색에도 똑같이 있다
          */
-        assertThatCode(() -> adminQueryService.findMembers(null, null, null, 0, 30))
+        assertThatCode(() -> gameMasterService.find(null, 0, 30))
                 .doesNotThrowAnyException();
-        assertThatCode(() -> adminQueryService.findMembers("milo", LocalDate.of(2026, 1, 1),
-                LocalDate.of(2026, 12, 31), 0, 30))
-                .doesNotThrowAnyException();
-        assertThatCode(() -> adminQueryService.findGames(null, 0, 30))
-                .doesNotThrowAnyException();
-        assertThatCode(() -> adminQueryService.findGames("hollow", 0, 30))
+        assertThatCode(() -> gameMasterService.find("hollow", 0, 30))
                 .doesNotThrowAnyException();
     }
 }

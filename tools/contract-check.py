@@ -43,14 +43,17 @@ ENDPOINTS = [
     ("/api/stats/genres",          "GenreDistribution","[]"),
     ("/api/stats/playtime",        "PlaytimeStats",    ""),
     ("/api/stats/spending/monthly","MonthlySpending",  ""),
-    ("/api/admin/members?size=1",  "PageResponse",     ""),
-    ("/api/admin/members?size=1",  "AdminMember",      "items[]"),
-    ("/api/admin/audit-logs?size=1","AuditLog",        "items[]"),
-    ("/api/me/quota",              "QuotaStatus",      "[]"),
     ("/api/me/export",             "MemberExport",     ""),
     ("/api/backlog/deleted?size=1","PageResponse",     ""),
     ("/api/backlog/deleted?size=1","DeletedEntry",     "items[]"),
-    ("/api/admin/system",          "SystemStatus",     ""),
+    # v1.0 8단계 — /api/admin 이 통째로 사라지고 여기가 됐다.
+    # 회원 목록·감사 로그·쿼터는 검사할 대상 자체가 없어졌다 (관리할 남이 없다)
+    ("/api/system",                "SystemStatus",     ""),
+    ("/api/system",                "ApiUsage",         "apiUsage[]"),
+    ("/api/games/master?size=1",   "PageResponse",     ""),
+    ("/api/games/master?size=1",   "GameMaster",       "items[]"),
+    # v1.0 6·7단계 — 로컬 저장 경로. 커버는 위치에 따라 응답 모양이 갈린다
+    ("/api/backlog/2/screenshots", "ScreenshotResponse", "[]"),
 ]
 
 def parse_interfaces(text):

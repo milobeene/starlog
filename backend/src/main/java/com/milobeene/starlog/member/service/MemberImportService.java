@@ -6,6 +6,9 @@ import com.milobeene.starlog.backlog.domain.AcquisitionMethod;
 import com.milobeene.starlog.backlog.domain.BacklogEntry;
 import com.milobeene.starlog.backlog.domain.BacklogEntryGenre;
 import com.milobeene.starlog.backlog.domain.CoverImage;
+import com.milobeene.starlog.backlog.domain.CoverLocation;
+import com.milobeene.starlog.common.storage.LocalFileStore;
+import com.milobeene.starlog.common.storage.MediaPaths;
 import com.milobeene.starlog.backlog.domain.OverrideCommand;
 import com.milobeene.starlog.backlog.domain.Playthrough;
 import com.milobeene.starlog.backlog.domain.PlaythroughCommand;
@@ -85,6 +88,9 @@ public class MemberImportService {
     private final AcquisitionRepository acquisitionRepository;
     private final BacklogEntryGenreRepository genreLinkRepository;
     private final CoverImageRepository coverImageRepository;
+    /* 로컬 커버는 실물이 있어야 붙인다 — 이 JSON은 다른 기계로 건너갈 수 있다 */
+    private final LocalFileStore localFileStore;
+    private final MediaPaths mediaPaths;
     private final PlatformRepository platformRepository;
     private final PlatformAccountRepository platformAccountRepository;
     private final DeviceRepository deviceRepository;
@@ -326,8 +332,7 @@ public class MemberImportService {
         importAcquisitions(entry, item, catalog);
 
         if (item.cover() != null) {
-            coverImageRepository.persist(CoverImage.of(entry, item.cover().storageKey(),
-                    item.cover().contentType(), item.cover().sizeBytes()));
+            attachCover(entry, item.cover());
         }
 
         // 삭제 상태도 그대로 옮긴다 — 백업은 휴지통까지 재현해야 한다
@@ -398,4 +403,29 @@ public class MemberImportService {
     private static Money money(MemberExport.Money money) {
         return money == null ? null : new Money(money.amount(), money.currency());
     }
+
+    /**
+     * 커버 붙이기.
+     *
+     * ⚠️ **LOCAL 커버는 실물이 있을 때만 붙인다.** 이 JSON은 다른 기계로 건너갈 수 있는데
+     * 로컬 파일은 따라오지 않는다(데이터 루트 폴더에 있다). 그대로 붙이면 화면마다
+     * **깨진 이미지**가 뜨고, 사용자는 커버를 지울 수도 다시 올릴 수도 없는 상태가 된다.
+     * 없으면 조용히 건너뛰고 마스터 커버로 폴백시키는 편이 낫다
+     */
+    private void attachCover(BacklogEntry entry, MemberExport.Cover cover) {
+        // location은 6단계에 생겼다. 그 전에 뽑은 파일에는 없어서 EXTERNAL로 읽는다
+        CoverLocation location = (cover.location() == null)
+                ? CoverLocation.EXTERNAL : CoverLocation.valueOf(cover.location());
+
+        if (location == CoverLocation.LOCAL
+                && !localFileStore.exists(mediaPaths.covers(), cover.storageKey())) {
+            log.info("로컬 커버 실물이 없어 건너뛴다. entry={} file={}",
+                    entry.getDisplayName(), cover.storageKey());
+            return;
+        }
+
+        coverImageRepository.persist(CoverImage.of(entry, cover.storageKey(),
+                cover.contentType(), cover.sizeBytes(), location));
+    }
+
 }

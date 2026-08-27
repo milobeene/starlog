@@ -80,6 +80,18 @@ public class Game extends BaseEntity {
     private String bannerImageId;
 
     /**
+     * 스크린샷이 들어가는 폴더 이름 (v1.0 7단계, architecture §10-1).
+     *
+     * 영문명에서 만든 slug다 — `Hollow Knight` → `hollow-knight`.
+     * **이름에서 매번 다시 만들지 않고 저장한다.** 게임 이름을 한 번 고치면
+     * 폴더를 못 찾아 **스크린샷이 통째로 사라진 것처럼 보이기** 때문이다.
+     *
+     * null이면 아직 스크린샷을 한 장도 안 넣은 것이다 — 첫 저장 때 만든다
+     */
+    @Column(name = "media_folder", length = 200)
+    private String mediaFolder;
+
+    /**
      * About / Storyline. 영문 원문 그대로 둔다 — 번역·수정하지 않는다 (§6.2).
      *
      * **TEXT인 이유는 실측이다.** IGDB 2,000건을 훑어보니
@@ -231,4 +243,18 @@ public class Game extends BaseEntity {
     public List<String> getReleasePlatforms() {
         return List.copyOf(releasePlatforms);
     }
+
+    /**
+     * 스크린샷 폴더를 정한다. **한 번 정하면 안 바꾼다** — 이름이 바뀌어도 그대로다.
+     *
+     * 이미 있으면 그대로 두는 이유가 그것이다. 폴더를 옮기는 건 파일을 옮기는 일이고,
+     * 그건 이름 수정의 부수효과로 일어나면 안 된다
+     */
+    public String assignMediaFolder(String slug) {
+        if (mediaFolder == null) {
+            mediaFolder = slug;
+        }
+        return mediaFolder;
+    }
+
 }

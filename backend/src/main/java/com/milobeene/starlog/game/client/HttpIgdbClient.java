@@ -12,9 +12,11 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+import com.milobeene.starlog.system.domain.ApiProvider;
+import com.milobeene.starlog.system.service.ApiCallRecorder;
+
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -51,6 +53,8 @@ public class HttpIgdbClient implements GameCatalogClient {
     private final RestClient igdbRestClient;
     private final IgdbTokenProvider tokenProvider;
     private final IgdbProperties properties;
+    /* 사용량 화면이 "최근 1분/24시간/30일"을 셀 수 있게 호출을 한 줄씩 남긴다 (v1.0 8단계) */
+    private final ApiCallRecorder apiCallRecorder;
 
     private final Object rateLock = new Object();
     private long lastCallAtMillis;
@@ -62,26 +66,18 @@ public class HttpIgdbClient implements GameCatalogClient {
      */
     private final Semaphore gate;
 
-    /** WEB-ONLY 성격의 계측 — /admin 시스템 탭이 읽는다. 프로세스가 내려가면 0으로 돌아간다 */
-    private final AtomicLong callCount = new AtomicLong();
-    private final AtomicLong rejectedCount = new AtomicLong();
 
     public HttpIgdbClient(RestClient igdbRestClient, IgdbTokenProvider tokenProvider,
-                          IgdbProperties properties) {
+                          IgdbProperties properties, ApiCallRecorder apiCallRecorder) {
         this.igdbRestClient = igdbRestClient;
         this.tokenProvider = tokenProvider;
         this.properties = properties;
+        this.apiCallRecorder = apiCallRecorder;
         this.gate = new Semaphore(properties.maxConcurrent(), true);
     }
 
     /** /admin 시스템 탭용. 누적 호출 수와 자리를 못 잡아 돌려보낸 수 */
-    public long callCount() {
-        return callCount.get();
-    }
 
-    public long rejectedCount() {
-        return rejectedCount.get();
-    }
 
     @Override
     public List<CatalogGameSummary> search(String keyword) {
@@ -166,6 +162,15 @@ public class HttpIgdbClient implements GameCatalogClient {
      * 그때 캐시를 버리고 새로 받아 **딱 한 번** 다시 시도한다. 무한 재시도는 장애를 증폭시킨다
      */
     private <T> T post(String endpoint, String query, ParameterizedTypeReference<T> type, String what) {
+        /*
+         * 호출을 한 줄 남긴다 (v1.0 8단계).
+         *
+         * **성공·실패를 가리지 않고 센다.** IGDB 입장에서는 401도 400도 이미 받은 요청이고
+         * 한도를 소모한다. 성공만 세면 화면의 사용량이 실제보다 적게 나온다.
+         *
+         * 401 뒤 재시도는 **한 번 더 센다** — 실제로 두 번 나갔기 때문이다.
+         * `send`가 아니라 여기서 세면 그 재시도가 안 잡히므로, 세는 자리를 send로 내린다
+         */
         try {
             return send(endpoint, query, type, tokenProvider.token());
 
@@ -189,15 +194,17 @@ public class HttpIgdbClient implements GameCatalogClient {
 
     private <T> T send(String endpoint, String query, ParameterizedTypeReference<T> type, String token) {
         throttle();   // 자리를 못 잡으면 여기서 429로 나간다 — 아래 finally까지 오지 않는다
-        callCount.incrementAndGet();
+        boolean succeeded = false;
         try {
-            return igdbRestClient.post()
+            T body = igdbRestClient.post()
                     .uri("/" + endpoint)
                     .header("Client-ID", properties.clientId())
                     .header("Authorization", "Bearer " + token)
                     .body(query)
                     .retrieve()
                     .body(type);
+            succeeded = true;
+            return body;
 
         } catch (HttpClientErrorException.Unauthorized e) {
             throw e;   // 위에서 재시도 판단
@@ -208,6 +215,16 @@ public class HttpIgdbClient implements GameCatalogClient {
             throw new ExternalApiException(ExternalApiException.Service.GAME_CATALOG, "게임 정보를 가져오지 못했습니다", e);
 
         } finally {
+            /*
+             * 호출 기록은 **성공·실패를 가리지 않는다** (v1.0 8단계). IGDB 입장에서는
+             * 401도 5xx도 이미 받은 요청이고 한도를 소모한다. 성공만 세면
+             * 화면의 사용량이 실제보다 적게 나온다.
+             *
+             * 여기(send) 안에서 세는 이유 — 401 뒤 재시도가 **실제로 한 번 더 나가므로**
+             * 그것도 세야 한다. 바깥(post)에서 세면 재시도가 안 잡힌다
+             */
+            apiCallRecorder.record(ApiProvider.IGDB, endpoint, succeeded);
+
             // **실패해도 반드시 돌려준다.** 안 돌려주면 자리가 하나씩 영구히 줄어
             // 결국 모든 요청이 429가 된다
             releaseGate();
@@ -242,7 +259,6 @@ public class HttpIgdbClient implements GameCatalogClient {
         }
 
         if (!acquired) {
-            rejectedCount.incrementAndGet();
             throw new TooManyRequestsException("CATALOG_BUSY",
                     "지금 여러 분이 동시에 검색 중입니다. 바로 다시 시도해 주세요");
         }

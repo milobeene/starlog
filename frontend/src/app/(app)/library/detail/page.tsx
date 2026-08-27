@@ -23,6 +23,7 @@ import AcquisitionDialog from "@/components/library/AcquisitionDialog";
 import TagGenreDialog from "@/components/library/TagGenreDialog";
 import MoneyText from "@/components/ui/Money";
 import CoverDialog from "@/components/library/CoverDialog";
+import ScreenshotSection from "@/components/library/ScreenshotSection";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { Button, EditButton } from "@/components/ui/Field";
 import { api } from "@/lib/api";
@@ -369,6 +370,9 @@ function BacklogDetail() {
                   </div>
                 )}
               </section>
+
+              {/* 스크린샷은 메모 아래 — 글을 다 읽은 뒤에 오는 순서다 (v1.0 7단계) */}
+              <ScreenshotSection entryId={Number(entryId)} />
             </div>
 
             {/* 우 — 게임 정보 · 사람들 클리어 시간 · 태그 · 액션 */}

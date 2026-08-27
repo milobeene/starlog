@@ -25,6 +25,8 @@ contextBridge.exposeInMainWorld("starlog", {
   },
   pickFolder: () => ipcRenderer.invoke("dialog:pickFolder"),
   openFolder: (which) => ipcRenderer.invoke("shell:openFolder", which),
+  /** 스크린샷 폴더처럼 백엔드가 알려준 절대 경로를 연다. 데이터 루트 밖은 거부된다 */
+  openPath: (target) => ipcRenderer.invoke("shell:openPath", target),
 
   saves: {
     list: () => ipcRenderer.invoke("saves:list"),

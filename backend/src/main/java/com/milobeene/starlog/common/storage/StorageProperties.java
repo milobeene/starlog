@@ -21,13 +21,22 @@ public record StorageProperties(
         String publicBaseUrl,
         Duration uploadUrlTtl,
         /** 업로드 상한. 커버 한 장에 이보다 크면 발급 단계에서 거부한다 */
-        long maxUploadBytes
+        long maxUploadBytes,
+        /**
+         * 스크린샷 상한 (v1.0 7단계).
+         *
+         * **커버와 따로 두는 이유** — 스크린샷은 4K 캡처가 예사라 5MB에서 자주 걸린다.
+         * 커버 상한을 같이 올리면 몇 KB짜리 표지에 20MB를 허용하는 셈이라,
+         * 실수로 원본 사진을 올렸을 때 걸러주던 그물이 사라진다
+         */
+        long maxScreenshotBytes
 ) {
 
     public StorageProperties {
         region = isBlank(region) ? "auto" : region;
         uploadUrlTtl = uploadUrlTtl == null ? Duration.ofMinutes(10) : uploadUrlTtl;
         maxUploadBytes = maxUploadBytes <= 0 ? 5L * 1024 * 1024 : maxUploadBytes;   // 5MB
+        maxScreenshotBytes = maxScreenshotBytes <= 0 ? 20L * 1024 * 1024 : maxScreenshotBytes;   // 20MB
     }
 
     public boolean hasCredentials() {

@@ -35,15 +35,6 @@ app:
     client-id: ${IGDB_CLIENT_ID:}
     client-secret: ${IGDB_CLIENT_SECRET:}
 
-  # 회원당 일일 한도 (docs/capacity-planning.md §2-B). 최대 사용자 10명 기준.
-  # WEB-ONLY — 로컬 앱(desktop 프로파일)에서는 NoOpQuotaGuard가 붙어 이 값이 안 쓰인다.
-  # 지인이 늘거나 줄면 배포 없이 환경변수로 바꾼다
-  quota:
-    game-search: ${QUOTA_GAME_SEARCH:200}
-    game-add: ${QUOTA_GAME_ADD:50}
-    cover-upload: ${QUOTA_COVER_UPLOAD:20}
-    cover-upload-megabytes: ${QUOTA_COVER_UPLOAD_MB:200}
-
   # 커버 스토리지 (Phase 5). R2가 기본이지만 S3 호환이면 뭐든 된다 —
   # MinIO로 로컬 검증할 때는 endpoint만 바꾼다.
   # 자격증명이 없으면 UnconfiguredFileStorage로 대체되어 기동은 되고 업로드만 502가 된다
@@ -53,16 +44,18 @@ app:
     access-key: ${STORAGE_ACCESS_KEY:}
     secret-key: ${STORAGE_SECRET_KEY:}
     public-base-url: ${STORAGE_PUBLIC_BASE_URL:}
-  # 정리 배치 시각. ⚠️ **이것만으로는 사실상 안 돈다** — 무료 티어는 15분 무활동에 잠들어
-  # 새벽에 깨어 있지 않다. 실제 정리는 StartupCleanup(기동 시 따라잡기)이 한다.
-  # 아래 크론은 언젠가 상시 켜진 서버가 됐을 때를 위해 남겨둔다 (도커 TZ가 Asia/Seoul이다)
-  cleanup:
-    audit-log-cron: "0 0 5 * * *"        # 매일 05:00 KST
-  withdrawal:
-    purge-cron: "0 0 3 * * *"            # 매일 03:00 KST
 
 logging:
   level:
     org.hibernate.SQL: debug
     # 필터 체인을 눈으로 보려면 아래를 켠다 (I-1~I-3에서 사용)
     # org.springframework.security: debug
+
+# 무엇을 스토리지에 올릴지 (v1.0 6·7단계). 일렉트론이 연결 설정에서 읽어 환경변수로 넘긴다.
+# **기본은 둘 다 로컬** — 아무것도 설정 안 한 사람이 바로 쓸 수 있어야 한다.
+# 데이터 루트도 일렉트론이 정한다. 안 넘어오면 MediaPaths가 임시 폴더로 떨어뜨린다(개발용)
+starlog:
+  data-root: ${STARLOG_DATA_ROOT:}
+  media:
+    use-storage-for-covers: ${STARLOG_MEDIA_USE_STORAGE_FOR_COVERS:false}
+    use-storage-for-screenshots: ${STARLOG_MEDIA_USE_STORAGE_FOR_SCREENSHOTS:false}

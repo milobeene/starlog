@@ -2,6 +2,7 @@ package com.milobeene.starlog.game.service;
 
 import com.milobeene.starlog.backlog.repository.BacklogEntryRepository;
 import com.milobeene.starlog.common.exception.NotFoundException;
+import com.milobeene.starlog.common.util.SortKeys;
 import com.milobeene.starlog.game.dto.GameResyncResult;
 import com.milobeene.starlog.game.domain.CatalogSyncCommand;
 import com.milobeene.starlog.game.domain.Game;
@@ -111,7 +112,8 @@ public class GameService {
         LocalDate resolvedReleasedOn = game.getReleasedOn();
 
         int renamedEntries = nameChanged
-                ? backlogEntryRepository.updateDisplayNameByGameId(gameId, resolvedName, now)
+                ? backlogEntryRepository.updateDisplayNameByGameId(
+                        gameId, resolvedName, SortKeys.of(resolvedName), now)
                 : 0;
         int reorderedEntries =
                 backlogEntryRepository.updateReleasedOnResolvedByGameId(gameId, resolvedReleasedOn, now);
@@ -133,6 +135,6 @@ public class GameService {
 
         // flush·clear는 벌크 쿼리 쪽 @Modifying 설정이 책임진다
         return backlogEntryRepository.updateDisplayNameByGameId(
-                gameId, game.getName(), LocalDateTime.now());
+                gameId, game.getName(), SortKeys.of(game.getName()), LocalDateTime.now());
     }
 }

@@ -402,20 +402,6 @@ export interface OptionsResponse {
   genreDictionary: string[];
 }
 
-/* ── 일일 쿼터 (GET /api/me/quota) ─────────────────────────── */
-
-/**
- * WEB-ONLY. **빈 배열이면 화면이 이 섹션을 통째로 안 그린다** —
- * 쿼터가 없는 빌드(로컬 앱)에서 서버가 빈 배열을 주므로 에러 처리가 안 늘어난다
- */
-export interface QuotaStatus {
-  kind: "GAME_SEARCH" | "GAME_ADD" | "COVER_UPLOAD";
-  label: string;
-  used: number;
-  /** **null이면 무제한**(관리자). 0·-1 같은 마법값 대신 타입이 분기를 강제한다 */
-  limit: number | null;
-}
-
 /* ── 백업 (GET /api/me/export · POST /api/me/import) ───────── */
 
 /**
@@ -450,43 +436,48 @@ export interface MemberExport {
   entries: unknown[];
 }
 
-/* ── 관리자 (GET /api/admin/**) ────────────────────────────── */
+/**
+ * 스크린샷 한 장 (GET /api/backlog/{id}/screenshots).
+ *
+ * **DB에 행이 없다** — 폴더를 읽은 결과다 (architecture §10-1). 그래서 id가 없고
+ * 파일명이 곧 키다
+ */
+export interface ScreenshotResponse {
+  fileName: string;
+  url: string;
+  sizeBytes: number;
+}
 
-/** WEB-ONLY: 시스템 탭. igdb·database.sizeBytes는 null일 수 있다 (DTO 주석 참고) */
+/* ── 시스템 (GET /api/system) ──────────────────────────────── */
+
+/** GET /api/system — 내 키가 한도에 얼마나 가까운지 (v1.0 8단계) */
 export interface SystemStatus {
-  igdb: {
-    calls: number;
-    rejected: number;
-    maxConcurrent: number;
-    minCallIntervalMillis: number;
-  } | null;
-  storage: { coverCount: number; totalBytes: number };
+  apiUsage: ApiUsage[];
+  storage: { coverCount: number; totalBytes: number; configured: boolean };
   database: { product: string; sizeBytes: number | null };
-  quotaToday: {
-    memberId: number;
-    nickname: string;
-    kind: string;
-    label: string;
-    used: number;
-    /** null이면 무제한(관리자) */
-    limit: number | null;
-  }[];
+  /** 호출 기록 보존 기간. 화면이 "N일치만 보관합니다"로 쓴다 */
+  retentionDays: number;
 }
 
-export interface AdminMember {
-  memberId: number;
-  email: string;
-  nickname: string;
-  role: string;
-  emailVerified: boolean;
-  /** null이면 승인 대기 — 그 계정은 로그인이 403이다 (FR-ADM-06) */
-  approvedAt: string | null;
-  deletedAt: string | null;
-  createdAt: string;
+/**
+ * 한 API의 사용량.
+ *
+ * **한도는 서버가 안 준다.** 벤더가 언제든 바꾸고 우리가 조회할 방법도 없어서,
+ * 서버가 숫자를 주면 그게 조용히 거짓말이 된다 → `lib/apiLimits.ts`가 기준일과 함께 들고 있다
+ */
+export interface ApiUsage {
+  provider: string;
+  lastMinute: number;
+  lastHour: number;
+  lastDay: number;
+  lastMonth: number;
+  failedLastDay: number;
+  /** 기록이 시작된 시점. null이면 아직 한 번도 안 불렀다 */
+  since: string | null;
 }
 
-/** GET /api/admin/games — 마스터 게임만. IGDB 결과가 섞이지 않아 gameId가 항상 있다 */
-export interface AdminGame {
+/** GET /api/games/master — 마스터 게임만. IGDB 결과가 섞이지 않아 gameId가 항상 있다 */
+export interface GameMaster {
   gameId: number;
   name: string;
   source: GameSource;
@@ -496,21 +487,9 @@ export interface AdminGame {
   lastSyncedAt: string | null;
 }
 
-/** POST /api/admin/games/{id}/resync — 무엇이 몇 건 바뀌었는지 */
+/** POST /api/games/{id}/resync — 무엇이 몇 건 바뀌었는지 */
 export interface GameResyncResult {
   nameChanged: boolean;
   renamedEntries: number;
   reorderedEntries: number;
-}
-
-export interface AuditLog {
-  auditLogId: number;
-  actorId: number;
-  actorEmail: string;
-  action: string;
-  targetType: string | null;
-  targetId: number | null;
-  requestIp: string | null;
-  userAgent: string | null;
-  occurredAt: string;
 }
