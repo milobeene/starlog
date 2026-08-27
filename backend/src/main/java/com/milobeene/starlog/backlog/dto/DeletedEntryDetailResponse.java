@@ -21,7 +21,7 @@ public record DeletedEntryDetailResponse(
         LocalDateTime createdAt,
         String coverImageId,
         BigDecimal rating,
-        Integer playTimeHours,
+        BigDecimal playTimeHours,
         String memo,
         List<String> genres,
         int playthroughCount,

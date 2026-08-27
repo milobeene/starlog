@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.temporal.ChronoUnit;
@@ -144,16 +145,19 @@ public class StatsQueryService {
         QBacklogEntry entry = QBacklogEntry.backlogEntry;
 
         // QueryDSL 7은 sum()을 타입별(sumLong·sumBigDecimal·sumAggregate)로 쪼갰다.
-        // 5.x의 sum()을 그대로 쓰면 컴파일이 안 된다
+        // 5.x의 sum()을 그대로 쓰면 컴파일이 안 된다.
+        // V4에서 컬럼이 numeric(7,2)이 되면서 sumLong → sumBigDecimal로 옮겼다
         Tuple totals = queryFactory
-                .select(entry.playTimeHours.sumLong(), entry.count())
+                .select(entry.playTimeHours.sumBigDecimal(), entry.count())
                 .from(entry)
                 .where(entry.member.id.eq(memberId), entry.deletedAt.isNull(),
                         entry.playTimeHours.isNotNull())
                 .fetchOne();
 
-        long totalHours = totals == null || totals.get(entry.playTimeHours.sumLong()) == null
-                ? 0L : totals.get(entry.playTimeHours.sumLong());
+        BigDecimal summed = totals == null ? null : totals.get(entry.playTimeHours.sumBigDecimal());
+        // 합계도 두 자리로 고정한다 — 안 하면 DB마다 scale이 달라져 화면에 0.00과 0이 섞인다
+        BigDecimal totalHours = summed == null
+                ? BigDecimal.ZERO.setScale(2) : summed.setScale(2, RoundingMode.HALF_UP);
         long recorded = totals == null || totals.get(entry.count()) == null
                 ? 0L : totals.get(entry.count());
 

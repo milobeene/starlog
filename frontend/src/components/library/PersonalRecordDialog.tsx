@@ -6,6 +6,7 @@ import { Button, Field, FIELD_INPUT } from "@/components/ui/Field";
 import MarkdownTextarea from "@/components/ui/MarkdownTextarea";
 import { api, errorMessage } from "@/lib/api";
 import type { PersonalRecord } from "@/lib/types";
+import { roundHours } from "@/lib/format";
 
 /**
  * 내 기록 — 평점·플레이 시간·메모.
@@ -32,7 +33,7 @@ export default function PersonalRecordDialog({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const total = (Number(hours) || 0) + (Number(addHours) || 0);
+  const total = roundHours((Number(hours) || 0) + (Number(addHours) || 0));
 
   const save = async () => {
     setSaving(true);
@@ -78,7 +79,7 @@ export default function PersonalRecordDialog({
               className={`${FIELD_INPUT} num`}
             />
           </Field>
-          <Field label="Playtime" hint="시간 단위로 입력해 주세요">
+          <Field label="Playtime" hint="시간 단위. 소수점 두 자리까지 (1시간 45분 = 1.75)">
             {/*
               왼쪽은 지금까지, 오른쪽은 이번에 더할 시간.
               **저장할 때만 합친다** — 포커스가 빠질 때 합치면 고치는 중에 값이 튄다
@@ -86,9 +87,9 @@ export default function PersonalRecordDialog({
             <div className="flex items-center gap-1.5">
               <input
                 type="text"
-                inputMode="numeric"
+                inputMode="decimal"
                 value={hours}
-                onChange={(event) => setHours(event.target.value.replace(/\D/g, ""))}
+                onChange={(event) => setHours(event.target.value.replace(/[^\d.]/g, ""))}
                 placeholder="0"
                 aria-label="지금까지 플레이 시간"
                 className={`${FIELD_INPUT} num min-w-0 flex-1`}
@@ -96,9 +97,9 @@ export default function PersonalRecordDialog({
               <span className="shrink-0 text-white/30">+</span>
               <input
                 type="text"
-                inputMode="numeric"
+                inputMode="decimal"
                 value={addHours}
-                onChange={(event) => setAddHours(event.target.value.replace(/\D/g, ""))}
+                onChange={(event) => setAddHours(event.target.value.replace(/[^\d.]/g, ""))}
                 placeholder="0"
                 aria-label="이번에 더할 시간"
                 className={`${FIELD_INPUT} num min-w-0 flex-1`}

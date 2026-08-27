@@ -35,6 +35,7 @@ import {
   formatRating,
 } from "@/lib/labels";
 import type { Acquisition, BacklogDetail, OptionsResponse, Playthrough } from "@/lib/types";
+import { formatHours } from "@/lib/format";
 
 /** 열려 있는 다이얼로그. 회차·취득은 수정 대상을 같이 들고 다닌다 (null이면 추가) */
 type Dialog =
@@ -106,7 +107,7 @@ export default function BacklogDetailPage({
   if (!data) return <DetailSkeleton />;
 
   const { resolved, master, overrides, personalRecord } = data;
-  const totalPlaytime = personalRecord.playTimeHours;
+  const totalPlaytime = formatHours(personalRecord.playTimeHours);
 
   return (
     <>

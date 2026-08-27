@@ -104,7 +104,7 @@ public record MemberExport(
             LocalDate releasedOnOverride,
             Money listPriceOverride,
             BigDecimal rating,
-            Integer playTimeHours,
+            BigDecimal playTimeHours,
             String memo,
             String tag,
             List<String> genres,

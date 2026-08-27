@@ -72,7 +72,7 @@ class BacklogServiceTest {
 
         //when
         backlogService.updatePersonalRecord(
-                member.getId(), entryId, new BigDecimal("84.35"), 120, "  최고  ");
+                member.getId(), entryId, new BigDecimal("84.35"), new BigDecimal("120.5"), "  최고  ");
 
         em.flush();     // 여기서 UPDATE가 나간다 (p6spy 로그 확인 지점)
         em.clear();     // 캐시 비우고 DB에서 다시 읽어야 진짜 반영됐는지 알 수 있다
@@ -80,7 +80,7 @@ class BacklogServiceTest {
         //then
         BacklogEntry found = backlogEntryRepository.findById(entryId).orElseThrow();
         assertThat(found.getRating()).isEqualByComparingTo("84.4");   // 소수점 1자리 반올림
-        assertThat(found.getPlayTimeHours()).isEqualTo(120);
+        assertThat(found.getPlayTimeHours()).isEqualByComparingTo("120.50");
         assertThat(found.getMemo()).isEqualTo("최고");                 // strip 적용
     }
 
@@ -255,7 +255,7 @@ class BacklogServiceTest {
         Game game = saveGame("Journey");
         Long entryId = backlogService.addToBacklog(member.getId(), game.getId());
         backlogService.updatePersonalRecord(
-                member.getId(), entryId, new BigDecimal("92.0"), 8, "짧고 좋다");
+                member.getId(), entryId, new BigDecimal("92.0"), new BigDecimal("8"), "짧고 좋다");
         backlogService.delete(member.getId(), entryId);
 
         //when
@@ -268,7 +268,7 @@ class BacklogServiceTest {
         BacklogEntry found = backlogEntryRepository.findById(entryId).orElseThrow();
         assertThat(found.isDeleted()).isFalse();
         assertThat(found.getRating()).isEqualByComparingTo("92.0");
-        assertThat(found.getPlayTimeHours()).isEqualTo(8);
+        assertThat(found.getPlayTimeHours()).isEqualByComparingTo("8");
         assertThat(found.getMemo()).isEqualTo("짧고 좋다");
     }
 

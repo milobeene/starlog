@@ -38,6 +38,8 @@ public class BacklogEntry extends BaseEntity {
 
     private static final BigDecimal RATING_MIN = new BigDecimal("0.0");
     private static final BigDecimal RATING_MAX = new BigDecimal("100.0");
+    /** numeric(7,2)의 상한. 11년치라 실질적으로 안 걸린다 */
+    private static final BigDecimal PLAY_TIME_MAX = new BigDecimal("99999.99");
 
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -81,7 +83,8 @@ public class BacklogEntry extends BaseEntity {
     @Column(precision = 4, scale = 1)
     private BigDecimal rating;        // 0.0 ~ 100.0
 
-    private Integer playTimeHours;
+    @Column(precision = 7, scale = 2)
+    private BigDecimal playTimeHours;   // 소수점 2자리 (V4)
 
     @Column(columnDefinition = "TEXT")
     private String memo;
@@ -158,7 +161,7 @@ public class BacklogEntry extends BaseEntity {
     /**
      * 개인 기록 전체 교체. null을 넘기면 해당 값은 지워진다.
      */
-    public void updatePersonalRecord(BigDecimal rating, Integer playTimeHours, String memo) {
+    public void updatePersonalRecord(BigDecimal rating, BigDecimal playTimeHours, String memo) {
         this.rating = normalizeRating(rating);
         this.playTimeHours = validatePlayTimeHours(playTimeHours);
         this.memo = TextValues.normalize(memo);
@@ -355,13 +358,18 @@ public class BacklogEntry extends BaseEntity {
         return scaled;
     }
 
-    private static Integer validatePlayTimeHours(Integer hours) {
+    /**
+     * 소수점 두 자리로 고정한다 (V4). rating과 같은 방식이다 —
+     * **비교는 compareTo로 한다.** equals는 scale까지 보기 때문에 0과 0.00이 다른 값이 된다
+     */
+    private static BigDecimal validatePlayTimeHours(BigDecimal hours) {
         if (hours == null) {
             return null;
         }
-        if (hours < 0) {
-            throw new InvalidInputException("플레이 시간은 0 이상이어야 합니다: " + hours);
+        BigDecimal scaled = hours.setScale(2, RoundingMode.HALF_UP);
+        if (scaled.compareTo(BigDecimal.ZERO) < 0 || scaled.compareTo(PLAY_TIME_MAX) > 0) {
+            throw new InvalidInputException("플레이 시간은 0 ~ 99999.99 범위여야 합니다: " + hours);
         }
-        return hours;
+        return scaled;
     }
 }

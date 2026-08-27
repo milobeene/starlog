@@ -71,7 +71,7 @@ public class BacklogService {
      */
     @Transactional
     public void updatePersonalRecord(Long memberId, Long entryId,
-                                     BigDecimal rating, Integer playTimeHours, String memo) {
+                                     BigDecimal rating, BigDecimal playTimeHours, String memo) {
         BacklogEntry entry = entryFinder.findOwned(memberId, entryId);
 
         entry.updatePersonalRecord(rating, playTimeHours, memo);

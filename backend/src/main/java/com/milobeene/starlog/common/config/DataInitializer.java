@@ -151,7 +151,7 @@ public class DataInitializer implements ApplicationRunner {
             fit.updateOverrides(new OverrideCommand("링 피트 어드벤처",
                     List.of("닌텐도"), List.of(), null,
                     new Money(new BigDecimal("89800"), "KRW")));
-            fit.updatePersonalRecord(new BigDecimal("83.0"), 40, "운동 겸 게임");
+            fit.updatePersonalRecord(new BigDecimal("83.0"), new BigDecimal("40.00"), "운동 겸 게임");
             linkGenres(fit, member, List.of("피트니스", "기능성"));
             fit.changeTag(persistTag(member, "운동"));
             addPlaythrough(fit, 1, LocalDate.of(2022, 1, 1), LocalDate.of(2023, 1, 1),
@@ -174,7 +174,7 @@ public class DataInitializer implements ApplicationRunner {
 
             BacklogEntry hollow = BacklogEntry.of(member, hollowKnight);
             em.persist(hollow);
-            hollow.updatePersonalRecord(new BigDecimal("95.0"), 62, null);
+            hollow.updatePersonalRecord(new BigDecimal("95.0"), new BigDecimal("62.00"), null);
             hollow.changeTag(persistTag(member, "명작"));
             addPlaythrough(hollow, 1, LocalDate.of(2024, 3, 1), LocalDate.of(2024, 4, 10),
                     PlaythroughStatus.PAUSED, windowsPc, pad);

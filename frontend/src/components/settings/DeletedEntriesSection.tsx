@@ -15,6 +15,7 @@ import { formatRating } from "@/lib/labels";
 import { api, errorMessage } from "@/lib/api";
 import { invalidateQueries, useApi } from "@/lib/useApi";
 import type { DeletedEntry, DeletedEntryDetail, PageResponse } from "@/lib/types";
+import { formatHours } from "@/lib/format";
 
 const PAGE_SIZE = 10;
 
@@ -206,7 +207,7 @@ function PreviewDialog({
 
             <div className="flex min-w-0 flex-1 flex-col gap-2 text-sm">
               <Stat label="평점" value={detail.data.rating === null ? "—" : `★ ${formatRating(detail.data.rating)}`} />
-              <Stat label="플레이 시간" value={detail.data.playTimeHours === null ? "—" : `${detail.data.playTimeHours}시간`} />
+              <Stat label="플레이 시간" value={detail.data.playTimeHours === null ? "—" : `${formatHours(detail.data.playTimeHours)}시간`} />
               {/* 되살리면 통째로 돌아온다 — 몇 개나 딸려 있었나가 판단 기준이다 */}
               <Stat label="회차 / 취득" value={`${detail.data.playthroughCount} / ${detail.data.acquisitionCount}`} />
               <Stat label="담은 날" value={detail.data.createdAt.slice(0, 10)} />

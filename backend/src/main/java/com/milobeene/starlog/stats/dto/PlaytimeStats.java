@@ -1,5 +1,6 @@
 package com.milobeene.starlog.stats.dto;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -9,10 +10,10 @@ import java.util.List;
  * "총 300시간"만 보면 전체를 다 기록한 것처럼 읽힌다. 분모를 밝힌다
  */
 public record PlaytimeStats(
-        long totalHours,
+        BigDecimal totalHours,
         long recordedEntries,
         List<Entry> top
 ) {
 
-    public record Entry(Long entryId, String displayName, int hours) {}
+    public record Entry(Long entryId, String displayName, BigDecimal hours) {}
 }

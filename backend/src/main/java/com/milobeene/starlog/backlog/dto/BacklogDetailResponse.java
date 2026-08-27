@@ -109,7 +109,7 @@ public record BacklogDetailResponse(
             MoneyResponse listPrice
     ) {}
 
-    public record PersonalRecord(BigDecimal rating, Integer playTimeHours, String memo) {}
+    public record PersonalRecord(BigDecimal rating, BigDecimal playTimeHours, String memo) {}
 
     /** name은 "거실 스위치 (Nintendo Switch)" 꼴이다 — 선택지 목록과 같은 문구여야 짝이 맞는다 */
     public record DeviceRef(Long deviceId, String name) {}

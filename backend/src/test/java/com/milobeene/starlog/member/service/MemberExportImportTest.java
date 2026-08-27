@@ -85,7 +85,7 @@ class MemberExportImportTest extends ControllerTestSupport {
         BacklogEntry entry = onlyEntryOf(target);
         assertThat(entry.getNameOverride()).isEqualTo("셀레스테");
         assertThat(entry.getRating()).isEqualByComparingTo("92.0");
-        assertThat(entry.getPlayTimeHours()).isEqualTo(30);
+        assertThat(entry.getPlayTimeHours()).isEqualByComparingTo("30.25");
         assertThat(entry.getMemo()).isEqualTo("- 좋았다");
         assertThat(entry.getTag().getName()).isEqualTo("인디");
         assertThat(entry.getDeveloperOverrides()).containsExactly("Maddy Makes Games");
@@ -283,7 +283,7 @@ class MemberExportImportTest extends ControllerTestSupport {
         em.flush();
 
         backlogService.updatePersonalRecord(member.getId(), entryId,
-                new BigDecimal("92.0"), 30, "- 좋았다");
+                new BigDecimal("92.0"), new BigDecimal("30.25"), "- 좋았다");
         backlogService.updateOverrides(member.getId(), entryId, new OverrideCommand(
                 "셀레스테", List.of("Maddy Makes Games"), List.of(),
                 LocalDate.parse("2018-01-25"), new Money(new BigDecimal("19800"), "KRW")));

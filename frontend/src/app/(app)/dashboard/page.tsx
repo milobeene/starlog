@@ -12,6 +12,7 @@ import MonthlySpendingChart from "@/components/dashboard/MonthlySpendingChart";
 import { useApi } from "@/lib/useApi";
 import { useSession } from "@/lib/session";
 import { formatRating } from "@/lib/labels";
+import { formatHours } from "@/lib/format";
 import type {
   BacklogCard,
   FacetsResponse,
@@ -92,7 +93,7 @@ export default function DashboardPage() {
             playtime.loading ? (
               <Skeleton className="h-12 w-32" />
             ) : (
-              (playtime.data?.totalHours ?? 0).toLocaleString()
+              formatHours(playtime.data?.totalHours ?? 0)
             )
           }
           unit="h"
