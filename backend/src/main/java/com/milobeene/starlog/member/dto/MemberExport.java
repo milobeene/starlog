@@ -88,7 +88,15 @@ public record MemberExport(
             Integer mainStoryHours,
             Integer mainExtraHours,
             Integer completionistHours,
-            Integer timeToBeatSamples
+            Integer timeToBeatSamples,
+            /**
+             * 스크린샷 폴더 이름 (v1.0 7단계).
+             *
+             * ⚠️ **없으면 옮긴 뒤 스크린샷 연결이 끊긴다.** 파일은 `media/<slug>/`에 있는데
+             * 새 DB의 게임은 폴더 이름을 모르는 채로 시작해서, 첫 저장 때 새 폴더를 만든다.
+             * 이름이 같으면 우연히 같은 slug가 나오지만 **번호가 붙은 폴더는 영영 못 찾는다**
+             */
+            String mediaFolder
     ) {}
 
     /**

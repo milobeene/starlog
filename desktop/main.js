@@ -25,6 +25,7 @@ const http = require("http");
 
 const paths = require("./paths");
 const store = require("./settings");
+const backup = require("./backup");
 
 const ROOT = path.join(__dirname, "..");
 const JAR = path.join(ROOT, "backend", "build", "libs", "app.jar");
@@ -36,6 +37,13 @@ let backendPort = null;
 let win = null;
 /** 우리가 일부러 죽인 건지, 저 혼자 죽은 건지 구분한다 — 후자만 사용자에게 알린다 */
 let stoppingOnPurpose = false;
+/**
+ * 지금 이 백엔드가 무엇을 열고 있나 — `{ mode, target }`.
+ *
+ * 입구로 나가도 백엔드를 안 죽이기로 하면서 필요해졌다. 창은 입구인데 서버는 살아 있는
+ * 상태가 생기고, 그때 **"최근 접속"이 즉시 이동인지 새로 기동인지**를 이 값이 가른다
+ */
+let session = null;
 
 /*
  * ## app:// 를 "진짜 오리진"으로 등록한다
@@ -106,6 +114,39 @@ function freePort() {
       const { port } = srv.address();
       srv.close(() => resolve(port));
     });
+  });
+}
+
+/** 우리 백엔드에 JSON을 묻는다. 작은 요청뿐이라 스트리밍은 필요 없다 */
+function getJson(port, urlPath) {
+  return new Promise((resolve, reject) => {
+    http.get({ host: "127.0.0.1", port, path: urlPath }, (res) => {
+      let body = "";
+      res.on("data", (chunk) => { body += chunk; });
+      res.on("end", () => {
+        if (res.statusCode >= 400) reject(new Error(`${urlPath} → ${res.statusCode}`));
+        else resolve(JSON.parse(body));
+      });
+    }).on("error", reject);
+  });
+}
+
+function postJson(port, urlPath, payload) {
+  return new Promise((resolve, reject) => {
+    const body = Buffer.from(JSON.stringify(payload), "utf8");
+    const req = http.request({
+      host: "127.0.0.1", port, path: urlPath, method: "POST",
+      headers: { "Content-Type": "application/json", "Content-Length": body.length },
+    }, (res) => {
+      let text = "";
+      res.on("data", (chunk) => { text += chunk; });
+      res.on("end", () => {
+        if (res.statusCode >= 400) reject(new Error(`${urlPath} → ${res.statusCode} ${text}`));
+        else resolve(text ? JSON.parse(text) : null);
+      });
+    });
+    req.on("error", reject);
+    req.end(body);
   });
 }
 
@@ -220,16 +261,42 @@ function onBackendDied(code, diagnostic) {
  * ⚠️ **윈도우는 신호 체계가 달라 `taskkill /T`가 필요할 수 있다 — 10단계에서 확인한다.**
  * 맥에서는 일렉트론만 죽여도 java가 따라 죽는 것까지 확인했다
  */
+/**
+ * 백엔드를 내리고 **완전히 죽을 때까지 기다린다.**
+ *
+ * ⚠️ **기다리는 게 요점이다.** 신호만 보내고 넘어가면 H2가 아직 `.mv.db` 잠금을 쥔 채인데
+ * 곧바로 같은 파일로 다시 띄우게 되고, 그러면 `DB_IN_USE`로 간헐적으로 실패한다.
+ * 재현이 잘 안 되는 부류라 처음부터 기다리게 만든다.
+ *
+ * 백업도 이 함수에 기댄다 — 파일을 복사하려면 아무도 안 열고 있어야 한다
+ */
 function stopBackend() {
-  if (!backend) return;
+  if (!backend) {
+    session = null;
+    return Promise.resolve();
+  }
   const proc = backend;
   stoppingOnPurpose = true;
   backend = null;
   backendPort = null;
-  proc.kill("SIGTERM");
-  setTimeout(() => {
-    try { proc.kill("SIGKILL"); } catch { /* 이미 죽었으면 무시 */ }
-  }, 3000);
+  session = null;
+
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      resolve();
+    };
+    proc.once("exit", finish);
+    proc.kill("SIGTERM");
+
+    // 얌전히 안 죽으면 강제로. 그래도 H2 MVStore는 크래시에 견디게 만들어져 있다
+    setTimeout(() => {
+      try { proc.kill("SIGKILL"); } catch { /* 이미 죽었으면 무시 */ }
+      setTimeout(finish, 500);
+    }, 5000);
+  });
 }
 
 function loadEntry() {
@@ -359,14 +426,53 @@ function registerIpc() {
     return clean;
   });
 
-  ipcMain.handle("saves:remove", (_e, name) => {
+  ipcMain.handle("saves:remove", async (_e, name) => {
     const clean = assertSaveName(name);
-    const { saves } = dataDirs();
+    // 열고 있는 파일은 못 지운다 — 윈도우는 아예 거부하고, 맥은 지워지되 서버가 유령을 붙든다
+    if (session?.mode === "local" && session.target === clean) {
+      await stopBackend();
+    }
+
+    const dirs = dataDirs();
     // .trace.db는 H2가 오류를 남기는 곁다리 파일이다. 같이 지운다
     for (const suffix of [".mv.db", ".trace.db"]) {
-      const file = path.join(saves, `${clean}${suffix}`);
+      const file = path.join(dirs.saves, `${clean}${suffix}`);
       if (fs.existsSync(file)) fs.rmSync(file);
     }
+    // 백업도 함께. 남겨두면 주인 없는 폴더가 쌓이고, 목록에서 지운 것이 되살아난 것처럼 보인다
+    backup.removeAll(dirs, clean);
+    return true;
+  });
+
+  // ── 백업 (9단계). 전부 일렉트론이 한다 — 백엔드는 백업 폴더에 손을 안 댄다
+
+  ipcMain.handle("backups:usage", (_e, saveName) =>
+    backup.usage(dataDirs(), assertSaveName(saveName)));
+
+  /**
+   * 수동 백업.
+   *
+   * **지금 열려 있는 세이브면 서버를 내리고 한다.** 파일을 복사하려면 아무도 안 열고
+   * 있어야 하기 때문이다. 다른 세이브는 아무도 안 열고 있으니 그냥 복사한다 —
+   * 실제로는 이쪽이 더 흔하고, 굳이 멈출 이유가 없다.
+   *
+   * 안내를 따로 띄우지 않는다 (사용자 결정). 대신 이 뒤로 [최근 접속]이
+   * "즉시"에서 "기동"으로 조용히 바뀐다 — 알아채도 이상하지 않은 변화다
+   */
+  ipcMain.handle("backups:create", async (_e, saveName) => {
+    const clean = assertSaveName(saveName);
+    if (session?.mode === "local" && session.target === clean) {
+      await stopBackend();
+    }
+    return backup.create(dataDirs(), clean);
+  });
+
+  /** 되돌리기 — 새 세이브파일이 하나 생긴다. 원본은 그대로 남는다 */
+  ipcMain.handle("backups:restore", (_e, saveName, fileName) =>
+    backup.restore(dataDirs(), assertSaveName(saveName), fileName));
+
+  ipcMain.handle("backups:remove", (_e, saveName, fileName) => {
+    backup.remove(dataDirs(), assertSaveName(saveName), fileName);
     return true;
   });
 
@@ -397,7 +503,30 @@ function registerIpc() {
       ? localConfig(assertSaveName(request.target))
       : cloudConfig(findProfile(request.target));
 
+    /*
+     * ⚠️ **먼저 옛 백엔드를 죽이고 기다린다.**
+     *
+     * 입구로 나가도 백엔드를 안 죽이기로 하면서 여기가 위험해졌다 — 살아 있는 놈이
+     * `.mv.db`를 쥔 채로 같은 파일을 다시 열면 `DB_IN_USE`다.
+     * 다른 세이브를 골랐더라도 마찬가지로 죽인다: 백엔드는 한 번에 하나면 충분하고,
+     * 둘을 살려두면 "지금 보고 있는 게 어느 쪽이냐"가 흐려진다
+     */
     progress({ phase: "starting" });
+    await stopBackend();
+
+    /*
+     * 로컬 모드는 띄우기 **전에** 백업한다. DB가 닫혀 있는 유일한 순간이라
+     * 그냥 파일을 복사하면 되고, 스키마 자동 업그레이드가 일어난다면 그 직전이 된다.
+     * 실패해도 기동은 막지 않는다 — 백업이 본체를 막으면 본말전도다
+     */
+    if (request.mode === "local") {
+      try {
+        backup.autoBackup(dataDirs(), request.target);
+      } catch (e) {
+        console.error("[backup] 자동 백업 실패 — 기동은 계속한다", e);
+      }
+    }
+
     const port = await freePort();
     const { exited } = startBackend(port, config);
 
@@ -411,15 +540,122 @@ function registerIpc() {
       return { ok: false, code };
     }
 
-    store.patchSettings({ lastMode: request.mode });
+    session = { mode: request.mode, target: request.target };
+    store.patchSettings({ lastMode: request.mode, lastTarget: request.target });
     progress({ phase: "ready" });
     win.loadURL(`http://127.0.0.1:${port}/dashboard`);
     return { ok: true };
   });
 
+  /**
+   * 입구로 나간다. **백엔드는 그대로 둔다** (2026-08-28 결정).
+   *
+   * 예전엔 여기서 죽였다 — "DB를 갈아끼우러 나가는 것"으로 봤기 때문이다.
+   * 그런데 실제로는 잘못 들어왔거나 설정을 보러 나가는 쪽이 훨씬 흔하고,
+   * 그때마다 5초를 다시 기다리는 건 값을 못 한다. 살려두면 [최근 접속]이 **즉시**다
+   */
+  /**
+   * 클라우드 데이터를 **로컬 세이브파일로 뽑는다** (architecture §6).
+   *
+   * ## "복원"이라는 과정이 없다
+   *
+   * 세이브파일이 H2 파일 그 자체라서, 뽑아낸 순간 그건 이미 열 수 있는 상태다.
+   * 백업 파일을 어딘가에 두고 나중에 되돌리는 절차가 아예 생기지 않는다.
+   *
+   * ## 이미 있는 것을 쓴다
+   *
+   * architecture는 "JDBC로 행을 복사"라고 했지만, **`/api/me/export`와 `import`가 이미 있고
+   * 실데이터로 검증까지 됐다.** 직접 복사로 가면 identity 시퀀스 리셋과 FK 순서를 새로 짜야 하고,
+   * 이 규모(항목 수십 건)에서 그 값을 못 한다.
+   *
+   * 새로 만들 것은 **빈 세이브파일에 스키마를 만드는 부분**뿐인데, 그것도 백엔드를 한 번
+   * 띄우면 Flyway가 알아서 한다. 그래서 흐름이 이렇게 된다:
+   *
+   * <pre>
+   *   1. 지금 붙어 있는 클라우드에서 JSON을 받는다
+   *   2. 새 이름으로 로컬 백엔드를 잠깐 띄운다 → Flyway가 빈 스키마를 만든다
+   *   3. 그 백엔드에 JSON을 부어넣는다
+   *   4. 내린다. 세이브파일 하나가 남는다
+   * </pre>
+   *
+   * ⚠️ **커버 실물은 안 따라온다.** 클라우드 커버는 스토리지에 있다.
+   * 가져오기가 "파일 없으면 건너뛴다"로 처리하므로 마스터 커버로 폴백된다 —
+   * 화면이 그걸 미리 말해준다
+   */
+  ipcMain.handle("cloud:toSaveFile", async (_e, saveName) => {
+    if (session?.mode !== "cloud" || !backendPort) {
+      throw new Error("클라우드 모드로 접속 중일 때만 뽑을 수 있습니다");
+    }
+    const clean = assertSaveName(saveName);
+    const dirs = dataDirs();
+    if (fs.existsSync(path.join(dirs.saves, `${clean}.mv.db`))) {
+      throw new Error("같은 이름의 세이브파일이 이미 있습니다");
+    }
+
+    progress({ phase: "starting" });
+    const dump = await getJson(backendPort, "/api/me/export");
+
+    // 클라우드 연결은 그대로 둔다 — 뽑기가 실패해도 보던 화면으로 돌아갈 수 있어야 한다
+    const cloudPort = backendPort;
+    const cloudSession = session;
+    await stopBackend();
+
+    progress({ phase: "waiting" });
+    const port = await freePort();
+    const { exited } = startBackend(port, localConfig(clean));
+    try {
+      await waitForBackend(port);
+      await postJson(port, "/api/me/import", dump);
+    } catch (e) {
+      await stopBackend();
+      const result = await exited;
+      progress({ phase: "error", code: result?.diagnostic ?? "BACKEND_DIED" });
+      throw e;
+    }
+    await stopBackend();
+
+    /*
+     * 뽑기 전에 보던 클라우드로 되돌린다. 포트가 바뀌므로 다시 띄워야 한다 —
+     * 그래도 **사용자가 고르는 단계를 다시 밟게 하지는 않는다**
+     */
+    void cloudPort;
+    const back = await freePort();
+    startBackend(back, cloudConfig(findProfile(cloudSession.target)));
+    try {
+      await waitForBackend(back);
+      session = cloudSession;
+      progress({ phase: "ready" });
+    } catch {
+      progress({ phase: "error", code: "BACKEND_DIED" });
+    }
+
+    return { saveName: clean };
+  });
+
   ipcMain.handle("backToEntry", () => {
-    stopBackend();
     loadEntry();
+    return true;
+  });
+
+  /** 입구 화면이 [최근 접속] 버튼을 그릴지, 그게 즉시인지 기동인지 정하는 데 쓴다 */
+  ipcMain.handle("session:current", () => {
+    const settings = store.getSettings();
+    if (session && backendPort) {
+      return { ...session, alive: true };
+    }
+    // 서버는 없지만 지난번 기록은 있다 — 고르는 단계를 건너뛸 수는 있다
+    if (settings.lastMode && settings.lastTarget) {
+      return { mode: settings.lastMode, target: settings.lastTarget, alive: false };
+    }
+    return null;
+  });
+
+  /** 살아 있는 백엔드로 되돌아간다. 창만 옮기면 끝이라 기다릴 게 없다 */
+  ipcMain.handle("session:resume", () => {
+    if (!session || !backendPort) {
+      return false;
+    }
+    win.loadURL(`http://127.0.0.1:${backendPort}/dashboard`);
     return true;
   });
 }

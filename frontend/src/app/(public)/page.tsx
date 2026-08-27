@@ -3,9 +3,15 @@
 import Link from "next/link";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import SaveList from "@/components/entry/SaveList";
+import BackupList from "@/components/entry/BackupList";
 import ConnectionList from "@/components/entry/ConnectionList";
 import LaunchOverlay from "@/components/entry/LaunchOverlay";
-import { getBridge, type LaunchMode, type LaunchProgress } from "@/lib/desktop";
+import {
+  getBridge,
+  type LaunchMode,
+  type LaunchProgress,
+  type SessionInfo,
+} from "@/lib/desktop";
 
 /**
  * 입구 — v1.0의 **모드 선택** 화면 (architecture §1·§2).
@@ -21,7 +27,7 @@ import { getBridge, type LaunchMode, type LaunchProgress } from "@/lib/desktop";
  * `npm run dev`에는 preload가 없어 `getBridge()`가 undefined다. 그때는 `[들어가기]`
  * 하나로 폴백한다 — **백엔드를 고칠 때 일렉트론을 거치지 않는 길**이 살아 있어야 한다.
  */
-type Step = "web" | "mode" | "local" | "cloud" | "launching";
+type Step = "web" | "mode" | "local" | "cloud" | "backups" | "launching";
 
 /**
  * 다리가 있는지.
@@ -45,6 +51,13 @@ export default function EntryPage() {
   const hasBridge = useHasBridge();
   const [step, setStep] = useState<Step | null>(null);
   const [progress, setProgress] = useState<LaunchProgress>({ phase: "starting" });
+  const [backupTarget, setBackupTarget] = useState<string | null>(null);
+  /*
+   * 지난번 붙었던 대상. `alive`면 백엔드가 아직 살아 있어서 **창만 옮기면 끝**이다
+   * (입구로 나가도 안 죽인다 — 2026-08-28 결정). 앱을 새로 켰으면 alive가 false지만
+   * 그래도 고르는 단계는 건너뛴다
+   */
+  const [session, setSession] = useState<SessionInfo | null>(null);
 
   // 아직 아무것도 안 골랐으면 다리 유무가 시작점을 정한다
   const current: Step = step ?? (hasBridge ? "mode" : "web");
@@ -61,6 +74,27 @@ export default function EntryPage() {
       if (next.phase === "error") setStep("launching");
     });
   }, []);
+
+  useEffect(() => {
+    const bridge = getBridge();
+    if (!bridge) return;
+    let cancelled = false;
+    bridge.session.current().then((found) => {
+      if (!cancelled) setSession(found);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /** 살아 있으면 즉시, 아니면 평소대로 기동. 어느 쪽이든 고르는 단계는 없다 */
+  const resume = async () => {
+    if (!session) return;
+    if (session.alive && (await getBridge()!.session.resume())) {
+      return;
+    }
+    launch(session.mode, session.target);
+  };
 
   const launch = async (mode: LaunchMode, target: string) => {
     setProgress({ phase: "starting" });
@@ -117,6 +151,17 @@ export default function EntryPage() {
 
           {current === "mode" && (
             <>
+              {/*
+                **[최근 접속]이 첫 자리다.** 매번 모드를 고르고 목록에서 찾는 게 실제로
+                제일 귀찮은 부분이었다. 살아 있으면 즉시, 아니면 5초 — 어느 쪽이든
+                고르는 단계가 없다
+              */}
+              {session && (
+                <button onClick={resume} className={`${BUTTON} mb-4 border-white/45`}>
+                  최근 접속 · {session.target}
+                </button>
+              )}
+
               <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:gap-4">
                 <button onClick={() => setStep("local")} className={BUTTON}>
                   로컬 모드
@@ -134,7 +179,23 @@ export default function EntryPage() {
           )}
 
           {current === "local" && (
-            <SaveList onBack={() => setStep("mode")} onLaunch={(name) => launch("local", name)} />
+            <SaveList
+              onBack={() => setStep("mode")}
+              onLaunch={(name) => launch("local", name)}
+              onBackups={(name) => {
+                setBackupTarget(name);
+                setStep("backups");
+              }}
+            />
+          )}
+
+          {current === "backups" && backupTarget && (
+            <BackupList
+              saveName={backupTarget}
+              onBack={() => setStep("local")}
+              /* 되돌리면 새 세이브파일이 하나 생긴다 — 목록으로 돌려보내 그걸 보여준다 */
+              onRestored={() => setStep("local")}
+            />
           )}
 
           {current === "cloud" && (

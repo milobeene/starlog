@@ -63,6 +63,34 @@ export type LaunchProgress =
   | { phase: "ready" }
   | { phase: "error"; code: string; exitCode?: number };
 
+/** 백업 한 벌 (9단계). 세이브파일과 같은 `.mv.db`라 고르면 바로 열 수 있다 */
+export interface BackupFile {
+  fileName: string;
+  label: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+
+/**
+ * 백업 목록 + 한도.
+ *
+ * **한도를 지금 쓰는 값과 나란히 보여줘야 한다** — 안 그러면 "왜 지워졌지"가 생긴다
+ */
+export interface BackupUsage {
+  items: BackupFile[];
+  count: number;
+  totalBytes: number;
+  keepCount: number;
+  keepBytes: number;
+}
+
+/** 지금 붙어 있는 대상. `alive`면 [최근 접속]이 즉시 이동이다 */
+export interface SessionInfo {
+  mode: LaunchMode;
+  target: string;
+  alive: boolean;
+}
+
 export interface StarlogBridge {
   settings: {
     get(): Promise<{ dataRoot: string; dirs: Record<string, string>; lastMode: LaunchMode | null }>;
@@ -83,6 +111,20 @@ export interface StarlogBridge {
     remove(name: string): Promise<ConnectionProfile[]>;
     test(profile: ConnectionProfile): Promise<{ ok: boolean; code: string | null }>;
   };
+  backups: {
+    usage(saveName: string): Promise<BackupUsage>;
+    create(saveName: string): Promise<{ fileName: string; removed: string[] }>;
+    /** 되돌리기 — 새 세이브파일 이름을 돌려준다. 원본은 그대로 남는다 */
+    restore(saveName: string, fileName: string): Promise<string>;
+    remove(saveName: string, fileName: string): Promise<boolean>;
+  };
+  session: {
+    current(): Promise<SessionInfo | null>;
+    /** 살아 있는 백엔드로 되돌아간다. false면 새로 띄워야 한다 */
+    resume(): Promise<boolean>;
+  };
+  /** 클라우드 → 로컬 세이브파일. ⚠️ 커버 실물은 안 따라온다 */
+  cloudToSaveFile(saveName: string): Promise<{ saveName: string }>;
   launch(request: { mode: LaunchMode; target: string }): Promise<{ ok: boolean; code?: string }>;
   onProgress(callback: (p: LaunchProgress) => void): () => void;
   backToEntry(): Promise<boolean>;

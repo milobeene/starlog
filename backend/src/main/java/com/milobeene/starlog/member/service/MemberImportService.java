@@ -195,6 +195,15 @@ public class MemberImportService {
         gameRepository.persist(game);
 
         /*
+         * 스크린샷 폴더 이름을 먼저 되살린다. 안 하면 파일은 `media/<slug>/`에 그대로 있는데
+         * 새 게임이 그 이름을 몰라 **첫 저장 때 새 폴더를 만든다** — 이름이 겹쳐 번호가
+         * 붙었던 폴더는 영영 못 찾는다. 옛 파일에는 이 칸이 없어서 null이면 건너뛴다
+         */
+        if (item.mediaFolder() != null) {
+            game.assignMediaFolder(item.mediaFolder());
+        }
+
+        /*
          * 둘로 나눠 채운다 — `syncFromCatalog`가 **일부러 listPrice를 안 건드린다**(§6.2).
          * 외부 DB는 가격을 안 주므로, 손으로 넣은 정가가 재동기화 때 날아가지 않게 하려는 것이다.
          * 복원은 그 정가까지 되살려야 하므로 updateMasterInfo로 한 번 더 덮는다
@@ -236,12 +245,23 @@ public class MemberImportService {
             return catalog;
         }
 
-        // 플랫폼이 먼저다 — 계정이 이걸 참조한다
-        each(data.platforms(), name -> {
-            Platform platform = new Platform(member, name);
-            platformRepository.persist(platform);
-            catalog.platforms().put(name, platform);
-        });
+        /*
+         * 플랫폼이 먼저다 — 계정이 이걸 참조한다.
+         *
+         * ⚠️ **이미 있으면 그 행을 다시 쓴다.** v1.0에는 가입이 없어서 주인 계정이
+         * `DefaultCatalogSeeder`가 넣은 기본 플랫폼(Steam·Epic…)을 **항상 갖고 시작한다.**
+         * 무조건 만들면 `uk_platform_member_name`에 걸려 **가져오기가 통째로 실패한다** —
+         * 실제로 그랬고, 빈 앱에서는 가져오기가 아예 불가능했다.
+         *
+         * 마스터 게임을 이름으로 잇는 것과 같은 규칙이다 (§ "참조를 잇는 방식")
+         */
+        each(data.platforms(), name -> catalog.platforms().put(name,
+                platformRepository.findByMemberIdAndName(member.getId(), name)
+                        .orElseGet(() -> {
+                            Platform created = new Platform(member, name);
+                            platformRepository.persist(created);
+                            return created;
+                        })));
 
         each(data.accounts(), item -> {
             Platform platform = catalog.platforms().get(item.platform());
@@ -265,11 +285,14 @@ public class MemberImportService {
             catalog.emulators().put(item.name(), emulator);
         });
 
-        each(data.inputMethods(), name -> {
-            InputMethod inputMethod = new InputMethod(member, name);
-            inputMethodRepository.persist(inputMethod);
-            catalog.inputMethods().put(name, inputMethod);
-        });
+        // 입력방식도 기본 시드와 부딪힌다 (키보드 & 마우스 등) — 같은 규칙
+        each(data.inputMethods(), name -> catalog.inputMethods().put(name,
+                inputMethodRepository.findByMemberIdAndName(member.getId(), name)
+                        .orElseGet(() -> {
+                            InputMethod created = new InputMethod(member, name);
+                            inputMethodRepository.persist(created);
+                            return created;
+                        })));
 
         each(data.subscriptions(), item -> {
             Subscription subscription = Subscription.of(member, new SubscriptionCommand(

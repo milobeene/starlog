@@ -17,6 +17,7 @@ import com.milobeene.starlog.backlog.service.PlaythroughService;
 import com.milobeene.starlog.common.entity.Money;
 import com.milobeene.starlog.common.exception.ConflictException;
 import com.milobeene.starlog.common.exception.InvalidInputException;
+import com.milobeene.starlog.game.domain.Game;
 import com.milobeene.starlog.member.domain.Member;
 import com.milobeene.starlog.member.dto.MemberExport;
 import com.milobeene.starlog.platform.domain.Device;
@@ -56,6 +57,7 @@ class MemberExportImportTest extends ControllerTestSupport {
     @Autowired PlatformRepository platformRepository;
     @Autowired PlatformAccountRepository platformAccountRepository;
     @Autowired DeviceRepository deviceRepository;
+    @Autowired com.milobeene.starlog.platform.service.DefaultCatalogSeeder defaultCatalogSeeder;
 
     @Test
     public void 내보내고_빈_계정에_넣으면_그대로_복원된다() {
@@ -174,6 +176,69 @@ class MemberExportImportTest extends ControllerTestSupport {
 
         //then
         assertThat(onlyEntryOf(target).isDeleted()).isTrue();
+    }
+
+    @Test
+    public void 기본_선택지가_이미_있는_계정에도_들어간다() {
+        /*
+         * given — **v1.0에는 가입이 없다.** 주인 계정은 `OwnerService`가 만들고,
+         * 그때 `DefaultCatalogSeeder`가 기본 플랫폼(Steam·Epic…)과 입력방식을 넣는다.
+         * 즉 **가져오기가 향하는 계정은 언제나 비어 있지 않다.**
+         *
+         * 예전 구현은 이름이 겹쳐도 무조건 새로 만들어서 `uk_platform_member_name`에 걸렸고,
+         * 그래서 **빈 앱에서 가져오기가 아예 불가능했다** — 9단계의 "클라우드 → 로컬 세이브파일"이
+         * 이 경로를 타면서 드러났다
+         */
+        Member source = saveMember();
+        richEntry(source, "Celeste");
+        em.flush();
+        em.clear();
+        MemberExport data = exportService.export(source.getId());
+
+        Member target = saveMember();
+        defaultCatalogSeeder.seed(target);   // 주인 계정이 실제로 갖고 시작하는 상태
+        em.flush();
+        em.clear();
+
+        //when //then — 겹치는 이름은 있는 행을 다시 쓴다
+        importService.importInto(target.getId(), data);
+        em.flush();
+        em.clear();
+
+        assertThat(backlogEntryRepository.findAllForExport(target.getId())).hasSize(1);
+        // 같은 이름이 두 벌로 늘어나지 않았다
+        assertThat(platformRepository.findByMemberIdAndDeletedAtIsNullOrderByNameAsc(target.getId())
+                .stream().map(p -> p.getName()).distinct().count())
+                .isEqualTo(platformRepository
+                        .findByMemberIdAndDeletedAtIsNullOrderByNameAsc(target.getId()).size());
+    }
+
+    @Test
+    public void 스크린샷_폴더_이름이_따라간다() {
+        /*
+         * given — 9단계의 "클라우드 → 로컬 세이브파일"이 이 JSON을 통째로 태운다.
+         * 폴더 이름이 안 실리면 파일은 `media/<slug>/`에 그대로 있는데 새 DB의 게임이
+         * 그 이름을 몰라 **첫 저장 때 새 폴더를 만든다** — 겹쳐서 번호가 붙었던 폴더는
+         * 이름에서 다시 만들 수도 없어 영영 못 찾는다
+         */
+        Member source = saveMember();
+        Game game = saveGame("Hollow Knight");
+        game.assignMediaFolder("hollow-knight-7");   // 이름이 겹쳐 번호가 붙은 경우
+        backlogService.addToBacklog(source.getId(), game.getId());
+        em.flush();
+        em.clear();
+
+        //when
+        MemberExport data = exportService.export(source.getId());
+        em.flush();
+        em.clear();
+        Member target = saveMember();
+        importService.importInto(target.getId(), data);
+        em.flush();
+        em.clear();
+
+        //then — 이름에서 만들면 `hollow-knight`가 나온다. 그게 아니라 옛 이름이어야 한다
+        assertThat(data.games().get(0).mediaFolder()).isEqualTo("hollow-knight-7");
     }
 
     @Test

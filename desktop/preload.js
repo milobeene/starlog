@@ -34,6 +34,31 @@ contextBridge.exposeInMainWorld("starlog", {
     remove: (name) => ipcRenderer.invoke("saves:remove", name),
   },
 
+  /**
+   * 백업 (9단계). **로컬 모드 전용** — 클라우드는 복사할 파일이 아예 없다.
+   *
+   * `create`는 대상이 지금 열려 있는 세이브면 **서버를 내리고** 한다. 화면은 그걸 몰라도 되고,
+   * 다만 그 뒤로 [최근 접속]이 즉시가 아니게 된다
+   */
+  backups: {
+    usage: (saveName) => ipcRenderer.invoke("backups:usage", saveName),
+    create: (saveName) => ipcRenderer.invoke("backups:create", saveName),
+    restore: (saveName, fileName) => ipcRenderer.invoke("backups:restore", saveName, fileName),
+    remove: (saveName, fileName) => ipcRenderer.invoke("backups:remove", saveName, fileName),
+  },
+
+  /**
+   * 클라우드 데이터를 로컬 세이브파일로 뽑는다 (§6).
+   * ⚠️ 커버 실물은 안 따라온다 — 스토리지에 있다. 마스터 커버로 폴백된다
+   */
+  cloudToSaveFile: (saveName) => ipcRenderer.invoke("cloud:toSaveFile", saveName),
+
+  /** 지금 붙어 있는 대상. `alive`면 [최근 접속]이 즉시 이동이다 */
+  session: {
+    current: () => ipcRenderer.invoke("session:current"),
+    resume: () => ipcRenderer.invoke("session:resume"),
+  },
+
   connections: {
     list: () => ipcRenderer.invoke("connections:list"),
     save: (profile) => ipcRenderer.invoke("connections:save", profile),

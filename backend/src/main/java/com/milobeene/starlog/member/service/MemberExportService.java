@@ -170,7 +170,8 @@ public class MemberExportService {
                 game.getIgdbRating(), game.getIgdbRatingCount(),
                 List.copyOf(game.getReleasePlatforms()),
                 game.getMainStoryHours(), game.getMainExtraHours(),
-                game.getCompletionistHours(), game.getTimeToBeatSamples());
+                game.getCompletionistHours(), game.getTimeToBeatSamples(),
+                game.getMediaFolder());
     }
 
     private MemberExport.Cover cover(Long entryId) {

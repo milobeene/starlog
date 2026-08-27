@@ -15,9 +15,11 @@ import { getBridge, type SaveFile } from "@/lib/desktop";
 export default function SaveList({
   onBack,
   onLaunch,
+  onBackups,
 }: {
   onBack: () => void;
   onLaunch: (name: string) => void;
+  onBackups: (name: string) => void;
 }) {
   const [saves, setSaves] = useState<SaveFile[] | null>(null);
   const [newName, setNewName] = useState("");
@@ -37,6 +39,7 @@ export default function SaveList({
   };
 
   const remove = async (name: string) => {
+    // 백업 폴더도 함께 사라진다 — 일렉트론이 처리한다. 남겨두면 주인 없는 폴더가 쌓인다
     await getBridge()!.saves.remove(name);
     reload();
   };
@@ -60,6 +63,13 @@ export default function SaveList({
               <div className="num mt-0.5 text-[11px] text-white/35">
                 {formatSize(save.sizeBytes)} · {formatDate(save.modifiedAt)}
               </div>
+            </button>
+            {/* 백업은 여기 있어야 한다 — DB가 닫혀 있어야 파일을 안전하게 복사한다 */}
+            <button
+              onClick={() => onBackups(save.name)}
+              className="shrink-0 text-[11px] text-white/0 transition-colors group-hover:text-white/40 hover:!text-white"
+            >
+              백업
             </button>
             <button
               onClick={() => remove(save.name)}
