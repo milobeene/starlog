@@ -11,14 +11,14 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * WEB-ONLY: 시스템 현황 (docs/capacity-planning.md §3).
  *
- * **`AdminController`에서 떼어낸 이유** — `SystemStatusService`가 `@Profile("!local-app")`인데
+ * **`AdminController`에서 떼어낸 이유** — `SystemStatusService`가 `@Profile("!desktop")`인데
  * 이걸 `final` 필드로 물고 있는 컨트롤러에 프로필 게이트가 없으면,
- * `local-app` 프로필로 띄울 때 `NoSuchBeanDefinitionException`으로 **애플리케이션이 기동조차 안 된다.**
+ * `desktop` 프로필로 띄울 때 `NoSuchBeanDefinitionException`으로 **애플리케이션이 기동조차 안 된다.**
  * `NoOpQuotaGuard`를 만들어 둔 이유(로컬 앱 빌드가 그대로 떠야 한다)가 그 한 줄에서 깨졌다.
  *
  * 클래스를 통째로 지우면 되는 모양이라 WEB-ONLY 원칙과도 맞는다.
  */
-@Profile("!local-app")
+@Profile("!desktop")
 @RestController
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor

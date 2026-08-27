@@ -8,11 +8,11 @@ import java.util.List;
 /**
  * 쿼터 없는 빌드 — 로컬 앱(v1.0)용.
  *
- * `local-app` 프로파일로 뜨면 이게 붙고 `DbQuotaGuard`는 아예 안 올라온다.
+ * `desktop` 프로파일로 뜨면 이게 붙고 `DbQuotaGuard`는 아예 안 올라온다.
  * **기본이 웹인 이유** — 오늘의 동작이 기본이어야 지금 개발·배포가 아무것도 안 바뀐다.
  * 미래의 변종이 스스로 손을 드는 쪽이 맞다
  */
-@Profile("local-app")
+@Profile("desktop")
 @Component
 public class NoOpQuotaGuard implements QuotaGuard {
 

@@ -36,7 +36,7 @@ app:
     client-secret: ${IGDB_CLIENT_SECRET:}
 
   # 회원당 일일 한도 (docs/capacity-planning.md §2-B). 최대 사용자 10명 기준.
-  # WEB-ONLY — 로컬 앱(local-app 프로파일)에서는 NoOpQuotaGuard가 붙어 이 값이 안 쓰인다.
+  # WEB-ONLY — 로컬 앱(desktop 프로파일)에서는 NoOpQuotaGuard가 붙어 이 값이 안 쓰인다.
   # 지인이 늘거나 줄면 배포 없이 환경변수로 바꾼다
   quota:
     game-search: ${QUOTA_GAME_SEARCH:200}

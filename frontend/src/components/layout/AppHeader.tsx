@@ -48,9 +48,13 @@ export default function AppHeader() {
         심볼을 정확히 화면 중앙에 두는 절대 배치는 md 이상에서만 쓴다
       */}
       <header className="page-x pointer-events-none fixed top-0 left-0 z-40 flex h-16 w-full items-center justify-between mix-blend-difference">
-        {/* 워드마크. 홈으로 나가는 유일한 출구다 */}
+        {/*
+          워드마크. 대시보드로 나가는 유일한 출구다.
+          ⚠️ **`/`가 아니다** — v1.0에서 그 주소는 입구(모드 선택)고, 일렉트론이
+          `app://`로 여는 화면이다. 앱 안에서 열면 다리(`window.starlog`)가 없어 아무것도 못 한다
+        */}
         <Link
-          href="/"
+          href="/dashboard"
           className="pointer-events-auto flex h-full shrink-0 translate-y-[0.049em] items-center font-display text-sm leading-none font-bold tracking-[0.15em] text-white sm:text-base sm:tracking-[0.2em] lg:text-lg"
         >
           STARLOG

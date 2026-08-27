@@ -6,6 +6,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import PageHeading from "@/components/ui/PageHeading";
 import ErrorNotice from "@/components/ui/ErrorNotice";
+import DesktopSection from "@/components/settings/DesktopSection";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Modal from "@/components/ui/Modal";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -334,6 +335,9 @@ function SettingsContent() {
             </div>
           </SettingsSection>
 
+
+          {/* 데스크탑 앱에서만. 브라우저에서는 스스로 아무것도 안 그린다 */}
+          <DesktopSection />
 
           {/*
             **맨 아래다.** 되살리기·완전 삭제는 자주 쓰는 기능이 아니고, 위에 두면

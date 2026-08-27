@@ -30,7 +30,7 @@ import org.springframework.web.method.support.ModelAndViewContainer;
  * 무조건 주인 id를 돌려주면 그 테스트가 전부 무의미해지고,
  * 쿼리에서 `member.id.eq(memberId)`를 빠뜨리는 실수를 잡아 주던 그물이 사라진다.
  *
- * **그래서 dev·test 프로필에서만 헤더를 본다.** 실사용(local-app) 빌드에는
+ * **그래서 dev·test 프로필에서만 헤더를 본다.** 실사용(desktop) 빌드에는
  * 이 빈이 아예 안 올라가므로 주인 경로 하나뿐이다.
  */
 @Component

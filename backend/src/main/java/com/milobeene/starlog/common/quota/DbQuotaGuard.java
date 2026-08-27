@@ -18,14 +18,14 @@ import java.util.Map;
 /**
  * DB에 세는 일일 쿼터.
  *
- * WEB-ONLY (docs/web-only-inventory.md §5). `local-app` 프로파일에서는 이 빈이 안 뜨고
+ * WEB-ONLY (docs/web-only-inventory.md §5). `desktop` 프로파일에서는 이 빈이 안 뜨고
  * `NoOpQuotaGuard`가 대신 붙는다.
  *
  * **인메모리로 세지 않는 이유** — Render 무료는 15분 무활동이면 프로세스를 내린다.
  * 카운터가 매번 0으로 돌아가면 쿼터가 아니라 장식이다.
  */
 @Slf4j
-@Profile("!local-app")
+@Profile("!desktop")
 @Service
 @Transactional(readOnly = true)
 public class DbQuotaGuard implements QuotaGuard {

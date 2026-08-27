@@ -107,15 +107,44 @@ dev 시드 계정: `milo.beene@gmail.com` (비밀번호 없음 — 로그인 자
 ## 데스크탑 앱 (v1.0)
 
 ```bash
-./tools/build-desktop.sh          # 프론트 정적 빌드 → 백엔드 리소스 복사 → jar
+./tools/build-desktop.sh          # 프론트 정적 빌드 → 두 곳에 복사 → jar
 cd desktop && npm install && npm start
 ```
 
-일렉트론이 **빈 포트를 골라 jar를 띄우고** 그 주소를 창에 로드한다.
+**순서가 뒤집혀 있다: 화면이 먼저, 백엔드가 나중.**
+
+1. 일렉트론이 입구 화면을 **`app://`로** 로드 (백엔드 없음)
+2. 사용자가 **[로컬 모드] / [클라우드 모드]**와 대상을 고른다
+3. 빈 포트를 골라 jar를 spawn — 설정을 **인자와 환경변수로** 주입
+4. 진단 통과하면 창이 `http://127.0.0.1:포트/dashboard`로 이동
+
 백엔드 로그는 `~/Library/Application Support/starlog-desktop/backend.log`.
 
-⚠️ **프론트를 고쳤으면 `build-desktop.sh`를 다시 돌려야 한다** — jar 안에 정적 파일이 들어간다.
+| 파일 | |
+|---|---|
+| `desktop/main.js` | `app://` 등록 · 백엔드 수명 · IPC |
+| `desktop/preload.js` | `window.starlog` — 화면이 쓸 수 있는 것 전부 |
+| `desktop/settings.js` | `settings.json`(공개) / `connections.json`(**자격증명, 평문**) |
+| `desktop/paths.js` | 앱데이터·데이터 루트. 경로는 전부 `path.join` (윈도우 대비) |
+
+⚠️ **프론트를 고쳤으면 `build-desktop.sh`를 다시 돌려야 한다** — 정적 파일이 **두 곳**에 들어간다
+(jar 안 = 본 앱, `desktop/web/` = 입구).
 ⚠️ 상세 화면 경로는 **`/library/detail?entry=57`**이다 (동적 경로는 정적 내보내기가 못 만든다).
+⚠️ **`/`는 입구(모드 선택)다.** 앱 안에서 `/`로 보내면 다리 없는 빈 화면이 뜬다 → `/dashboard`로.
+
+### 실사용 프로필은 `desktop`
+
+`dev`가 아니라서 `DataInitializer`(내 개인 시드)가 **안 돈다.** 빈 DB에 들어가는 건
+`OwnerService`의 주인 계정과 `DefaultCatalogSeeder`의 기본 플랫폼·입력방식뿐이다.
+
+### 진단은 스프링이 뜨기 전에 한다
+
+`StartupDiagnostic`이 `SpringApplication.run()` **앞에서** 순수 JDBC로 확인하고,
+문제가 있으면 `STARLOG_DIAGNOSTIC: <코드>` 한 줄을 찍고 죽는다. 일렉트론이 그걸 읽어 한글 안내를 띄운다.
+`--starlog.diagnose=true`일 때만 도므로 **`bootRun` 개발 경로에는 안 끼어든다.**
+
+⚠️ Flyway 이력 테이블을 조회할 때 **테이블·컬럼 이름을 큰따옴표로 감싼다.** Flyway는 H2에도
+소문자로 만드는데 H2는 안 감싼 식별자를 대문자로 올린다 — 안 감싸면 **두 번째 실행부터 전부 죽는다.**
 
 ## 프론트 ↔ 백엔드 계약 검사
 

@@ -14,7 +14,7 @@ import org.springframework.test.context.ActiveProfiles;
 /**
  * **로컬 앱 빌드가 실제로 뜨는지** 확인한다 (docs/web-only-inventory.md §5).
  *
- * `@Profile("!local-app")`을 하나씩 붙여 두는 것만으로는 부족하다 —
+ * `@Profile("!desktop")`을 하나씩 붙여 두는 것만으로는 부족하다 —
  * 그 빈을 `final` 필드로 물고 있는 쪽에 게이트가 없으면 컨텍스트가 통째로 죽는다.
  * 실제로 `AdminController`가 `SystemStatusService`를 물고 있어서 그랬다.
  *
@@ -22,10 +22,15 @@ import org.springframework.test.context.ActiveProfiles;
  * 여기가 먼저 깨져서 알려 준다.
  */
 @SpringBootTest(properties = {
-        "spring.datasource.url=jdbc:h2:mem:local-app;MODE=PostgreSQL;DB_CLOSE_DELAY=-1"
+        "spring.datasource.url=jdbc:h2:mem:desktop;MODE=PostgreSQL;DB_CLOSE_DELAY=-1"
 })
-@ActiveProfiles({"test", "local-app"})
-class LocalAppProfileTest {
+/*
+ * ⚠️ **순서가 뜻을 갖는다.** 프로필 파일은 활성 순서대로 위에 쌓이므로 `test`가 뒤에 와야
+ * `application-test.yml`(인메모리·ddl-auto:create)이 `application-desktop.yml`을 이긴다.
+ * 반대로 뒀다가 컨텍스트가 통째로 안 떴다
+ */
+@ActiveProfiles({"desktop", "test"})
+class DesktopProfileTest {
 
     @Autowired QuotaGuard quotaGuard;
 

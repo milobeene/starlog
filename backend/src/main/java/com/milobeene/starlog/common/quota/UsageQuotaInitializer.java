@@ -27,7 +27,7 @@ import java.time.LocalDate;
  * **그래서 트랜잭션을 갈라야 한다.** 안쪽이 실패해도 바깥이 안 더러워지는 유일한 방법이고,
  * `@Transactional`은 프록시 기반이라(CLAUDE.md 11번) 반드시 별도 빈이어야 한다.
  */
-@Profile("!local-app")
+@Profile("!desktop")
 @Service
 @RequiredArgsConstructor
 public class UsageQuotaInitializer {

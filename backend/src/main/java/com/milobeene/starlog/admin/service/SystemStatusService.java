@@ -25,7 +25,7 @@ import java.util.stream.Collectors;
 /**
  * WEB-ONLY: /admin 시스템 탭 (docs/web-only-inventory.md).
  *
- * 로컬 앱에는 남의 사용량을 볼 일이 없다 — `local-app` 프로파일에서는 이 빈이 안 뜬다.
+ * 로컬 앱에는 남의 사용량을 볼 일이 없다 — `desktop` 프로파일에서는 이 빈이 안 뜬다.
  *
  * **클래스 레벨 @Transactional을 일부러 안 붙였다.** DB 크기 조회가 PostgreSQL 전용이라
  * H2에서는 반드시 실패하는데, 실패한 쿼리는 잡아도 **트랜잭션을 rollback-only로 표시**한다.
@@ -33,7 +33,7 @@ import java.util.stream.Collectors;
  * (실제로 그렇게 났다). 읽기뿐이라 각 리포지토리 호출이 제 트랜잭션에서 돌면 충분하다
  */
 @Slf4j
-@Profile("!local-app")
+@Profile("!desktop")
 @Service
 public class SystemStatusService {
 

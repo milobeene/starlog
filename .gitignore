@@ -72,3 +72,5 @@ backend/src/main/resources/static/
 frontend/out/
 desktop/node_modules/
 desktop/dist/
+# 입구 화면용 정적 파일 사본 (build-desktop.sh가 만든다)
+desktop/web/
