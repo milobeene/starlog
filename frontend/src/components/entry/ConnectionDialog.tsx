@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import Modal from "@/components/ui/Modal";
 import SecretField from "./SecretField";
 import { Button, FIELD_INPUT } from "@/components/ui/Field";
@@ -26,6 +27,18 @@ import { diagnosticOf, getBridge, type ConnectionProfile } from "@/lib/desktop";
  * 스토리지·IGDB는 선택이지만 **반만 채운 것은 안 채운 것보다 나쁘다** — 조용히 실패하고
  * 원인이 안 보인다. 하나라도 채웠으면 나머지도 채우게 막는다
  */
+/**
+ * 테스트를 시작한 자리.
+ *
+ * 앱 안이면 **연결 탭까지** 적어둔다 — `/system`만 기억하면 돌아왔을 때 첫 탭(사용량)이
+ * 열려서 연결 설정을 다시 찾아 들어가야 한다. 입구는 화면이 하나라 경로만으로 충분하다
+ */
+function testOrigin() {
+  if (typeof window === "undefined") return "/";
+  const path = window.location.pathname;
+  return path.startsWith("/system") ? "/system?tab=keys" : path;
+}
+
 const EMPTY: ConnectionProfile = {
   name: "",
   db: { url: "", user: "", password: "", schema: "" },
@@ -72,6 +85,12 @@ export default function ConnectionDialog({
   const [passed, setPassed] = useState(false);
   /** 비활성 버튼을 눌렀을 때 어디를 채워야 하는지 빨갛게 표시한다 */
   const [showGaps, setShowGaps] = useState(false);
+  /*
+   * ⚠️ **`location.href`를 쓰면 안 된다.** 문서를 통째로 다시 로드해서 알림과 초안이
+   * 들어 있는 모듈 스토어가 날아간다 — 실제로 [설정으로]를 누르면 테스트에 쓴 값이 사라졌다.
+   * 라우터는 같은 문서 안에서 화면만 바꾸므로 스토어가 산다
+   */
+  const router = useRouter();
 
   const patch = (next: Partial<ConnectionProfile>) => {
     setForm((f) => ({ ...f, ...next }));
@@ -131,7 +150,7 @@ export default function ConnectionDialog({
      * **지금 값을 붙들어둔다.** 20초쯤 걸리고 그동안 다른 화면에 갈 수 있는데,
      * 돌아왔을 때 방금 친 값이 사라지면 통과해놓고 저장할 게 없어진다
      */
-    keepDraft(form, location.pathname);
+    keepDraft(form, testOrigin(), initial?.name ?? form.name);
     putTask({
       id: "connection-test",
       kind: "connection-test",
@@ -163,8 +182,8 @@ export default function ConnectionDialog({
                 },
               }]
             : []),
-          ...(origin && origin !== location.pathname
-            ? [{ label: "설정으로", run: () => { location.href = origin; } }]
+          ...(origin && origin !== testOrigin()
+            ? [{ label: "설정으로", run: () => router.push(origin) }]
             : []),
         ],
         result: {

@@ -161,7 +161,12 @@ export default function EntryPage() {
                 <button onClick={resume} className={`${BUTTON} mb-4 border-white/45`}>
                   최근 접속 · {session.target}
                   {/* 이름만으로는 어느 쪽인지 모른다 — 세이브파일과 연결 이름이 섞여 보인다 */}
-                  <span className="ml-1.5 text-white/45 normal-case">
+                  {/*
+                    ⚠️ `text-white/45`를 쓰면 **호버해도 흰색 그대로다** — 부모의
+                    `hover:text-black`은 상속인데 여기서 색을 직접 정해버려 이기지 못한다.
+                    투명도만 낮추면 부모가 정한 색을 따라간다
+                  */}
+                  <span className="ml-1.5 opacity-55 normal-case">
                     ({session.mode === "local" ? "세이브파일" : "데이터베이스"})
                   </span>
                 </button>

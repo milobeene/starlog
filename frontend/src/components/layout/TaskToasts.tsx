@@ -48,7 +48,11 @@ function Toast({ task }: { task: Task }) {
     >
       <div className="flex items-start gap-3">
         <span className="min-w-0 flex-1 text-sm text-white/85">{task.title}</span>
-        {task.progress && (
+        {/*
+          **`total`이 0이면 개수를 안 쓴다.** 연결 테스트처럼 몇 단계인지 모르는 일은
+          `0 / 0`이 되는데, 그건 "아무것도 안 하고 있다"로 읽힌다 — 아래 도는 막대만 보여준다
+        */}
+        {task.progress && task.progress.total > 0 && (
           <span className="num shrink-0 text-xs text-white/50">
             {task.progress.done} / {task.progress.total}
           </span>

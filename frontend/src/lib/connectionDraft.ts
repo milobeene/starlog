@@ -23,19 +23,28 @@ import type { ConnectionProfile } from "./desktop";
 
 type Draft = {
   profile: ConnectionProfile;
+  /**
+   * 붙들기 전의 이름.
+   *
+   * ⚠️ **이름 자체를 고치는 중일 수 있다.** 편집한 이름으로만 대조하면
+   * "내 Neon"을 열어 이름을 "NeonDB"로 바꾸고 테스트한 경우, 돌아왔을 때
+   * 저장된 이름("내 Neon")과 안 맞아 **값이 통째로 날아간다**
+   */
+  originalName: string;
   /** 테스트를 시작한 화면. 알림의 "설정으로"가 여기로 돌려보낸다 */
   from: string;
 };
 
 let draft: Draft | null = null;
 
-export function keepDraft(profile: ConnectionProfile, from: string) {
-  draft = { profile, from };
+export function keepDraft(profile: ConnectionProfile, from: string, originalName: string) {
+  draft = { profile, from, originalName };
 }
 
 /** 이름이 같은 것만 돌려준다 — 다른 연결을 열었는데 남의 값이 채워지면 안 된다 */
 export function takeDraft(name: string): ConnectionProfile | null {
-  return draft && draft.profile.name === name ? draft.profile : null;
+  if (!draft) return null;
+  return draft.originalName === name || draft.profile.name === name ? draft.profile : null;
 }
 
 export function draftOrigin(): string | null {

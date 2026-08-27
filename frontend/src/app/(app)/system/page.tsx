@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import PageHeading from "@/components/ui/PageHeading";
 import ErrorNotice from "@/components/ui/ErrorNotice";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -33,7 +34,26 @@ const TABS = [
 type Tab = (typeof TABS)[number]["key"];
 
 export default function SystemPage() {
-  const [tab, setTab] = useState<Tab>("usage");
+  /*
+   * `useSearchParams`는 프리렌더 때 값을 모르므로 Suspense 경계가 필요하다
+   * (정적 내보내기의 요구다 — 상세 화면과 같은 이유)
+   */
+  return (
+    <Suspense fallback={null}>
+      <SystemContent />
+    </Suspense>
+  );
+}
+
+function SystemContent() {
+  /*
+   * **주소가 탭을 정한다** (2026-08-28). 알림의 [설정으로]가 여기로 돌려보내는데,
+   * 탭이 상태에만 있으면 늘 첫 탭(사용량)에서 시작해서 **연결 설정을 다시 찾아 들어가야 했다**
+   */
+  const requested = useSearchParams().get("tab");
+  const [tab, setTab] = useState<Tab>(
+    TABS.some((t) => t.key === requested) ? (requested as Tab) : "usage",
+  );
 
   return (
     <main className="h-full overflow-y-auto">
