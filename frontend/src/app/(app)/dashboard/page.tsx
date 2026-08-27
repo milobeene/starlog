@@ -42,7 +42,7 @@ export default function DashboardPage() {
 
   return (
     <main className="h-full w-full overflow-y-auto pb-20">
-      <div className="w-full border-b-line px-10 pt-28 pb-14">
+      <div className="page-x page-top w-full border-b-line pb-10 sm:pb-14">
         <PageHeading
           eyebrow="Dashboard"
           title={`Welcome back, ${session.me?.profile.nickname ?? ""}!`}
@@ -55,7 +55,7 @@ export default function DashboardPage() {
         커스텀 .divide-y-line은 레이어 밖이라 Tailwind의 lg:divide-y-0을 이겨버린다 —
         큰 화면에서도 위 테두리가 남는다. 진짜 유틸리티로만 쓴다
       */}
-      <div className="grid w-full grid-cols-1 divide-y divide-white/15 border-b-line lg:grid-cols-4 lg:divide-x lg:divide-y-0">
+      <div className="grid w-full grid-cols-1 divide-y divide-white/15 border-b-line sm:grid-cols-2 sm:divide-x lg:grid-cols-4 lg:divide-y-0">
         <StatTile
           label="Total Games"
           value={facets.loading ? <Skeleton className="h-12 w-24" /> : totalGames}

@@ -44,7 +44,7 @@ export default function LandingPage() {
 
   return (
     <main className="relative flex h-full w-full flex-col items-center justify-center">
-      <div className="flex w-full flex-col items-center px-8 text-center">
+      <div className="page-x flex w-full flex-col items-center text-center">
         <h1 className="font-display text-[12vw] leading-none font-bold tracking-tighter text-white/90 drop-shadow-2xl select-none">
           STARLOG
         </h1>
@@ -67,7 +67,8 @@ export default function LandingPage() {
           </div>
 
           <div
-            className={`absolute flex items-center space-x-6 transition-opacity duration-700 ${
+            /* 폰에서는 버튼 두 개가 나란히 안 들어가 글자가 두 줄로 쪼개진다 — 세로로 쌓는다 */
+            className={`absolute flex flex-col items-stretch gap-3 transition-opacity duration-700 sm:flex-row sm:items-center sm:gap-0 sm:space-x-6 ${
               ready ? "opacity-100" : "pointer-events-none opacity-0"
             }`}
           >
@@ -116,4 +117,4 @@ export default function LandingPage() {
 }
 
 const BUTTON =
-  "rounded-full border border-white/20 px-8 py-3 text-sm font-medium tracking-widest uppercase transition-all duration-300 hover:bg-white hover:text-black";
+  "whitespace-nowrap rounded-full border border-white/20 px-6 py-3 text-sm sm:px-8 font-medium tracking-widest uppercase transition-all duration-300 hover:bg-white hover:text-black";

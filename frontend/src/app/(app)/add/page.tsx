@@ -110,7 +110,7 @@ export default function AddPage() {
 
   return (
     <main className="h-full overflow-y-auto">
-      <div className="mx-auto w-full max-w-3xl px-8 pt-24 pb-16">
+      <div className="page-x page-top mx-auto w-full max-w-3xl pb-16">
         <PageHeading
           eyebrow="Add"
           title="게임 담기"

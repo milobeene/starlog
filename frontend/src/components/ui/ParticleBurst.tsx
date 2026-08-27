@@ -154,8 +154,23 @@ export default function ParticleBurst({
     return () => cancelAnimationFrame(raf);
   }, [x, y]);
 
+  /*
+   * ⚠️ **`h-screen w-screen`이 반드시 있어야 한다.**
+   *
+   * canvas는 대체 요소(replaced element)라 CSS 폭이 auto면 `inset-0`으로 늘어나지 않고
+   * **고유 크기(width/height 속성값)를 그대로 CSS 픽셀로 쓴다.**
+   * 위에서 `canvas.width = w * dpr`로 잡으므로, 배율 2배 화면(맥북)에서는
+   * CSS 크기가 뷰포트의 두 배가 되고 화면 중앙에 그린 것이 오른쪽 끝에 찍힌다.
+   * (1920 모니터는 dpr=1이라 증상이 안 나와 한참 못 찾았다)
+   *
+   * FluidCanvas가 멀쩡했던 것도 거기엔 이 두 클래스가 있었기 때문이다
+   */
   return createPortal(
-    <canvas ref={canvasRef} aria-hidden className="pointer-events-none fixed inset-0 z-[100]" />,
+    <canvas
+      ref={canvasRef}
+      aria-hidden
+      className="pointer-events-none fixed inset-0 z-[100] h-screen w-screen"
+    />,
     document.body,
   );
 }

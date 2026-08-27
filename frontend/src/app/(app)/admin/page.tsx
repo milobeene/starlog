@@ -45,7 +45,7 @@ export default function AdminPage() {
 
   return (
     <main className="h-full overflow-y-auto">
-      <div className="mx-auto w-full max-w-5xl px-8 pt-24 pb-20">
+      <div className="page-x page-top mx-auto w-full max-w-5xl pb-20">
         <PageHeading
           eyebrow="Admin"
           title="관리자"

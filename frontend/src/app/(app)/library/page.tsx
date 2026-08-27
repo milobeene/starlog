@@ -47,14 +47,14 @@ export default function LibraryPage() {
 function LibraryFallback() {
   return (
     <main className="flex h-full flex-col overflow-hidden">
-      <div className="shrink-0 px-8 pt-24 pb-6">
+      <div className="page-x page-top shrink-0 pb-6">
         <PageHeading
           eyebrow="Library"
           title="My Collection"
           subtitle="상태·정렬·간편 수정을 위한 관리 화면입니다."
         />
       </div>
-      <div className="px-8 pb-16">
+      <div className="page-x pb-16">
         <CardGridSkeleton />
       </div>
     </main>
@@ -126,7 +126,7 @@ function LibraryContent() {
   return (
     <main className="h-full overflow-y-auto">
       {/* 제목 — 경계선 없이 배경이 그대로 비친다 */}
-      <div className="px-8 pt-24 pb-6">
+      <div className="page-x page-top pb-6">
         <PageHeading
           eyebrow="Library"
           title="My Collection"
@@ -136,8 +136,9 @@ function LibraryContent() {
       </div>
 
       {/* 툴바 + 필터 박스 */}
-      <div className="flex flex-col gap-4 px-8 pb-5">
-        <div className="flex items-center gap-3">
+      <div className="page-x flex flex-col gap-4 pb-5">
+        {/* 폰에서는 검색창이 좁아져 글자가 잘린다 — 정렬을 아래로 내린다 */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <SearchInput value={query} onChange={setQuery} />
           <Dropdown
             trigger={() => (
@@ -178,7 +179,7 @@ function LibraryContent() {
       </div>
 
       {/* 결과 */}
-      <div className="flex-1 overflow-y-auto px-8 pb-8">
+      <div className="page-x flex-1 overflow-y-auto pb-8">
         {view === "folder" ? (
           facets.data ? (
             <FolderView facets={facets.data} />

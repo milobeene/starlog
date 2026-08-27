@@ -272,3 +272,35 @@
   border: 1px solid rgba(255,255,255,0.1); padding: 0.4rem 0.6rem; text-align: left;
 }
 .markdown th { background: rgba(255,255,255,0.05); font-weight: 600; }
+
+/* ── 반응형 여백 스케일 (v1.0) ───────────────────────────────────
+ *
+ * **화면 좌우 여백과 헤더 아래 여백은 여기서만 정한다.**
+ * 예전엔 페이지마다 px-8 / px-10 / pt-24 / pt-28을 직접 썼는데,
+ * 390px(아이폰 14)에서는 좌우 2.5rem씩 먹으면 본문 폭이 반으로 준다.
+ *
+ * lg 이상 값은 예전 그대로다 — 데스크탑 화면은 지금과 똑같이 보인다.
+ * 바뀌는 건 좁은 화면뿐이다.
+ */
+.page-x   { padding-left: 1rem;  padding-right: 1rem; }
+.page-top { padding-top: 4.5rem; }          /* 헤더 h-16(4rem) + 0.5rem */
+
+@media (min-width: 640px) {                 /* sm */
+  .page-x   { padding-left: 1.5rem; padding-right: 1.5rem; }
+  .page-top { padding-top: 5.5rem; }
+}
+@media (min-width: 1024px) {                /* lg — 예전 px-8 pt-24 */
+  .page-x   { padding-left: 2rem; padding-right: 2rem; }
+  .page-top { padding-top: 6rem; }
+}
+@media (min-width: 1280px) {                /* xl — 예전 px-10 pt-28 */
+  .page-x   { padding-left: 2.5rem; padding-right: 2.5rem; }
+  .page-top { padding-top: 7rem; }
+}
+
+/* 헤더 좌우 끝 요소를 page-x와 같은 선에 맞춘다 (absolute라 padding이 안 먹는다) */
+.page-inset-l { left: 1rem; }
+.page-inset-r { right: 1rem; }
+@media (min-width: 640px)  { .page-inset-l { left: 1.5rem; } .page-inset-r { right: 1.5rem; } }
+@media (min-width: 1024px) { .page-inset-l { left: 2rem; }   .page-inset-r { right: 2rem; } }
+@media (min-width: 1280px) { .page-inset-l { left: 2.5rem; } .page-inset-r { right: 2.5rem; } }

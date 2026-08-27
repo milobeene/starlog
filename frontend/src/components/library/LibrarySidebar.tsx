@@ -28,6 +28,19 @@ export default function LibrarySidebar() {
   // 상세 경로가 `/library/detail?entry=57`로 바뀌었다 (정적 내보내기 때문)
   const currentId = useSearchParams().get("entry") ?? undefined;
 
+  /*
+   * 드로어 열림 (lg 미만에서만 의미가 있다).
+   *
+   * 게임을 고르면 닫아야 한다 — 안 그러면 목록이 상세를 덮은 채로 남는다.
+   * currentId를 key처럼 써서 **바뀔 때만** 닫는다: 렌더마다 setState를 부르면 무한 루프다
+   */
+  const [open, setOpen] = useState(false);
+  const [openedFor, setOpenedFor] = useState(currentId);
+  if (openedFor !== currentId) {
+    setOpenedFor(currentId);
+    if (open) setOpen(false);
+  }
+
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   const coverById = useMemo(() => {
@@ -75,7 +88,47 @@ export default function LibrarySidebar() {
   }, [names.data, tagById]);
 
   return (
-    <aside className="glass-panel mt-20 mr-2 mb-4 ml-6 flex w-64 shrink-0 flex-col overflow-hidden rounded-xl xl:w-72">
+    <>
+      {/* 열렸을 때 뒤를 눌러 닫는다. 폰에서 X 버튼만 있으면 닫기가 번거롭다 */}
+      {open && (
+        <button
+          aria-label="목록 닫기"
+          onClick={() => setOpen(false)}
+          className="fixed inset-0 z-20 bg-black/50 backdrop-blur-[1px] lg:hidden"
+        />
+      )}
+
+      {/* 여는 버튼 — 화면 왼쪽 아래. 엄지가 닿는 자리다 */}
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-label={open ? "목록 닫기" : "게임 목록 열기"}
+        aria-expanded={open}
+        className="fixed bottom-4 left-4 z-40 flex items-center gap-2 rounded-full border border-white/20 bg-black/70 px-4 py-2.5 text-xs font-medium tracking-wider text-white/90 uppercase backdrop-blur-md transition-colors hover:bg-black/85 lg:hidden"
+      >
+        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            d={open ? "M6 18L18 6M6 6l12 12" : "M4 6h16M4 12h16M4 18h16"}
+          />
+        </svg>
+        {open ? "닫기" : "목록"}
+      </button>
+
+    <aside
+      /*
+       * ## lg 미만에서는 드로어다
+       *
+       * 폭이 w-64(16rem)라 390px 화면에서는 본문에 남는 게 6rem뿐이다.
+       * 그래서 좁은 화면에서는 **화면 밖에 세워두고** 버튼으로 밀어 넣는다(translate-x).
+       * `hidden`이 아니라 이동으로 처리하는 이유 — 목록을 미리 받아둬야
+       * 열자마자 스켈레톤이 아니라 내용이 보인다
+       */
+      className={`glass-panel fixed inset-y-0 left-0 z-30 mt-16 mr-2 mb-4 ml-0 flex w-64 shrink-0 flex-col overflow-hidden rounded-xl transition-transform duration-200 ease-out lg:static lg:mt-20 lg:ml-6 lg:translate-x-0 xl:w-72 ${
+        open ? "translate-x-0 shadow-2xl" : "-translate-x-full"
+      }`}
+    >
       <div className="shrink-0 border-b border-white/10 p-5">
         <h3 className="text-[10px] tracking-widest text-white/40 uppercase">
           All Games {names.data && <span className="num text-white/25">({names.data.length})</span>}
@@ -170,5 +223,6 @@ export default function LibrarySidebar() {
         </Link>
       </div>
     </aside>
+    </>
   );
 }

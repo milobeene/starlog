@@ -114,7 +114,7 @@ function SettingsContent() {
 
   return (
     <main className="h-full overflow-y-auto">
-      <div className="mx-auto w-full max-w-3xl px-8 pt-24 pb-20">
+      <div className="page-x page-top mx-auto w-full max-w-3xl pb-20">
         <PageHeading
           eyebrow="Settings"
           title="프로필 / 설정"

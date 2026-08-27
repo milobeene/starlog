@@ -22,7 +22,8 @@ const NARROWEST_COLUMNS = 2;
 
 /** 라이브러리 게임 그리드. 위 BREAKPOINTS와 열 수가 같아야 한다 */
 export const GAME_GRID =
-  "grid grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8";
+  // 폰에서는 간격을 줄인다 — 390px에서 gap-x-6이면 카드가 그만큼 더 작아진다
+  "grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 sm:gap-x-6 sm:gap-y-10 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8";
 
 function measure(): number {
   // SSR에는 matchMedia가 없다. 첫 렌더는 가장 좁은 값으로 두고 마운트 후 교정한다

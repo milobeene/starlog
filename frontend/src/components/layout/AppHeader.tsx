@@ -40,11 +40,18 @@ export default function AppHeader() {
         pointer-events-none을 헤더에 두고 실제 항목에만 auto를 준다 —
         헤더의 빈 영역이 아래 콘텐츠의 클릭을 가로채면 안 된다
       */}
-      <header className="pointer-events-none fixed top-0 left-0 z-40 h-16 w-full mix-blend-difference">
+      {/*
+        ## 왜 flex인가 (v1.0 반응형)
+        예전엔 워드마크·프로필이 absolute(left-8/right-8)였고 nav가 절대 중앙이었다.
+        데스크탑에서는 괜찮지만 **390px에서는 워드마크와 nav가 겹친다** — absolute끼리는
+        서로를 밀어내지 못하기 때문이다. 컨테이너를 flex로 바꿔 서로 밀게 했다.
+        심볼을 정확히 화면 중앙에 두는 절대 배치는 md 이상에서만 쓴다
+      */}
+      <header className="page-x pointer-events-none fixed top-0 left-0 z-40 flex h-16 w-full items-center justify-between mix-blend-difference">
         {/* 워드마크. 홈으로 나가는 유일한 출구다 */}
         <Link
           href="/"
-          className="pointer-events-auto absolute left-8 flex h-full items-center font-display text-lg font-bold tracking-[0.2em] text-white"
+          className="pointer-events-auto flex h-full shrink-0 items-center font-display text-sm font-bold tracking-[0.15em] text-white sm:text-base sm:tracking-[0.2em] lg:text-lg"
         >
           STARLOG
         </Link>
@@ -59,8 +66,14 @@ export default function AppHeader() {
           gap은 항목 사이의 빈 공간이라 그만큼 클릭이 안 먹는 띠가 생긴다 —
           패딩이면 그 공간까지 링크의 몸이라 눌린다. 보이는 간격은 같다(px-4 ×2 = 32px)
         */}
-        <nav className="absolute left-1/2 flex h-full -translate-x-1/2 items-center">
-          <div className="flex h-full w-44 items-center justify-end">
+        {/*
+          ## 폰(< md)에서는 이 덩어리를 통째로 숨긴다
+          w-44 슬롯 두 개 + 심볼 = 최소 400px이라 390px 화면에 애초에 안 들어간다.
+          대신 아래 모바일 줄이 같은 링크를 더 촘촘하게 보여준다.
+          심볼 장난감은 폰에서 뺀다 — 2초 꾹 누르기는 스크롤 제스처와 싸운다
+        */}
+        <nav className="absolute left-1/2 hidden h-full -translate-x-1/2 items-center md:flex">
+          <div className="flex h-full w-28 items-center justify-end lg:w-44">
             {LEFT.map((item) => (
               <NavLink key={item.href} {...item} pathname={pathname} />
             ))}
@@ -69,7 +82,7 @@ export default function AppHeader() {
           {/* 심볼은 장식이다 — 링크가 아니다. 나가는 출구는 왼쪽 워드마크 하나면 된다 */}
           <HeaderSymbol />
 
-          <div className="flex h-full w-44 items-center justify-start">
+          <div className="flex h-full w-28 items-center justify-start lg:w-44">
             {RIGHT.map((item) => (
               <NavLink key={item.href} {...item} pathname={pathname} />
             ))}
@@ -77,15 +90,27 @@ export default function AppHeader() {
         </nav>
 
         {/*
+          ## 폰 전용 메뉴 줄 (< md)
+          심볼과 고정 슬롯을 뺀 압축판이다. 390px에서 워드마크(≈93px) + 프로필(≈30px)을
+          빼면 가운데에 약 250px이 남고, 세 항목이 10px 글자로 약 160px이라 들어간다
+        */}
+        <nav className="flex h-full min-w-0 flex-1 items-center justify-center md:hidden">
+          {[...LEFT, ...RIGHT].map((item) => (
+            <NavLink key={item.href} {...item} pathname={pathname} compact />
+          ))}
+        </nav>
+
+        {/*
           프로필도 헤더 안에 둬서 함께 반전된다. 대신 **패널만 포탈로 body에 뺀다** —
           자식은 조상의 블렌딩에서 못 빠져나오므로, 안에 두면 메뉴가 형광색으로 뒤집힌다
         */}
-        <div className="pointer-events-auto absolute right-8 flex h-full items-center">
+        <div className="pointer-events-auto flex h-full shrink-0 items-center">
         <Dropdown
           portal
           trigger={() => (
             <div className="flex items-center space-x-2 py-2 text-sm font-semibold text-white">
-              <span>{profile?.nickname || " "}</span>
+              {/* 폰에서는 닉네임을 접는다 — 가운데 메뉴 줄과 자리를 다툰다 */}
+              <span className="hidden max-w-[9rem] truncate sm:inline">{profile?.nickname || " "}</span>
               <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 9l-7 7-7-7" />
               </svg>
@@ -142,18 +167,21 @@ function NavLink({
   href,
   label,
   pathname,
+  compact = false,
 }: {
   href: string;
   label: string;
   pathname: string;
+  /** 폰용 — 글자와 좌우 패딩을 줄인다. 누르는 몸은 헤더 높이 전체로 유지한다 */
+  compact?: boolean;
 }) {
   const active = pathname.startsWith(href);
   return (
     <Link
       href={href}
-      className={`pointer-events-auto flex h-full items-center px-4 text-sm tracking-wide text-white uppercase transition-transform duration-100 ease-out hover:scale-110 ${
-        active ? "font-bold" : "font-medium"
-      }`}
+      className={`pointer-events-auto flex h-full items-center text-white uppercase transition-transform duration-100 ease-out hover:scale-110 ${
+        compact ? "px-2 text-[10px] tracking-wider" : "px-4 text-sm tracking-wide"
+      } ${active ? "font-bold" : "font-medium"}`}
     >
       {label}
     </Link>

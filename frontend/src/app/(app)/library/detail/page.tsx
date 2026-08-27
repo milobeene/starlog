@@ -134,7 +134,7 @@ function BacklogDetail() {
           자체 앞/뒤 버튼은 두지 않는다 — 브라우저 뒤로가기가 그 역할을 한다.
           배경·블러도 없다: 배너가 이 줄 뒤로 그대로 지나가야 한다
         */}
-        <div className="relative z-20 flex shrink-0 items-center gap-4 px-8 pt-20 pb-2">
+        <div className="page-x relative z-20 flex shrink-0 items-center gap-4 pt-[4.5rem] pb-2 sm:pt-20">
           <Link
             href="/library"
             className="flex items-center gap-2 text-sm text-white/70 transition-colors hover:text-white"
@@ -146,7 +146,7 @@ function BacklogDetail() {
           </Link>
         </div>
 
-        <div className="relative px-10 pt-4">
+        <div className="page-x relative pt-4">
           {/* 헤더 — 커버 왼쪽, 글자는 커버 아래쪽 기준으로 정렬 */}
           <div className="mb-10 flex flex-col items-start gap-8 md:flex-row md:items-end">
             {/* 커버 위 우상단에 연필 — 별도 버튼을 두면 액션 목록이 길어진다 */}
@@ -569,11 +569,12 @@ function hours(value: number | null): string {
 
 function Stat({ label, value, unit }: { label: string; value: React.ReactNode; unit?: string }) {
   return (
-    <div className="flex flex-col justify-center px-6">
-      <div className="mb-1 text-xs tracking-wider text-white/40 uppercase">{label}</div>
-      <div className="num text-2xl font-normal">
+    /* 폰에서는 칸이 반으로 줄어 날짜(2016-02-26)가 세 줄로 깨진다 — 글자와 좌우 여백을 줄인다 */
+    <div className="flex flex-col justify-center px-3 sm:px-6">
+      <div className="mb-1 text-[10px] tracking-wider text-white/40 uppercase sm:text-xs">{label}</div>
+      <div className="num text-lg font-normal sm:text-2xl">
         {value}
-        {unit && <span className="ml-0.5 text-lg text-white/60">{unit}</span>}
+        {unit && <span className="ml-0.5 text-sm text-white/60 sm:text-lg">{unit}</span>}
       </div>
     </div>
   );
@@ -581,7 +582,7 @@ function Stat({ label, value, unit }: { label: string; value: React.ReactNode; u
 
 function DetailSkeleton() {
   return (
-    <main className="h-full overflow-y-auto px-10 pt-24">
+    <main className="page-x page-top h-full overflow-y-auto">
       <div className="mb-10 flex gap-8">
         <Skeleton className="aspect-[3/4] w-48 shrink-0" />
         <div className="flex-1 pt-16">

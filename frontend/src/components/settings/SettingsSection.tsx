@@ -17,14 +17,15 @@ export default function SettingsSection({
   return (
     <section className="border-b-line pb-10">
       <div className="mb-5 flex items-end justify-between gap-4">
-        <div>
+        <div className="min-w-0">
           <h2 className="flex items-center gap-2 text-lg font-medium text-white/90">
             {icon && <SectionIcon name={icon} />}
             {title}
           </h2>
           {description && <p className="mt-1 text-xs text-white/40">{description}</p>}
         </div>
-        {action}
+        {/* shrink-0 — 좁은 화면에서 "수정"이 "수 / 정"으로 쪼개지던 것을 막는다 */}
+        {action && <div className="shrink-0 whitespace-nowrap">{action}</div>}
       </div>
       {children}
     </section>

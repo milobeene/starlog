@@ -107,9 +107,13 @@ function createWindow(port) {
   win = new BrowserWindow({
     width: 1600,
     height: 1000,
-    // 반응형을 1280 아래로는 안 만든다 (docs §10-7)
-    minWidth: 1280,
-    minHeight: 800,
+    /*
+     * 반응형을 폰 폭(390px)까지 넣어서 하한을 크게 낮췄다 (docs §10-7).
+     * 380으로 잡은 이유 — 그 아래는 아이폰 14보다 좁아 실기기에도 없는 폭이다.
+     * 1920 모니터의 좌우 반반 분할(960)도 이제 들어간다
+     */
+    minWidth: 380,
+    minHeight: 480,
     backgroundColor: "#0a0a0a",
     show: false,
     webPreferences: { contextIsolation: true, nodeIntegration: false },
