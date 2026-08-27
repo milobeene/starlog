@@ -163,7 +163,8 @@ function BacklogDetail() {
                 aria-label="커버 이미지 변경"
                 title="커버 이미지 변경"
                 onClick={() => setDialog({ kind: "cover" })}
-                className="absolute top-2 right-2 flex h-7 w-7 items-center justify-center rounded-md border border-white/20 bg-black/60 text-white/80 opacity-0 backdrop-blur-sm transition-all group-hover/cover:opacity-100 hover:bg-white hover:text-black"
+                /* 폰·태블릿은 호버가 없다 — 숨겨두면 커버를 바꿀 방법이 아예 없다. lg부터만 호버로 */
+                className="absolute top-2 right-2 flex h-7 w-7 items-center justify-center rounded-md border border-white/20 bg-black/60 text-white/80 backdrop-blur-sm transition-all hover:bg-white hover:text-black lg:opacity-0 lg:group-hover/cover:opacity-100"
               >
                 <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path

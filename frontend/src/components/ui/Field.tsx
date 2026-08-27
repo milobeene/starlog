@@ -64,7 +64,7 @@ export function Button({
   return (
     <button
       {...rest}
-      className={`rounded-md px-4 py-2 text-xs font-medium tracking-widest uppercase transition-all disabled:pointer-events-none disabled:opacity-40 ${tone}`}
+      className={`rounded-md px-3 py-2 text-xs font-medium tracking-widest whitespace-nowrap uppercase transition-all disabled:pointer-events-none disabled:opacity-40 sm:px-4 ${tone}`}
     >
       {children}
     </button>

@@ -302,13 +302,22 @@ function SettingsContent() {
             <ul className="flex flex-col gap-2">
               {(me.data?.subscriptions ?? []).map((subscription) => (
                 <Row key={subscription.subscriptionId}>
-                  <span className="flex-1">{subscription.serviceName}</span>
-                  <span className="num text-xs text-white/50">
-                    <MoneyText money={subscription.fee} /> / {BILLING_CYCLE_LABEL[subscription.billingCycle]}
-                  </span>
-                  <span className="num text-xs text-white/30">
-                    {subscription.startedOn} ~ {subscription.endedOn ?? ""}
-                  </span>
+                  {/*
+                    구독만 한 줄에 담을 게 많다(이름 + 요금 + 주기 + 기간).
+                    폰에서 다 나란히 두면 이름 칸이 밀려 **한 글자씩 세로로 쪼개진다**.
+                    이름과 나머지를 묶어서 좁을 때는 두 줄로 접는다
+                  */}
+                  <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+                    <span className="truncate">{subscription.serviceName}</span>
+                    <span className="num flex flex-wrap items-center gap-x-2 text-xs text-white/50">
+                      <span>
+                        <MoneyText money={subscription.fee} /> / {BILLING_CYCLE_LABEL[subscription.billingCycle]}
+                      </span>
+                      <span className="text-white/30">
+                        {subscription.startedOn} ~ {subscription.endedOn ?? ""}
+                      </span>
+                    </span>
+                  </div>
                   <EditButton
                     onClick={() => setDialog({ kind: "subscription", edit: subscription })}
                   />

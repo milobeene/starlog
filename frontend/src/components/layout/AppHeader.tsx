@@ -51,7 +51,7 @@ export default function AppHeader() {
         {/* 워드마크. 홈으로 나가는 유일한 출구다 */}
         <Link
           href="/"
-          className="pointer-events-auto flex h-full shrink-0 translate-y-[0.09em] items-center font-display text-sm leading-none font-bold tracking-[0.15em] text-white sm:text-base sm:tracking-[0.2em] lg:text-lg"
+          className="pointer-events-auto flex h-full shrink-0 translate-y-[0.049em] items-center font-display text-sm leading-none font-bold tracking-[0.15em] text-white sm:text-base sm:tracking-[0.2em] lg:text-lg"
         >
           STARLOG
         </Link>
@@ -190,12 +190,22 @@ function NavLink({
     <Link
       href={href}
       /*
-       * -translate-y-[0.15em] — 워드마크와 같은 이유다. 기본 line-height(1.43)의
-       * 남는 여백이 위아래로 고르게 안 갈려서 잉크가 박스 중앙보다 아래에 앉는다.
-       * 둘 다 **각자 박스 중앙**에 맞추면 글자 크기가 달라도 서로 높이가 맞는다
+       * ## 왜 translate로 밀어야 하나
+       * 폰트마다 글자(잉크)가 줄 상자 안에 앉는 높이가 다르다. flex로 상자를 가운데
+       * 맞춰도 **글자는 가운데가 아니다.** 브라우저에서 실측한 값:
+       *   Syncopate(워드마크)  잉크가 0.049em **위**
+       *   switzer(메뉴)        잉크가 0.148em **아래**
+       * 둘을 각자 제 상자 중앙으로 되돌리면 글자 크기가 달라도 서로 높이가 맞는다.
+       * 위 leading-none 덕에 이 값이 글자 크기와 무관한 상수라서 em 하나로 끝난다
        */
-      className={`pointer-events-auto flex h-full -translate-y-[0.15em] items-center text-white uppercase transition-transform duration-100 ease-out hover:scale-110 ${
-        compact ? "px-2 text-[10px] tracking-wider" : "px-4 text-sm tracking-wide"
+      /*
+       * leading-none이 **반드시 있어야 한다.** `text-[10px]`은 임의값이라 Tailwind가
+       * line-height를 같이 안 붙이고 부모 것을 상속한다 — 그러면 글자 크기마다 줄 상자
+       * 비율이 달라져 아래 translate 보정이 폭에 따라 어긋난다.
+       * 줄 상자를 글자 크기에 붙여두면 보정값이 em 하나로 고정된다
+       */
+      className={`pointer-events-auto flex h-full -translate-y-[0.148em] items-center text-white uppercase transition-transform duration-100 ease-out hover:scale-110 ${
+        compact ? "px-2 text-[10px] leading-none tracking-wider" : "px-4 text-sm leading-none tracking-wide"
       } ${active ? "font-bold" : "font-medium"}`}
     >
       {label}
