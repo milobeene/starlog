@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import Dropdown from "@/components/ui/Dropdown";
 import HeaderSymbol from "./HeaderSymbol";
 import { useSession } from "@/lib/session";
+import { getBridge } from "@/lib/desktop";
 
 const LEFT = [{ href: "/dashboard", label: "Dashboard" }];
 const RIGHT = [
@@ -49,12 +50,24 @@ export default function AppHeader() {
       */}
       <header className="page-x pointer-events-none fixed top-0 left-0 z-40 flex h-16 w-full items-center justify-between mix-blend-difference">
         {/*
-          워드마크. 대시보드로 나가는 유일한 출구다.
-          ⚠️ **`/`가 아니다** — v1.0에서 그 주소는 입구(모드 선택)고, 일렉트론이
-          `app://`로 여는 화면이다. 앱 안에서 열면 다리(`window.starlog`)가 없어 아무것도 못 한다
+          워드마크. **입구로 나가는 출구다.**
+
+          데스크탑에서는 여기 링크를 그냥 따라가면 안 된다 — `/`는 스프링이 서빙하는
+          사본이라 다리(`window.starlog`)가 없어 아무것도 못 고르는 빈 모드 선택 화면이 뜬다.
+          진짜 입구는 일렉트론이 `app://`로 여는 쪽이고, 거기 가려면 **백엔드를 먼저 내려야** 한다
+          (DB를 갈아끼우러 나가는 것이니까). 그래서 다리가 있으면 기본 이동을 막고
+          `backToEntry()`에 맡긴다.
+
+          브라우저에는 다리가 없으니 평범한 링크로 남아 `[들어가기]` 화면으로 간다
         */}
         <Link
-          href="/dashboard"
+          href="/"
+          onClick={(e) => {
+            const bridge = getBridge();
+            if (!bridge) return;
+            e.preventDefault();
+            bridge.backToEntry();
+          }}
           className="pointer-events-auto flex h-full shrink-0 translate-y-[0.049em] items-center font-display text-sm leading-none font-bold tracking-[0.15em] text-white sm:text-base sm:tracking-[0.2em] lg:text-lg"
         >
           STARLOG
