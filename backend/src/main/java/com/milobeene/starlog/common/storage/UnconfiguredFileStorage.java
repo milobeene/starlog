@@ -44,4 +44,10 @@ public class UnconfiguredFileStorage implements FileStoragePort {
     public String publicUrl(String storageKey) {
         return null;
     }
+
+    @Override
+    public Optional<String> checkAccess() {
+        return Optional.of("스토리지 자격증명이 설정되지 않았습니다");
+    }
+
 }

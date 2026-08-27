@@ -88,7 +88,7 @@ export interface ConnectionTestResult {
   ok: boolean;
   code: string | null;
   database: { ok: boolean };
-  storage: { ok: boolean } | null;
+  storage: { ok: boolean; message?: string } | null;
   igdb: { ok: boolean; message?: string } | null;
 }
 

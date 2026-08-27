@@ -1,5 +1,6 @@
 package com.milobeene.starlog.common.storage;
 
+import software.amazon.awssdk.services.s3.model.NoSuchBucketException;
 import com.milobeene.starlog.common.exception.ExternalApiException;
 import lombok.extern.slf4j.Slf4j;
 import software.amazon.awssdk.core.ResponseInputStream;
@@ -142,4 +143,36 @@ public class S3CompatibleFileStorage implements FileStoragePort {
         }
         return base.endsWith("/") ? base + storageKey : base + "/" + storageKey;
     }
+
+    /**
+     * 버킷에 실제로 닿아본다.
+     *
+     * `headBucket`을 쓰는 이유 — 목록을 받으면 오브젝트가 수천 개일 때 값이 크고,
+     * 넣어보면 쓰레기가 남는다. **존재와 권한만 확인하는 가장 싼 호출**이다.
+     *
+     * 예외를 종류별로 갈라야 화면이 쓸모 있는 문장을 만든다 —
+     * "실패했습니다"로는 키가 틀린 건지 버킷 이름이 틀린 건지 알 수가 없다
+     */
+    @Override
+    public Optional<String> checkAccess() {
+        try {
+            client.headBucket(b -> b.bucket(properties.bucket()));
+            return Optional.empty();
+        } catch (NoSuchBucketException e) {
+            return Optional.of("버킷을 찾을 수 없습니다: " + properties.bucket());
+        } catch (S3Exception e) {
+            int status = e.statusCode();
+            if (status == 401 || status == 403) {
+                return Optional.of("액세스 키 또는 시크릿 키가 거부되었습니다");
+            }
+            if (status == 404) {
+                return Optional.of("버킷을 찾을 수 없습니다: " + properties.bucket());
+            }
+            return Optional.of("스토리지가 " + status + "로 응답했습니다");
+        } catch (SdkException e) {
+            // 엔드포인트 오타·인터넷 없음이 여기로 온다
+            return Optional.of("스토리지에 연결하지 못했습니다");
+        }
+    }
+
 }

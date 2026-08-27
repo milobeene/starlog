@@ -344,3 +344,9 @@
 @media (min-width: 640px)  { .page-inset-l { left: 1.5rem; } .page-inset-r { right: 1.5rem; } }
 @media (min-width: 1024px) { .page-inset-l { left: 2rem; }   .page-inset-r { right: 2rem; } }
 @media (min-width: 1280px) { .page-inset-l { left: 2.5rem; } .page-inset-r { right: 2.5rem; } }
+
+/* 알림이 아래에서 올라온다 (2026-08-28) */
+@keyframes toast-rise {
+  from { transform: translateY(12px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}

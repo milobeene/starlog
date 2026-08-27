@@ -110,4 +110,17 @@ public class FakeFileStorage implements FileStoragePort {
     FileStoragePort fakeFileStorage() {
         return this;
     }
+
+    /**
+     * 자격증명 확인. 가짜라 늘 통과한다 — 이 클래스가 있다는 건 스토리지가 붙었다는 뜻이다.
+     * 실패를 보고 싶은 테스트는 `willFail`로 던지게 해뒀다
+     */
+    @Override
+    public java.util.Optional<String> checkAccess() {
+        if (failure != null) {
+            return java.util.Optional.of(failure.getMessage());
+        }
+        return java.util.Optional.empty();
+    }
+
 }

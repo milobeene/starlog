@@ -36,4 +36,15 @@ public interface FileStoragePort {
 
     /** 공개 조회 URL. storageKey만 저장하고 URL은 여기서 조합한다 */
     String publicUrl(String storageKey);
+
+    /**
+     * 자격증명이 **실제로 먹히는지** 확인한다 (2026-08-28).
+     *
+     * ⚠️ **값이 채워졌는지와는 완전히 다른 질문이다.** 예전엔 `hasCredentials()`만 보고
+     * "연결됨"이라고 했는데, 그건 문자열이 비었나만 보는 거라 **비밀번호를 틀려도 통과했다.**
+     * 맞는지는 스토리지에 물어봐야만 알 수 있다.
+     *
+     * @return 실패 사유. 성공이면 빈 Optional
+     */
+    Optional<String> checkAccess();
 }

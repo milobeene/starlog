@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import SecretField from "@/components/entry/SecretField";
 import { Button } from "@/components/ui/Field";
 import { api, errorMessage } from "@/lib/api";
+import { closeTask, putTask, updateTask } from "@/lib/tasks";
 import { getBridge } from "@/lib/desktop";
 
 /**
@@ -30,7 +31,8 @@ export default function AppSettingsPanel() {
   const [id, setId] = useState("");
   const [secret, setSecret] = useState("");
   const [testing, setTesting] = useState(false);
-  const [result, setResult] = useState<TestResult | null>(null);
+  /** 저장 가능 여부만 본다 — 보여주는 건 알림이 한다 */
+  const [passed, setPassed] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showGaps, setShowGaps] = useState(false);
@@ -45,14 +47,15 @@ export default function AppSettingsPanel() {
 
   const filled = Boolean(id.trim()) && Boolean(secret.trim());
   const halfFilled = (Boolean(id.trim()) || Boolean(secret.trim())) && !filled;
-  const canSave = filled && result?.ok === true;
+  const canSave = filled && passed;
 
   const change = (setter: (v: string) => void) => (value: string) => {
     setter(value);
-    setResult(null);   // 값이 바뀌면 옛 결과는 거짓말이 된다
+    setPassed(false);   // 값이 바뀌면 옛 결과는 거짓말이 된다
     setSaved(false);
   };
 
+  /** 결과는 알림 한 곳에 모은다 — 연결 테스트와 같은 규칙이다 */
   const test = async () => {
     if (!filled) {
       setShowGaps(true);
@@ -60,13 +63,49 @@ export default function AppSettingsPanel() {
     }
     setTesting(true);
     setError(null);
+    setPassed(false);
+    putTask({
+      id: "connection-test",
+      kind: "connection-test",
+      title: "IGDB 확인 중",
+      progress: { done: 0, total: 0 },
+    });
     try {
-      setResult(await api.post<TestResult>("/api/system/settings/igdb/test", {
+      const found = await api.post<TestResult>("/api/system/settings/igdb/test", {
         clientId: id,
         clientSecret: secret,
-      }));
+      });
+      setPassed(found.ok);
+      updateTask("connection-test", {
+        title: `IGDB — ${found.ok ? "연결됨" : "연결 실패"}`,
+        progress: undefined,
+        actions: found.ok
+          ? [{
+              label: "저장",
+              primary: true,
+              run: async () => {
+                await api.put("/api/system/settings/igdb", { clientId: id, clientSecret: secret });
+                setSaved(true);
+                closeTask("connection-test");
+              },
+            }]
+          : undefined,
+        result: {
+          ok: found.ok,
+          lines: [
+            { ok: found.tokenIssued, label: "키 확인" },
+            { ok: found.searchWorks, label: "게임 검색" },
+          ],
+          message: found.message,
+        },
+      });
     } catch (caught) {
       setError(errorMessage(caught, "확인하지 못했습니다."));
+      updateTask("connection-test", {
+        title: "IGDB 확인 실패",
+        progress: undefined,
+        result: { ok: false, message: errorMessage(caught, "확인하지 못했습니다.") },
+      });
     } finally {
       setTesting(false);
     }
@@ -146,39 +185,27 @@ export default function AppSettingsPanel() {
           </p>
         )}
 
-        {/*
-          단계를 나눠서 보여준다 — "실패했습니다" 한 줄이면 키가 틀린 건지 인터넷이
-          없는 건지 알 수가 없다. 키를 안 넣고 접속했다가 빈 화면만 본 게 출발점이었다
-        */}
-        {result && (
-          <div
-            className={`flex flex-col gap-1.5 rounded-md border px-3 py-2.5 text-xs ${
-              result.ok
-                ? "border-emerald-500/30 bg-emerald-500/5"
-                : "border-red-500/30 bg-red-500/5"
-            }`}
-          >
-            <Line ok={result.tokenIssued} label="키 확인" />
-            <Line ok={result.searchWorks} label="게임 검색" />
-            <p className="mt-1 text-[11px] text-white/45">{result.message}</p>
-          </div>
-        )}
 
-        {saved && <p className="text-xs text-emerald-300/80">저장했습니다. 바로 적용됩니다.</p>}
         {error && <p className="text-xs text-red-400">{error}</p>}
 
         <div className="flex flex-wrap items-center gap-2">
+          <span className="mr-auto text-[11px] text-white/35">
+            {testing
+              ? "확인 중입니다. 다른 화면에 다녀오셔도 됩니다"
+              : saved
+                ? "저장했습니다. 바로 적용됩니다."
+                : canSave
+                  ? ""
+                  : filled
+                    ? "연결 테스트를 통과해야 저장할 수 있습니다"
+                    : "두 칸을 모두 채워 주세요"}
+          </span>
           <Button onClick={test} disabled={testing}>
             {testing ? "확인 중…" : "연결 테스트"}
           </Button>
           <Button variant="primary" onClick={save} disabled={testing}>
             저장
           </Button>
-          {!canSave && (
-            <span className="text-[11px] text-white/35">
-              {filled ? "연결 테스트를 통과해야 저장할 수 있습니다" : "두 칸을 모두 채워 주세요"}
-            </span>
-          )}
         </div>
       </section>
 
@@ -221,11 +248,3 @@ function DataFolder() {
   );
 }
 
-function Line({ ok, label }: { ok: boolean; label: string }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className={ok ? "text-emerald-300" : "text-red-400"}>{ok ? "✓" : "✕"}</span>
-      <span className="text-white/70">{label}</span>
-    </div>
-  );
-}

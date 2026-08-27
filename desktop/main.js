@@ -169,11 +169,18 @@ function progress(payload) {
  * 로그의 "Started ...Application"을 보는 방법도 있지만 **문자열에 기대는 건 약하다.**
  * 실제로 HTTP가 도는지를 본다 — 무슨 상태코드든 대답하면 살아난 것이다
  */
-function waitForBackend(port, timeoutMs = 90_000) {
+/**
+ * @param isAlive 프로세스가 아직 살아 있나. **전역 `backend`를 보면 안 된다** —
+ *                시험용 백엔드(`spawnProbe`)는 전역에 안 들어가서, 입구 화면처럼 본 백엔드가
+ *                없을 때 **즉시 거부**됐다. 그러면 `connections:test`가 `done = null`을 받고
+ *                `!done?.diagnostic`이 true가 되어 **DB가 성공한 것처럼 보고**했다.
+ *                1초도 안 걸려 "DB는 됐고 나머지는 실패"가 뜨던 이유가 이것이다
+ */
+function waitForBackend(port, timeoutMs = 90_000, isAlive = () => backend !== null) {
   const started = Date.now();
   return new Promise((resolve, reject) => {
     const tick = () => {
-      if (backend === null) return reject(new Error("BACKEND_DIED"));
+      if (!isAlive()) return reject(new Error("BACKEND_DIED"));
       const req = http.get({ host: "127.0.0.1", port, path: "/api/me", timeout: 2000 }, (res) => {
         res.resume();
         resolve();
@@ -307,12 +314,17 @@ function spawnProbe(port, config) {
   proc.stdout.pipe(out);
   proc.stderr.pipe(out);
 
+  let running = true;
   const exited = new Promise((resolve) => {
-    proc.on("exit", (code) => resolve({ code, diagnostic }));
+    proc.on("exit", (code) => {
+      running = false;
+      resolve({ code, diagnostic });
+    });
   });
 
   return {
     exited,
+    isAlive: () => running,
     stop() {
       proc.kill("SIGTERM");
       setTimeout(() => {
@@ -604,10 +616,17 @@ function registerIpc() {
     const port = await freePort();
     const probe = spawnProbe(port, cloudConfig(profile));
 
-    const done = await Promise.race([
+    /*
+     * ⚠️ **시험용의 생사를 넘겨야 한다.** 기본값은 전역 `backend`를 보는데 시험용은 거기 없어서,
+     * 안 넘기면 즉시 "죽었다"로 판정하고 **DB가 성공한 것처럼** 보고한다
+     */
+    const ready = await Promise.race([
       probe.exited,
-      waitForBackend(port).then(() => ({ code: 0, diagnostic: null })).catch(() => null),
+      waitForBackend(port, 90_000, probe.isAlive)
+        .then(() => ({ code: 0, diagnostic: null }))
+        .catch((e) => ({ code: -1, diagnostic: e.message === "TIMEOUT" ? "TIMEOUT" : null })),
     ]);
+    const done = ready;
 
     /*
      * DB가 떴으면 스토리지·IGDB도 실제로 눌러본다.
@@ -627,10 +646,13 @@ function registerIpc() {
         }).catch((e) => ({ ok: false, message: String(e.message ?? e) }));
       }
       if (hasStorage) {
-        // 스토리지는 기동만 되면 자격증명이 조립됐다는 뜻이다 (StorageConfig)
-        storage = await getJson(port, "/api/system")
-          .then((s) => ({ ok: Boolean(s.storage?.configured) }))
-          .catch(() => ({ ok: false }));
+        /*
+         * ⚠️ **실제로 버킷을 눌러본다.** 예전엔 `/api/system`의 `configured`만 봤는데
+         * 그건 "값이 채워져 있나"일 뿐이라 **비밀번호를 틀려도 통과했다.**
+         * 자격증명이 맞는지는 스토리지에 물어봐야만 알 수 있다
+         */
+        storage = await getJson(port, "/api/system/storage/check")
+          .catch((e) => ({ ok: false, message: String(e.message ?? e) }));
       }
     }
 

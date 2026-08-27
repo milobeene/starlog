@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { Button, Field, FIELD_INPUT } from "@/components/ui/Field";
 import { useApi } from "@/lib/useApi";
 import { api, errorMessage, qs } from "@/lib/api";
+import { putTask, updateTask } from "@/lib/tasks";
 import type {
   GameMaster,
   GameResyncResult,
@@ -46,7 +47,6 @@ export default function GameMasterMaster() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   /** 일괄 동기화 — 대상을 먼저 보여주고 승인을 받는다 (§10-2) */
   const [syncTargets, setSyncTargets] = useState<GameMaster[] | null>(null);
-  const [syncing, setSyncing] = useState<{ done: number; total: number; name: string } | null>(null);
   /** 중단 신호. 루프가 매 바퀴 확인한다 — 되돌릴 게 없어서 그냥 멈추면 된다 */
   const abort = useRef(false);
   const [dialog, setDialog] = useState<{ kind: "name" | "info"; game: GameRow } | null>(null);
@@ -98,13 +98,35 @@ export default function GameMasterMaster() {
     }
   };
 
-  const resync = (game: GameRow) =>
-    run("재동기화", async () => {
-      const result = await api.post<GameResyncResult>(`/api/games/${game.gameId}/resync`);
-      return result.nameChanged
-        ? `이름이 바뀌어 ${result.renamedEntries}건에 전파했습니다.`
-        : `변경된 정보가 없습니다 (정렬 ${result.reorderedEntries}건 갱신).`;
+  /** 단건도 외부 호출이라 몇 초 걸린다 — 결과를 알림으로 남겨 화면을 옮겨도 보이게 한다 */
+  const resync = async (game: GameRow) => {
+    putTask({
+      id: "resync",
+      kind: "resync",
+      title: `${game.name} 동기화 중`,
+      progress: { done: 0, total: 0 },
     });
+    try {
+      const result = await api.post<GameResyncResult>(`/api/games/${game.gameId}/resync`);
+      updateTask("resync", {
+        title: `${game.name} 동기화 완료`,
+        progress: undefined,
+        result: {
+          ok: true,
+          message: result.nameChanged
+            ? `이름이 바뀌어 ${result.renamedEntries}건에 전파했습니다.`
+            : `변경된 정보가 없습니다 (정렬 ${result.reorderedEntries}건 갱신).`,
+        },
+      });
+      masterList.reload();
+    } catch (caught) {
+      updateTask("resync", {
+        title: `${game.name} 동기화 실패`,
+        progress: undefined,
+        result: { ok: false, message: errorMessage(caught, "동기화하지 못했습니다.") },
+      });
+    }
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -118,7 +140,6 @@ export default function GameMasterMaster() {
           onClick={async () => {
             setSyncTargets(await api.get<GameMaster[]>("/api/games/outdated"));
           }}
-          disabled={Boolean(syncing)}
         >
           일괄 동기화
         </Button>
@@ -311,61 +332,51 @@ export default function GameMasterMaster() {
             setSyncTargets(null);
             if (targets.length === 0) return;
 
+            /*
+             * **알림으로 옮겼다** (2026-08-28). 예전엔 여기 상태에 진행을 담았는데,
+             * 다른 탭으로 옮기면 이 컴포넌트가 언마운트되어 **UI만 사라지고 동기화는 계속** 돌았다.
+             * 사용자는 멈춘 줄 알고 또 누른다. 알림은 껍데기에 붙어 있어 화면을 넘어 산다
+             */
             abort.current = false;
-            setSyncing({ done: 0, total: targets.length, name: targets[0].name });
+            const put = (done: number, label: string) =>
+              putTask({
+                id: "bulk-sync",
+                kind: "bulk-sync",
+                title: "게임 마스터 일괄 동기화",
+                progress: { done, total: targets.length, label },
+                onAbort: () => {
+                  abort.current = true;
+                },
+              });
+
+            put(0, targets[0].name);
+            let synced = 0;
             for (const [i, game] of targets.entries()) {
               if (abort.current) break;
-              setSyncing({ done: i, total: targets.length, name: game.name });
+              put(i, game.name);
               try {
                 await api.post(`/api/games/${game.gameId}/resync`);
+                synced += 1;
               } catch {
                 // 한 건이 실패해도 나머지는 돈다 — 다음에 다시 누르면 그것만 다시 잡힌다
               }
               // IGDB는 초당 4회다. 한 건씩 여유를 두고 부른다
               await new Promise((r) => setTimeout(r, 300));
             }
-            setSyncing(null);
+
+            updateTask("bulk-sync", {
+              title: abort.current ? "일괄 동기화 중단됨" : "일괄 동기화 완료",
+              progress: undefined,
+              onAbort: undefined,
+              result: {
+                ok: !abort.current,
+                message: `${targets.length}개 중 ${synced}개를 갱신했습니다.`
+                  + (abort.current ? " 다시 누르시면 남은 것만 다시 잡힙니다." : ""),
+              },
+            });
             masterList.reload();
           }}
         />
-      )}
-
-      {/*
-        진행을 **모달로 잡아둔다** (2026-08-28). 예전엔 버튼 글자만 바뀌어서, 다른 탭으로
-        옮기면 UI는 사라지는데 동기화는 계속 돌았다 — 사용자는 멈춘 줄 알고 또 누른다.
-        모달이면 어디로도 못 가고, 그만두고 싶으면 [중단]이 있다
-      */}
-      {syncing && (
-        <Modal title="일괄 동기화" onClose={() => {}}>
-          <div className="flex flex-col gap-4 py-2">
-            <div className="flex items-baseline justify-between gap-3">
-              <span className="min-w-0 flex-1 truncate text-sm text-white/70">{syncing.name}</span>
-              <span className="num shrink-0 text-sm text-white/90">
-                {syncing.done} / {syncing.total}
-              </span>
-            </div>
-            <div className="h-1 w-full overflow-hidden rounded-full bg-white/10">
-              <div
-                className="h-full rounded-full bg-white/70 transition-all duration-300"
-                style={{ width: `${(syncing.done / syncing.total) * 100}%` }}
-              />
-            </div>
-            <p className="text-[11px] leading-relaxed text-white/30">
-              외부 데이터베이스를 한 건씩 부르고 있습니다. 중단하셔도 지금까지 끝난 것은
-              그대로 남고, 다시 누르시면 남은 것만 다시 잡힙니다.
-            </p>
-            <div className="flex justify-end">
-              <Button
-                variant="danger"
-                onClick={() => {
-                  abort.current = true;
-                }}
-              >
-                중단
-              </Button>
-            </div>
-          </div>
-        </Modal>
       )}
 
       {bulkDeleting && (

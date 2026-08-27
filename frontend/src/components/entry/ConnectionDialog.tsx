@@ -2,15 +2,11 @@
 
 import { useMemo, useState } from "react";
 import Modal from "@/components/ui/Modal";
-import EntryLoader from "@/components/ui/EntryLoader";
 import SecretField from "./SecretField";
-import { Button, Field, FIELD_INPUT } from "@/components/ui/Field";
-import {
-  diagnosticOf,
-  getBridge,
-  type ConnectionProfile,
-  type ConnectionTestResult,
-} from "@/lib/desktop";
+import { Button, FIELD_INPUT } from "@/components/ui/Field";
+import { closeTask, putTask, updateTask } from "@/lib/tasks";
+import { clearDraft, draftOrigin, keepDraft, takeDraft } from "@/lib/connectionDraft";
+import { diagnosticOf, getBridge, type ConnectionProfile } from "@/lib/desktop";
 
 /**
  * 데이터베이스 연결 한 벌 (2026-08-28에 팝업으로 다시 만듦).
@@ -63,15 +59,23 @@ export default function ConnectionDialog({
   onClose: () => void;
   onSaved: (profile: ConnectionProfile) => void;
 }) {
-  const [form, setForm] = useState<ConnectionProfile>({ ...EMPTY, ...initial });
+  /*
+   * **테스트가 도는 중에 나갔다 온 것만** 값을 되살린다 (2026-08-28).
+   * 그냥 만지다 나간 것은 버리는 게 맞다 — "잘못 건드렸으니 나갔다 오면 되겠지"가
+   * 자연스러운 기대인데, 아무거나 붙들고 있으면 그 기대가 깨진다
+   */
+  const [form, setForm] = useState<ConnectionProfile>(
+    () => takeDraft(initial?.name ?? "") ?? { ...EMPTY, ...initial },
+  );
   const [testing, setTesting] = useState(false);
-  const [result, setResult] = useState<ConnectionTestResult | null>(null);
+  /** 저장 가능 여부만 본다 — 보여주는 건 알림이 한다 */
+  const [passed, setPassed] = useState(false);
   /** 비활성 버튼을 눌렀을 때 어디를 채워야 하는지 빨갛게 표시한다 */
   const [showGaps, setShowGaps] = useState(false);
 
   const patch = (next: Partial<ConnectionProfile>) => {
     setForm((f) => ({ ...f, ...next }));
-    setResult(null);   // 값이 바뀌면 옛 테스트 결과는 거짓말이 된다
+    setPassed(false);   // 값이 바뀌면 옛 테스트 결과는 거짓말이 된다
   };
   const setDb = (p: Partial<ConnectionProfile["db"]>) =>
     patch({ db: { ...form.db, ...p } });
@@ -107,17 +111,83 @@ export default function ConnectionDialog({
 
   const storageReady = STORAGE_FIELDS.every((k) => form.storage?.[k]?.trim());
   const canTest = gaps.length === 0;
-  const canSave = canTest && result?.ok === true;
+  const canSave = canTest && passed;
 
+  /**
+   * 연결 테스트.
+   *
+   * **결과를 알림으로도 보낸다** (2026-08-28). 이 폼을 닫거나 다른 화면으로 가도 테스트는
+   * 계속 도는데, 예전엔 결과를 받을 곳이 사라져서 **아무 일도 없었던 것처럼** 보였다.
+   * 알림은 라우팅을 넘어 살아남고 닫기 전엔 안 사라진다
+   */
   const test = async () => {
     if (!canTest) {
       setShowGaps(true);
       return;
     }
     setTesting(true);
-    setResult(null);
+    setPassed(false);
+    /*
+     * **지금 값을 붙들어둔다.** 20초쯤 걸리고 그동안 다른 화면에 갈 수 있는데,
+     * 돌아왔을 때 방금 친 값이 사라지면 통과해놓고 저장할 게 없어진다
+     */
+    keepDraft(form, location.pathname);
+    putTask({
+      id: "connection-test",
+      kind: "connection-test",
+      title: `${form.name || "연결"} 확인 중`,
+      progress: { done: 0, total: 0 },
+    });
+
     try {
-      setResult(await getBridge()!.connections.test(form));
+      const found = await getBridge()!.connections.test(form);
+      setPassed(found.ok);
+      const origin = draftOrigin();
+      updateTask("connection-test", {
+        title: `${form.name || "연결"} — ${found.ok ? "연결됨" : "연결 실패"}`,
+        progress: undefined,
+        /*
+         * 결과를 본 다음이 진짜 목적이다 — 통과했으면 저장, 아니면 고치러 돌아가기.
+         * 알림에서 바로 못 하면 "어디서 눌렀더라"를 되짚어 찾아가야 한다
+         */
+        actions: [
+          ...(found.ok
+            ? [{
+                label: "저장",
+                primary: true,
+                run: async () => {
+                  await getBridge()!.connections.save(form);
+                  clearDraft();
+                  closeTask("connection-test");
+                  onSaved(form);
+                },
+              }]
+            : []),
+          ...(origin && origin !== location.pathname
+            ? [{ label: "설정으로", run: () => { location.href = origin; } }]
+            : []),
+        ],
+        result: {
+          ok: found.ok,
+          lines: [
+            {
+              ok: found.database.ok,
+              label: "데이터베이스",
+              detail: found.database.ok ? "연결됨" : diagnosticOf(found.code).title,
+            },
+            ...(found.storage
+              ? [{
+                  ok: found.storage.ok,
+                  label: "커버 스토리지",
+                  detail: found.storage.message ?? (found.storage.ok ? "버킷에 접근했습니다" : ""),
+                }]
+              : []),
+            ...(found.igdb
+              ? [{ ok: found.igdb.ok, label: "IGDB", detail: found.igdb.message ?? "" }]
+              : []),
+          ],
+        },
+      });
     } finally {
       setTesting(false);
     }
@@ -129,36 +199,30 @@ export default function ConnectionDialog({
       return;
     }
     await getBridge()!.connections.save(form);
+    clearDraft();
+    closeTask("connection-test");
     onSaved(form);
   };
 
   const bad = (key: string) => showGaps && gaps.includes(key);
 
   /*
-   * **결과와 진행은 버튼 옆에 둔다.** 스크롤되는 본문 안에 두면 폼이 길어서
-   * 눌러놓고 아래로 내려가야 보였다 — 방금 누른 것의 답이 화면 밖에 있으면 안 된다
+   * **한 줄이다.** 진행과 결과는 알림(`TaskToasts`)이 맡는다 — 여기에도 로딩바를 두면
+   * 같은 것을 두 군데서 말하게 되고, 폼을 닫으면 그중 하나가 사라져 앞뒤가 안 맞는다
    */
-  const status = (
-    <>
-      {testing && (
-        <div className="mr-auto">
-          <EntryLoader label="연결을 확인하는 중" />
-        </div>
-      )}
-      {!testing && result && <TestReport result={result} />}
-      {!testing && !result && notice && (
-        <span className="mr-auto text-[11px] text-emerald-300/80">{notice}</span>
-      )}
-      {!testing && !result && !notice && !canSave && (
-        <span className="mr-auto text-[11px] text-white/35">
-          {canTest ? "연결 테스트를 통과해야 저장할 수 있습니다" : "필수 항목을 채워 주세요"}
-        </span>
-      )}
-    </>
-  );
-
   const actions = (
     <>
+      <span className="mr-auto text-[11px] text-white/35">
+        {testing
+          ? "확인 중입니다. 다른 화면에 다녀오셔도 됩니다"
+          : notice
+            ? notice
+            : canSave
+              ? ""
+              : canTest
+                ? "연결 테스트를 통과해야 저장할 수 있습니다"
+                : "필수 항목을 채워 주세요"}
+      </span>
       {!inline && (
         <Button onClick={onClose} disabled={testing}>
           취소
@@ -342,9 +406,8 @@ export default function ConnectionDialog({
     return (
       <div className="flex flex-col gap-5">
         {body}
-        <div className="flex flex-col gap-3 border-t border-white/8 pt-5">
-          {status}
-          <div className="flex flex-wrap items-center justify-end gap-2">{actions}</div>
+        <div className="flex flex-wrap items-center gap-2 border-t border-white/8 pt-5">
+          {actions}
         </div>
       </div>
     );
@@ -354,66 +417,15 @@ export default function ConnectionDialog({
     <Modal
       title={initial ? "연결 수정" : "새 연결"}
       width="max-w-2xl"
-      /* ⚠️ 테스트 중에는 못 닫는다 — 닫는 순간 백엔드가 오가는 중이라 상태가 꼬인다 */
-      onClose={testing ? () => {} : onClose}
-      footer={
-        <div className="flex w-full flex-col gap-3">
-          {status}
-          <div className="flex flex-wrap items-center justify-end gap-2">{actions}</div>
-        </div>
-      }
+      /* 테스트 중에도 닫을 수 있다 — 결과는 알림이 들고 있고, 값은 초안이 지킨다 */
+      onClose={onClose}
+      footer={actions}
     >
       {body}
     </Modal>
   );
 }
 
-/**
- * 테스트 결과를 **부분별로** 보여준다.
- *
- * "실패했습니다" 한 줄이면 DB가 문제인지 키가 문제인지 알 수가 없다.
- * 안 채운 묶음은 아예 안 그린다 — 시험하지 않은 것을 회색 점으로 두면 실패처럼 보인다
- */
-function TestReport({ result }: { result: ConnectionTestResult }) {
-  return (
-    <div
-      className={`flex w-full flex-col gap-1.5 rounded-md border px-3 py-2.5 text-xs ${
-        result.ok
-          ? "border-emerald-500/30 bg-emerald-500/5"
-          : "border-red-500/30 bg-red-500/5"
-      }`}
-    >
-      <Line
-        ok={result.database.ok}
-        label="데이터베이스"
-        detail={result.database.ok ? "연결됨" : diagnosticOf(result.code).title}
-      />
-      {result.storage && (
-        <Line
-          ok={result.storage.ok}
-          label="커버 스토리지"
-          detail={result.storage.ok ? "자격증명 확인됨" : "연결하지 못했습니다"}
-        />
-      )}
-      {result.igdb && (
-        <Line ok={result.igdb.ok} label="IGDB" detail={result.igdb.message ?? ""} />
-      )}
-      {!result.ok && !result.database.ok && (
-        <p className="mt-1 text-[11px] text-red-300/70">{diagnosticOf(result.code).hint}</p>
-      )}
-    </div>
-  );
-}
-
-function Line({ ok, label, detail }: { ok: boolean; label: string; detail: string }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className={ok ? "text-emerald-300" : "text-red-400"}>{ok ? "✓" : "✕"}</span>
-      <span className="w-24 shrink-0 text-white/70">{label}</span>
-      <span className="min-w-0 flex-1 truncate text-white/40">{detail}</span>
-    </div>
-  );
-}
 
 /**
  * 라벨 + 실제 키 이름.

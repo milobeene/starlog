@@ -1,6 +1,7 @@
 "use client";
 
 import AppHeader from "@/components/layout/AppHeader";
+import TaskToasts from "@/components/layout/TaskToasts";
 import { useSession } from "@/lib/session";
 
 /**
@@ -24,6 +25,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <>
       <AppHeader />
       <div className="h-full w-full">{children}</div>
+      {/*
+        오래 걸리는 일의 진행·결과. **껍데기에 붙는 게 요점이다** —
+        화면을 옮겨도 이 컴포넌트는 안 죽어서 진행이 이어 보인다 (2026-08-28)
+      */}
+      <TaskToasts />
     </>
   );
 }
