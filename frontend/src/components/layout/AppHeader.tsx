@@ -112,7 +112,7 @@ export default function AppHeader() {
               {/* 폰에서는 닉네임을 접는다 — 가운데 메뉴 줄과 자리를 다툰다 */}
               <span className="hidden max-w-[9rem] truncate sm:inline">{profile?.nickname || " "}</span>
               {/* 이름이 없으면 화살표만 덩그러니 남아 무엇을 여는 메뉴인지 안 보인다 → 사람 아이콘 */}
-              <svg className="h-5 w-5 sm:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="-mt-[2px] h-5 w-5 sm:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
