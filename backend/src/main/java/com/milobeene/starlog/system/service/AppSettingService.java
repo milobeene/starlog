@@ -27,6 +27,18 @@ public class AppSettingService {
     public static final String IGDB_CLIENT_ID = "igdb.clientId";
     public static final String IGDB_CLIENT_SECRET = "igdb.clientSecret";
 
+    /**
+     * Google Cloud Translation API 키 (2026-08-28).
+     *
+     * IGDB와 같은 자리인 이유도 같다 — **런타임에 바꿔도 되는 값**이라 부팅 설정이 아니다.
+     * DB에 있으니 세이브파일을 옮기면 키도 함께 간다.
+     *
+     * ⚠️ **그래서 백업과 "뽑기"에도 딸려 간다.** JSON 내보내기에는 안 담기지만
+     * `.mv.db` 자체를 복사하는 경로에는 들어 있다 — IGDB 키와 똑같은 조건이고,
+     * 번역 키는 Translation API로 제한 + 하루 한도까지 걸어두면 새어도 피해가 작다
+     */
+    public static final String TRANSLATE_API_KEY = "translate.apiKey";
+
     private final AppSettingRepository repository;
     /** 부팅 설정. DB에 아무것도 없을 때의 폴백이다 — `bootRun` 개발 경로가 그대로 산다 */
     private final IgdbProperties bootProperties;
@@ -73,6 +85,11 @@ public class AppSettingService {
                 .ifPresentOrElse(
                         setting -> setting.update(value),
                         () -> repository.persist(AppSetting.of(key, value)));
+    }
+
+    /** 번역 키. 부팅 설정 폴백이 없다 — 처음부터 앱 안에서만 넣는 값이다 */
+    public String translateApiKey() {
+        return blankToNull(all().get(TRANSLATE_API_KEY));
     }
 
     private static String blankToNull(String value) {

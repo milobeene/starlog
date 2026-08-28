@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import ConnectionDialog from "@/components/entry/ConnectionDialog";
-import { IgdbSettings } from "@/components/system/AppSettingsPanel";
+import { IgdbSettings, TranslationSettings } from "@/components/system/AppSettingsPanel";
 import { getBridge, type ConnectionProfile, type SessionInfo } from "@/lib/desktop";
 
 /**
@@ -57,6 +57,7 @@ export default function ConnectionPanel() {
           관리합니다.
         </Notice>
         <IgdbSettings />
+        <TranslationSettings />
       </div>
     );
   }
@@ -92,6 +93,13 @@ export default function ConnectionPanel() {
           setSaved(true);
         }}
       />
+
+      {/*
+        번역 키는 **두 모드 모두 DB에 있다** — IGDB처럼 갈리지 않는다.
+        위 연결 설정(일렉트론의 connections.json)과 저장되는 곳이 다르므로
+        "다음에 들어올 때 적용" 경고도 여기엔 해당하지 않는다. 저장하면 바로 먹는다
+      */}
+      <TranslationSettings />
     </div>
   );
 }

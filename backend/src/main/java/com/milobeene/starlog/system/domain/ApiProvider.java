@@ -13,5 +13,14 @@ public enum ApiProvider {
     IGDB,
 
     /** 커버·스크린샷을 S3 호환 스토리지에 올리고 지우는 호출 */
-    STORAGE
+    STORAGE,
+
+    /**
+     * 게임 소개문 번역 (Google Cloud Translation).
+     *
+     * ⚠️ **여기만 한도를 넘으면 돈이 나간다.** IGDB·스토리지는 넘으면 거절당하고 끝이지만
+     * 구글의 무료 한도는 "여기까지 청구 안 함"이지 "여기서 멈춤"이 아니다.
+     * 그래서 이 제공자만 **보내기 전에 미리 세어 막는다** (`TranslationQuota`)
+     */
+    TRANSLATE
 }

@@ -20,7 +20,10 @@ export default function SettingsSection({
    * 아래에 그으면 화면 맨 밑에 주인 없는 선이 남으므로 **마지막 섹션은 그러면 안 된다.**
    *
    * ⚠️ `"none"`은 **바로 위 섹션이 이미 제 밑에 선을 그은 경우**다. 그때 `"top"`을 쓰면
-   * 선이 두 겹으로 겹쳐 보인다 — "데이터 옮기기"를 시스템으로 옮기면서 실제로 그랬다
+   * 선이 두 겹으로 겹쳐 보인다 — "데이터 옮기기"를 시스템으로 옮기면서 실제로 그랬다.
+   *
+   * 여백도 안 준다. 위 섹션의 `pb-10`과 바깥 컨테이너의 gap이 이미 자리를 벌려놔서,
+   * 여기서 `pt-10`을 더하면 그 사이만 유난히 벌어진다
    */
   divider?: "top" | "bottom" | "none";
   children: React.ReactNode;
@@ -29,7 +32,7 @@ export default function SettingsSection({
     <section
       className={
         divider === "top" ? "border-t-line pt-10"
-          : divider === "none" ? "pt-10"
+          : divider === "none" ? ""
             : "border-b-line pb-10"
       }
     >

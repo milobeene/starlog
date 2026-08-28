@@ -4,6 +4,7 @@ import com.milobeene.starlog.system.dto.AppSettingsResponse;
 import com.milobeene.starlog.system.dto.IgdbTestResult;
 import com.milobeene.starlog.system.service.AppSettingService;
 import com.milobeene.starlog.system.service.IgdbConnectionTester;
+import com.milobeene.starlog.system.service.TranslationQuota;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,12 +28,20 @@ public class AppSettingController {
 
     private final AppSettingService appSettingService;
     private final IgdbConnectionTester igdbConnectionTester;
+    private final TranslationQuota translationQuota;
 
     @GetMapping
     public AppSettingsResponse get() {
         AppSettingService.IgdbCredentials igdb = appSettingService.igdb();
         boolean stored = appSettingService.all().containsKey(AppSettingService.IGDB_CLIENT_ID);
-        return new AppSettingsResponse(igdb.clientId(), igdb.clientSecret(), !stored);
+        TranslationQuota.Usage used = translationQuota.usage();
+
+        return new AppSettingsResponse(
+                igdb.clientId(), igdb.clientSecret(), !stored,
+                appSettingService.translateApiKey(),
+                new AppSettingsResponse.TranslationUsage(
+                        used.usedChars(), used.guardChars(),
+                        used.freeChars(), used.remainingChars()));
     }
 
     public record IgdbRequest(@NotNull String clientId, @NotNull String clientSecret) {}
@@ -41,6 +50,19 @@ public class AppSettingController {
     public void updateIgdb(@RequestBody IgdbRequest request) {
         appSettingService.put(AppSettingService.IGDB_CLIENT_ID, request.clientId().strip());
         appSettingService.put(AppSettingService.IGDB_CLIENT_SECRET, request.clientSecret().strip());
+    }
+
+    public record TranslateKeyRequest(@NotNull String apiKey) {}
+
+    /**
+     * 번역 키 저장 (2026-08-28).
+     *
+     * 테스트 버튼을 안 붙인다 — **시험 삼아 한 번 부르는 것도 글자를 소모하고, 그게 곧 돈이다.**
+     * 키가 틀렸는지는 실제로 번역할 때 알게 되고, 그때 구글이 주는 메시지를 그대로 보여준다
+     */
+    @PutMapping("/translate")
+    public void updateTranslateKey(@RequestBody TranslateKeyRequest request) {
+        appSettingService.put(AppSettingService.TRANSLATE_API_KEY, request.apiKey().strip());
     }
 
     /**

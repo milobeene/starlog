@@ -61,15 +61,29 @@ public class ApiCallLog extends BaseEntity {
     @Column(nullable = false)
     private boolean success;
 
+    /**
+     * 이 호출이 쓴 양. **번역만 값이 있고 나머지는 null이다.**
+     *
+     * IGDB·스토리지는 한도가 횟수로 매겨져서 셀 단위가 없다. 0을 넣으면 "0자를 썼다"로 읽혀
+     * 합계가 거짓말이 되므로 **"셀 단위가 없다"는 뜻의 null**을 그대로 둔다
+     */
+    private Long units;
+
     protected ApiCallLog() {}
 
     public static ApiCallLog of(ApiProvider provider, String operation,
                                 LocalDateTime calledAt, boolean success) {
+        return of(provider, operation, calledAt, success, null);
+    }
+
+    public static ApiCallLog of(ApiProvider provider, String operation,
+                                LocalDateTime calledAt, boolean success, Long units) {
         ApiCallLog log = new ApiCallLog();
         log.provider = provider;
         log.operation = operation;
         log.calledAt = calledAt;
         log.success = success;
+        log.units = units;
         return log;
     }
 }
