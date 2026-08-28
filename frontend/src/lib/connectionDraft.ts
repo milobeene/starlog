@@ -1,18 +1,20 @@
 "use client";
 
 /**
- * 연결 테스트가 도는 동안의 입력값 (2026-08-28).
+ * 테스트가 도는 동안의 입력값 — **섹션 단위로** 붙든다 (2026-08-28 재작성).
  *
- * ## 왜 따로 두나
+ * ## 왜 섹션 단위인가
  *
- * 테스트는 20초쯤 걸리고 **그동안 다른 화면에 갔다 올 수 있다.** 그런데 폼 상태가
- * 컴포넌트 안에만 있으면 돌아왔을 때 **방금 친 값이 사라진다** — 테스트는 통과했는데
- * 저장할 값이 없어지는 셈이다.
+ * 처음엔 폼 전체를 통째로 붙들었다. 그런데 이제 섹션마다 따로 테스트하므로,
+ * 통째로 붙들면 **테스트하지도 않은 칸까지 되살아난다.** 사용자의 규칙은 분명하다:
  *
- * ## 테스트를 시작해야만 보관한다
+ * <pre>
+ *   테스트 중인 섹션      → 다녀와도 값이 그대로 있어야 한다
+ *   테스트 안 하는 섹션   → 다녀오면 원래 값으로 돌아가야 한다
+ * </pre>
  *
- * 그냥 값만 만지다 나간 것은 **버리는 게 맞다.** "잘못 건드렸으니 나갔다 오면 되겠지"가
- * 자연스러운 기대인데, 아무거나 붙들고 있으면 그 기대가 깨진다.
+ * 뒤엣것이 중요한 이유 — "잘못 건드렸으니 나갔다 오면 되겠지"가 자연스러운 기대인데,
+ * 아무거나 붙들고 있으면 그 기대가 깨진다.
  *
  * ## 새로고침하면 사라진다
  *
@@ -21,34 +23,80 @@
  */
 import type { ConnectionProfile } from "./desktop";
 
+/** 따로 테스트·저장되는 묶음 */
+export type SectionKey = "db" | "storage" | "igdb" | "translate";
+
 type Draft = {
-  profile: ConnectionProfile;
   /**
    * 붙들기 전의 이름.
    *
    * ⚠️ **이름 자체를 고치는 중일 수 있다.** 편집한 이름으로만 대조하면
-   * "내 Neon"을 열어 이름을 "NeonDB"로 바꾸고 테스트한 경우, 돌아왔을 때
-   * 저장된 이름("내 Neon")과 안 맞아 **값이 통째로 날아간다**
+   * "내 Neon"을 열어 "NeonDB"로 바꾸고 테스트한 경우, 돌아왔을 때
+   * 저장된 이름과 안 맞아 **값이 통째로 날아간다**
    */
   originalName: string;
-  /** 테스트를 시작한 화면. 알림의 "설정으로"가 여기로 돌려보낸다 */
+  /** 테스트를 시작한 화면. 알림의 [설정으로]가 여기로 돌려보낸다 */
   from: string;
+  /** 섹션별로 붙들어둔 값. **여기 있는 것만** 되살아난다 */
+  sections: Partial<Record<SectionKey, unknown>>;
+  /** 이름 칸은 어느 섹션에도 안 붙는다 — 하나라도 붙들고 있으면 함께 살린다 */
+  name?: string;
 };
 
 let draft: Draft | null = null;
 
-export function keepDraft(profile: ConnectionProfile, from: string, originalName: string) {
-  draft = { profile, from, originalName };
+/** 이 섹션의 값을 붙든다. 그 섹션의 테스트를 시작할 때 부른다 */
+export function keepSection(
+  key: SectionKey,
+  value: unknown,
+  profile: { name: string; originalName: string },
+  from: string,
+) {
+  if (!draft || draft.originalName !== profile.originalName) {
+    draft = { originalName: profile.originalName, from, sections: {} };
+  }
+  draft.from = from;
+  draft.name = profile.name;
+  draft.sections[key] = value;
 }
 
-/** 이름이 같은 것만 돌려준다 — 다른 연결을 열었는데 남의 값이 채워지면 안 된다 */
-export function takeDraft(name: string): ConnectionProfile | null {
-  if (!draft) return null;
-  return draft.originalName === name || draft.profile.name === name ? draft.profile : null;
+/** 그 섹션은 이제 안 붙든다. 테스트가 끝나고 저장했거나 결과를 닫았을 때 */
+export function releaseSection(key: SectionKey) {
+  if (!draft) return;
+  delete draft.sections[key];
+  if (Object.keys(draft.sections).length === 0) draft = null;
+}
+
+/**
+ * 되살릴 값. **붙들어둔 섹션만** 얹는다.
+ *
+ * 이름이 같은 것만 돌려준다 — 다른 연결을 열었는데 남의 값이 채워지면 안 된다
+ */
+export function restoreDraft(
+  name: string,
+  base: ConnectionProfile,
+): ConnectionProfile {
+  if (!draft) return base;
+  if (draft.originalName !== name && draft.name !== name) return base;
+
+  const next: ConnectionProfile = { ...base, ...(draft.name ? { name: draft.name } : {}) };
+  for (const [key, value] of Object.entries(draft.sections)) {
+    (next as unknown as Record<string, unknown>)[key] = value;
+    /*
+     * 스토리지에 무엇을 올릴지(`mediaTargets`)는 **스토리지 칸과 한 몸**이다.
+     * 따로 두면 "칸은 되살아났는데 체크는 풀려 있는" 상태가 나온다
+     */
+  }
+  return next;
 }
 
 export function draftOrigin(): string | null {
   return draft?.from ?? null;
+}
+
+/** 붙들고 있는 섹션이 있나 — 화면이 "다녀오셔도 됩니다"를 띄울지 정한다 */
+export function heldSections(): SectionKey[] {
+  return draft ? (Object.keys(draft.sections) as SectionKey[]) : [];
 }
 
 export function clearDraft() {

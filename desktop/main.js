@@ -875,8 +875,27 @@ function registerIpc() {
    */
   ipcMain.handle("connections:test", async (_e, profile, options) => {
     const scope = options?.scope ?? "all";
+    /*
+     * ## 스토리지만 볼 때는 **메모리 DB로 띄운다** (2026-08-28)
+     *
+     * 스토리지 확인은 우리 백엔드가 버킷을 눌러보는 방식이라 백엔드가 떠야 한다.
+     * 그런데 그 백엔드를 **사용자의 DB로** 띄우면, DB가 틀렸을 때 스토리지는 멀쩡한데도
+     * "확인 실패"가 뜬다 — 섹션을 따로 시험하는 뜻이 사라진다.
+     *
+     * 메모리 H2로 띄우면 DB와 완전히 무관해진다. 어차피 이 백엔드는 버킷에 한 번
+     * 손을 대보고 죽는 것뿐이라 담을 데이터가 없다
+     */
+    const config = scope === "storage"
+      ? {
+          ...cloudConfig(profile),
+          url: "jdbc:h2:mem:probe;DB_CLOSE_DELAY=-1;MODE=PostgreSQL",
+          driver: "org.h2.Driver",
+          username: "sa",
+          password: "",
+        }
+      : cloudConfig(profile);
     const port = await freePort();
-    const probe = spawnProbe(port, cloudConfig(profile));
+    const probe = spawnProbe(port, config);
 
     /*
      * ⚠️ **시험용의 생사를 넘겨야 한다.** 기본값은 전역 `backend`를 보는데 시험용은 거기 없어서,
@@ -907,7 +926,8 @@ function registerIpc() {
     let igdb = null;
     let translate = null;
     if (!done?.diagnostic) {
-      const hasStorage = profile.storage?.endpoint && profile.storage?.bucket;
+      const hasStorage = (scope === "all" || scope === "storage")
+        && profile.storage?.endpoint && profile.storage?.bucket;
       const hasIgdb = scope === "all"
         && profile.igdb?.clientId && profile.igdb?.clientSecret;
       const hasTranslate = scope === "all" && Boolean(profile.translate?.apiKey);
@@ -944,7 +964,11 @@ function registerIpc() {
       ok: !done?.diagnostic && (igdb?.ok ?? true) && (storage?.ok ?? true)
         && (translate?.ok ?? true),
       code: done?.diagnostic ?? null,
-      database: { ok: !done?.diagnostic },
+      /*
+       * 스토리지만 볼 때의 `database`는 **메모리 DB**의 결과라 사용자의 DB와 무관하다.
+       * 화면이 그걸 "데이터베이스 연결됨"으로 그리면 거짓말이 되므로 null로 지운다
+       */
+      database: scope === "storage" ? null : { ok: !done?.diagnostic },
       storage,
       igdb,
       translate,

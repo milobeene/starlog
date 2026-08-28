@@ -108,7 +108,8 @@ export interface BackupUsage {
 export interface ConnectionTestResult {
   ok: boolean;
   code: string | null;
-  database: { ok: boolean };
+  /** ⚠️ `scope: "storage"`면 null이다 — 그때의 DB는 메모리라 사용자의 것과 무관하다 */
+  database: { ok: boolean } | null;
   storage: { ok: boolean; message?: string } | null;
   igdb: { ok: boolean; message?: string } | null;
   /** ⚠️ 글자를 안 쓰는 방법(`languages`)으로 시험한다 — 번역은 테스트가 곧 돈이 될 수 있다 */
@@ -158,7 +159,12 @@ export interface StarlogBridge {
      */
     test(
       profile: ConnectionProfile,
-      options?: { scope?: "all" | "database" },
+      /**
+       * `"all"`은 전부, 나머지는 그 하나만 본다.
+       * ⚠️ `"storage"`는 **메모리 DB로** 시험용을 띄운다 — 사용자의 DB가 틀려도
+       * 스토리지만 따로 볼 수 있어야 섹션별 테스트가 뜻을 갖는다
+       */
+      options?: { scope?: "all" | "db" | "storage" },
     ): Promise<ConnectionTestResult>;
   };
   backups: {
