@@ -9,6 +9,7 @@ import DataRootDialog from "@/components/entry/DataRootDialog";
 import ConnectionList from "@/components/entry/ConnectionList";
 import LaunchOverlay from "@/components/entry/LaunchOverlay";
 import { setBackendPort } from "@/lib/apiBase";
+import { clearSessionCache } from "@/lib/session";
 import {
   getBridge,
   type LaunchMode,
@@ -104,6 +105,16 @@ export default function EntryPage() {
    */
   const enter = (port: number | null | undefined) => {
     setBackendPort(port);
+    /*
+     * ⚠️ **세션 캐시를 반드시 버린다** (2026-08-28).
+     *
+     * `lib/session.ts`는 `/api/me`를 한 번 받아 모듈에 들고 있는다. 예전엔 접속할 때마다
+     * 문서가 통째로 다시 로드돼서 그게 저절로 사라졌는데, 이제는 문서가 안 바뀐다 —
+     * **다른 세이브파일로 옮겨도 옛 프로필이 그대로 남는다.**
+     * 헤더에는 앞 기록의 닉네임이, 프로필 화면에는 새로 받아온 닉네임이 떠서 둘이 어긋났다.
+     * 배경색도 같은 값에서 나오므로 함께 틀어진다
+     */
+    clearSessionCache();
     router.push("/dashboard");
   };
 
@@ -198,39 +209,42 @@ export default function EntryPage() {
               {session && (
                 <button
                   onClick={resume}
-                  className={`${BUTTON} group mb-4 inline-flex items-center gap-1.5 border-white/45`}
+                  className={`${BUTTON} group mb-4 border-white/45`}
                 >
                   {/*
-                    폭을 붙들지 않는다 (2026-08-28 재작업). 예전엔 안 보이는 사본으로 폭을
-                    고정했는데, **긴 이름이 그 안에서 잘려 `...`이 붙었다.** 이름은 이 버튼의
-                    본체라 잘리면 안 된다 — 대신 박스가 같이 늘었다 줄었다 한다
+                    **두 겹을 같은 칸에 포갠다** (사용자 아이디어). 글자를 접었다 폈다 하는
+                    앞의 두 방식은 폭이 흔들리거나 이름이 잘렸다. 겹쳐두면 박스가 둘 중
+                    넓은 쪽에 맞춰 **한 번 정해지고 안 움직인다** — 가운데 정렬도 공짜다
                   */}
-                  <span className="entry-recent-fade">최근 접속 ·</span>
-                  <span>{session.target}</span>
-                  {/* 이름만으로는 어느 쪽인지 모른다 — 세이브파일과 연결 이름이 섞여 보인다 */}
-                  {/*
-                    ⚠️ `text-white/45`를 쓰면 **호버해도 흰색 그대로다** — 부모의
-                    `hover:text-black`은 상속인데 여기서 색을 직접 정해버려 이기지 못한다.
-                    투명도만 낮추면 부모가 정한 색을 따라간다
-                  */}
-                  <span className="entry-recent-fade opacity-55 normal-case">
-                    ({session.mode === "local" ? "세이브파일" : "데이터베이스"})
-                  </span>
+                  <span className="entry-recent">
+                    <span className="entry-rest">
+                      최근 접속 · {session.target}
+                      {/*
+                        ⚠️ `text-white/45`를 쓰면 **호버해도 흰색 그대로다** — 부모의
+                        `hover:text-black`은 상속인데 여기서 색을 직접 정해버려 이기지 못한다.
+                        투명도만 낮추면 부모가 정한 색을 따라간다
+                      */}
+                      <span className="opacity-55 normal-case">({session.mode === "local" ? "세이브파일" : "데이터베이스"})</span>
+                    </span>
 
-                  {/* 이름 바로 오른쪽에서 뻗어나간다. 머리가 선 끝에 붙어 함께 나아간다 */}
-                  <span className="entry-arrow" aria-hidden>
-                    <span className="entry-arrow-line" />
-                    <svg
-                      className="entry-arrow-head"
-                      viewBox="0 0 8 12"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.6"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M1.5 1.5 L6.5 6 L1.5 10.5" />
-                    </svg>
+                    <span className="entry-hover" aria-hidden>
+                      {session.target}
+                      <span className="entry-arrow">
+                        <span className="entry-arrow-line" />
+                        <svg
+                          className="entry-arrow-head"
+                          viewBox="0 0 6 12"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          {/* 왼쪽 끝까지 당긴다 — 선과 머리 사이에 틈이 안 남게 */}
+                          <path d="M0.4 1.6 L5 6 L0.4 10.4" />
+                        </svg>
+                      </span>
+                    </span>
                   </span>
                 </button>
               )}

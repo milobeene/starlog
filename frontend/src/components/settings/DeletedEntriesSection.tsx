@@ -79,8 +79,12 @@ export default function DeletedEntriesSection() {
     <SettingsSection
       title="삭제한 게임"
       icon="trash"
-      /* 설정 화면의 마지막 섹션이다 — 아래에 선을 그으면 밑에 붙일 게 없어 떠 보인다 */
-      divider="top"
+      /*
+       * 마지막 섹션이라 아래에 선을 그으면 밑에 붙일 게 없어 떠 보인다.
+       * 위에도 안 긋는다 — **바로 위 "사전"이 이미 제 밑에 선을 그었다.**
+       * 둘 다 있으면 선이 두 겹이 된다 (여백만 남긴다)
+       */
+      divider="none"
       description="삭제하신 게임은 기한 없이 보관됩니다. 되살리시면 예전 회차·취득·평점·메모가 그대로 돌아옵니다."
     >
       {error && <p className="mb-2 text-xs text-red-400">{error}</p>}

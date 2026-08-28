@@ -17,13 +17,22 @@ export default function SettingsSection({
    * 가르는 선을 위에 둘지 아래에 둘지.
    *
    * 기본은 아래다 — 섹션이 이어질 때 각자 제 밑에 선을 긋는 게 자연스럽다.
-   * **마지막 섹션만 위**여야 한다: 아래에 그으면 화면 맨 밑에 주인 없는 선이 남는다
+   * 아래에 그으면 화면 맨 밑에 주인 없는 선이 남으므로 **마지막 섹션은 그러면 안 된다.**
+   *
+   * ⚠️ `"none"`은 **바로 위 섹션이 이미 제 밑에 선을 그은 경우**다. 그때 `"top"`을 쓰면
+   * 선이 두 겹으로 겹쳐 보인다 — "데이터 옮기기"를 시스템으로 옮기면서 실제로 그랬다
    */
-  divider?: "top" | "bottom";
+  divider?: "top" | "bottom" | "none";
   children: React.ReactNode;
 }) {
   return (
-    <section className={divider === "top" ? "border-t-line pt-10" : "border-b-line pb-10"}>
+    <section
+      className={
+        divider === "top" ? "border-t-line pt-10"
+          : divider === "none" ? "pt-10"
+            : "border-b-line pb-10"
+      }
+    >
       <div className="mb-5 flex items-end justify-between gap-4">
         <div className="min-w-0">
           <h2 className="flex items-center gap-2 text-lg font-medium text-white/90">
