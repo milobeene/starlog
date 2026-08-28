@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Modal from "@/components/ui/Modal";
 import SecretField from "./SecretField";
 import { Button, FIELD_INPUT } from "@/components/ui/Field";
+import { api, errorMessage } from "@/lib/api";
 import { closeTask, putTask, updateTask } from "@/lib/tasks";
 import { clearDraft, draftOrigin, keepDraft, takeDraft } from "@/lib/connectionDraft";
 import { diagnosticOf, getBridge, type ConnectionProfile } from "@/lib/desktop";
@@ -159,7 +160,16 @@ export default function ConnectionDialog({
     });
 
     try {
-      const found = await getBridge()!.connections.test(form);
+      /*
+       * ⚠️ **앱 안에서는 DB·스토리지만 본다** (2026-08-28).
+       *
+       * 입구는 관문이라 한 번에 다 확인하는 게 맞지만, 앱 안은 "방금 고친 이 값이 맞나"라
+       * 안 고친 것까지 부르면 느리고 결과가 다시 네 줄이라 좁혀지지 않는다.
+       * IGDB·번역은 아래 각자 버튼이 맡는다 — 그 둘은 지금 백엔드에 값을 넘겨 바로
+       * 시험할 수 있어서 시험용 백엔드를 띄울 필요가 없다
+       */
+      const found = await getBridge()!.connections.test(
+        form, { scope: inline ? "database" : "all" });
       setPassed(found.ok);
       const origin = draftOrigin();
       updateTask("connection-test", {
@@ -228,6 +238,64 @@ export default function ConnectionDialog({
 
   const bad = (key: string) => showGaps && gaps.includes(key);
 
+  /**
+   * 항목 하나만 확인한다 (앱 안 전용, 2026-08-28).
+   *
+   * IGDB와 번역은 **지금 백엔드에 값을 넘겨 바로 시험**할 수 있다 — 부팅 때 조립되는
+   * DB·스토리지와 달리 런타임 값이라 시험용 백엔드가 필요 없다. 그래서 각자 버튼을 갖는다.
+   *
+   * ⚠️ **번역 확인은 글자를 한 자도 안 쓴다** — 백엔드가 `languages`(지원 언어 목록)를
+   * 부른다. 값이 매겨지는 건 번역하려고 보낸 글자인데 그 호출엔 보낼 글자가 없다
+   */
+  const [partResult, setPartResult] = useState<Record<string, { ok: boolean; message: string }>>({});
+  const [partBusy, setPartBusy] = useState<string | null>(null);
+
+  const testPart = async (
+    part: "igdb" | "translate",
+    path: string,
+    body: Record<string, string>,
+  ) => {
+    setPartBusy(part);
+    setPartResult((prev) => ({ ...prev, [part]: undefined as never }));
+    try {
+      const found = await api.post<{ ok: boolean; message: string }>(path, body);
+      setPartResult((prev) => ({ ...prev, [part]: found }));
+    } catch (caught) {
+      setPartResult((prev) => ({
+        ...prev,
+        [part]: { ok: false, message: errorMessage(caught, "확인하지 못했습니다.") },
+      }));
+    } finally {
+      setPartBusy(null);
+    }
+  };
+
+  /** 항목별 확인 버튼 + 결과 한 줄. 앱 안에서만 뜬다 (입구에는 백엔드가 없다) */
+  const PartCheck = ({
+    part,
+    disabled,
+    onRun,
+  }: {
+    part: "igdb" | "translate";
+    disabled: boolean;
+    onRun: () => void;
+  }) => {
+    const found = partResult[part];
+    return (
+      <div className="mt-3 flex items-center gap-3">
+        <Button onClick={onRun} disabled={disabled || partBusy !== null}>
+          {partBusy === part ? "확인 중…" : "확인"}
+        </Button>
+        {found && (
+          <span className={`text-[11px] ${found.ok ? "text-emerald-300/80" : "text-red-400"}`}>
+            {found.ok ? "✓ " : "✕ "}
+            {found.message}
+          </span>
+        )}
+      </div>
+    );
+  };
+
   /*
    * **한 줄이다.** 진행과 결과는 알림(`TaskToasts`)이 맡는다 — 여기에도 로딩바를 두면
    * 같은 것을 두 군데서 말하게 되고, 폼을 닫으면 그중 하나가 사라져 앞뒤가 안 맞는다
@@ -251,7 +319,7 @@ export default function ConnectionDialog({
         </Button>
       )}
       <Button onClick={test} disabled={testing}>
-        {testing ? "확인 중…" : "연결 테스트"}
+        {testing ? "확인 중…" : inline ? "데이터베이스 · 스토리지 확인" : "연결 테스트"}
       </Button>
       <Button variant="primary" onClick={save} disabled={testing}>
         저장
@@ -413,6 +481,19 @@ export default function ConnectionDialog({
               bad={bad("igdb.clientSecret")}
             />
           </div>
+          {/* 앱 안에서만. 입구에는 이 요청을 받을 백엔드가 아직 없다 */}
+          {inline && (
+            <PartCheck
+              part="igdb"
+              disabled={!form.igdb?.clientId?.trim() || !form.igdb?.clientSecret?.trim()}
+              onRun={() =>
+                testPart("igdb", "/api/system/settings/igdb/test", {
+                  clientId: form.igdb?.clientId ?? "",
+                  clientSecret: form.igdb?.clientSecret ?? "",
+                })
+              }
+            />
+          )}
         </Section>
 
         {/*
@@ -434,6 +515,17 @@ export default function ConnectionDialog({
             무료 한도(월 50만 자)를 넘으면 <b>요금이 청구됩니다.</b> 구글 콘솔에서 하루 할당량을
             함께 걸어두시길 권합니다 — 앱도 월 45만 자에서 미리 막습니다.
           </p>
+          {inline && (
+            <PartCheck
+              part="translate"
+              disabled={!form.translate?.apiKey?.trim()}
+              onRun={() =>
+                testPart("translate", "/api/system/settings/translate/test", {
+                  apiKey: form.translate?.apiKey ?? "",
+                })
+              }
+            />
+          )}
         </Section>
 
         {showGaps && gaps.length > 0 && (

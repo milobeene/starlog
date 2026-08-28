@@ -859,7 +859,22 @@ function registerIpc() {
    * 죽일 이유도 없었다. 시험 대상은 **PostgreSQL이라 동시 접속이 된다** —
    * H2 파일 잠금 같은 게 없다. 그냥 다른 포트에 시험용을 하나 더 띄우고 내리면 끝이다
    */
-  ipcMain.handle("connections:test", async (_e, profile) => {
+  /**
+   * @param options `{ scope }` — `"all"`(기본)이면 DB·스토리지·IGDB·번역을 다 본다.
+   *                `"database"`면 **DB와 스토리지만** 본다.
+   *
+   * ## 왜 범위가 필요한가 (2026-08-28)
+   *
+   * 입구와 앱 안은 목적이 다르다. 입구는 **관문**이라 "이 연결로 들어가도 되나"를 한 번에
+   * 확인해야 한다. 앱 안은 **"방금 고친 이 값이 맞나"**라서, 안 고친 것까지 부르면
+   * 느릴 뿐 아니라 결과가 다시 네 줄이라 **어디가 틀렸는지 좁혀지지 않는다.**
+   *
+   * IGDB와 번역은 지금 백엔드에 값을 넘겨 바로 시험할 수 있어서 앱 안에서는 각자 버튼을
+   * 갖는다. **DB와 스토리지는 그럴 수가 없다** — 부팅 때 조립되는 값이라 지금 백엔드로는
+   * 못 시험하고 시험용을 하나 띄워야 한다. 그래서 그 둘만 여기 남는다
+   */
+  ipcMain.handle("connections:test", async (_e, profile, options) => {
+    const scope = options?.scope ?? "all";
     const port = await freePort();
     const probe = spawnProbe(port, cloudConfig(profile));
 
@@ -893,8 +908,9 @@ function registerIpc() {
     let translate = null;
     if (!done?.diagnostic) {
       const hasStorage = profile.storage?.endpoint && profile.storage?.bucket;
-      const hasIgdb = profile.igdb?.clientId && profile.igdb?.clientSecret;
-      const hasTranslate = Boolean(profile.translate?.apiKey);
+      const hasIgdb = scope === "all"
+        && profile.igdb?.clientId && profile.igdb?.clientSecret;
+      const hasTranslate = scope === "all" && Boolean(profile.translate?.apiKey);
       if (hasIgdb) {
         igdb = await postJson(port, "/api/system/settings/igdb/test", {
           clientId: profile.igdb.clientId,

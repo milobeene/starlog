@@ -96,7 +96,11 @@ contextBridge.exposeInMainWorld("starlog", {
     list: () => ipcRenderer.invoke("connections:list"),
     save: (profile) => ipcRenderer.invoke("connections:save", profile),
     remove: (name) => ipcRenderer.invoke("connections:remove", name),
-    test: (profile) => ipcRenderer.invoke("connections:test", profile),
+    /**
+     * @param options `{ scope: "all" | "database" }`. 입구는 전부, 앱 안은 DB·스토리지만 —
+     *                IGDB·번역은 앱 안에서 각자 버튼으로 따로 시험한다
+     */
+    test: (profile, options) => ipcRenderer.invoke("connections:test", profile, options),
   },
 
   /** 백엔드를 띄우고 진단까지 통과하면 창이 본 앱으로 넘어간다 */

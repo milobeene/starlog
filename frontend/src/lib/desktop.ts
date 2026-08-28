@@ -156,7 +156,10 @@ export interface StarlogBridge {
      * 연결 테스트. **부분별로 답한다** — "연결 실패" 한 줄이면 DB가 문제인지
      * 키가 문제인지 알 수가 없다. 안 채운 항목은 `null`(=시험하지 않음)
      */
-    test(profile: ConnectionProfile): Promise<ConnectionTestResult>;
+    test(
+      profile: ConnectionProfile,
+      options?: { scope?: "all" | "database" },
+    ): Promise<ConnectionTestResult>;
   };
   backups: {
     usage(saveName: string): Promise<BackupUsage>;
