@@ -27,8 +27,11 @@ const paths = require("./paths");
 const store = require("./settings");
 const backup = require("./backup");
 
-const ROOT = path.join(__dirname, "..");
-const JAR = path.join(ROOT, "backend", "build", "libs", "app.jar");
+/**
+ * 백엔드 jar와 자바는 **패키징 여부에 따라 자리가 다르다** (10단계) → `paths.js`가 정한다.
+ * 상수로 굳혀두면 개발 경로에만 맞고 `.dmg`에서는 못 찾는다
+ */
+const JAR = paths.jarPath();
 /** 입구 화면용 정적 파일. build-desktop.sh가 jar 안과 여기 둘 다에 넣는다 */
 const WEB = path.join(__dirname, "web");
 

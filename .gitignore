@@ -79,3 +79,9 @@ desktop/web/
 *.bak
 *.orig
 *.rej
+
+### 데스크탑 빌드 산출물 (v1.0 10단계) ###
+# 번들 JRE — tools/build-jre.sh가 만든다. 54MB짜리 바이너리를 git에 넣지 않는다
+desktop/runtime/
+# electron-builder 산출물(.dmg/.exe). GitHub Release에 올라가지 git에 들어가지 않는다
+desktop/dist/

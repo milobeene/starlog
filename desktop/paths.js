@@ -20,10 +20,17 @@ const path = require("path");
 const fs = require("fs");
 
 /**
- * 앱 이름이 곧 앱데이터 폴더 이름이다 (`package.json`의 `name`).
- * `starlog-desktop` → `starlog`로 바꿨다 (2026-08-28) — "desktop"이 붙을 이유가 없다.
+ * 앱데이터 폴더 — **이름을 우리가 직접 박는다** (10단계).
+ *
+ * 원래는 `app.getPath("userData")`였다. 그런데 그 값은 **앱 이름을 따라간다** —
+ * 개발 중(`npm start`)에는 `package.json`의 `name`인 `starlog`지만,
+ * 패키징하면 `productName`인 `STARLOG`가 된다. 맥·윈도우는 대소문자를 안 가려서
+ * 지금은 우연히 같은 폴더지만, **표시 이름을 바꾸는 순간 기록이 통째로 사라져 보인다.**
+ * 실제로 `starlog-desktop` → `starlog` 개명 때 그렇게 났다(아래 이사 코드가 그 흔적이다).
+ *
+ * `appData`는 그 위 폴더(`~/Library/Application Support`, `%APPDATA%`)라 이름이 안 걸린다
  */
-const APP_DATA = app.getPath("userData");
+const APP_DATA = path.join(app.getPath("appData"), "starlog");
 
 /**
  * 옛 폴더에서 이사한다.
@@ -131,9 +138,46 @@ function saveFileUrl(dataRoot, saveName) {
   return `jdbc:h2:file:${base};MODE=PostgreSQL`;
 }
 
-/** 윈도우에서만 이름이 다르다. 10단계에서 번들 JRE를 넣으면 여기만 바뀐다 */
+/**
+ * 자바 실행 파일 — **번들 JRE가 먼저다** (10단계).
+ *
+ * 사용자 PC에 자바가 깔려 있으리라는 가정을 버렸다. `tools/build-jre.sh`가 만든
+ * 54MB짜리 런타임을 앱 안에 넣고 그걸 쓴다.
+ *
+ * ⚠️ **찾는 순서가 곧 우선순위다.** PATH의 자바를 먼저 쓰면 사용자 PC에 깔린
+ * 자바 17에 걸려 죽는다 — 우리는 21이 필요하다. 번들이 있으면 무조건 그것부터.
+ *
+ * 마지막 수단으로 이름만 돌려주는 건 **개발 중(`npm start`, 번들 없음)**을 위해서다.
+ * 이때는 `spawn`이 PATH에서 찾고, 없으면 `JAVA_NOT_FOUND` 진단이 뜬다
+ */
 function javaBin() {
-  return process.platform === "win32" ? "java.exe" : "java";
+  const exe = process.platform === "win32" ? "java.exe" : "java";
+  const candidates = [
+    // 패키징된 앱: extraResources로 들어간 자리
+    process.resourcesPath && path.join(process.resourcesPath, "runtime", "bin", exe),
+    // 개발 중에 build-jre.sh를 돌렸을 때
+    path.join(__dirname, "runtime", "bin", exe),
+  ];
+  for (const bin of candidates) {
+    if (bin && fs.existsSync(bin)) {
+      return bin;
+    }
+  }
+  return exe;
+}
+
+/**
+ * 백엔드 jar — 패키징 여부에 따라 자리가 다르다.
+ *
+ * 개발 중에는 그래들이 뱉은 자리를 그대로 본다. 그래야 `build-desktop.sh` 돌리고
+ * 바로 `npm start`가 된다 — 복사 단계가 하나 더 끼면 **고친 걸 안 고친 채로 돌린다**
+ */
+function jarPath() {
+  const packaged = process.resourcesPath && path.join(process.resourcesPath, "app.jar");
+  if (packaged && fs.existsSync(packaged)) {
+    return packaged;
+  }
+  return path.join(__dirname, "..", "backend", "build", "libs", "app.jar");
 }
 
 module.exports = {
@@ -147,4 +191,5 @@ module.exports = {
   ensureDataRoot,
   saveFileUrl,
   javaBin,
+  jarPath,
 };
