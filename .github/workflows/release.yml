@@ -121,6 +121,9 @@ jobs:
     needs: package
     runs-on: ubuntu-latest
     steps:
+      # 릴리스 본문 파일(.github/release-notes.md)을 읽어야 하므로 체크아웃한다
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           pattern: dist-*
@@ -133,8 +136,10 @@ jobs:
           GH_REPO: ${{ github.repository }}
         # ⚠️ **--draft다.** 만들어만 놓고 공개는 사람이 누른다.
         # 서명이 없어서 첫 실행에 경고가 뜨는 앱이라, 안내문을 확인하고 내보내는 게 맞다
+        # 릴리스 본문은 `.github/release-notes.md`에 손으로 쓴다.
+        # `--generate-notes`는 커밋 제목을 나열할 뿐이라 **읽는 사람 기준의 글이 안 된다**
         run: |
           gh release create "${GITHUB_REF_NAME}" dist/* \
             --draft \
             --title "STARLOG ${GITHUB_REF_NAME}" \
-            --generate-notes
+            --notes-file .github/release-notes.md

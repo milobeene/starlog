@@ -85,3 +85,9 @@ desktop/web/
 desktop/runtime/
 # electron-builder 산출물(.dmg/.exe). GitHub Release에 올라가지 git에 들어가지 않는다
 desktop/dist/
+
+### 설계 문서 (2026-08-28, 사용자 결정) ###
+# 깃허브에 안 뜨게 추적을 끊었다. 파일은 디스크에 그대로 있고 CLAUDE.md가 가리킨다.
+# ⚠️ **앞으로의 변경은 버전 관리 밖이다** — 백업도 이력도 없다.
+# 지금까지의 이력은 커밋 defb63d 이전에 남아 있다
+docs/
