@@ -19,9 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-이 앱은 Eclipse Temurin(OpenJDK 21) 런타임을 함께 배포합니다.
-Temurin은 GPLv2 with Classpath Exception 라이선스를 따릅니다.
-https://adoptium.net/  ·  런타임의 고지 파일은 앱 안 runtime/legal/ 에 있습니다.

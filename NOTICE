@@ -1,0 +1,15 @@
+STARLOG
+Copyright (c) 2026 milobeene
+
+이 프로그램은 아래 소프트웨어를 함께 배포합니다.
+
+Eclipse Temurin (OpenJDK 21)
+  Eclipse Adoptium — https://adoptium.net/
+  GPLv2 with Classpath Exception
+  고지 파일은 배포물 안 runtime/legal/ 에 있습니다.
+
+Electron
+  OpenJS Foundation — https://www.electronjs.org/
+  MIT
+
+게임 정보는 IGDB.com에서 가져옵니다 (Twitch Developer Services Agreement).

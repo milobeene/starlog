@@ -122,7 +122,7 @@ Spring Boot 4.1 · Java 21 · H2 / PostgreSQL · Next.js 16 · Electron
 
 ## 라이선스
 
-[MIT](LICENSE). 함께 배포되는 Eclipse Temurin은 GPLv2 with Classpath Exception을 따릅니다.
+[MIT](LICENSE). 함께 배포되는 소프트웨어의 고지는 [NOTICE](NOTICE)에 있습니다.
 
 ---
 
