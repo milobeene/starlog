@@ -68,7 +68,28 @@ contextBridge.exposeInMainWorld("starlog", {
   /** 지금 붙어 있는 대상. `alive`면 [최근 접속]이 즉시 이동이다 */
   session: {
     current: () => ipcRenderer.invoke("session:current"),
+    /** 살아 있는 백엔드로 되돌아간다. `{ port }`를 주면 화면이 알아서 들어간다 */
     resume: () => ipcRenderer.invoke("session:resume"),
+  },
+
+  /**
+   * 지금 백엔드의 포트. **동기다.**
+   *
+   * `lib/apiBase.ts`가 모듈을 처음 불러올 때 주소를 정해야 한다 — 그때 비동기로 물어보면
+   * **첫 요청 몇 개가 주소 없이** 나간다. 값 하나 읽는 것뿐이라 동기로 두는 값이 싸다
+   */
+  backendPort: () => ipcRenderer.sendSync("session:port"),
+
+  /**
+   * "입구로 가라" — 백엔드가 혼자 죽었거나 앱 안에서 [나가기]를 눌렀을 때 온다.
+   *
+   * 예전엔 일렉트론이 문서를 통째로 다시 로드했다. 이제는 **알리기만** 하고 옮기는 건
+   * 화면 라우터가 한다 — 그래야 배경도 알림도 안 끊긴다
+   */
+  onGoEntry: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on("go-entry", handler);
+    return () => ipcRenderer.removeListener("go-entry", handler);
   },
 
   connections: {

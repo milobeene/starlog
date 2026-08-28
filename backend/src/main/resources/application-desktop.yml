@@ -34,3 +34,16 @@ spring:
 logging:
   level:
     org.hibernate.SQL: warn
+
+# 종료를 곱게 한다 (2026-08-28).
+#
+# ⚠️ **세이브파일이 H2 파일 그 자체라 "끝맺음"이 데이터의 일부다.** 톰캣이 처리 중인
+# 요청을 자르고 죽으면 커넥션이 열린 채 사라지고, 그 상태로 파일이 남는다.
+# graceful이면 SIGTERM을 받고 **하던 요청을 마친 뒤** 풀을 닫는다.
+#
+# 30초는 일렉트론이 기다려주는 시간보다 짧아야 한다 (main.js의 stopBackend).
+# 길게 잡으면 일렉트론이 먼저 SIGKILL을 쏴서 이 설정이 무의미해진다
+server:
+  shutdown: graceful
+
+spring.lifecycle.timeout-per-shutdown-phase: 20s

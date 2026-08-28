@@ -23,12 +23,27 @@ import java.util.List;
 @RequiredArgsConstructor
 public class DefaultCatalogSeeder {
 
-    private static final List<String> PLATFORMS =
-            List.of("Steam", "Epic Games", "GOG", "Nintendo", "PlayStation", "Xbox");
+    /**
+     * 새 세이브파일에 깔리는 플랫폼 (사용자 결정 2026-08-28).
+     *
+     * **순서가 곧 화면 순서다** — 많이 쓰는 것부터. 알파벳순으로 두면 GOG가 위로 올라와
+     * 실제로 고르는 빈도와 어긋난다
+     */
+    private static final List<String> PLATFORMS = List.of(
+            "Steam", "Epic Games", "Nintendo", "PlayStation", "Xbox", "GOG", "itch.io");
 
-    /** 예전 InputMethod enum 4개를 사람이 읽는 이름으로 옮긴 것. V2 마이그레이션의 변환표와 같아야 한다 */
+    /**
+     * 입력방식 (사용자 결정 2026-08-28에 영문으로 바꿈).
+     *
+     * 한글 이름("키보드 & 마우스")은 **`&`가 섞여 있어** 눈에 걸렸고, 플랫폼이 전부 영문인데
+     * 여기만 한글이라 목록 두 개가 따로 노는 느낌이었다.
+     *
+     * ⚠️ **이미 있는 세이브파일은 안 바뀐다.** 시드는 계정을 처음 만들 때만 도므로,
+     * 옛 세이브파일에는 한글 이름이 그대로 남는다 — 그게 맞다. 사람이 붙인 이름을
+     * 앱이 마음대로 바꾸면 회차에 적어둔 것과 어긋난다
+     */
     private static final List<String> INPUT_METHODS =
-            List.of("키보드 & 마우스", "Xinput 패드", "닌텐도 컨트롤러", "플레이스테이션 컨트롤러");
+            List.of("KeyboardMouse", "XInput", "Nintendo", "PlayStation");
 
     private final PlatformRepository platformRepository;
     private final InputMethodRepository inputMethodRepository;

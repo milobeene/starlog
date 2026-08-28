@@ -293,6 +293,12 @@ function spawnJava(port, config) {
     `--server.port=${port}`,
     "--spring.profiles.active=desktop",
     "--starlog.diagnose=true",
+    /*
+     * ⚠️ **부모가 죽으면 스스로 내려가라는 지시다** (`ParentWatchdog`).
+     * 이게 없으면 일렉트론이 강제 종료됐을 때 자바가 고아로 살아남아 세이브파일을 쥔다 —
+     * 그러면 다음 실행의 자동 백업이 **쓰는 중인 파일을 복사해** 찢어진 백업을 남긴다
+     */
+    "--starlog.parent-watch=true",
     `--spring.datasource.url=${config.url}`,
     `--spring.datasource.driver-class-name=${config.driver}`,
   ];
@@ -304,7 +310,12 @@ function spawnJava(port, config) {
     if (value) env[key] = value;
   }
 
-  const proc = spawn(paths.javaBin(), args, { stdio: ["ignore", "pipe", "pipe"], env });
+  /*
+   * ⚠️ **stdin을 파이프로 연다.** 아무것도 안 보내지만, 우리가 죽으면 이 파이프의 쓰는 쪽이
+   * 닫혀서 자바의 `read()`가 EOF를 본다 — 그게 "부모가 사라졌다"의 신호다.
+   * `"ignore"`였을 때는 자바가 부모의 죽음을 알 방법이 아예 없었다
+   */
+  const proc = spawn(paths.javaBin(), args, { stdio: ["pipe", "pipe", "pipe"], env });
 
   /*
    * 진단 결과를 stdout에서 긁는다. 로그 파일로도 그대로 흘려보내므로
@@ -452,16 +463,33 @@ function stopBackend() {
     proc.once("exit", finish);
     proc.kill("SIGTERM");
 
-    // 얌전히 안 죽으면 강제로. 그래도 H2 MVStore는 크래시에 견디게 만들어져 있다
+    /*
+     * 얌전히 안 죽으면 강제로. 그래도 H2 MVStore는 크래시에 견디게 만들어져 있다.
+     *
+     * ⚠️ **graceful shutdown보다 넉넉해야 한다.** 백엔드는 하던 요청을 마치는 데 최대 20초를
+     * 쓰는데(`application-desktop.yml`), 5초에 SIGKILL을 쏘면 그 설정이 무의미해진다
+     */
     killer = setTimeout(() => {
       try { proc.kill("SIGKILL"); } catch { /* 이미 죽었으면 무시 */ }
       killer = setTimeout(finish, 500);
-    }, 5000);
+    }, 25_000);
   });
 }
 
+/**
+ * 입구로 되돌린다.
+ *
+ * ## ⚠️ 더 이상 문서를 다시 로드하지 않는다 (2026-08-28)
+ *
+ * 예전엔 `win.loadURL("app://starlog/")`였다. 그런데 그건 **문서를 통째로 갈아끼우는 일**이라
+ * 검은 화면이 번쩍이고, 배경 연출이 처음부터 다시 시작하고, 진행 중이던 알림
+ * (`lib/tasks.ts`의 모듈 스코프 상태)이 통째로 사라졌다.
+ *
+ * 이제 창은 **평생 `app://` 한 장**이고 입구도 그 안의 한 화면이다. 여기서 할 일은
+ * "입구로 가라"고 알리는 것뿐이고, 옮기는 건 화면 쪽 라우터가 한다
+ */
 function loadEntry() {
-  win.loadURL("app://starlog/");
+  if (win && !win.isDestroyed()) win.webContents.send("go-entry");
 }
 
 function createWindow() {
@@ -501,7 +529,11 @@ function createWindow() {
     });
   });
 
-  loadEntry();
+  /*
+   * **이 앱에서 문서를 로드하는 유일한 곳이다.** 그 뒤로는 화면 안에서 라우팅만 한다 —
+   * 입구도 앱도 같은 문서라 오갈 때 검은 화면이 없고 배경도 안 끊긴다
+   */
+  win.loadURL("app://starlog/");
 }
 
 // ───────────────────────── IPC ─────────────────────────
@@ -556,6 +588,17 @@ function dataDirs() {
 }
 
 function registerIpc() {
+  /**
+   * 지금 백엔드의 포트. **동기로 답한다.**
+   *
+   * 화면의 `apiBase`가 모듈을 불러오는 순간 주소를 정해야 하는데, 그때 비동기로 물어보면
+   * **첫 요청 몇 개가 주소 없이 나간다.** 새로고침으로 앱 안의 화면이 곧바로 뜨는 경우가
+   * 정확히 그렇다. 값 하나 읽는 것뿐이라 동기로 두는 값이 싸다
+   */
+  ipcMain.on("session:port", (event) => {
+    event.returnValue = backendPort;
+  });
+
   ipcMain.handle("settings:get", () => {
     const settings = store.getSettings();
     return { ...settings, dirs: paths.ensureDataRoot(settings.dataRoot) };
@@ -913,8 +956,11 @@ function registerIpc() {
     session = { mode: request.mode, target: request.target };
     store.patchSettings({ lastMode: request.mode, lastTarget: request.target });
     progress({ phase: "ready" });
-    win.loadURL(`http://127.0.0.1:${port}/dashboard`);
-    return { ok: true };
+    /*
+     * **창을 안 옮긴다.** 포트만 알려주고 화면이 스스로 `/dashboard`로 라우팅한다 —
+     * 같은 문서 안의 이동이라 배경도 알림도 안 끊긴다
+     */
+    return { ok: true, port };
   });
 
   /**
@@ -1059,10 +1105,10 @@ function registerIpc() {
   /** 살아 있는 백엔드로 되돌아간다. 창만 옮기면 끝이라 기다릴 게 없다 */
   ipcMain.handle("session:resume", () => {
     if (!session || !backendPort) {
-      return false;
+      return null;
     }
-    win.loadURL(`http://127.0.0.1:${backendPort}/dashboard`);
-    return true;
+    // 창을 옮기지 않는다. 포트만 주면 화면이 알아서 들어간다
+    return { port: backendPort };
   });
 }
 
@@ -1139,6 +1185,27 @@ function appendParam(url, param) {
 }
 
 // ───────────────────────── 수명 ─────────────────────────
+
+/**
+ * 앱을 **한 번만** 뜨게 한다 (2026-08-28).
+ *
+ * 두 개가 뜨면 각자 자기 백엔드를 띄우는데, 같은 세이브파일을 고르면 뒤엣것이 `DB_IN_USE`로
+ * 막힌다 — 거기까지는 괜찮다. 문제는 **백업이다.** 두 번째 창의 자동 백업은 첫 번째가
+ * 파일을 쥐고 있는 줄 모르고 그냥 복사해서 **찢어진 백업**을 남긴다.
+ *
+ * 잠금을 못 얻었다면 이미 떠 있는 것이 있다는 뜻이다. 조용히 물러나고, 원래 창을 띄워준다 —
+ * 아무 반응이 없으면 사용자는 앱이 고장 난 줄 안다
+ */
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (win && !win.isDestroyed()) {
+      if (win.isMinimized()) win.restore();
+      win.focus();
+    }
+  });
+}
 
 app.whenReady().then(() => {
   /*

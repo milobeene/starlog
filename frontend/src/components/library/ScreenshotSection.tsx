@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Field";
 import { api, errorMessage } from "@/lib/api";
 import { useApi } from "@/lib/useApi";
 import { uploadScreenshot } from "@/lib/upload";
+import { backendUrl } from "@/lib/apiBase";
 import { getBridge } from "@/lib/desktop";
 import MediaViewer from "./MediaViewer";
 
@@ -46,8 +47,17 @@ export default function ScreenshotSection({ entryId }: { entryId: number }) {
    * 옛 스크린샷 여러 장을 한꺼번에 끌어다 놓으면 도착 순서가 뒤죽박죽이라 그게 안 맞는다.
    * 원본 시각이 없는 파일(옛 저장분)은 뒤로 보낸다
    */
+  /*
+   * ⚠️ **여기서 절대 주소로 바꾼다.** 서버는 `/api/backlog/…`처럼 상대 경로를 주는데,
+   * 화면이 `app://`에서 도는 지금 그대로 쓰면 `app://starlog/api/…`가 되어 안 열린다.
+   *
+   * `src={shot.url}`을 쓰는 자리마다 감싸지 않고 **목록을 만드는 이 한 곳**에서 바꾼다 —
+   * 자리마다 감싸면 소비처가 하나 늘 때 또 깨진다 (지금도 목록·뷰어 네 군데다)
+   */
   const shots = list.data
-    ? [...list.data].sort((a, b) => (a.takenAt ?? "9").localeCompare(b.takenAt ?? "9"))
+    ? [...list.data]
+        .sort((a, b) => (a.takenAt ?? "9").localeCompare(b.takenAt ?? "9"))
+        .map((shot) => ({ ...shot, url: backendUrl(shot.url) }))
     : null;
 
   const add = async (files: File[]) => {

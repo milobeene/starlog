@@ -1,3 +1,5 @@
+import { backendUrl } from "@/lib/apiBase";
+
 /**
  * 커버 이미지 2단 폴백 (스펙 §6.10).
  *
@@ -24,7 +26,12 @@ export function coverSrc(
   coverImageId: string | null,
   size: IgdbSize = "t_cover_big",
 ): string | null {
-  if (coverUrl) return coverUrl;
+  /*
+   * ⚠️ **개인 커버는 두 갈래로 온다** — 로컬 저장이면 `/api/backlog/…`(상대 경로),
+   * 스토리지면 버킷의 공개 URL(절대). 화면이 `app://`에서 도는 지금은 상대 경로를 그냥 쓰면
+   * `app://starlog/api/…`가 되어 깨진다. `backendUrl`이 절대인 것은 건드리지 않고 넘긴다
+   */
+  if (coverUrl) return backendUrl(coverUrl);
   if (coverImageId) {
     return `https://images.igdb.com/igdb/image/upload/${size}/${coverImageId}.jpg`;
   }

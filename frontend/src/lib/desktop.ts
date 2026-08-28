@@ -158,8 +158,12 @@ export interface StarlogBridge {
   };
   session: {
     current(): Promise<SessionInfo | null>;
-    /** 살아 있는 백엔드로 되돌아간다. false면 새로 띄워야 한다 */
-    resume(): Promise<boolean>;
+    /**
+     * 살아 있는 백엔드의 포트. `null`이면 새로 띄워야 한다.
+     *
+     * **창을 옮기지 않는다** — 포트만 준다. 옮기는 건 화면 라우터의 일이다
+     */
+    resume(): Promise<{ port: number } | null>;
   };
   /** 클라우드 → 로컬 세이브파일. ⚠️ 커버 실물은 안 따라온다 */
   cloudToSaveFile(saveName: string): Promise<{ saveName: string }>;
@@ -174,9 +178,23 @@ export interface StarlogBridge {
     games: number;
     safetySaveName: string;
   }>;
-  launch(request: { mode: LaunchMode; target: string }): Promise<{ ok: boolean; code?: string }>;
+  /** 성공하면 `port`가 온다. 그 포트로 API 주소를 세우고 화면이 스스로 들어간다 */
+  launch(request: {
+    mode: LaunchMode;
+    target: string;
+  }): Promise<{ ok: boolean; code?: string; port?: number }>;
   onProgress(callback: (p: LaunchProgress) => void): () => void;
   backToEntry(): Promise<boolean>;
+  /**
+   * 지금 백엔드 포트 (**동기**). `lib/apiBase.ts`가 모듈을 불러올 때 쓴다 —
+   * 그 시점에 비동기로 물어보면 첫 요청 몇 개가 주소 없이 나간다
+   */
+  backendPort(): number | null;
+  /**
+   * "입구로 가라". 백엔드가 혼자 죽었거나 앱 안에서 [나가기]를 눌렀을 때 온다.
+   * 예전엔 일렉트론이 문서를 다시 로드했지만 이제는 알리기만 한다
+   */
+  onGoEntry(callback: () => void): () => void;
 }
 
 /**

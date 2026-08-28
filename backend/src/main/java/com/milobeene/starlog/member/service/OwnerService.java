@@ -70,7 +70,12 @@ public class OwnerService {
 
         @Transactional
         public Long create() {
-            Member owner = Member.signUpWithEmail("owner@starlog.local", NO_PASSWORD, "나");
+            /*
+             * 닉네임은 `Scribe` (사용자 결정 2026-08-28). 이메일은 로그인이 없어진 뒤로
+             * **아무 뜻도 없는 자리표시자**라 화면에서는 안 보여준다 — 컬럼이 `not null`이라
+             * 값이 필요할 뿐이다
+             */
+            Member owner = Member.signUpWithEmail("owner@starlog.local", NO_PASSWORD, "Scribe");
             memberRepository.persist(owner);
             defaultCatalogSeeder.seed(owner);   // 플랫폼·입력방식 기본값
             log.info("주인 계정을 새로 만들었습니다. id={}", owner.getId());

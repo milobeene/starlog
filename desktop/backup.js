@@ -93,7 +93,29 @@ function create(dirs, saveName, at = new Date()) {
   fs.mkdirSync(folder, { recursive: true });
 
   const target = path.join(folder, `${stamp(at)}.mv.db`);
+
+  /*
+   * ⚠️ **복사 전후로 원본을 재본다** (2026-08-28).
+   *
+   * 백업은 "아무도 안 열고 있을 때만 부른다"를 전제로 하는데, **그걸 보증할 방법이 없다.**
+   * `stopBackend()`는 우리가 띄운 백엔드만 알고, 고아 자바나 두 번째 창이 쥐고 있으면
+   * 모른 채 복사한다. 그러면 **쓰는 중인 파일을 뜬 찢어진 백업**이 남고, 나중에 그걸
+   * 되돌리면 손상된 세이브파일이 된다 — 실제로 백업 15개 중 3개가 그랬다.
+   *
+   * H2는 밖에서 볼 수 있는 잠금 파일을 안 남겨서(2.x는 파일 채널 잠금) 미리 물어볼 수가 없다.
+   * 대신 **복사하는 동안 원본이 변했는지**는 볼 수 있다. 변했으면 누군가 쓰고 있다는 뜻이니
+   * 그 복사본은 버린다. 완벽한 검사는 아니지만 **거짓 백업을 남기는 것보다 낫다**
+   */
+  const beforeCopy = fs.statSync(source);
   fs.copyFileSync(source, target);
+  const afterCopy = fs.statSync(source);
+
+  if (beforeCopy.size !== afterCopy.size || beforeCopy.mtimeMs !== afterCopy.mtimeMs) {
+    fs.rmSync(target, { force: true });
+    throw new Error(
+      "백업하지 못했습니다 — 이 세이브파일을 다른 곳에서 쓰고 있습니다. "
+      + "STARLOG가 두 번 떠 있지 않은지 확인해 주세요.");
+  }
 
   // **만든 직후에 정리한다.** 개수가 늘어나는 순간이 여기뿐이라 다른 곳에서 볼 이유가 없다
   const removed = prune(dirs, saveName);

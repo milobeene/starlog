@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import SaveList from "@/components/entry/SaveList";
 import BackupList from "@/components/entry/BackupList";
 import DataRootDialog from "@/components/entry/DataRootDialog";
 import ConnectionList from "@/components/entry/ConnectionList";
 import LaunchOverlay from "@/components/entry/LaunchOverlay";
+import { setBackendPort } from "@/lib/apiBase";
 import {
   getBridge,
   type LaunchMode,
@@ -49,6 +51,7 @@ function useHasBridge() {
 }
 
 export default function EntryPage() {
+  const router = useRouter();
   const hasBridge = useHasBridge();
   const [step, setStep] = useState<Step | null>(null);
   const [progress, setProgress] = useState<LaunchProgress>({ phase: "starting" });
@@ -88,11 +91,31 @@ export default function EntryPage() {
     };
   }, []);
 
+  /**
+   * 앱으로 들어간다.
+   *
+   * ## ⚠️ 일렉트론이 창을 옮기지 않는다 (2026-08-28)
+   *
+   * 예전엔 기동이 끝나면 일렉트론이 `win.loadURL("http://127.0.0.1:포트/dashboard")`로
+   * **문서를 통째로 갈아끼웠다.** 그래서 검은 화면이 번쩍이고, 배경 연출이 처음부터
+   * 다시 돌고, 진행 중이던 알림이 사라졌다.
+   *
+   * 이제 포트만 받아서 API 주소로 세우고 **같은 문서 안에서 라우팅**한다
+   */
+  const enter = (port: number | null | undefined) => {
+    setBackendPort(port);
+    router.push("/dashboard");
+  };
+
   /** 살아 있으면 즉시, 아니면 평소대로 기동. 어느 쪽이든 고르는 단계는 없다 */
   const resume = async () => {
     if (!session) return;
-    if (session.alive && (await getBridge()!.session.resume())) {
-      return;
+    if (session.alive) {
+      const alive = await getBridge()!.session.resume();
+      if (alive) {
+        enter(alive.port);
+        return;
+      }
     }
     launch(session.mode, session.target);
   };
@@ -101,14 +124,15 @@ export default function EntryPage() {
     setProgress({ phase: "starting" });
     setStep("launching");
     /*
-     * 성공하면 일렉트론이 창을 본 앱으로 넘긴다. 실패는 대개 `onProgress`가 error로 알린다.
+     * 실패는 대개 `onProgress`가 error로 알린다.
      *
      * ⚠️ **하지만 IPC가 예외를 던지는 길이 따로 있다** — 이름 규칙에 안 맞는 세이브파일
      * (탐색기에서 손으로 바꾼 이름)이면 `assertSaveName`이 던진다. 그때는 `progress`가
      * 영영 안 와서 **로딩 화면이 안 걷혔다.** 잡아서 같은 error 갈래로 합친다
      */
     try {
-      await getBridge()!.launch({ mode, target });
+      const result = await getBridge()!.launch({ mode, target });
+      if (result?.ok) enter(result.port);
     } catch (e) {
       setProgress({
         phase: "error",

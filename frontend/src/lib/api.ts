@@ -1,4 +1,4 @@
-import { API_BASE } from "@/lib/apiBase";
+import { backendUrl } from "@/lib/apiBase";
 
 /**
  * 백엔드 호출 단일 창구.
@@ -8,8 +8,6 @@ import { API_BASE } from "@/lib/apiBase";
  *
  * `X-Member-Id`는 인증이 아니라 **개발용 스위치**다 (백엔드 LoginMemberArgumentResolver 참고)
  */
-
-const BASE = API_BASE;
 
 /** dev 편의 — 백엔드 dev 프로필의 X-Member-Id 헤더 인증. prod엔 이 빈이 없다 */
 const DEV_MEMBER_ID = process.env.NEXT_PUBLIC_DEV_MEMBER_ID;
@@ -57,7 +55,11 @@ async function request<T>(path: string, options: Options = {}): Promise<T> {
     payload = JSON.stringify(options.body);
   }
 
-  const res = await fetch(`${BASE}${path}`, {
+  /*
+   * 주소를 **부를 때마다** 정한다. 모듈 상수로 두면 안 된다 — 데스크탑은 접속 대상을 바꿀 때
+   * 포트가 바뀌는데, 상수는 처음 값에 굳어서 그 뒤 전부 옛 포트로 나간다
+   */
+  const res = await fetch(backendUrl(path), {
     method,
     headers,
     body: payload,

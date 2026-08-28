@@ -1,7 +1,10 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import AppHeader from "@/components/layout/AppHeader";
 import TaskToasts from "@/components/layout/TaskToasts";
+import { getBridge } from "@/lib/desktop";
 import { useSession } from "@/lib/session";
 
 /**
@@ -18,6 +21,16 @@ import { useSession } from "@/lib/session";
  */
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const session = useSession();
+  const router = useRouter();
+
+  /*
+   * 백엔드가 혼자 죽으면 입구로 돌아간다.
+   *
+   * 예전엔 일렉트론이 **문서를 통째로 다시 로드**해서 이 구독이 필요 없었다. 대신 그때마다
+   * 검은 화면이 번쩍이고 진행 중이던 알림이 사라졌다. 이제는 라우팅만 하므로
+   * `TaskToasts`가 살아남아 "어디까지 됐는지"를 입구에서도 계속 보여준다
+   */
+  useEffect(() => getBridge()?.onGoEntry(() => router.push("/")), [router]);
 
   if (session.status !== "member") return null;
 
