@@ -107,6 +107,23 @@ public class Game extends BaseEntity {
     @Column(columnDefinition = "TEXT")
     private String storyline;
 
+    /**
+     * 소개문의 한국어 번역 (2026-08-28).
+     *
+     * **원문(`summary`)을 안 지운다** — 번역이 이상할 때 원문을 봐야 하고,
+     * 다시 번역하려면 원문이 있어야 한다.
+     *
+     * ⚠️ `storyline`은 번역하지 않는다. 실측 최대가 20,764자라 게임 하나로
+     * 월 무료 한도의 4%를 먹는다 — 값이 값을 못 한다
+     */
+    @Column(columnDefinition = "TEXT")
+    private String summaryKo;
+
+    /** 언제 번역했나. 원문이 바뀌면 번역이 낡는다는 걸 판단하는 데 쓴다 */
+    private LocalDateTime summaryTranslatedAt;
+
+
+
     /** IGDB 유저 평점 0~100. 평론가 평점(aggregated_rating)은 쓰지 않기로 했다 (§6.2) */
     @Column(precision = 5, scale = 2)
     private BigDecimal igdbRating;
@@ -147,6 +164,14 @@ public class Game extends BaseEntity {
     /**
      * JPA 전용 기본 생성자
      */
+    /**
+     * 번역을 붙인다. `@Setter`가 없으므로 뜻이 있는 이름으로 바꾼다 (설계 원칙 2)
+     */
+    public void applyTranslation(String korean, LocalDateTime at) {
+        this.summaryKo = korean;
+        this.summaryTranslatedAt = at;
+    }
+
     protected Game() {}
 
     /** 시각을 인자로 받는 이유 — 엔티티가 시계를 들면 테스트에서 고정할 수 없다 */
@@ -228,6 +253,16 @@ public class Game extends BaseEntity {
         this.releasedOn = command.releasedOn();
         this.coverImageId = command.coverImageId();
         this.bannerImageId = command.bannerImageId();
+        /*
+         * ⚠️ **원문이 바뀌면 번역을 버린다** (2026-08-28).
+         *
+         * 재동기화로 IGDB의 소개문이 바뀌었는데 한국어를 그대로 두면, 화면에는
+         * **옛 내용의 번역**이 새 원문인 척 떠 있게 된다. 다시 번역하라고 비워두는 게 맞다
+         */
+        if (!java.util.Objects.equals(this.summary, command.summary())) {
+            this.summaryKo = null;
+            this.summaryTranslatedAt = null;
+        }
         this.summary = command.summary();
         this.storyline = command.storyline();
         this.igdbRating = command.igdbRating();

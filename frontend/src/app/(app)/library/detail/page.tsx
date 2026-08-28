@@ -26,7 +26,7 @@ import CoverDialog from "@/components/library/CoverDialog";
 import ScreenshotSection from "@/components/library/ScreenshotSection";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { Button, EditButton } from "@/components/ui/Field";
-import { api } from "@/lib/api";
+import { api, errorMessage } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { invalidateQueries, useApi } from "@/lib/useApi";
 import { bannerSrc } from "@/lib/cover";
@@ -249,9 +249,12 @@ function BacklogDetail() {
                   About
                 </h3>
                 <div className="flex flex-col gap-5 rounded-lg border border-white/10 bg-white/5 p-6">
-                  <p className="text-sm leading-relaxed font-light text-white/75">
-                    {master.summary ?? <span className="text-white/25">등록된 요약이 없습니다.</span>}
-                  </p>
+                  <SummaryBlock
+                    entryId={Number(entryId)}
+                    summary={master.summary}
+                    summaryKo={master.summaryKo}
+                    onTranslated={() => reload()}
+                  />
 
                   {/* 스토리라인은 요약과 별개 필드다 — 없는 게임이 많아 자리를 항상 두되 비워둔다 */}
                   <div className="border-t border-white/5 pt-5">
@@ -671,4 +674,87 @@ function accountOf(run: {
   const machine = run.emulator?.name ?? run.device?.name;
   if (account && machine) return `${account} (${machine})`;
   return account ?? machine ?? "—";
+}
+
+/**
+ * 소개문 — **원문과 번역을 함께 들고 토글한다** (2026-08-28).
+ *
+ * ## 원문을 지우지 않는다
+ *
+ * 번역이 이상할 때 원문을 볼 수 있어야 하고, 다시 번역하려면 원문이 있어야 한다.
+ * 그래서 서버가 둘 다 내려주고 여기서 고른다 — 번역이 있으면 한국어가 기본이다.
+ *
+ * ## ⚠️ 번역은 돈이 드는 유일한 버튼이다
+ *
+ * IGDB 검색이나 스토리지 업로드는 한도를 넘으면 거절당하고 끝이지만, 번역은 넘으면
+ * **요금이 청구된다.** 그래서 누르기 전에 몇 자인지 보여주고, 한도에 걸리면(429)
+ * 서버가 준 문장을 그대로 띄운다 — "지금까지 몇 자 썼다"가 그 안에 들어 있다
+ */
+function SummaryBlock({
+  entryId,
+  summary,
+  summaryKo,
+  onTranslated,
+}: {
+  entryId: number;
+  summary: string | null;
+  summaryKo: string | null;
+  onTranslated: () => void;
+}) {
+  const [showOriginal, setShowOriginal] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!summary) {
+    return <p className="text-sm text-white/25">등록된 요약이 없습니다.</p>;
+  }
+
+  const translate = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post(`/api/backlog/${entryId}/translate`, {});
+      onTranslated();
+    } catch (caught) {
+      setError(errorMessage(caught, "번역하지 못했습니다."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const showing = summaryKo && !showOriginal ? summaryKo : summary;
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm leading-relaxed font-light text-white/75">{showing}</p>
+
+      <div className="flex flex-wrap items-center gap-3">
+        {summaryKo ? (
+          /* 번역이 있으면 토글만. 다시 번역하려면 원문을 보고 [다시 번역]을 누른다 */
+          <button
+            onClick={() => setShowOriginal((v) => !v)}
+            className="text-[11px] tracking-wider text-white/35 uppercase transition-colors hover:text-white"
+          >
+            {showOriginal ? "번역 보기" : "원문 보기"}
+          </button>
+        ) : null}
+
+        {(!summaryKo || showOriginal) && (
+          <button
+            onClick={translate}
+            disabled={busy}
+            className="text-[11px] tracking-wider text-teal-200/70 uppercase transition-colors hover:text-teal-100 disabled:text-white/20"
+          >
+            {busy ? "번역 중…" : summaryKo ? "다시 번역" : "번역"}
+            {/* ⚠️ 몇 자인지 미리 보여준다 — 누르는 순간 그만큼이 이번 달 한도에서 빠진다 */}
+            <span className="ml-1.5 normal-case opacity-60">
+              ({summary.length.toLocaleString()}자)
+            </span>
+          </button>
+        )}
+
+        {error && <span className="text-[11px] text-red-400">{error}</span>}
+      </div>
+    </div>
+  );
 }

@@ -91,6 +91,13 @@ public record BacklogDetailResponse(
             String coverImageId,
             String bannerImageId,
             String summary,
+            /**
+             * 소개문의 한국어 번역 (2026-08-28). 없으면 null — 화면이 [번역] 버튼을 띄운다.
+             *
+             * ⚠️ **원문을 대체하지 않는다.** 둘 다 내려보내고 화면이 토글로 바꾼다 —
+             * 번역이 이상할 때 원문을 볼 수 있어야 한다
+             */
+            String summaryKo,
             String storyline,
             BigDecimal igdbRating,
             Integer igdbRatingCount,
@@ -217,7 +224,7 @@ public record BacklogDetailResponse(
                         game.getReleasedOn(), MoneyResponse.from(game.getListPrice()),
                         game.getMasterGenres(), game.getSource(),
                         game.getCoverImageId(), game.getBannerImageId(),
-                        game.getSummary(), game.getStoryline(),
+                        game.getSummary(), game.getSummaryKo(), game.getStoryline(),
                         game.getIgdbRating(), game.getIgdbRatingCount(),
                         game.getReleasePlatforms(),
                         game.getMainStoryHours(), game.getMainExtraHours(),

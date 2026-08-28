@@ -101,6 +101,11 @@ export interface MasterInfo {
   coverImageId: string | null;
   bannerImageId: string | null;
   summary: string | null;
+  /**
+   * 소개문의 한국어 번역. 없으면 null — 화면이 [번역] 버튼을 띄운다.
+   * ⚠️ **원문을 대체하지 않는다** — 둘 다 오고 화면이 토글로 바꾼다
+   */
+  summaryKo: string | null;
   storyline: string | null;
   igdbRating: number | null;
   igdbRatingCount: number | null;

@@ -117,9 +117,13 @@ public class TranslationQuota {
      * 쓴 만큼 기록한다. **호출 직후에 부른다.**
      *
      * `ApiCallRecorder`와 달리 실패를 안 삼킨다 — 이 줄이 안 남으면 다음 검사가
-     * **덜 쓴 것으로 착각해서** 한도를 넘긴다. 계측이 아니라 방어의 일부다
+     * **덜 쓴 것으로 착각해서** 한도를 넘긴다. 계측이 아니라 방어의 일부다.
+     *
+     * ⚠️ **`REQUIRES_NEW`인 이유가 그것이다.** 부르는 쪽 트랜잭션에 얹으면 그쪽이 롤백될 때
+     * 이 줄도 함께 사라진다. 그런데 **구글은 이미 글자를 받아 세었다** — 기록만 사라지면
+     * 우리가 실제보다 적게 알게 되고, 그 차이만큼 한도를 넘겨 돈이 나간다
      */
-    @Transactional
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public void record(int chars, boolean success) {
         repository.persist(com.milobeene.starlog.system.domain.ApiCallLog.of(
                 ApiProvider.TRANSLATE, "translate", AppClock.now(), success, (long) chars));

@@ -31,6 +31,7 @@ import com.milobeene.starlog.tag.service.TagService;
 import com.milobeene.starlog.backlog.service.BacklogQueryService;
 import com.milobeene.starlog.common.dto.PageResponse;
 import com.milobeene.starlog.common.web.LoginMember;
+import com.milobeene.starlog.system.service.GameTranslationService;
 import lombok.RequiredArgsConstructor;
 
 import java.net.URI;
@@ -64,6 +65,7 @@ public class BacklogController {
     private final GameResolver gameResolver;
     private final CoverImageService coverImageService;
     private final ScreenshotService screenshotService;
+    private final GameTranslationService gameTranslationService;
     private final TagService tagService;
     private final GenreService genreService;
 
@@ -320,6 +322,23 @@ public class BacklogController {
                                                   @PathVariable Long entryId,
                                                   @RequestBody List<String> fileNames) {
         return Map.of("deleted", screenshotService.delete(memberId, entryId, fileNames));
+    }
+
+    /**
+     * 소개문을 한국어로 옮긴다 (2026-08-28).
+     *
+     * **백로그 항목 경로에 둔다** — 화면이 들고 있는 건 항목 번호이고, 여기를 지나면
+     * 소유권 검증이 공짜로 따라온다(`entryFinder`). 마스터는 공용이지만 **남의 항목으로는
+     * 못 부른다**는 뜻이기도 하다.
+     *
+     * ⚠️ 429가 나오면 **우리가 막은 것**이다 — 이번 달 한도에 닿았다는 뜻이지
+     * 구글이 거절한 게 아니다 (`TranslationQuota`)
+     */
+    @PostMapping("/{entryId}/translate")
+    public GameTranslationService.Result translate(@LoginMember Long memberId,
+                                                   @PathVariable Long entryId) {
+        return gameTranslationService.translate(
+                backlogQueryService.gameIdOf(memberId, entryId));
     }
 
     /**

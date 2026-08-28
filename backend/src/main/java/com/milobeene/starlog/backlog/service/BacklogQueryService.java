@@ -188,4 +188,15 @@ public class BacklogQueryService {
     private int normalizePage(int page) {
         return Math.max(page, 0);
     }
+
+    /**
+     * 이 항목의 마스터 게임 번호 (2026-08-28).
+     *
+     * **소유권 검증을 지나는 게 요점이다.** 번역은 마스터(공용)를 고치는 일이지만,
+     * 부르는 문은 내 항목이어야 한다 — 남의 항목 번호로는 못 부른다
+     */
+    public Long gameIdOf(Long memberId, Long entryId) {
+        return backlogEntryFinder.findOwnedWithGame(memberId, entryId).getGame().getId();
+    }
+
 }

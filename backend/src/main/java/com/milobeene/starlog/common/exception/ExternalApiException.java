@@ -17,7 +17,9 @@ public class ExternalApiException extends RuntimeException {
     public enum Service {
         GAME_CATALOG("게임 정보 서비스"),
         FILE_STORAGE("이미지 저장소"),
-        MAIL("메일 발송 서비스");
+        MAIL("메일 발송 서비스"),
+        /** 게임 소개문 번역 (2026-08-28). 벤더명(Google)을 안 쓰는 건 위와 같은 이유다 */
+        TRANSLATE("번역 서비스");
 
         private final String label;
 

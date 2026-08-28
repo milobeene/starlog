@@ -33,6 +33,27 @@ class TranslationQuotaTest extends ControllerTestSupport {
 
     @Autowired TranslationQuota quota;
     @Autowired ApiCallLogRepository apiCallLogRepository;
+    @Autowired org.springframework.transaction.PlatformTransactionManager txManager;
+
+    /**
+     * ⚠️ **`record`가 테스트 롤백을 벗어나 커밋한다.**
+     *
+     * 운영에서는 그게 맞다 — 부르는 쪽이 롤백돼도 구글은 이미 글자를 세었으므로 기록이
+     * 남아야 한다(`REQUIRES_NEW`). 그런데 그 탓에 **한 테스트가 남긴 행이 다음 테스트로
+     * 샌다.** 실제로 여섯 개가 그렇게 깨졌다.
+     *
+     * 그래서 매번 시작 전에 커밋된 것까지 비운다. 같은 이유로 이 삭제도 **자기 트랜잭션**에서
+     * 돌아야 한다 — 테스트 트랜잭션 안에서 지우면 그 삭제가 함께 롤백된다
+     */
+    @org.junit.jupiter.api.BeforeEach
+    void 커밋된_기록까지_비운다() {
+        new org.springframework.transaction.support.TransactionTemplate(
+                txManager,
+                new org.springframework.transaction.support.DefaultTransactionDefinition(
+                        org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW))
+                .executeWithoutResult(status ->
+                        apiCallLogRepository.deleteOlderThan(AppClock.now().plusYears(1)));
+    }
 
     /** 이번 달에 이미 쓴 것으로 치는 목 데이터 */
     private void 이번달에_썼다고_치자(long chars) {
