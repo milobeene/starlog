@@ -805,6 +805,17 @@ function registerIpc() {
     }
     // 백업도 함께. 남겨두면 주인 없는 폴더가 쌓이고, 목록에서 지운 것이 되살아난 것처럼 보인다
     backup.removeAll(dirs, clean);
+
+    /*
+     * ⚠️ **[최근 접속]도 같이 지운다.** 개명(`saves:rename`)에는 있는데 여기만 빠져 있었다.
+     * 지운 뒤에도 입구에 [최근 접속]이 남아서, 누르면 **없는 파일을 열려다 같은 이름으로
+     * 빈 세이브를 새로 만든다** — H2는 파일이 없으면 그냥 만들기 때문이다.
+     * 사용자 눈에는 "지운 세이브가 되살아났는데 안이 텅 비었다"로 보인다. 실제로 겪었다
+     */
+    const settings = store.getSettings();
+    if (settings.lastMode === "local" && settings.lastTarget === clean) {
+      store.patchSettings({ lastMode: null, lastTarget: null });
+    }
     return true;
   });
 

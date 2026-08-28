@@ -63,3 +63,6 @@ nsis:
   # 설치 위치를 고를 수 있게 한다. 원클릭은 묻지도 않고 %LOCALAPPDATA%에 넣는다
   oneClick: false
   allowToChangeInstallationDirectory: true
+  # 기본값은 `STARLOG Setup 1.0.0.exe`다 — **공백이 들어간다.** 릴리스 URL에서
+  # `%20`으로 바뀌어 링크를 손으로 쓰기 나빠진다
+  artifactName: ${productName}-Setup-${version}.exe

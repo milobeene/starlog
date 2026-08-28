@@ -1,8 +1,10 @@
 {
   "name": "starlog",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "private": true,
   "description": "STARLOG 데스크탑",
+  "author": "milobeene <milo.beene@gmail.com>",
+  "homepage": "https://github.com/milobeene/starlog",
   "main": "main.js",
   "scripts": {
     "start": "electron ."
