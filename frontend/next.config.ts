@@ -18,8 +18,17 @@ const nextConfig: NextConfig = {
         output: "export" as const,
         // 정적 내보내기는 이미지 최적화 서버가 없다
         images: { unoptimized: true },
-        // 스프링이 프론트까지 서빙하므로 오리진이 하나다 → API를 상대 경로로 (lib/apiBase.ts)
-        env: { NEXT_PUBLIC_SAME_ORIGIN: "1" },
+        /*
+         * ## ⚠️ SAME_ORIGIN을 **세우지 않는다** (2026-08-28)
+         *
+         * 예전엔 스프링이 프론트까지 서빙해서 오리진이 하나였고, 그래서 여기서 이 플래그를
+         * 켜 API를 상대 경로로 보냈다.
+         *
+         * 이제 창은 `app://` 한 장이고 백엔드는 `http://127.0.0.1:포트`다 — **오리진이 갈렸다.**
+         * 이 플래그가 켜져 있으면 `lib/apiBase.ts`가 빈 문자열을 돌려주고, 모든 요청이
+         * `app://starlog/api/…`로 나가 전부 실패한다. 그러면 세션이 영영 `loading`에 머물러
+         * **앱 화면이 배경만 남고 아무것도 안 그려진다.** 실제로 그렇게 났다
+         */
       }
     : {
         /*

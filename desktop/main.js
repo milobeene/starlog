@@ -75,6 +75,17 @@ const MIME = {
   ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  /*
+   * ⚠️ **정적 내보내기의 RSC 페이로드가 `.txt`다** (`dashboard.txt` 등).
+   *
+   * Next의 라우터는 이 응답의 content-type을 확인해서 `text/x-component`나 `text/plain`이
+   * 아니면 **소프트 이동을 포기하고 문서를 통째로 다시 로드한다**(MPA 폴백).
+   * 여기 `.txt`가 없어서 `application/octet-stream`으로 나갔고, 그래서 입구↔앱을 오갈 때마다
+   * 문서가 바뀌어 검은 화면이 번쩍이고 알림이 사라졌다 —
+   * `fetch-server-response.js`의 `isFlightResponse` 판정이 그 자리다
+   */
+  ".txt": "text/plain; charset=utf-8",
+  ".map": "application/json; charset=utf-8",
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".jpg": "image/jpeg",
