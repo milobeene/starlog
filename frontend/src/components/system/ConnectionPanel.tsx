@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import ConnectionDialog from "@/components/entry/ConnectionDialog";
+import { IgdbSettings } from "@/components/system/AppSettingsPanel";
 import { getBridge, type ConnectionProfile, type SessionInfo } from "@/lib/desktop";
 
 /**
@@ -43,12 +44,20 @@ export default function ConnectionPanel() {
     );
   }
 
+  /*
+   * 로컬 세이브파일에는 **데이터베이스 연결 설정이 없다.** 대신 IGDB 키를 여기 둔다 —
+   * 클라우드는 연결 설정 폼 안에 IGDB 칸이 있으므로, 두 모드 모두 "연결" 탭 하나에서
+   * 키를 관리하게 된다 (2026-08-28). 예전엔 "앱 설정" 탭에도 같은 칸이 있어 두 군데였다
+   */
   if (session && session.mode !== "cloud") {
     return (
-      <Notice>
-        지금은 로컬 세이브파일로 쓰고 계십니다. 데이터베이스 연결 설정은 입구 화면에서
-        관리합니다 — IGDB 키는 <b className="text-white/70">앱 설정</b> 탭에 있습니다.
-      </Notice>
+      <div className="flex flex-col gap-4">
+        <Notice>
+          지금은 로컬 세이브파일로 쓰고 계십니다. 데이터베이스 연결 설정은 입구 화면에서
+          관리합니다.
+        </Notice>
+        <IgdbSettings />
+      </div>
     );
   }
 

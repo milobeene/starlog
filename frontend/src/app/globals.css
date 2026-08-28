@@ -371,69 +371,71 @@
 }
 
 /*
- * [최근 접속] 호버 (2026-08-28, 사용자 아이디어).
+ * [최근 접속] 호버 (2026-08-28, 사용자 아이디어 · 재작업).
  *
- * "최근 접속 ·"과 "(세이브파일)"은 접혀 사라지고, 이름이 왼쪽으로 밀리면서
- * 오른쪽 끝까지 화살표가 이어진다.
+ * 곁글씨("최근 접속 ·", "(세이브파일)")가 접히고 그 자리에서 화살표가 뻗어나간다.
  *
- * ## 폭이 안 변해야 한다
+ * ## 폭을 붙들지 않는다 (2차 수정)
  *
- * 글씨가 접히면 버튼도 같이 줄어든다 — 마우스를 올렸을 뿐인데 버튼이 작아지면
- * 커서가 밖으로 나가 **깜빡거린다.** 그래서 `.entry-recent-ghost`가 전체 문구를
- * 안 보이게 깔아 폭을 붙들고, 실제 내용은 그 위에 겹쳐 놓는다
+ * 처음엔 안 보이는 사본으로 폭을 고정했다. 그런데 그러면 **긴 이름이 잘리고 `...`이 붙는다** —
+ * 고정된 폭 안에 다 못 들어가서다. 사용자가 그걸 싫어했고, 맞는 지적이다:
+ * 이름은 이 버튼의 본체인데 그게 잘리면 버튼의 뜻이 사라진다.
+ *
+ * 그래서 **박스가 같이 늘었다 줄었다** 하게 뒀다. 안의 조각이 전부 같은 시간으로 움직이므로
+ * 바깥 폭도 같은 곡선으로 따라온다 — 덜컥거리지 않는다
  */
 .entry-recent-fade {
   display: inline-block;
   max-width: 20rem;
   overflow: hidden;
   white-space: nowrap;
-  transition: max-width 0.32s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.18s ease;
+  transition:
+    max-width 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.2s ease,
+    margin 0.34s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .group:hover .entry-recent-fade {
   max-width: 0;
   opacity: 0;
+  /* 부모의 gap까지 걷어내야 완전히 사라진다 — 안 그러면 빈 틈이 남는다 */
+  margin-inline: -0.1875rem;
 }
 
-/* 이름 뒤에서 오른쪽 끝까지 이어지는 선 + 머리 */
+/*
+ * 이름 **바로 오른쪽에서** 뻗어나가는 화살표.
+ *
+ * 처음엔 `flex: 1`로 남는 자리를 채우게 했는데, 그러면 선이 **가운데서부터** 생기고
+ * 머리는 처음부터 오른쪽 끝에 붙어 있었다. 화살이 날아가는 게 아니라 막대가 늘어나는 모양이라
+ * 사용자가 싫어했다. 이제 폭 0에서 자라나고 **머리가 선 끝에 붙어 함께 나아간다**
+ */
 .entry-arrow {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  flex: 1 1 0;
-  min-width: 0;
+  width: 0;
+  overflow: hidden;
   opacity: 0;
-  transition: opacity 0.18s ease;
+  transition:
+    width 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.16s ease;
 }
 .group:hover .entry-arrow {
+  width: 2.75rem;
   opacity: 1;
 }
 .entry-arrow-line {
   flex: 1;
   height: 1.5px;
   background: currentColor;
-  transform: scaleX(0);
-  transform-origin: left center;
-  transition: transform 0.36s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.group:hover .entry-arrow-line {
-  transform: scaleX(1);
 }
 .entry-arrow-head {
   width: 0.5rem;
   height: 0.75rem;
   flex-shrink: 0;
-  /* 선이 다 그려질 즈음 머리가 도착한다 — 같이 움직이면 화살표가 아니라 막대로 보인다 */
-  transform: translateX(-0.4rem);
-  transition: transform 0.36s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.group:hover .entry-arrow-head {
-  transform: translateX(0);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .entry-recent-fade,
-  .entry-arrow,
-  .entry-arrow-line,
-  .entry-arrow-head {
+  .entry-arrow {
     transition-duration: 0.01ms;
   }
 }

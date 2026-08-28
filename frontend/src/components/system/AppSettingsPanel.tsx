@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Field";
 import { api, errorMessage } from "@/lib/api";
 import { closeTask, putTask, updateTask } from "@/lib/tasks";
 import { getBridge } from "@/lib/desktop";
+import DesktopSection from "@/components/settings/DesktopSection";
 
 /**
  * 앱 설정 (2026-08-28).
@@ -26,7 +27,16 @@ import { getBridge } from "@/lib/desktop";
 type Settings = { igdbClientId: string; igdbClientSecret: string; fromBootConfig: boolean };
 type TestResult = { ok: boolean; tokenIssued: boolean; searchWorks: boolean; message: string };
 
-export default function AppSettingsPanel() {
+/**
+ * IGDB 키 — **로컬 세이브파일 전용이다** (2026-08-28에 자리를 옮김).
+ *
+ * 예전엔 "앱 설정" 탭에 있었는데, 데이터베이스 연결에는 **연결 설정 안에 IGDB 칸이 따로** 있어
+ * 같은 것이 두 군데 있었다. 어느 쪽이 이기는지 화면만 봐서는 알 수가 없다.
+ *
+ * 그래서 **한 곳으로 모았다** — 둘 다 "연결" 탭이다. 클라우드는 연결 설정 폼 안에,
+ * 로컬은 이 컴포넌트로. 로컬은 연결 설정이라는 게 없으니 자리가 겹치지 않는다
+ */
+export function IgdbSettings() {
   const [loaded, setLoaded] = useState<Settings | null>(null);
   const [id, setId] = useState("");
   const [secret, setSecret] = useState("");
@@ -208,8 +218,22 @@ export default function AppSettingsPanel() {
           </Button>
         </div>
       </section>
+    </div>
+  );
+}
 
+/**
+ * 앱 설정 탭 (2026-08-28 재구성).
+ *
+ * IGDB는 여기서 뺐다 — 연결 설정에도 같은 칸이 있어 **두 군데가 됐기 때문**이다.
+ * 대신 프로필에 있던 "데이터 옮기기"를 가져왔다: 세이브파일과 데이터베이스를 오가는 일은
+ * 프로필(내 이름·배경색)보다 **앱 층위**에 가깝다
+ */
+export default function AppSettingsPanel() {
+  return (
+    <div className="flex flex-col gap-8">
       <DataFolder />
+      <DesktopSection />
     </div>
   );
 }

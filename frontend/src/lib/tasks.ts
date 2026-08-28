@@ -19,7 +19,7 @@ import { useSyncExternalStore } from "react";
  * 아무 알림이나 여기로 보내면 곧 토스트가 화면을 덮는다. **오래 걸려서 결과를 놓칠 수 있는
  * 일**만 담는다 — 연결 테스트, 일괄 동기화, 단건 재동기화. 나머지는 그 자리에서 보여준다.
  */
-export type TaskKind = "connection-test" | "bulk-sync" | "resync";
+export type TaskKind = "connection-test" | "bulk-sync" | "resync" | "save-transfer";
 
 export type Task = {
   id: string;
@@ -69,6 +69,23 @@ export function updateTask(id: string, patch: Partial<Task>) {
  */
 export function closeTask(id: string) {
   publish(tasks.filter((t) => t.id !== id));
+}
+
+/**
+ * 이 일이 아직 도는 중인가.
+ *
+ * ## 화면 상태로는 못 안다
+ *
+ * 뽑기·덮어쓰기는 수십 초가 걸리는데 **그동안 다른 화면에 갔다 올 수 있다.** 돌아오면
+ * 컴포넌트가 새로 마운트되면서 `busy`가 false로 초기화되고, 화면은 멀쩡해 보이는데
+ * 뒤에서는 아직 돌고 있다 — 그 상태로 한 번 더 누르면 **같은 일이 두 번 돈다.**
+ * 덮어쓰기라면 지우고 붓는 일이 겹치는 것이라 위험하다.
+ *
+ * 그래서 "도는 중"의 진실을 이 스토어가 갖는다. 화면은 물어보기만 한다
+ */
+export function useTaskRunning(id: string): boolean {
+  const tasks = useTasks();
+  return tasks.some((task) => task.id === id && !task.result);
 }
 
 const SERVER_SNAPSHOT: Task[] = [];

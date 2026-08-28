@@ -6,7 +6,6 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import PageHeading from "@/components/ui/PageHeading";
 import ErrorNotice from "@/components/ui/ErrorNotice";
-import DesktopSection from "@/components/settings/DesktopSection";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Modal from "@/components/ui/Modal";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -335,8 +334,11 @@ function SettingsContent() {
           </SettingsSection>
 
 
-          {/* 데스크탑 앱에서만. 브라우저에서는 스스로 아무것도 안 그린다 */}
-          <DesktopSection />
+          {/*
+            "데이터 옮기기"는 **시스템 → 앱 설정**으로 갔다 (2026-08-28).
+            세이브파일과 데이터베이스를 오가는 일은 프로필(내 이름·배경색)이 아니라
+            앱 층위다 — 이 화면에 있으면 "내 프로필을 옮긴다"처럼 읽힌다
+          */}
 
           {/*
             **맨 아래다.** 되살리기·완전 삭제는 자주 쓰는 기능이 아니고, 위에 두면

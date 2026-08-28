@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Button, FIELD_INPUT } from "@/components/ui/Field";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { getBridge, type SaveFile, type SessionInfo } from "@/lib/desktop";
+import { putTask, updateTask, useTaskRunning } from "@/lib/tasks";
 import { api } from "@/lib/api";
 
 /**
@@ -31,7 +32,7 @@ export default function DesktopSection() {
       <div>
         <h2 className="text-sm font-medium tracking-wide text-white/80">데이터 옮기기</h2>
         <p className="mt-1 text-xs text-white/40">
-          앱 설정과 폴더는 <b className="text-white/60">시스템 → 앱 설정</b>에 있습니다.
+          세이브파일과 데이터베이스 사이에서 기록을 옮깁니다.
         </p>
       </div>
 
@@ -61,13 +62,18 @@ export default function DesktopSection() {
  * **"백업"이 아니라 "생성"이다.** 뽑아낸 순간 그건 이미 열 수 있는 세이브파일이라
  * 복원이라는 절차가 아예 생기지 않는다 — 로컬 모드에서 고르면 그때부터 그게 현재 DB다
  */
+const EXTRACT_TASK = "save-extract";
+
 function CloudExtract() {
   const [name, setName] = useState("");
   /* 스토리지를 실제로 쓰고 있나 — 안 쓰면 커버 경고가 겁만 주는 문구가 된다 */
   const [usesStorage, setUsesStorage] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  /*
+   * ⚠️ **"도는 중"을 컴포넌트가 들면 안 된다** (2026-08-28). 뽑기는 수십 초가 걸리는데
+   * 그동안 다른 화면에 갔다 오면 이 컴포넌트가 새로 마운트되어 `busy`가 false로 돌아간다 —
+   * 화면은 멀쩡해 보이는데 뒤에서는 아직 돌고 있고, 한 번 더 누르면 같은 일이 두 번 돈다
+   */
+  const busy = useTaskRunning(EXTRACT_TASK);
 
   useEffect(() => {
     api.get<{ storage: { configured: boolean } }>("/api/system")
@@ -76,17 +82,31 @@ function CloudExtract() {
   }, []);
 
   const extract = async () => {
-    setBusy(true);
-    setError(null);
-    setDone(null);
+    const target = name.trim();
+    putTask({
+      id: EXTRACT_TASK,
+      kind: "save-transfer",
+      title: `${target} — 세이브파일로 뽑는 중`,
+      // total이 0이면 진행률 바 없이 도는 표시만 — 몇 건인지 미리 알 수 없다
+      progress: { done: 0, total: 0 },
+    });
+    setName("");
     try {
-      const result = await getBridge()!.cloudToSaveFile(name.trim());
-      setDone(result.saveName);
-      setName("");
+      const result = await getBridge()!.cloudToSaveFile(target);
+      updateTask(EXTRACT_TASK, {
+        progress: undefined,
+        title: "로컬 세이브파일로 뽑기",
+        result: {
+          ok: true,
+          message: `${result.saveName} 세이브파일을 만들었습니다. 입구의 [로컬 세이브파일]에서 열 수 있습니다.`,
+        },
+      });
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
+      updateTask(EXTRACT_TASK, {
+        progress: undefined,
+        title: "로컬 세이브파일로 뽑기",
+        result: { ok: false, message: e instanceof Error ? e.message : String(e) },
+      });
     }
   };
 
@@ -122,6 +142,8 @@ function CloudExtract() {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="새 세이브파일 이름"
+          /* 도는 동안 값을 못 바꾼다 — 지금 뽑고 있는 이름과 화면의 이름이 어긋나면 안 된다 */
+          disabled={busy}
           className={FIELD_INPUT}
         />
         <Button variant="primary" onClick={extract} disabled={busy || !name.trim()}>
@@ -129,12 +151,7 @@ function CloudExtract() {
         </Button>
       </div>
 
-      {done && (
-        <p className="text-xs text-emerald-300/80">
-          <b>{done}</b> 세이브파일을 만들었습니다. 입구의 [로컬 세이브파일]에서 열 수 있습니다.
-        </p>
-      )}
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {/* 결과는 알림으로 간다 — 다른 화면에 가 있어도 놓치지 않는다 */}
     </div>
   );
 }
@@ -153,13 +170,17 @@ function CloudExtract() {
  * 백업이 없다는 게 9단계의 전제였고 이 기능이 정확히 그 구멍을 건드리기 때문이다.
  * 그 이름을 반드시 보여준다 — 있는 줄 몰라야 할 이유가 없다
  */
+const UPLOAD_TASK = "save-overwrite";
+
 function SaveFileUpload() {
   const [saves, setSaves] = useState<SaveFile[] | null>(null);
   const [picked, setPicked] = useState<string>("");
   const [confirming, setConfirming] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState<{ entries: number; safety: string } | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  /*
+   * ⚠️ **덮어쓰기는 되돌릴 수 없다.** 다른 화면에 갔다 와서 `busy`가 풀린 채 한 번 더 누르면
+   * 지우고 붓는 일이 겹친다. "도는 중"의 진실은 알림 스토어가 갖는다
+   */
+  const busy = useTaskRunning(UPLOAD_TASK);
 
   useEffect(() => {
     getBridge()?.saves.list().then(setSaves).catch(() => setSaves([]));
@@ -167,16 +188,28 @@ function SaveFileUpload() {
 
   const upload = async () => {
     setConfirming(false);
-    setBusy(true);
-    setError(null);
-    setDone(null);
+    putTask({
+      id: UPLOAD_TASK,
+      kind: "save-transfer",
+      title: `${picked} — 데이터베이스에 덮어쓰는 중`,
+      progress: { done: 0, total: 0 },
+    });
     try {
       const r = await getBridge()!.saveFileToCloud(picked);
-      setDone({ entries: r.entries, safety: r.safetySaveName });
+      updateTask(UPLOAD_TASK, {
+        progress: undefined,
+        title: "데이터베이스 덮어쓰기",
+        result: {
+          ok: true,
+          message: `항목 ${r.entries}건을 올렸습니다. 바꾸기 전 데이터는 "${r.safetySaveName}" 세이브파일에 저장해 뒀습니다.`,
+        },
+      });
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
+      updateTask(UPLOAD_TASK, {
+        progress: undefined,
+        title: "데이터베이스 덮어쓰기",
+        result: { ok: false, message: e instanceof Error ? e.message : String(e) },
+      });
     }
   };
 
@@ -201,6 +234,8 @@ function SaveFileUpload() {
           <select
             value={picked}
             onChange={(e) => setPicked(e.target.value)}
+            /* 덮어쓰는 동안 대상을 못 바꾼다 — 지금 붓고 있는 것과 어긋나면 안 된다 */
+            disabled={busy}
             className={FIELD_INPUT}
           >
             <option value="">세이브파일 고르기</option>
@@ -220,13 +255,7 @@ function SaveFileUpload() {
         </div>
       )}
 
-      {done && (
-        <p className="text-xs text-emerald-300/80">
-          항목 {done.entries}건을 올렸습니다. 바꾸기 전 데이터는 <b>{done.safety}</b>{" "}
-          세이브파일에 저장해 뒀습니다.
-        </p>
-      )}
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {/* 결과는 알림으로 간다 — 수십 초가 걸려서 다른 화면에 가 있기 쉽다 */}
 
       {confirming && (
         <ConfirmDialog

@@ -198,45 +198,39 @@ export default function EntryPage() {
               {session && (
                 <button
                   onClick={resume}
-                  className={`${BUTTON} group relative mb-4 border-white/45`}
+                  className={`${BUTTON} group mb-4 inline-flex items-center gap-1.5 border-white/45`}
                 >
                   {/*
-                    폭을 붙드는 유령. 호버하면 안의 글씨가 접히는데, 이게 없으면 **버튼이
-                    같이 줄어들어** 커서가 밖으로 나가고 깜빡거린다. 항상 전체 문구다
+                    폭을 붙들지 않는다 (2026-08-28 재작업). 예전엔 안 보이는 사본으로 폭을
+                    고정했는데, **긴 이름이 그 안에서 잘려 `...`이 붙었다.** 이름은 이 버튼의
+                    본체라 잘리면 안 된다 — 대신 박스가 같이 늘었다 줄었다 한다
                   */}
-                  <span className="invisible" aria-hidden>
-                    최근 접속 · {session.target} (
-                    {session.mode === "local" ? "세이브파일" : "데이터베이스"})
+                  <span className="entry-recent-fade">최근 접속 ·</span>
+                  <span>{session.target}</span>
+                  {/* 이름만으로는 어느 쪽인지 모른다 — 세이브파일과 연결 이름이 섞여 보인다 */}
+                  {/*
+                    ⚠️ `text-white/45`를 쓰면 **호버해도 흰색 그대로다** — 부모의
+                    `hover:text-black`은 상속인데 여기서 색을 직접 정해버려 이기지 못한다.
+                    투명도만 낮추면 부모가 정한 색을 따라간다
+                  */}
+                  <span className="entry-recent-fade opacity-55 normal-case">
+                    ({session.mode === "local" ? "세이브파일" : "데이터베이스"})
                   </span>
 
-                  <span className="absolute inset-0 flex items-center gap-1.5 px-6 sm:px-8">
-                    <span className="entry-recent-fade">최근 접속 ·</span>
-                    <span className="truncate">{session.target}</span>
-                    {/* 이름만으로는 어느 쪽인지 모른다 — 세이브파일과 연결 이름이 섞여 보인다 */}
-                    {/*
-                      ⚠️ `text-white/45`를 쓰면 **호버해도 흰색 그대로다** — 부모의
-                      `hover:text-black`은 상속인데 여기서 색을 직접 정해버려 이기지 못한다.
-                      투명도만 낮추면 부모가 정한 색을 따라간다
-                    */}
-                    <span className="entry-recent-fade opacity-55 normal-case">
-                      ({session.mode === "local" ? "세이브파일" : "데이터베이스"})
-                    </span>
-
-                    {/* 접힌 자리를 화살표가 채운다 — 오른쪽 끝까지 이어져 "들어간다"가 된다 */}
-                    <span className="entry-arrow" aria-hidden>
-                      <span className="entry-arrow-line" />
-                      <svg
-                        className="entry-arrow-head"
-                        viewBox="0 0 8 12"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.6"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M1.5 1.5 L6.5 6 L1.5 10.5" />
-                      </svg>
-                    </span>
+                  {/* 이름 바로 오른쪽에서 뻗어나간다. 머리가 선 끝에 붙어 함께 나아간다 */}
+                  <span className="entry-arrow" aria-hidden>
+                    <span className="entry-arrow-line" />
+                    <svg
+                      className="entry-arrow-head"
+                      viewBox="0 0 8 12"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M1.5 1.5 L6.5 6 L1.5 10.5" />
+                    </svg>
                   </span>
                 </button>
               )}

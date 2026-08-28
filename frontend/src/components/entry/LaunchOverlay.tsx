@@ -32,10 +32,17 @@ export default function LaunchOverlay({
   if (progress.phase === "error") {
     const { title, hint } = diagnosticOf(progress.code);
     const 손상 = progress.code === "DB_CORRUPTED";
+    /*
+     * ⚠️ **원인을 단정하지 않는다** (2026-08-28 수정). `LAUNCH_REFUSED`는 기동이 시작도
+     * 못 한 경우를 다 받는데, 안내문은 "이름에 쓸 수 없는 글자가 있다"고 못 박고 있었다.
+     * 그래서 **손상된 세이브파일을 열려다 실패했을 때도 "이름이 잘못됐다"**고 떠서
+     * 엉뚱한 데를 고치게 만들었다. 실제 메시지가 있으면 그걸 보여준다
+     */
+    const detail = progress.message;
     return (
       <div className="glass-panel w-full max-w-md rounded-xl !bg-neutral-950/92 px-6 py-7 text-center">
         <p className="text-sm font-medium text-red-300">{title}</p>
-        <p className="mt-2 text-xs leading-relaxed text-white/45">{hint}</p>
+        <p className="mt-2 text-xs leading-relaxed text-white/45">{detail ?? hint}</p>
         <div className="mt-6 flex justify-center gap-2">
           {손상 && onRecover && (
             <Button variant="primary" onClick={onRecover}>

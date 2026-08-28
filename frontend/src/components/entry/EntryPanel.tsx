@@ -30,10 +30,23 @@ export default function EntryPanel({
           <h2 className="text-lg font-medium text-white/90">{title}</h2>
           {subtitle && <p className="mt-1 text-xs text-white/40">{subtitle}</p>}
         </div>
+        {/* 화살표를 붙인다 — 글자만 있으면 "뒤로"가 제목의 일부처럼 읽힌다 */}
         <button
           onClick={onBack}
-          className="shrink-0 text-[11px] tracking-widest text-white/40 uppercase transition-colors hover:text-white"
+          className="group flex shrink-0 items-center gap-1.5 text-[11px] tracking-widest text-white/40 uppercase transition-colors hover:text-white"
         >
+          <svg
+            viewBox="0 0 8 12"
+            className="h-3 w-2 transition-transform duration-200 group-hover:-translate-x-0.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <path d="M6.5 1.5 L1.5 6 L6.5 10.5" />
+          </svg>
           뒤로
         </button>
       </div>
