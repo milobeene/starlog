@@ -281,6 +281,36 @@ class LocalMediaTest extends ControllerTestSupport {
                 .andExpect(jsonPath("$.deleted").value(1));
     }
 
+    /**
+     * 2026-08-28. **폴더에 직접 넣은 파일이 안 보이던 것.**
+     *
+     * `media_folder` 칸이 비어 있으면 폴더를 찾아보지도 않고 빈 목록을 줬다. 실제 데이터에서
+     * 게임 77개 중 이 칸이 채워진 건 1개뿐이라, 탐색기로 넣은 스크린샷이 **한 장 올리기
+     * 전까지 통째로 안 보였다** — 올리는 순간 있던 것까지 한꺼번에 나타났다
+     */
+    @Test
+    public void 폴더에_직접_넣은_스크린샷도_보인다() throws Exception {
+        //given — DB에는 폴더 이름이 없고, 디스크에만 파일이 있다 (탐색기로 넣은 상황)
+        Member member = saveMember();
+        Long entryId = entry(member, "Hollow Knight");
+        java.nio.file.Path folder = mediaPaths.mediaFolder("hollow-knight");
+        java.nio.file.Files.createDirectories(folder);
+        java.nio.file.Files.write(folder.resolve("내 스샷 #1.png"), PNG);
+
+        //when //then — 아무것도 안 올렸는데 보여야 한다
+        mockMvc.perform(get("/api/backlog/{id}/screenshots", entryId)
+                        .header("X-Member-Id", member.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].fileName").value("내 스샷 #1.png"))
+                /*
+                 * `#`은 URL에서 조각(fragment)을 여는 글자다. 인코딩 안 하면 서버까지 오지도
+                 * 못한다 — 폴더에 직접 넣는 게 설계된 사용법이라 실제로 생기는 이름이다
+                 */
+                .andExpect(jsonPath("$[0].url").value(
+                        org.hamcrest.Matchers.containsString("%23")));
+    }
+
     private Long entry(Member member) {
         return entry(member, "Hollow Knight");
     }

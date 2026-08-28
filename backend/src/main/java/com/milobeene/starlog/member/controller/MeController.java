@@ -8,6 +8,7 @@ import com.milobeene.starlog.common.util.AppClock;
 import com.milobeene.starlog.member.dto.MemberExport;
 import com.milobeene.starlog.member.service.MeQueryService;
 import com.milobeene.starlog.member.service.MemberExportService;
+import com.milobeene.starlog.member.service.MemberDataReplaceService;
 import com.milobeene.starlog.member.service.MemberImportService;
 import com.milobeene.starlog.member.service.MemberService;
 import jakarta.validation.Valid;
@@ -36,6 +37,7 @@ public class MeController {
     private final MemberService memberService;
     private final MemberExportService memberExportService;
     private final MemberImportService memberImportService;
+    private final MemberDataReplaceService memberDataReplaceService;
 
     /** 프로필 / 설정 (화면 4) */
     @GetMapping
@@ -71,6 +73,23 @@ public class MeController {
     public MemberImportService.Result importData(@LoginMember Long memberId,
                                                  @RequestBody MemberExport data) {
         return memberImportService.importInto(memberId, data);
+    }
+
+    /**
+     * **덮어쓰기** — 지금 데이터를 지우고 넣는다 (2026-08-28).
+     *
+     * 로컬 세이브파일을 데이터베이스로 올리는 길이다. 반대 방향(뽑기)만 있고 이쪽이 없어서
+     * 밖에서 정리한 기록을 다시 올릴 수가 없었다.
+     *
+     * ⚠️ **되돌릴 수 없다.** 그래서 부르는 쪽(일렉트론)이 **직전에 대상을 로컬 세이브파일로
+     * 뽑아둔다** — 클라우드에는 백업이 없다는 게 9단계의 전제였고, 이 기능이 정확히
+     * 그 구멍을 건드린다. 경로를 `/import`와 가른 이유도 같다:
+     * 쿼리 파라미터 하나로 갈라두면 **실수로 붙는 순간 데이터가 사라진다**
+     */
+    @PostMapping("/replace")
+    public MemberImportService.Result replaceData(@LoginMember Long memberId,
+                                                  @RequestBody MemberExport data) {
+        return memberDataReplaceService.replace(memberId, data);
     }
 
     /** 편집 폼 선택지 (화면 2·4 공용) */

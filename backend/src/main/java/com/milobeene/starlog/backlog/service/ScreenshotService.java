@@ -186,14 +186,43 @@ public class ScreenshotService {
         Game game = entry.getGame();
 
         String slug = game.getMediaFolder();
-        if (slug == null) {
-            if (!create) {
-                return null;
-            }
-            // 첫 저장 때 정한다. 이름이 나중에 바뀌어도 폴더는 그대로 간다
-            slug = game.assignMediaFolder(uniqueSlug(game));
+        if (slug != null) {
+            return mediaPaths.mediaFolder(slug);
         }
-        return mediaPaths.mediaFolder(slug);
+
+        /*
+         * ## 🔴 칸이 비었다고 폴더가 없는 건 아니다 (2026-08-28)
+         *
+         * 예전엔 여기서 바로 null을 돌려줬다 — 그래서 `media/slay-the-spire/`에 파일이
+         * 멀쩡히 있는데 **화면에는 "여기에 끌어다 놓으세요"만** 떴다. 한 장을 올리는 순간
+         * 폴더 이름이 정해지면서 **있던 파일까지 한꺼번에 나타났다.**
+         *
+         * 칸이 빌 수 있는 길이 여럿이다 — 클라우드에서 뽑은 세이브파일(내보내기가 이 칸을
+         * 담기 전에 만들어진 것), 백업에서 되돌린 것, 사람이 폴더를 먼저 만든 경우.
+         * 실제로 게임 77개 중 이 칸이 채워진 건 1개뿐이었다.
+         *
+         * **그래서 이름으로 한 번 찾아본다.** 폴더가 이미 있으면 그게 이 게임 것이다 —
+         * `uniqueSlug`가 남이 차지한 이름은 피해 가므로 남의 폴더를 뺏지 않는다
+         */
+        String candidate = uniqueSlug(game);
+        Path folder = mediaPaths.mediaFolder(candidate);
+        if (Files.isDirectory(folder)) {
+            /*
+             * 칸에도 적어둔다. 다만 **목록 조회는 `readOnly = true`라 이 변경이 저장되지
+             * 않는다** — 스프링이 세션을 읽기 전용으로 두어 변경 감지가 안 돈다.
+             * 그래도 적는 이유는 `save`·`folderPath`처럼 쓰기로 들어온 경우에는 저장되고,
+             * 저장이 안 되는 쪽도 손해가 없기 때문이다(다음에 다시 찾으면 그만이고,
+             * `isDirectory` 한 번은 DB 조회보다 싸다)
+             */
+            game.assignMediaFolder(candidate);
+            return folder;
+        }
+
+        if (!create) {
+            return null;
+        }
+        // 첫 저장 때 정한다. 이름이 나중에 바뀌어도 폴더는 그대로 간다
+        return mediaPaths.mediaFolder(game.assignMediaFolder(candidate));
     }
 
     /**

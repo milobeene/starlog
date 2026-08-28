@@ -128,6 +128,16 @@ public final class StartupDiagnostic {
         if (state.equals("90020")) {
             return DiagnosticCode.DB_IN_USE;
         }
+        /*
+         * 90028 = IO Exception. 잘린 `.mv.db`를 열면 이게 나온다 — MVStore가 청크 머리에
+         * 적힌 위치를 읽으러 갔는데 파일이 거기까지 없어서 EOFException이 난다.
+         *
+         * **실제로 겪었다.** 진단이 이걸 UNKNOWN으로 넘겨서 화면에는 "예기치 않게 종료"만
+         * 떴고, 성한 백업이 12개 있는데도 아무도 그리로 안내하지 않았다
+         */
+        if (state.equals("90028")) {
+            return DiagnosticCode.DB_CORRUPTED;
+        }
         return DiagnosticCode.DB_UNKNOWN_ERROR;
     }
 

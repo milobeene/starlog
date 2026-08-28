@@ -236,10 +236,10 @@ export default function GameMasterMaster() {
                       return next;
                     })
                   }
-                  className="h-4 w-4 shrink-0 accent-white"
+                  className="pick-circle"
                 />
               ) : (
-                <span className="w-4 shrink-0" />
+                <span className="w-[1.15rem] shrink-0" />
               )}
 
               <div className="w-10 shrink-0">

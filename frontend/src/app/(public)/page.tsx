@@ -100,8 +100,22 @@ export default function EntryPage() {
   const launch = async (mode: LaunchMode, target: string) => {
     setProgress({ phase: "starting" });
     setStep("launching");
-    // 성공하면 일렉트론이 창을 본 앱으로 넘긴다. 실패는 onProgress가 error로 알린다
-    await getBridge()!.launch({ mode, target });
+    /*
+     * 성공하면 일렉트론이 창을 본 앱으로 넘긴다. 실패는 대개 `onProgress`가 error로 알린다.
+     *
+     * ⚠️ **하지만 IPC가 예외를 던지는 길이 따로 있다** — 이름 규칙에 안 맞는 세이브파일
+     * (탐색기에서 손으로 바꾼 이름)이면 `assertSaveName`이 던진다. 그때는 `progress`가
+     * 영영 안 와서 **로딩 화면이 안 걷혔다.** 잡아서 같은 error 갈래로 합친다
+     */
+    try {
+      await getBridge()!.launch({ mode, target });
+    } catch (e) {
+      setProgress({
+        phase: "error",
+        code: "LAUNCH_REFUSED",
+        message: e instanceof Error ? e.message : String(e),
+      });
+    }
   };
 
   const compact = current !== "mode" && current !== "web";
@@ -158,16 +172,47 @@ export default function EntryPage() {
                 고르는 단계가 없다
               */}
               {session && (
-                <button onClick={resume} className={`${BUTTON} mb-4 border-white/45`}>
-                  최근 접속 · {session.target}
-                  {/* 이름만으로는 어느 쪽인지 모른다 — 세이브파일과 연결 이름이 섞여 보인다 */}
+                <button
+                  onClick={resume}
+                  className={`${BUTTON} group relative mb-4 border-white/45`}
+                >
                   {/*
-                    ⚠️ `text-white/45`를 쓰면 **호버해도 흰색 그대로다** — 부모의
-                    `hover:text-black`은 상속인데 여기서 색을 직접 정해버려 이기지 못한다.
-                    투명도만 낮추면 부모가 정한 색을 따라간다
+                    폭을 붙드는 유령. 호버하면 안의 글씨가 접히는데, 이게 없으면 **버튼이
+                    같이 줄어들어** 커서가 밖으로 나가고 깜빡거린다. 항상 전체 문구다
                   */}
-                  <span className="ml-1.5 opacity-55 normal-case">
-                    ({session.mode === "local" ? "세이브파일" : "데이터베이스"})
+                  <span className="invisible" aria-hidden>
+                    최근 접속 · {session.target} (
+                    {session.mode === "local" ? "세이브파일" : "데이터베이스"})
+                  </span>
+
+                  <span className="absolute inset-0 flex items-center gap-1.5 px-6 sm:px-8">
+                    <span className="entry-recent-fade">최근 접속 ·</span>
+                    <span className="truncate">{session.target}</span>
+                    {/* 이름만으로는 어느 쪽인지 모른다 — 세이브파일과 연결 이름이 섞여 보인다 */}
+                    {/*
+                      ⚠️ `text-white/45`를 쓰면 **호버해도 흰색 그대로다** — 부모의
+                      `hover:text-black`은 상속인데 여기서 색을 직접 정해버려 이기지 못한다.
+                      투명도만 낮추면 부모가 정한 색을 따라간다
+                    */}
+                    <span className="entry-recent-fade opacity-55 normal-case">
+                      ({session.mode === "local" ? "세이브파일" : "데이터베이스"})
+                    </span>
+
+                    {/* 접힌 자리를 화살표가 채운다 — 오른쪽 끝까지 이어져 "들어간다"가 된다 */}
+                    <span className="entry-arrow" aria-hidden>
+                      <span className="entry-arrow-line" />
+                      <svg
+                        className="entry-arrow-head"
+                        viewBox="0 0 8 12"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M1.5 1.5 L6.5 6 L1.5 10.5" />
+                      </svg>
+                    </span>
                   </span>
                 </button>
               )}
@@ -218,7 +263,23 @@ export default function EntryPage() {
           )}
 
           {current === "launching" && (
-            <LaunchOverlay progress={progress} onRetry={() => setStep("mode")} />
+            <LaunchOverlay
+              progress={progress}
+              onRetry={() => setStep("mode")}
+              /*
+                손상됐을 때만 뜨는 길. **실패한 그 세이브파일의 백업**으로 곧장 보낸다 —
+                "백업에서 되돌리세요"라고만 하면 모드 고르기부터 다시 밟아야 하고,
+                그 사이에 무엇을 되돌리려던 건지 잊는다
+              */
+              onRecover={
+                progress.phase === "error" && progress.mode === "local" && progress.target
+                  ? () => {
+                      setBackupTarget(progress.target!);
+                      setStep("backups");
+                    }
+                  : undefined
+              }
+            />
           )}
         </div>
       </div>

@@ -26,7 +26,12 @@ export default function ConnectionList({
   /* 삭제는 되돌릴 수 없다 — 예전엔 안내도 없이 그냥 사라졌다 */
   const [deleting, setDeleting] = useState<ConnectionProfile | null>(null);
 
-  const reload = () => getBridge()?.connections.list().then(setProfiles);
+  const reload = () =>
+    getBridge()
+      ?.connections.list()
+      .then(setProfiles)
+      // 거부되면 빈 목록으로 떨어뜨린다 — 스켈레톤이 영영 남는 것보다 낫다
+      .catch(() => setProfiles([]));
   useEffect(() => { reload(); }, []);
 
   const closeForm = () => {
@@ -60,7 +65,10 @@ export default function ConnectionList({
 
         {profiles === null && <div className="h-16 skeleton-sweep rounded-lg bg-white/[0.06]" />}
 
-        {profiles?.map((profile) => (
+        {/* 목록만 자기 안에서 스크롤한다 — 입구는 한 장으로 유지된다 */}
+        {profiles !== null && profiles.length > 0 && (
+        <div className="entry-list flex flex-col gap-2">
+        {profiles.map((profile) => (
           <div
             key={profile.name}
             className="group flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3 transition-colors hover:border-white/25 hover:bg-white/[0.06]"
@@ -84,6 +92,8 @@ export default function ConnectionList({
             </button>
           </div>
         ))}
+        </div>
+        )}
 
         {profiles?.length === 0 && (
           <p className="py-2 text-xs text-white/35">

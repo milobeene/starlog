@@ -33,6 +33,8 @@ contextBridge.exposeInMainWorld("starlog", {
   saves: {
     list: () => ipcRenderer.invoke("saves:list"),
     create: (name) => ipcRenderer.invoke("saves:create", name),
+    /** 이름 바꾸기 — 백업 폴더와 [최근 접속] 기록까지 함께 옮긴다 */
+    rename: (from, to) => ipcRenderer.invoke("saves:rename", from, to),
     remove: (name) => ipcRenderer.invoke("saves:remove", name),
   },
 
@@ -54,6 +56,14 @@ contextBridge.exposeInMainWorld("starlog", {
    * ⚠️ 커버 실물은 안 따라온다 — 스토리지에 있다. 마스터 커버로 폴백된다
    */
   cloudToSaveFile: (saveName) => ipcRenderer.invoke("cloud:toSaveFile", saveName),
+
+  /**
+   * 반대 방향 — 로컬 세이브파일을 지금 붙은 데이터베이스에 **덮어쓴다** (2026-08-28).
+   *
+   * ⚠️ 되돌릴 수 없다. 그래서 일렉트론이 **직전에 지금 데이터를 세이브파일로 뽑아둔다** —
+   * 돌려주는 `safetySaveName`이 그것이다. 화면은 그 이름을 반드시 사람에게 보여줘야 한다
+   */
+  saveFileToCloud: (saveName) => ipcRenderer.invoke("saveFile:toCloud", saveName),
 
   /** 지금 붙어 있는 대상. `alive`면 [최근 접속]이 즉시 이동이다 */
   session: {

@@ -32,8 +32,19 @@ export default function BackupList({
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  /*
+   * ⚠️ **`.catch`가 없어서 "불러오는 중" 상자가 영영 남았다** (2026-08-28).
+   * `backups:usage`도 이름 검사를 지나므로, 규칙에 안 맞는 세이브파일에서는 거부된다 —
+   * 그때 화면은 아무 말도 없이 스켈레톤만 계속 그렸다
+   */
   const reload = useCallback(() => {
-    getBridge()?.backups.usage(saveName).then(setUsage);
+    getBridge()
+      ?.backups.usage(saveName)
+      .then(setUsage)
+      .catch((e) => {
+        setUsage({ items: [], count: 0, totalBytes: 0, keepCount: 0, keepBytes: 0 });
+        setError(e instanceof Error ? e.message : String(e));
+      });
   }, [saveName]);
 
   useEffect(() => {
@@ -64,7 +75,10 @@ export default function BackupList({
       <div className="flex flex-col gap-2">
         {usage === null && <div className="h-16 skeleton-sweep rounded-lg bg-white/[0.06]" />}
 
-        {usage?.items.map((item) => (
+        {/* 목록만 자기 안에서 스크롤한다 — 30개까지 쌓이므로 입구가 밀린다 */}
+        {usage && usage.items.length > 0 && (
+        <div className="entry-list flex flex-col gap-2">
+        {usage.items.map((item) => (
           <div
             key={item.fileName}
             className="group flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3"
@@ -104,9 +118,13 @@ export default function BackupList({
             </button>
           </div>
         ))}
+        </div>
+        )}
 
         {usage?.items.length === 0 && (
-          <p className="py-2 text-xs text-white/35">아직 백업이 없습니다.</p>
+          <p className="py-2 text-xs text-white/35">
+            아직 백업이 없습니다. 이 세이브파일을 열면 자동으로 하나 만들어집니다.
+          </p>
         )}
 
         <div className="mt-3 flex items-center gap-3">

@@ -48,6 +48,7 @@ class MemberExportImportTest extends ControllerTestSupport {
 
     @Autowired MemberExportService exportService;
     @Autowired MemberImportService importService;
+    @Autowired MemberDataReplaceService replaceService;
     @Autowired BacklogService backlogService;
     @Autowired PlaythroughService playthroughService;
     @Autowired AcquisitionService acquisitionService;
@@ -58,6 +59,77 @@ class MemberExportImportTest extends ControllerTestSupport {
     @Autowired PlatformAccountRepository platformAccountRepository;
     @Autowired DeviceRepository deviceRepository;
     @Autowired com.milobeene.starlog.platform.service.DefaultCatalogSeeder defaultCatalogSeeder;
+
+    /**
+     * 덮어쓰기 (2026-08-28). **로컬 세이브파일을 데이터베이스로 올리는 길**이다.
+     *
+     * 가져오기가 빈 계정만 받으므로, 이미 쓰던 데이터베이스에는 넣을 방법이 없었다.
+     * 지우고 붓는 것 말고 답이 없어서(병합은 판정이 불가능하다) 그 순서가 맞는지 못 박는다 —
+     * **지우는 코드는 순서 하나만 틀려도 FK에 걸려 반쯤 지운 상태로 멈춘다.**
+     */
+    @Test
+    public void 덮어쓰면_옛_데이터가_사라지고_새것만_남는다() {
+        //given — 대상에는 이미 제 기록이 있다. 선택지(플랫폼·기기)까지 딸린 상태
+        Member source = saveMember();
+        richEntry(source, "Celeste");
+        em.flush();
+        MemberExport data = exportService.export(source.getId());
+        em.flush();
+        em.clear();
+
+        Member target = saveMember();
+        richEntry(target, "Hades");
+        em.flush();
+        em.clear();
+        assertThat(backlogEntryRepository.findAllForExport(target.getId())).hasSize(1);
+
+        //when
+        MemberImportService.Result result = replaceService.replace(target.getId(), data);
+        em.flush();
+        em.clear();
+
+        //then — 옛것은 없고 새것만 있다
+        assertThat(result.entries()).isEqualTo(1);
+        BacklogEntry entry = onlyEntryOf(target);
+        assertThat(entry.getDisplayName()).isEqualTo("셀레스테");
+
+        //then — **파생 상태가 다시 계산됐는가.** 덮어쓰기도 결국 가져오기를 지난다
+        assertThat(entry.getStatus()).isEqualTo(BacklogStatus.COMPLETED);
+        assertThat(entry.getLastPlaythrough()).isNotNull();
+
+        //then — 원본(다른 회원)은 안 건드린다. 지우기가 회원 경계를 넘지 않는가
+        assertThat(backlogEntryRepository.findAllForExport(source.getId())).hasSize(1);
+    }
+
+    /**
+     * 덮어쓰기를 **두 번** 해도 된다. 한 번은 되는데 두 번째가 깨지는 건 흔한 실패다 —
+     * 첫 번째가 남긴 선택지(플랫폼·기기)가 두 번째의 지우기에 걸린다
+     */
+    @Test
+    public void 덮어쓰기를_두_번_해도_된다() {
+        //given
+        Member source = saveMember();
+        richEntry(source, "Celeste");
+        em.flush();
+        MemberExport data = exportService.export(source.getId());
+        em.flush();
+        em.clear();
+
+        Member target = saveMember();
+        em.flush();
+
+        //when
+        replaceService.replace(target.getId(), data);
+        em.flush();
+        em.clear();
+        MemberImportService.Result second = replaceService.replace(target.getId(), data);
+        em.flush();
+        em.clear();
+
+        //then — 두 번째도 한 벌만 남는다. 쌓이면 유니크 제약에 걸린다
+        assertThat(second.entries()).isEqualTo(1);
+        assertThat(backlogEntryRepository.findAllForExport(target.getId())).hasSize(1);
+    }
 
     @Test
     public void 내보내고_빈_계정에_넣으면_그대로_복원된다() {

@@ -44,6 +44,15 @@ let stoppingOnPurpose = false;
  * 상태가 생기고, 그때 **"최근 접속"이 즉시 이동인지 새로 기동인지**를 이 값이 가른다
  */
 let session = null;
+/**
+ * 지금 띄우려는 대상 — `{ mode, target }`.
+ *
+ * `session`은 **성공한 뒤에야** 채워지므로 실패를 설명할 때 쓸 수가 없다. 그런데 실패하면
+ * 창이 입구로 **통째로 다시 로드**되어 화면 쪽 상태(무엇을 누르셨는지)도 함께 날아간다.
+ * 그래서 "손상됐으니 이 세이브파일의 백업으로 가시라"를 화면이 스스로 알 방법이 없었다.
+ * 진단에 대상을 실어 보내려고 여기에 남긴다
+ */
+let launching = null;
 
 /*
  * ## app:// 를 "진짜 오리진"으로 등록한다
@@ -178,8 +187,20 @@ function parseInto(resolve, reject, urlPath, text) {
   }
 }
 
+/**
+ * 기동 진행 상황을 화면에 알린다.
+ *
+ * ⚠️ **실패에는 대상을 붙여서 보낸다.** 기동이 실패하면 창이 입구로 통째로 다시 로드되어
+ * 화면 쪽 상태가 날아간다 — "무엇을 여시려다 실패했는지"를 화면이 스스로 알 방법이 없다.
+ * 그 정보가 있어야 "손상됐으니 **이 세이브파일의** 백업으로 가시라"를 띄울 수 있다.
+ *
+ * 붙이는 걸 여기 한 곳에 둔 이유 — 실패를 알리는 자리가 둘이다(`onBackendDied`와
+ * `launch`의 catch). 각자 붙이게 두면 **나중에 온 쪽이 대상 없는 payload로 덮어쓴다.**
+ * 실제로 그랬고, 그래서 [백업에서 되돌리기] 버튼이 끝내 안 떴다
+ */
 function progress(payload) {
-  if (win && !win.isDestroyed()) win.webContents.send("launch:progress", payload);
+  const full = payload.phase === "error" ? { ...(launching ?? {}), ...payload } : payload;
+  if (win && !win.isDestroyed()) win.webContents.send("launch:progress", full);
 }
 
 /**
@@ -341,7 +362,11 @@ function startBackend(port, config) {
 function onBackendDied(code, diagnostic) {
   if (!win || win.isDestroyed()) return;
   loadEntry();
-  progress({ phase: "error", code: diagnostic ?? "BACKEND_DIED", exitCode: code });
+  progress({
+    phase: "error",
+    code: diagnostic ?? "BACKEND_DIED",
+    exitCode: code,
+  });
 }
 
 /**
@@ -487,7 +512,44 @@ function createWindow() {
  * 여기 두면 **이름을 만들어내는 `backup.js`가 그걸 못 본다** — 되돌리기가 규칙을 어긴
  * 이름을 만들어 열지도 지우지도 못하는 세이브파일이 생겼다
  */
-const { assertSaveName } = require("./saveName");
+const names = require("./saveName");
+const { assertSaveName } = names;
+
+/**
+ * 새 세이브파일을 만들고 JSON을 부어넣는다.
+ *
+ * **두 군데가 똑같이 필요해졌다** — 클라우드를 뽑을 때와, 덮어쓰기 전에 안전망을 뜰 때.
+ * 갈라두면 한쪽만 고쳐지는 건 이번 리뷰에서 이미 여러 번 겪었다.
+ *
+ * 빈 세이브파일에 스키마를 만드는 일은 백엔드를 한 번 띄우면 Flyway가 알아서 한다.
+ * 그 백엔드는 **격리해서** 띄운다 — 창이 보고 있는 백엔드는 손대지 않는다
+ */
+async function pourInto(saveName, dump) {
+  const dirs = dataDirs();
+  const port = await freePort();
+  const probe = spawnProbe(port, localConfig(saveName));
+  try {
+    await waitForBackend(port, 90_000, probe.isAlive);
+    await postJson(port, "/api/me/import", dump);
+  } catch (e) {
+    await probe.stop();
+    /*
+     * ⚠️ **반쯤 만들어진 세이브파일을 치운다.** Flyway가 스키마까지는 만들어놨으므로
+     * 파일이 남는데, 그러면 같은 이름으로 다시 시도할 수가 없다 — "이미 있습니다"만 뜬다
+     */
+    for (const suffix of [".mv.db", ".trace.db"]) {
+      const file = path.join(dirs.saves, `${saveName}${suffix}`);
+      if (fs.existsSync(file)) fs.rmSync(file, { force: true });
+    }
+    const result = await probe.exited;
+    throw new Error(result?.diagnostic
+      ? `세이브파일을 만들지 못했습니다 (${result.diagnostic})`
+      : (e.message || String(e)));
+  }
+  // 잠금이 풀릴 때까지 기다린다 — 바로 열러 갈 수 있어야 한다
+  await probe.stop();
+  return saveName;
+}
 
 function dataDirs() {
   return paths.ensureDataRoot(store.getSettings().dataRoot);
@@ -604,6 +666,71 @@ function registerIpc() {
       throw new Error("같은 이름의 세이브파일이 이미 있습니다");
     }
     return clean;
+  });
+
+  /**
+   * 세이브파일 이름 바꾸기 (2026-08-28).
+   *
+   * ## 백업 폴더가 함께 따라가야 한다
+   *
+   * 백업은 `backups/<세이브이름>/`에 모여 있어서, 파일만 바꾸면 **백업이 통째로 주인을 잃는다.**
+   * 목록에서는 사라지는데 디스크에는 남아 있는 상태 — 되돌릴 수 있는데 되돌릴 방법이 없어진다.
+   *
+   * ## 왜 필요해졌나
+   *
+   * 되돌리기가 `내 기록 2026-08-28_041513` 같은 이름을 만든다. 추적에는 좋지만 계속 쓸
+   * 이름은 아니다. 그리고 **탐색기에서 손으로 바꾸면 규칙을 어겨 열 수 없는 파일이 된다** —
+   * 앱 안에 길을 내주는 게 그 사고를 막는 방법이기도 하다
+   */
+  ipcMain.handle("saves:rename", async (_e, from, to) => {
+    const oldName = assertSaveName(from);
+    const newName = assertSaveName(to);
+    if (oldName === newName) return newName;
+
+    const dirs = dataDirs();
+    if (fs.existsSync(path.join(dirs.saves, `${newName}.mv.db`))) {
+      throw new Error("같은 이름의 세이브파일이 이미 있습니다");
+    }
+    if (!fs.existsSync(path.join(dirs.saves, `${oldName}.mv.db`))) {
+      throw new Error("세이브파일을 찾을 수 없습니다");
+    }
+
+    // 열고 있으면 못 바꾼다 — 윈도우는 거부하고, 맥은 바뀌되 서버가 옛 이름을 붙든다
+    if (session?.mode === "local" && session.target === oldName) {
+      await stopBackend();
+    }
+
+    for (const suffix of [".mv.db", ".trace.db"]) {
+      const src = path.join(dirs.saves, `${oldName}${suffix}`);
+      if (fs.existsSync(src)) {
+        fs.renameSync(src, path.join(dirs.saves, `${newName}${suffix}`));
+      }
+    }
+
+    const oldBackups = path.join(dirs.backups, oldName);
+    if (fs.existsSync(oldBackups)) {
+      const target = path.join(dirs.backups, newName);
+      /*
+       * 새 이름의 백업 폴더가 이미 있으면(전에 같은 이름을 쓴 적이 있다) 안으로 옮겨 합친다.
+       * 통째로 rename하면 **있던 백업을 덮어써서 지운다**
+       */
+      if (fs.existsSync(target)) {
+        for (const file of fs.readdirSync(oldBackups)) {
+          const to2 = path.join(target, file);
+          if (!fs.existsSync(to2)) fs.renameSync(path.join(oldBackups, file), to2);
+        }
+        fs.rmSync(oldBackups, { recursive: true, force: true });
+      } else {
+        fs.renameSync(oldBackups, target);
+      }
+    }
+
+    // [최근 접속]이 사라진 이름을 가리키지 않게 한다
+    const settings = store.getSettings();
+    if (settings.lastMode === "local" && settings.lastTarget === oldName) {
+      store.patchSettings({ lastTarget: newName });
+    }
+    return newName;
   });
 
   ipcMain.handle("saves:remove", async (_e, name) => {
@@ -753,6 +880,7 @@ function registerIpc() {
      * 다른 세이브를 골랐더라도 마찬가지로 죽인다: 백엔드는 한 번에 하나면 충분하고,
      * 둘을 살려두면 "지금 보고 있는 게 어느 쪽이냐"가 흐려진다
      */
+    launching = { mode: request.mode, target: request.target };
     progress({ phase: "starting" });
     await stopBackend();
 
@@ -847,35 +975,67 @@ function registerIpc() {
      * 죽일 이유가 애초에 없다 — 상대는 **다른 DB의 다른 포트**다. 시험용과 같은 방식으로
      * 격리해서 띄우고 내리면 창도 세션도 그대로다
      */
+    await pourInto(clean, dump);
+    return { saveName: clean };
+  });
+
+  /**
+   * 로컬 세이브파일 → 지금 붙어 있는 데이터베이스 (2026-08-28). **덮어쓰기다.**
+   *
+   * ## 지우기 전에 빠져나갈 구멍을 판다
+   *
+   * ⚠️ 백엔드의 `/api/me/replace`는 **되돌릴 수 없다.** 그런데 클라우드에는 백업이
+   * 아예 없다는 게 9단계의 전제였다 — 복사할 파일이 없어서다. 이 기능이 정확히 그
+   * 구멍을 건드리므로, **덮어쓰기 직전에 대상을 로컬 세이브파일로 뽑아둔다.**
+   * 그러면 "덮어썼는데 아차" 할 때 돌아갈 데가 생긴다 (사용자 승인 2026-08-28).
+   *
+   * ## 본 백엔드는 계속 살아 있다
+   *
+   * 읽어올 세이브파일은 **시험용처럼 격리해서** 잠깐 띄운다. 뽑기에서 창이 죽은 포트를
+   * 보게 됐던 실수를 여기서 되풀이하지 않는다
+   */
+  ipcMain.handle("saveFile:toCloud", async (_e, saveName) => {
+    if (session?.mode !== "cloud" || !backendPort) {
+      throw new Error("데이터베이스로 접속 중일 때만 올릴 수 있습니다");
+    }
+    const clean = assertSaveName(saveName);
+    const dirs = dataDirs();
+    if (!fs.existsSync(path.join(dirs.saves, `${clean}.mv.db`))) {
+      throw new Error("세이브파일을 찾을 수 없습니다");
+    }
+
+    /*
+     * ① 안전망. 지금 데이터베이스에 든 것을 세이브파일 하나로 뽑아둔다.
+     *    이름이 겹치면 뒤에 번호를 붙인다 — 여러 번 덮어써도 매번 남아야 한다
+     */
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[-T:]/g, "").replace(/^(\d{8})/, "$1_");
+    let safety = names.fit(`덮어쓰기 전 ${session.target} ${stamp}`);
+    for (let i = 2; fs.existsSync(path.join(dirs.saves, `${safety}.mv.db`)); i += 1) {
+      safety = names.fit(`덮어쓰기 전 ${session.target} ${stamp}`, `-${i}`);
+    }
+    const before = await getJson(backendPort, "/api/me/export");
+    await pourInto(safety, before);
+
+    // ② 올릴 것을 읽어온다. 세이브파일을 격리해서 잠깐 띄운다
     const port = await freePort();
     const probe = spawnProbe(port, localConfig(clean));
+    let dump;
     try {
       await waitForBackend(port, 90_000, probe.isAlive);
-      await postJson(port, "/api/me/import", dump);
-    } catch (e) {
+      dump = await getJson(port, "/api/me/export");
+    } finally {
       await probe.stop();
-      /*
-       * ⚠️ **반쯤 만들어진 세이브파일을 치운다.** Flyway가 스키마까지는 만들어놨으므로
-       * 파일이 남는데, 그러면 같은 이름으로 다시 시도할 수가 없다 — "이미 있습니다"만 뜬다.
-       * 사용자 눈에는 아무것도 안 생겼는데 이름만 잠긴 꼴이다
-       */
-      for (const suffix of [".mv.db", ".trace.db"]) {
-        const file = path.join(dirs.saves, `${clean}${suffix}`);
-        if (fs.existsSync(file)) fs.rmSync(file, { force: true });
-      }
-      /*
-       * 진단 코드가 있으면 그걸 준다 — `JAVA_NOT_FOUND`처럼 원인이 분명한 경우가 있고,
-       * 그때 "가져오기 실패"만 뜨면 어디를 봐야 할지 알 수가 없다
-       */
-      const result = await probe.exited;
-      throw new Error(result?.diagnostic
-        ? `세이브파일을 만들지 못했습니다 (${result.diagnostic})`
-        : (e.message || String(e)));
     }
-    // 잠금이 풀릴 때까지 기다린다 — 바로 열러 갈 수 있어야 한다
-    await probe.stop();
 
-    return { saveName: clean };
+    // ③ 덮어쓴다. 여기서 실패해도 ①이 남아 있다
+    const result = await postJson(backendPort, "/api/me/replace", dump);
+
+    /*
+     * 창이 보고 있는 건 **덮어쓰기 전의 데이터**다. 그대로 두면 없는 항목을 눌러
+     * 404를 보게 된다. 포트는 그대로라 새로고침이면 충분하다
+     */
+    if (win && !win.isDestroyed()) win.webContents.reload();
+    return { ...result, safetySaveName: safety };
   });
 
   ipcMain.handle("backToEntry", () => {

@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Button, FIELD_INPUT } from "@/components/ui/Field";
-import { getBridge, type SessionInfo } from "@/lib/desktop";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { getBridge, type SaveFile, type SessionInfo } from "@/lib/desktop";
 import { api } from "@/lib/api";
 
 /**
@@ -36,7 +37,14 @@ export default function DesktopSection() {
 
       {/* 클라우드로 접속 중일 때만. 로컬은 이미 세이브파일이 그 자체로 있다 */}
       {session?.mode === "cloud" ? (
-        <CloudExtract />
+        <>
+          <CloudExtract />
+          {/*
+            반대 방향. 뽑기만 있고 올리기가 없어서 **밖에서 정리한 기록을 다시 올릴 수가
+            없었다.** 되돌릴 수 없는 일이라 뽑기 아래에 두고 색을 달리한다
+          */}
+          <SaveFileUpload />
+        </>
       ) : (
         <p className="text-[11px] leading-relaxed text-white/30">
           지금은 로컬 세이브파일로 쓰고 계십니다. 백업과 되돌리기는 입구 화면의 세이브파일
@@ -127,6 +135,117 @@ function CloudExtract() {
         </p>
       )}
       {error && <p className="text-xs text-red-400">{error}</p>}
+    </div>
+  );
+}
+
+/**
+ * 로컬 세이브파일 → 지금 붙은 데이터베이스. **덮어쓴다** (2026-08-28).
+ *
+ * ## 왜 덮어쓰기뿐인가
+ *
+ * 병합을 하려면 "같은 항목인가"를 판정해야 하는데, 같은 게임의 회차 두 벌이 같은 것인지
+ * 다른 것인지 알 방법이 없다. 그 문제가 이 기능 전체보다 크다 (`MemberImportService` 주석).
+ *
+ * ## 지우기 전에 자동으로 뽑아둔다
+ *
+ * 일렉트론이 덮어쓰기 **직전에** 지금 데이터베이스를 세이브파일로 뽑는다. 클라우드에는
+ * 백업이 없다는 게 9단계의 전제였고 이 기능이 정확히 그 구멍을 건드리기 때문이다.
+ * 그 이름을 반드시 보여준다 — 있는 줄 몰라야 할 이유가 없다
+ */
+function SaveFileUpload() {
+  const [saves, setSaves] = useState<SaveFile[] | null>(null);
+  const [picked, setPicked] = useState<string>("");
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<{ entries: number; safety: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    getBridge()?.saves.list().then(setSaves).catch(() => setSaves([]));
+  }, []);
+
+  const upload = async () => {
+    setConfirming(false);
+    setBusy(true);
+    setError(null);
+    setDone(null);
+    try {
+      const r = await getBridge()!.saveFileToCloud(picked);
+      setDone({ entries: r.entries, safety: r.safetySaveName });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-2 flex flex-col gap-3 border-t border-white/8 pt-5">
+      <div>
+        <h3 className="text-[11px] font-semibold tracking-widest text-white/50 uppercase">
+          세이브파일을 데이터베이스로 올리기
+        </h3>
+        <p className="mt-1 text-[11px] leading-relaxed text-white/30">
+          고른 세이브파일의 내용으로 지금 데이터베이스를 <b className="text-amber-200/70">통째로
+          바꿉니다.</b> 지금 들어 있는 기록은 사라집니다.
+          <br />
+          바꾸기 직전에 지금 데이터를 세이브파일로 자동 저장하므로, 되돌릴 수 있습니다.
+        </p>
+      </div>
+
+      {saves?.length === 0 ? (
+        <p className="text-[11px] text-white/30">올릴 세이브파일이 없습니다.</p>
+      ) : (
+        <div className="flex gap-2">
+          <select
+            value={picked}
+            onChange={(e) => setPicked(e.target.value)}
+            className={FIELD_INPUT}
+          >
+            <option value="">세이브파일 고르기</option>
+            {saves?.map((s) => (
+              <option key={s.name} value={s.name}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+          <Button
+            variant="danger"
+            onClick={() => setConfirming(true)}
+            disabled={busy || !picked}
+          >
+            {busy ? "올리는 중" : "덮어쓰기"}
+          </Button>
+        </div>
+      )}
+
+      {done && (
+        <p className="text-xs text-emerald-300/80">
+          항목 {done.entries}건을 올렸습니다. 바꾸기 전 데이터는 <b>{done.safety}</b>{" "}
+          세이브파일에 저장해 뒀습니다.
+        </p>
+      )}
+      {error && <p className="text-xs text-red-400">{error}</p>}
+
+      {confirming && (
+        <ConfirmDialog
+          title="데이터베이스 덮어쓰기"
+          confirmLabel="덮어쓰기"
+          message={
+            <>
+              지금 데이터베이스의 기록이 전부 사라지고 <b className="text-white">{picked}</b>의
+              내용으로 바뀝니다.
+              <span className="mt-2 block text-white/50">
+                바꾸기 직전에 지금 데이터를 세이브파일로 자동 저장합니다. 잘못됐다면 그걸 열어
+                되돌리실 수 있습니다.
+              </span>
+            </>
+          }
+          onClose={() => setConfirming(false)}
+          onConfirm={upload}
+        />
+      )}
     </div>
   );
 }

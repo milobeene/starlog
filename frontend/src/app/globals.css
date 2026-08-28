@@ -350,3 +350,123 @@
   from { transform: translateY(12px); opacity: 0; }
   to   { transform: translateY(0);    opacity: 1; }
 }
+
+/*
+ * 입구 화면의 목록 (2026-08-28).
+ *
+ * ## 입구는 절대 스크롤되지 않는다
+ *
+ * 세이브파일이나 연결이 늘면 패널이 화면보다 길어져 **입구 전체가 스크롤된다.**
+ * 그러면 배경 연출이 밀려 올라가고 [뒤로]가 화면 밖으로 나간다 — 입구는 한 장이어야 한다.
+ * 목록만 자기 안에서 스크롤시키면 헤더와 아래 입력칸은 언제나 제자리에 남는다.
+ *
+ * `vh`를 쓰는 이유 — 창 크기를 380px까지 줄일 수 있어서(main.js `minWidth`)
+ * 고정 픽셀로 잡으면 작은 창에서 도로 넘친다
+ */
+.entry-list {
+  max-height: min(46vh, 22rem);
+  overflow-y: auto;
+  /* 스크롤 막대가 생겼다 사라질 때 내용이 덜컥거리지 않게 자리를 미리 잡는다 */
+  scrollbar-gutter: stable;
+}
+
+/*
+ * [최근 접속] 호버 (2026-08-28, 사용자 아이디어).
+ *
+ * "최근 접속 ·"과 "(세이브파일)"은 접혀 사라지고, 이름이 왼쪽으로 밀리면서
+ * 오른쪽 끝까지 화살표가 이어진다.
+ *
+ * ## 폭이 안 변해야 한다
+ *
+ * 글씨가 접히면 버튼도 같이 줄어든다 — 마우스를 올렸을 뿐인데 버튼이 작아지면
+ * 커서가 밖으로 나가 **깜빡거린다.** 그래서 `.entry-recent-ghost`가 전체 문구를
+ * 안 보이게 깔아 폭을 붙들고, 실제 내용은 그 위에 겹쳐 놓는다
+ */
+.entry-recent-fade {
+  display: inline-block;
+  max-width: 20rem;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: max-width 0.32s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.18s ease;
+}
+.group:hover .entry-recent-fade {
+  max-width: 0;
+  opacity: 0;
+}
+
+/* 이름 뒤에서 오른쪽 끝까지 이어지는 선 + 머리 */
+.entry-arrow {
+  display: flex;
+  align-items: center;
+  flex: 1 1 0;
+  min-width: 0;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+.group:hover .entry-arrow {
+  opacity: 1;
+}
+.entry-arrow-line {
+  flex: 1;
+  height: 1.5px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 0.36s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.group:hover .entry-arrow-line {
+  transform: scaleX(1);
+}
+.entry-arrow-head {
+  width: 0.5rem;
+  height: 0.75rem;
+  flex-shrink: 0;
+  /* 선이 다 그려질 즈음 머리가 도착한다 — 같이 움직이면 화살표가 아니라 막대로 보인다 */
+  transform: translateX(-0.4rem);
+  transition: transform 0.36s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.group:hover .entry-arrow-head {
+  transform: translateX(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .entry-recent-fade,
+  .entry-arrow,
+  .entry-arrow-line,
+  .entry-arrow-head {
+    transition-duration: 0.01ms;
+  }
+}
+
+/*
+ * 게임 마스터의 선택 체크박스 (2026-08-28, 사용자 요청: 원형·크게·연하게).
+ *
+ * 기본 `accent-white`는 **모양도 색도 못 바꾼다** — 네모난 데다 체크가 새하얘서
+ * 목록에서 커버보다 먼저 눈에 들어왔다. 고르는 건 부수적인 동작이라 그러면 안 된다.
+ * `appearance: none`으로 껍데기를 벗기고 직접 그린다
+ */
+.pick-circle {
+  appearance: none;
+  width: 1.15rem;
+  height: 1.15rem;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  border: 1.5px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.pick-circle:hover {
+  border-color: rgba(255, 255, 255, 0.45);
+}
+.pick-circle:checked {
+  /* 켜져도 흰색으로 때리지 않는다. 있다는 건 보이되 화면을 끌고 가지는 않게 */
+  background-color: rgba(255, 255, 255, 0.55);
+  border-color: rgba(255, 255, 255, 0.55);
+  /* 가운데 점 하나. 체크 표시는 이 크기에서 뭉개진다 */
+  box-shadow: inset 0 0 0 3.5px rgba(10, 10, 10, 0.85);
+}
+.pick-circle:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.6);
+  outline-offset: 2px;
+}

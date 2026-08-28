@@ -61,7 +61,21 @@ export type LaunchProgress =
   | { phase: "starting" }
   | { phase: "waiting" }
   | { phase: "ready" }
-  | { phase: "error"; code: string; exitCode?: number };
+  /** `message`는 코드가 없는 실패(IPC 예외)의 원문이다 — 진단 코드가 못 담는 사연이 있다 */
+  | {
+      phase: "error";
+      code: string;
+      exitCode?: number;
+      message?: string;
+      /**
+       * 무엇을 띄우려다 실패했나.
+       *
+       * ⚠️ **화면 상태로는 못 안다** — 기동이 실패하면 창이 입구로 **통째로 다시 로드**되어
+       * 리액트 상태가 통째로 날아간다. 그래서 일렉트론이 실어 보낸다
+       */
+      mode?: LaunchMode;
+      target?: string;
+    };
 
 /** 백업 한 벌 (9단계). 세이브파일과 같은 `.mv.db`라 고르면 바로 열 수 있다 */
 export interface BackupFile {
@@ -121,6 +135,8 @@ export interface StarlogBridge {
   saves: {
     list(): Promise<SaveFile[]>;
     create(name: string): Promise<string>;
+    /** 이름 바꾸기. **백업 폴더도 함께 따라간다** — 안 그러면 백업이 주인을 잃는다 */
+    rename(from: string, to: string): Promise<string>;
     remove(name: string): Promise<boolean>;
   };
   connections: {
@@ -147,6 +163,17 @@ export interface StarlogBridge {
   };
   /** 클라우드 → 로컬 세이브파일. ⚠️ 커버 실물은 안 따라온다 */
   cloudToSaveFile(saveName: string): Promise<{ saveName: string }>;
+  /**
+   * 로컬 세이브파일 → 지금 붙은 데이터베이스. **덮어쓴다.**
+   *
+   * ⚠️ `safetySaveName`은 덮어쓰기 직전에 자동으로 뜬 안전망이다 —
+   * 화면이 이 이름을 알려줘야 "아차" 했을 때 돌아갈 데를 안다
+   */
+  saveFileToCloud(saveName: string): Promise<{
+    entries: number;
+    games: number;
+    safetySaveName: string;
+  }>;
   launch(request: { mode: LaunchMode; target: string }): Promise<{ ok: boolean; code?: string }>;
   onProgress(callback: (p: LaunchProgress) => void): () => void;
   backToEntry(): Promise<boolean>;
@@ -196,6 +223,24 @@ export const DIAGNOSTIC_MESSAGE: Record<string, { title: string; hint: string }>
   DB_IN_USE: {
     title: "이 세이브파일을 이미 열고 있습니다",
     hint: "STARLOG가 이미 실행 중인지 확인해 주세요. 방금 창을 닫았다면 잠시 뒤 다시 시도해 주세요.",
+  },
+  /*
+   * 기동이 **시작도 못 한** 경우 (2026-08-28). 이름 규칙에 안 맞는 세이브파일이 대표적이다 —
+   * 탐색기에서 손으로 바꾸면 목록엔 뜨는데 열리지가 않는다. 예전엔 예외가 그냥 사라져서
+   * **로딩 화면이 영영 안 걷혔다**
+   */
+  LAUNCH_REFUSED: {
+    title: "이 세이브파일을 열 수 없습니다",
+    hint: "파일 이름에 쓸 수 없는 글자가 있는지 확인해 주세요. 목록에서 이름 바꾸기로 고칠 수 있습니다.",
+  },
+  /*
+   * ⚠️ **이 하나만 "할 일"이 정해져 있다** (2026-08-28). 다른 실패는 값을 고치거나
+   * 다시 시도하면 되지만, 손상은 **백업에서 되돌리는 것 말고 방법이 없다.**
+   * 그래서 안내만 띄우지 않고 입구 화면이 [백업에서 되돌리기] 버튼을 붙인다
+   */
+  DB_CORRUPTED: {
+    title: "세이브파일이 손상됐습니다",
+    hint: "파일 일부가 잘렸습니다. 백업에서 되돌리면 그 시점의 기록을 그대로 살릴 수 있습니다.",
   },
   BACKEND_DIED: {
     title: "앱 서버가 예기치 않게 종료됐습니다",
