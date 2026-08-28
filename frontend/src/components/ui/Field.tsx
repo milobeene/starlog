@@ -50,6 +50,7 @@ export function Field({
 export function Button({
   children,
   variant = "ghost",
+  className = "",
   ...rest
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "primary" | "ghost" | "danger";
@@ -64,7 +65,13 @@ export function Button({
   return (
     <button
       {...rest}
-      className={`rounded-md px-3 py-2 text-xs font-medium tracking-widest whitespace-nowrap uppercase transition-all disabled:pointer-events-none disabled:opacity-40 sm:px-4 ${tone}`}
+      /*
+        ⚠️ **넘어온 className을 이어붙인다.** 예전엔 `{...rest}`로 들어온 뒤 여기서 통째로
+        덮어써서 **조용히 무시됐다.** 색 하나를 바꾸려면 버튼을 새로 만들어야 했다.
+        색을 바꿀 때는 `!text-...`처럼 important를 써야 tone을 확실히 이긴다 —
+        같은 종류의 유틸리티끼리는 순서가 아니라 CSS 우선순위로 갈린다
+      */
+      className={`rounded-md px-3 py-2 text-xs font-medium tracking-widest whitespace-nowrap uppercase transition-all disabled:pointer-events-none disabled:opacity-40 sm:px-4 ${tone} ${className}`}
     >
       {children}
     </button>

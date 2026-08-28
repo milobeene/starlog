@@ -103,8 +103,12 @@ function SettingsContent() {
               <Skeleton className="h-16 w-full" />
             ) : (
               <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-3">
+                {/*
+                  이메일을 안 보여준다 (2026-08-28). 로그인이 없어진 v1.0에서 이 값은
+                  `owner@starlog.local` — **주인 계정을 만들 때 채워 넣은 자리표시자**다.
+                  아무 뜻도 없는 문자열을 프로필에 띄우면 "이게 뭐지"만 남는다
+                */}
                 <div className="text-sm font-medium">{me.data?.profile.nickname}</div>
-                <div className="text-xs text-white/40">{me.data?.profile.email}</div>
               </div>
             )}
           </SettingsSection>

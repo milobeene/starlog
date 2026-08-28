@@ -50,7 +50,6 @@ export default function MonthlySpendingChart({ data }: { data: MonthlySpending }
   }, [data.months, year]);
 
   const currencies = data.currencies;
-  const hasAnyPoint = series.some((amounts) => amounts != null);
 
   /**
    * 통화마다 자기 최댓값으로 정규화한다. 전체 최댓값 하나로 잡으면
@@ -258,11 +257,10 @@ export default function MonthlySpendingChart({ data }: { data: MonthlySpending }
           )}
         </div>
 
-        {!hasAnyPoint && (
-          <div className="pt-2 pb-1 text-center text-xs text-white/25">
-            {year}년에는 등록된 지출 내역이 없습니다
-          </div>
-        )}
+        {/*
+          빈 안내를 안 띄운다 (사용자 결정 2026-08-28). 빈 그래프가 이미 "없다"를
+          말하고 있어서, 문장을 덧붙이면 같은 말을 두 번 하는 셈이다
+        */}
       </div>
     </div>
   );

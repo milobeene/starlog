@@ -361,7 +361,16 @@ function BacklogDetail() {
                     <SectionIcon name="note" />
                     My Notes
                   </span>
-                  <Button onClick={() => setDialog({ kind: "record" })}>내 기록 수정</Button>
+                  {/*
+                    이 버튼만 오버라이드 색을 쓴다 (사용자 결정 2026-08-28) — 아래 내용이
+                    IGDB가 아니라 **내가 쓴 것**이라는 표시다. 호버 연출은 그대로 둔다
+                  */}
+                  <Button
+                    className="!text-teal-200/70"
+                    onClick={() => setDialog({ kind: "record" })}
+                  >
+                    내 기록 수정
+                  </Button>
                 </h3>
                 {personalRecord.memo ? (
                   <div className="rounded-lg border border-white/10 bg-white/5 p-6">
