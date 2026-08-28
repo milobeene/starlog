@@ -1,5 +1,7 @@
 "use client";
 
+import Bytes from "@/components/ui/Bytes";
+import Unit from "@/components/ui/Unit";
 import { API_LIMITS } from "@/lib/apiLimits";
 import type { ApiUsage } from "@/lib/types";
 
@@ -61,7 +63,14 @@ export default function ApiUsagePanel({
                 <Stat
                   label="커버"
                   /* 개수와 용량을 한 칸에 — 따로 두면 카드가 다섯이 되어 줄이 깨진다 */
-                  value={`${storage.coverCount.toLocaleString()}장 · ${formatBytes(storage.totalBytes)}`}
+                  value={
+                    <>
+                      {storage.coverCount.toLocaleString()}
+                      <Unit>장</Unit>
+                      <span className="mx-1 text-white/30">·</span>
+                      <Bytes bytes={storage.totalBytes} />
+                    </>
+                  }
                   raw
                 />
               )}
@@ -108,8 +117,8 @@ function Stat({
   raw,
 }: {
   label: string;
-  value: number | string;
-  /** 숫자 서식을 안 씌운다 (이미 "412 KB" 같은 문자열) */
+  value: number | string | React.ReactNode;
+  /** 숫자 서식을 안 씌운다 (이미 조립된 JSX이거나 "412 KB" 같은 문자열) */
   raw?: boolean;
 }) {
   return (
@@ -118,18 +127,13 @@ function Stat({
         {label}
       </div>
       <div className="num mt-1 text-xl font-light break-keep text-white/90">
-        {raw || typeof value === "string" ? value : value.toLocaleString()}
+        {/* 숫자일 때만 천 단위를 넣는다. JSX나 문자열은 이미 완성된 것이므로 그대로 */}
+        {typeof value === "number" && !raw ? value.toLocaleString() : value}
       </div>
     </div>
   );
 }
 
-function formatBytes(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
-}
 
 function formatDate(iso: string) {
   const d = new Date(iso);
@@ -162,7 +166,8 @@ function TranslationRow({
             <span className="num text-lg font-medium text-white/90">
               {usage.usedChars.toLocaleString()}
               <span className="text-sm text-white/40">
-                {" "}/ {usage.guardChars.toLocaleString()}자
+                {" "}/ {usage.guardChars.toLocaleString()}
+                <Unit>자</Unit>
               </span>
             </span>
           </div>

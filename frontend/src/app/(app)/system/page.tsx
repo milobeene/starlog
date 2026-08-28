@@ -1,5 +1,6 @@
 "use client";
 
+import Bytes from "@/components/ui/Bytes";
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import PageHeading from "@/components/ui/PageHeading";
@@ -122,7 +123,9 @@ function UsageTab() {
         <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Stat
             label="크기"
-            value={database.sizeBytes === null ? "—" : formatBytes(database.sizeBytes)}
+            value={
+              database.sizeBytes === null ? "—" : <Bytes bytes={database.sizeBytes} />
+            }
           />
         </div>
         {database.sizeBytes === null && (
@@ -135,7 +138,7 @@ function UsageTab() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-3">
       <div className="text-[10px] font-semibold tracking-widest text-white/40 uppercase">
@@ -146,9 +149,3 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function formatBytes(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
-}

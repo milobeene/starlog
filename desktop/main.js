@@ -16,7 +16,7 @@
  * **스프링은 매번 "이미 정해진 DB"만 본다 → 백엔드 코드가 한 줄도 안 바뀐다.**
  * → docs/v1.0-architecture.md §2
  */
-const { app, BrowserWindow, dialog, ipcMain, protocol, shell } = require("electron");
+const { app, BrowserWindow, Menu, dialog, ipcMain, protocol, shell } = require("electron");
 const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
@@ -1289,6 +1289,19 @@ if (!app.requestSingleInstanceLock()) {
       win.focus();
     }
   });
+}
+
+/**
+ * 윈도우의 메뉴 막대를 없앤다 (2026-08-28, 윈도우 실기 확인 뒤).
+ *
+ * 맥은 메뉴가 화면 위 시스템 막대에 있지만, 윈도우는 **창 안에** File/Edit/View가
+ * 그려진다. 우리 화면은 자체 헤더가 있어서 그 위에 낯선 영문 메뉴가 한 줄 더 얹힌다.
+ *
+ * ⚠️ **맥에서는 지우면 안 된다.** 맥의 복사·붙여넣기는 메뉴의 role에 묶여 있어서
+ * 메뉴를 없애면 ⌘C가 통째로 죽는다. 윈도우는 크로미움이 직접 처리하므로 안전하다
+ */
+if (process.platform === "win32") {
+  Menu.setApplicationMenu(null);
 }
 
 app.whenReady().then(() => {

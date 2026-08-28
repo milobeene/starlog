@@ -1,5 +1,6 @@
 "use client";
 
+import Bytes from "@/components/ui/Bytes";
 import { useEffect, useState } from "react";
 import EntryPanel from "./EntryPanel";
 import { Button, FIELD_INPUT } from "@/components/ui/Field";
@@ -119,7 +120,7 @@ export default function SaveList({
                     <button onClick={() => onLaunch(save.name)} className="min-w-0 flex-1 text-left">
                       <div className="truncate text-sm text-white/90">{save.name}</div>
                       <div className="num mt-0.5 text-[11px] text-white/35">
-                        {formatSize(save.sizeBytes)} · {formatDate(save.modifiedAt)}
+                        <Bytes bytes={save.sizeBytes} /> · {formatDate(save.modifiedAt)}
                       </div>
                     </button>
                     {/*
@@ -206,11 +207,6 @@ export default function SaveList({
   );
 }
 
-function formatSize(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
 
 function formatDate(iso: string) {
   const d = new Date(iso);

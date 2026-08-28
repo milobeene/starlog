@@ -25,8 +25,9 @@ const NARROWEST_COLUMNS = 2;
 export const GAME_GRID =
   // 폰에서는 간격을 줄인다 — 390px에서 gap-x-6이면 카드가 그만큼 더 작아진다
   // 중간 단계(md·lg)에서 칸이 너무 작아 커버가 안 읽혔다 — 두 칸씩 줄였다.
-  // xl(PC 풀사이즈) 8열은 그대로다
-  "grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 sm:gap-x-6 sm:gap-y-10 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 min-[1650px]:grid-cols-8";
+  // ⚠️ 8열은 `3xl`(1650px, globals.css의 토큰)이다. `min-[1650px]:`으로 쓰면
+  // Tailwind가 xl보다 앞에 뱉어서 **1920px에서 xl:grid-cols-6에 져 8열이 안 먹는다**
+  "grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 sm:gap-x-6 sm:gap-y-10 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 3xl:grid-cols-8";
 
 function measure(): number {
   // SSR에는 matchMedia가 없다. 첫 렌더는 가장 좁은 값으로 두고 마운트 후 교정한다

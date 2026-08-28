@@ -1,5 +1,7 @@
 "use client";
 
+import Bytes from "@/components/ui/Bytes";
+import Unit from "@/components/ui/Unit";
 import { useCallback, useEffect, useState } from "react";
 import EntryPanel from "./EntryPanel";
 import { Button } from "@/components/ui/Field";
@@ -88,7 +90,7 @@ export default function BackupList({
                 {readable(item.label)}
               </span>
               <span className="num mt-0.5 block text-[11px] text-white/35">
-                {formatBytes(item.sizeBytes)}
+                <Bytes bytes={item.sizeBytes} />
               </span>
             </span>
             <button
@@ -150,8 +152,10 @@ export default function BackupList({
           */}
           {usage && (
             <span className="num text-[11px] text-white/30">
-              {usage.count} / {usage.keepCount}개 · {formatBytes(usage.totalBytes)} /{" "}
-              {formatBytes(usage.keepBytes)}
+              {usage.count} / {usage.keepCount}
+              <Unit>개</Unit>
+              <span className="mx-1 text-white/30">·</span>
+              <Bytes bytes={usage.totalBytes} /> / <Bytes bytes={usage.keepBytes} />
             </span>
           )}
         </div>
@@ -175,9 +179,3 @@ function readable(label: string) {
   return m ? `${m[1]}.${m[2]}.${m[3]} ${m[4]}:${m[5]}` : label;
 }
 
-function formatBytes(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
-}
