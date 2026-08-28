@@ -1,0 +1,140 @@
+# 배포물 빌드 (v1.0 10단계)
+#
+# ## 왜 잡을 나누는가
+#
+# jar는 **OS를 안 탄다** — 프론트 정적 파일까지 그 안에 들어 있다. 우분투에서 한 번만
+# 만들어 넘긴다. 그러면 윈도우 러너는 **jlink와 NSIS만** 하면 된다:
+# 그래들과 Next를 git bash에서 돌리는 게 제일 잘 깨지는 지점이라 아예 안 시킨다.
+#
+# ## 트리거가 둘이다
+#
+#   수동(workflow_dispatch)  빌드해서 **아티팩트로만** 남긴다. 릴리스를 안 만든다
+#   태그(v*)                 위와 같이 만들고 **초안 릴리스**에 붙인다. 공개는 사람이 누른다
+name: 배포물 빌드
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+# gh release가 쓴다. 태그로 들어왔을 때만 실제로 필요하다
+permissions:
+  contents: write
+
+jobs:
+  jar:
+    name: 프론트 + jar (OS 무관)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - name: 프론트 의존성
+        working-directory: frontend
+        run: npm ci
+
+      - name: 정적 빌드 + bootJar
+        run: ./tools/build-desktop.sh
+
+      # ⚠️ desktop/web도 같이 넘긴다 — **입구 화면**이라 jar 안이 아니라 앱 옆에 있어야 한다.
+      # gitignore라 체크아웃만으로는 절대 안 생긴다
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jar
+          path: |
+            backend/build/libs/app.jar
+            desktop/web
+          retention-days: 7
+
+  package:
+    name: ${{ matrix.label }}
+    needs: jar
+    # 한쪽이 깨져도 다른 쪽 결과는 받아본다 — 윈도우가 처음이라 특히
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14        # 애플 실리콘
+            args: "--mac"
+            label: "macOS (arm64)"
+          - os: windows-latest
+            args: "--win"
+            label: "Windows (x64)"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # 받은 것을 저장소 구조 그대로 되돌려 놓는다
+      - uses: actions/download-artifact@v4
+        with:
+          name: jar
+          path: .
+
+      # build-jre.sh가 JAVA_HOME을 본다. 여기가 Temurin을 꽂아주므로 내려받기를 안 탄다
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: 번들 JRE
+        shell: bash
+        run: ./tools/build-jre.sh
+
+      - name: 배포물
+        shell: bash
+        working-directory: desktop
+        run: |
+          npm ci
+          # --publish never: electron-builder가 스스로 깃헙에 올리려 들지 않게 한다.
+          # 올리는 건 아래 release 잡이 gh로 한다
+          npx electron-builder ${{ matrix.args }} --publish never
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.os }}
+          path: |
+            desktop/dist/*.dmg
+            desktop/dist/*.exe
+          retention-days: 7
+
+  release:
+    name: 초안 릴리스
+    # 태그로 들어왔을 때만. 수동 실행은 아티팩트까지가 끝이다
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist
+
+      - name: 초안으로 만든다
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        # ⚠️ **--draft다.** 만들어만 놓고 공개는 사람이 누른다.
+        # 서명이 없어서 첫 실행에 경고가 뜨는 앱이라, 안내문을 확인하고 내보내는 게 맞다
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --draft \
+            --title "STARLOG ${GITHUB_REF_NAME}" \
+            --generate-notes

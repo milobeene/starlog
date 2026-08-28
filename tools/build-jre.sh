@@ -37,6 +37,14 @@ OUT="$ROOT/desktop/runtime"
 #   3. 캐시                   — 전에 받아둔 것
 #   4. Adoptium에서 받는다     — 로컬 첫 실행
 # ──────────────────────────────────────────────────────────────────────────
+# ⚠️ **선택하기 전에** 경로를 유닉스식으로 바꾼다 (윈도우 git bash).
+# setup-java는 `C:\hostedtoolcache\...\x64` 형태로 JAVA_HOME을 준다. 이대로 두면
+# `[ -d "$JAVA_HOME/jmods" ]`가 실패하고, **CI가 조용히 내려받기 쪽으로 새서** 죽는다
+if command -v cygpath >/dev/null 2>&1; then
+  [ -n "${JAVA_HOME:-}" ] && JAVA_HOME=$(cygpath -u "$JAVA_HOME")
+  [ -n "${STARLOG_JDK:-}" ] && STARLOG_JDK=$(cygpath -u "$STARLOG_JDK")
+fi
+
 CACHE="${STARLOG_JDK_CACHE:-$HOME/.cache/starlog/jdk}"
 
 case "$(uname -s)" in
