@@ -32,13 +32,18 @@ public class TranslationClient {
     private final RestClient client = RestClient.create();
 
     /**
-     * @param text 원문. **글자 수는 부르는 쪽이 이미 셌다** — 여기서 다시 세면
-     *             한도 검사와 실제 호출이 서로 다른 숫자를 볼 수 있다
-     * @return 한국어 번역
+     * @param texts 원문 조각들. **글자 수는 부르는 쪽이 이미 셌다** — 여기서 다시 세면
+     *              한도 검사와 실제 호출이 서로 다른 숫자를 볼 수 있다
+     * @return 같은 순서의 한국어 번역
      */
-    public String toKorean(String apiKey, String text) {
+    public List<String> toKorean(String apiKey, List<String> texts) {
         MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
-        body.add("q", text);
+        /*
+         * ⚠️ **`q`를 여러 개 보낸다.** v2는 조각을 여러 개 받아 **같은 순서로** 돌려준다.
+         * 소개문과 스토리라인을 하나로 이어 붙였다면 구분자를 넣고 다시 쪼개야 하는데,
+         * 번역기가 그 구분자를 번역하거나 옮겨버리면 **경계가 어긋난다**
+         */
+        texts.forEach(text -> body.add("q", text));
         body.add("target", "ko");
         /*
          * `format=text`가 중요하다. 기본값이 `html`이라 원문의 `<`, `&` 같은 글자가
@@ -59,10 +64,15 @@ public class TranslationClient {
 
             List<Translation> translations = found == null || found.data() == null
                     ? List.of() : found.data().translations();
-            if (translations.isEmpty() || translations.getFirst().translatedText() == null) {
-                throw new ExternalApiException(ExternalApiException.Service.TRANSLATE, "번역 결과가 비어 있습니다");
+            /*
+             * ⚠️ **개수가 맞아야 한다.** 순서로 짝을 짓는데 하나라도 빠지면 스토리라인 번역이
+             * 소개문 자리에 들어간다 — 화면에는 멀쩡해 보이면서 내용이 뒤바뀐다
+             */
+            if (translations.size() != texts.size()) {
+                throw new ExternalApiException(ExternalApiException.Service.TRANSLATE,
+                        "번역 결과의 개수가 맞지 않습니다");
             }
-            return translations.getFirst().translatedText();
+            return translations.stream().map(Translation::translatedText).toList();
 
         } catch (org.springframework.web.client.HttpClientErrorException e) {
             /*

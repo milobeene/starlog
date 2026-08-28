@@ -107,6 +107,8 @@ export interface MasterInfo {
    */
   summaryKo: string | null;
   storyline: string | null;
+  /** 스토리라인의 한국어 번역. 소개문과 **한 묶음으로** 번역된다 */
+  storylineKo: string | null;
   igdbRating: number | null;
   igdbRatingCount: number | null;
   releasePlatforms: string[];

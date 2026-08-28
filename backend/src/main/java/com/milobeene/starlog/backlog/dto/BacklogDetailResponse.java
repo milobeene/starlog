@@ -99,6 +99,8 @@ public record BacklogDetailResponse(
              */
             String summaryKo,
             String storyline,
+            /** 스토리라인의 한국어 번역 (2026-08-28). 소개문과 **한 묶음으로** 번역된다 */
+            String storylineKo,
             BigDecimal igdbRating,
             Integer igdbRatingCount,
             List<String> releasePlatforms,
@@ -224,7 +226,8 @@ public record BacklogDetailResponse(
                         game.getReleasedOn(), MoneyResponse.from(game.getListPrice()),
                         game.getMasterGenres(), game.getSource(),
                         game.getCoverImageId(), game.getBannerImageId(),
-                        game.getSummary(), game.getSummaryKo(), game.getStoryline(),
+                        game.getSummary(), game.getSummaryKo(),
+                        game.getStoryline(), game.getStorylineKo(),
                         game.getIgdbRating(), game.getIgdbRatingCount(),
                         game.getReleasePlatforms(),
                         game.getMainStoryHours(), game.getMainExtraHours(),

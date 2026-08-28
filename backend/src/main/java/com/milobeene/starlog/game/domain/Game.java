@@ -119,6 +119,15 @@ public class Game extends BaseEntity {
     @Column(columnDefinition = "TEXT")
     private String summaryKo;
 
+    /**
+     * 스토리라인의 한국어 번역 (2026-08-28, 사용자 결정).
+     *
+     * ⚠️ **실측 최대가 20,764자다** — 소개문(3,254자)의 6배라 긴 게임 하나가 월 무료 한도의
+     * 4%를 먹는다. 그 비용을 알고 넣기로 했고, 화면이 누르기 전에 합계를 보여준다
+     */
+    @Column(columnDefinition = "TEXT")
+    private String storylineKo;
+
     /** 언제 번역했나. 원문이 바뀌면 번역이 낡는다는 걸 판단하는 데 쓴다 */
     private LocalDateTime summaryTranslatedAt;
 
@@ -167,8 +176,9 @@ public class Game extends BaseEntity {
     /**
      * 번역을 붙인다. `@Setter`가 없으므로 뜻이 있는 이름으로 바꾼다 (설계 원칙 2)
      */
-    public void applyTranslation(String korean, LocalDateTime at) {
-        this.summaryKo = korean;
+    public void applyTranslation(String summaryKorean, String storylineKorean, LocalDateTime at) {
+        this.summaryKo = summaryKorean;
+        this.storylineKo = storylineKorean;
         this.summaryTranslatedAt = at;
     }
 
@@ -259,8 +269,10 @@ public class Game extends BaseEntity {
          * 재동기화로 IGDB의 소개문이 바뀌었는데 한국어를 그대로 두면, 화면에는
          * **옛 내용의 번역**이 새 원문인 척 떠 있게 된다. 다시 번역하라고 비워두는 게 맞다
          */
-        if (!java.util.Objects.equals(this.summary, command.summary())) {
+        if (!java.util.Objects.equals(this.summary, command.summary())
+                || !java.util.Objects.equals(this.storyline, command.storyline())) {
             this.summaryKo = null;
+            this.storylineKo = null;
             this.summaryTranslatedAt = null;
         }
         this.summary = command.summary();
