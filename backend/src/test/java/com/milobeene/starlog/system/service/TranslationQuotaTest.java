@@ -185,6 +185,48 @@ class TranslationQuotaTest extends ControllerTestSupport {
         assertThatThrownBy(() -> quota.check(-1)).isInstanceOf(InvalidInputException.class);
     }
 
+    /**
+     * 🔴 **월 경계를 태평양 시간으로 센다** (2026-08-28 수정).
+     *
+     * 예전엔 우리 시간대(KST)로 달의 첫날을 잡았다. 한국은 태평양보다 16~17시간 앞서므로
+     * **한국의 9월 1일 0시는 태평양으로 아직 8월 31일 오전**이다. 그 사이에 쓴 글자를
+     * 우리는 9월로, 구글은 8월로 센다 — 8월이 한도에 가까웠다면 그대로 초과 청구다.
+     *
+     * 한국 기준 이번 달 1일 0시부터 태평양 기준 월초 사이에 찍힌 기록이
+     * **여전히 지난달로 잡히는지**를 본다
+     */
+    @Test
+    public void 월_경계를_태평양_시간으로_센다() {
+        //given — 한국 기준으로는 이번 달 1일이지만 태평양으로는 아직 지난달인 시각
+        LocalDateTime 한국_월초 = YearMonth.from(AppClock.now()).atDay(1).atStartOfDay();
+        LocalDateTime 애매한_시각 = 한국_월초.plusHours(2);   // KST 1일 새벽 2시 = PT 지난달 말일 오전
+
+        apiCallLogRepository.persist(ApiCallLog.of(
+                ApiProvider.TRANSLATE, "translate", 애매한_시각, true, 300_000L));
+        em.flush();
+        em.clear();
+
+        /*
+         * then — 이 시각이 **아직 지난달**이면 사용량에 안 잡혀야 한다.
+         *
+         * ⚠️ 달의 첫 이틀에만 의미가 있는 검사라, 그 밖의 날에는 태평양 월초가 이미 지나
+         * 이번 달로 잡히는 게 맞다. 두 경우를 갈라서 단언한다 —
+         * 날짜에 따라 깨지는 테스트를 만들면 안 된다
+         */
+        boolean 태평양은_아직_지난달 = 애매한_시각
+                .atZone(java.time.ZoneId.systemDefault())
+                .withZoneSameInstant(java.time.ZoneId.of("America/Los_Angeles"))
+                .getMonthValue() != YearMonth.from(AppClock.now()).getMonthValue();
+
+        if (태평양은_아직_지난달) {
+            assertThat(quota.usedThisMonth())
+                    .as("태평양으로 아직 지난달이면 이번 달 사용량에 안 잡혀야 한다")
+                    .isZero();
+        } else {
+            assertThat(quota.usedThisMonth()).isEqualTo(300_000);
+        }
+    }
+
     /** 기록한 만큼 다음 검사에 반영돼야 한다 — 이게 끊기면 한도가 영영 안 찬다 */
     @Test
     public void 기록하면_다음_검사에_반영된다() {

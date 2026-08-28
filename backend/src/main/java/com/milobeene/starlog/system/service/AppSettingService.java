@@ -3,7 +3,6 @@ package com.milobeene.starlog.system.service;
 import com.milobeene.starlog.game.client.IgdbProperties;
 import com.milobeene.starlog.system.domain.AppSetting;
 import com.milobeene.starlog.system.repository.AppSettingRepository;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,7 +19,6 @@ import java.util.Map;
  * (앱 안에서 바꾸면 즉시 먹는다)를 정면으로 깬다
  */
 @Service
-@RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class AppSettingService {
 
@@ -42,6 +40,17 @@ public class AppSettingService {
     private final AppSettingRepository repository;
     /** 부팅 설정. DB에 아무것도 없을 때의 폴백이다 — `bootRun` 개발 경로가 그대로 산다 */
     private final IgdbProperties bootProperties;
+
+    /** 번역 키의 부팅 설정. 입구의 연결 설정이 환경변수로 넣어준다 */
+    private final String bootTranslateApiKey;
+
+    public AppSettingService(AppSettingRepository repository, IgdbProperties bootProperties,
+                             @org.springframework.beans.factory.annotation.Value(
+                                     "${app.translate.api-key:}") String bootTranslateApiKey) {
+        this.repository = repository;
+        this.bootProperties = bootProperties;
+        this.bootTranslateApiKey = bootTranslateApiKey;
+    }
 
     public Map<String, String> all() {
         Map<String, String> values = new HashMap<>();
@@ -87,9 +96,17 @@ public class AppSettingService {
                         () -> repository.persist(AppSetting.of(key, value)));
     }
 
-    /** 번역 키. 부팅 설정 폴백이 없다 — 처음부터 앱 안에서만 넣는 값이다 */
+    /**
+     * 번역 키. **DB가 먼저, 없으면 부팅 설정** — IGDB와 같은 순서다.
+     *
+     * 부팅 설정은 입구의 연결 설정이 환경변수로 넣어준 값이다(클라우드 모드).
+     * 로컬 세이브파일에는 그 경로가 없으므로 DB에 직접 넣는다.
+     * 순서가 이래야 **앱 안에서 바꾼 값이 이긴다** — 반대면 연결 설정에 키가 있는 한
+     * 앱에서 아무리 바꿔도 안 먹는다
+     */
     public String translateApiKey() {
-        return blankToNull(all().get(TRANSLATE_API_KEY));
+        String stored = blankToNull(all().get(TRANSLATE_API_KEY));
+        return stored != null ? stored : blankToNull(bootTranslateApiKey);
     }
 
     private static String blankToNull(String value) {

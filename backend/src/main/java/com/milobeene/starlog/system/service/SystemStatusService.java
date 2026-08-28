@@ -42,11 +42,18 @@ public class SystemStatusService {
     private final CoverImageRepository coverImageRepository;
     private final StorageProperties storageProperties;
     private final JdbcTemplate jdbc;
+    private final TranslationQuota translationQuota;
 
     public SystemStatusResponse status() {
         LocalDateTime now = AppClock.now();
 
+        /*
+         * ⚠️ **번역은 여기서 뺀다.** `values()`를 그대로 돌면 `TRANSLATE`까지 들어와
+         * "1분에 몇 건" 카드로 그려지는데, 번역의 단위는 횟수가 아니라 글자 수다.
+         * 아래 `translationUsage()`가 따로 담는다
+         */
         List<SystemStatusResponse.ApiUsage> usage = Arrays.stream(ApiProvider.values())
+                .filter(provider -> provider != ApiProvider.TRANSLATE)
                 .map(provider -> usageOf(provider, now))
                 .toList();
 
@@ -57,7 +64,18 @@ public class SystemStatusService {
                         coverImageRepository.totalSizeBytes(),
                         storageProperties.hasCredentials()),
                 new SystemStatusResponse.DatabaseStatus(productName(), databaseSize()),
-                RETENTION_DAYS);
+                RETENTION_DAYS,
+                translationUsage());
+    }
+
+    /**
+     * ⚠️ **`ApiProvider.TRANSLATE`를 `usageOf`로 세지 않는다.** 그건 호출 횟수를 세는데
+     * 번역은 글자 수가 단위다 — 같은 모양으로 내보내면 화면이 "1분에 몇 건"으로 그린다
+     */
+    private SystemStatusResponse.TranslationUsage translationUsage() {
+        TranslationQuota.Usage used = translationQuota.usage();
+        return new SystemStatusResponse.TranslationUsage(
+                used.usedChars(), used.guardChars(), used.freeChars(), used.remainingChars());
     }
 
     /**

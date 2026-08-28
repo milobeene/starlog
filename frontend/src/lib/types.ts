@@ -457,6 +457,16 @@ export interface SystemStatus {
   database: { product: string; sizeBytes: number | null };
   /** 호출 기록 보존 기간. 화면이 "N일치만 보관합니다"로 쓴다 */
   retentionDays: number;
+  /**
+   * 번역 사용량. ⚠️ **다른 API와 단위가 다르다** — 횟수가 아니라 글자 수고,
+   * 넘으면 거절이 아니라 요금이다
+   */
+  translation: {
+    usedChars: number;
+    guardChars: number;
+    freeChars: number;
+    remainingChars: number;
+  };
 }
 
 /**

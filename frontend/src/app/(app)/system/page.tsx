@@ -98,11 +98,16 @@ function UsageTab() {
   if (status.error) return <ErrorNotice error={status.error} onRetry={status.reload} />;
   if (status.loading || !status.data) return <Skeleton className="h-64 w-full" />;
 
-  const { apiUsage, storage, database, retentionDays } = status.data;
+  const { apiUsage, storage, database, retentionDays, translation } = status.data;
 
   return (
     <div className="flex flex-col gap-10">
-      <ApiUsagePanel usage={apiUsage} storage={storage} retentionDays={retentionDays} />
+      <ApiUsagePanel
+        usage={apiUsage}
+        storage={storage}
+        retentionDays={retentionDays}
+        translation={translation}
+      />
 
       {/*
         **저장소에는 데이터베이스만 남긴다** (2026-08-28). 커버 수·용량은 스토리지 사용량이라

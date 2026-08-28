@@ -11,6 +11,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.YearMonth;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 
 /**
  * 번역이 **돈이 되기 전에 막는다** (2026-08-28).
@@ -124,12 +126,31 @@ public class TranslationQuota {
     }
 
     /**
-     * 이번 달의 시작.
+     * 구글이 한도를 리셋하는 시간대.
      *
-     * ⚠️ **"30일 전"이 아니라 달의 첫날이다.** 구글의 무료 한도가 **달력 기준**으로 리셋되므로,
-     * 굴러가는 30일 창으로 세면 월초에 한도가 새로 생긴 것을 못 보고 계속 막는다
+     * ⚠️ **우리 시간대로 세면 안 된다.** 구글의 할당량은 태평양 시간 자정에 리셋되는데
+     * 한국은 그보다 16~17시간 **앞선다.** 우리 기준으로 9월 1일 0시는 태평양으로는 아직
+     * 8월 31일 오전이다 — 그 사이에 **우리는 새 달이라 세다가 구글은 지난달로 세는**
+     * 구간이 생긴다. 8월이 한도에 가까웠다면 그때 쓴 만큼이 그대로 초과 청구다.
+     *
+     * 태평양으로 맞추면 구글이 UTC를 쓰더라도 안전하다 — 태평양 월초가 UTC 월초보다
+     * **뒤**라서 우리가 늦게 리셋하는 쪽, 즉 덜 쓰는 쪽으로 틀리기 때문이다
+     */
+    private static final ZoneId QUOTA_ZONE = ZoneId.of("America/Los_Angeles");
+
+    /**
+     * 이번 달의 시작 — **태평양 기준을 우리 시각으로 옮긴 값**이다.
+     *
+     * "30일 전"이 아니라 달의 첫날인 이유 — 구글의 무료 한도가 **달력 기준**으로 리셋되므로,
+     * 굴러가는 30일 창으로 세면 월초에 한도가 새로 생긴 것을 못 보고 계속 막는다.
+     *
+     * `calledAt`이 시스템 시각으로 저장되므로 비교 기준도 같은 시각계로 되돌린다
      */
     private LocalDateTime startOfMonth() {
-        return YearMonth.from(AppClock.now()).atDay(1).atStartOfDay();
+        ZonedDateTime nowThere = AppClock.now().atZone(ZoneId.systemDefault())
+                .withZoneSameInstant(QUOTA_ZONE);
+        return YearMonth.from(nowThere).atDay(1).atStartOfDay(QUOTA_ZONE)
+                .withZoneSameInstant(ZoneId.systemDefault())
+                .toLocalDateTime();
     }
 }

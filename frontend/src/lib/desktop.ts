@@ -54,6 +54,13 @@ export interface ConnectionProfile {
   db: DbConfig;
   storage?: StorageConfig;
   igdb?: { clientId?: string; clientSecret?: string };
+  /**
+   * Google Cloud Translation API 키.
+   *
+   * IGDB와 같은 길로 들어간다 — 여기 값은 **부팅 기본값**이고, 앱 안(`app_setting`)에서
+   * 넣은 값이 있으면 그게 이긴다
+   */
+  translate?: { apiKey?: string };
   mediaTargets?: MediaTargets;
 }
 
@@ -104,6 +111,8 @@ export interface ConnectionTestResult {
   database: { ok: boolean };
   storage: { ok: boolean; message?: string } | null;
   igdb: { ok: boolean; message?: string } | null;
+  /** ⚠️ 글자를 안 쓰는 방법(`languages`)으로 시험한다 — 번역은 테스트가 곧 돈이 될 수 있다 */
+  translate: { ok: boolean; message?: string } | null;
 }
 
 /** 지금 붙어 있는 대상. `alive`면 [최근 접속]이 즉시 이동이다 */

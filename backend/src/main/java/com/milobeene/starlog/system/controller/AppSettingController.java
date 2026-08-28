@@ -4,6 +4,7 @@ import com.milobeene.starlog.system.dto.AppSettingsResponse;
 import com.milobeene.starlog.system.dto.IgdbTestResult;
 import com.milobeene.starlog.system.service.AppSettingService;
 import com.milobeene.starlog.system.service.IgdbConnectionTester;
+import com.milobeene.starlog.system.service.TranslationConnectionTester;
 import com.milobeene.starlog.system.service.TranslationQuota;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +30,7 @@ public class AppSettingController {
     private final AppSettingService appSettingService;
     private final IgdbConnectionTester igdbConnectionTester;
     private final TranslationQuota translationQuota;
+    private final TranslationConnectionTester translationConnectionTester;
 
     @GetMapping
     public AppSettingsResponse get() {
@@ -63,6 +65,18 @@ public class AppSettingController {
     @PutMapping("/translate")
     public void updateTranslateKey(@RequestBody TranslateKeyRequest request) {
         appSettingService.put(AppSettingService.TRANSLATE_API_KEY, request.apiKey().strip());
+    }
+
+    /**
+     * 번역 키 확인 — **글자를 한 자도 안 쓴다** (2026-08-28).
+     *
+     * `languages`(지원 언어 목록)를 부른다. 값이 매겨지는 건 번역하려고 보낸 글자인데
+     * 이 호출은 보낼 글자가 아예 없다. IGDB·스토리지와 달리 **번역은 테스트가 곧 돈이 될 수
+     * 있어서** 무엇으로 시험하느냐가 설계의 일부다
+     */
+    @PostMapping("/translate/test")
+    public TranslationConnectionTester.Result testTranslate(@RequestBody TranslateKeyRequest request) {
+        return translationConnectionTester.test(request.apiKey());
     }
 
     /**

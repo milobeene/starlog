@@ -18,8 +18,24 @@ public record SystemStatusResponse(
         DatabaseStatus database,
 
         /** 호출 기록 보존 기간. 화면이 "N일치만 보관합니다"로 쓴다 */
-        int retentionDays
+        int retentionDays,
+
+        /**
+         * 번역 사용량 (2026-08-28).
+         *
+         * ⚠️ **다른 API와 단위가 다르다** — 나머지는 호출 횟수인데 이건 **글자 수**고,
+         * 넘으면 거절이 아니라 **요금**이다. 그래서 `apiUsage` 목록에 끼워 넣지 않고
+         * 따로 준다. 같은 모양으로 나란히 두면 "1분에 몇 건"과 같은 종류로 읽힌다
+         */
+        TranslationUsage translation
 ) {
+
+    /**
+     * `guardChars`(우리가 막는 선 45만)와 `freeChars`(구글의 공짜 한도 50만)가 다르다.
+     * 사이의 5만은 **우리가 적게 셀 수 있는 오차**를 위한 여유다
+     */
+    public record TranslationUsage(long usedChars, long guardChars,
+                                   long freeChars, long remainingChars) {}
 
     /**
      * 한 API의 사용량.

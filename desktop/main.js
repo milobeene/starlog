@@ -890,9 +890,11 @@ function registerIpc() {
      */
     let storage = null;
     let igdb = null;
+    let translate = null;
     if (!done?.diagnostic) {
       const hasStorage = profile.storage?.endpoint && profile.storage?.bucket;
       const hasIgdb = profile.igdb?.clientId && profile.igdb?.clientSecret;
+      const hasTranslate = Boolean(profile.translate?.apiKey);
       if (hasIgdb) {
         igdb = await postJson(port, "/api/system/settings/igdb/test", {
           clientId: profile.igdb.clientId,
@@ -908,16 +910,28 @@ function registerIpc() {
         storage = await getJson(port, "/api/system/storage/check")
           .catch((e) => ({ ok: false, message: String(e.message ?? e) }));
       }
+      if (hasTranslate) {
+        /*
+         * ⚠️ **글자를 안 쓰는 방법으로 시험한다.** 백엔드가 `languages`(지원 언어 목록)를
+         * 부르는데, 값이 매겨지는 건 번역하려고 보낸 글자라 이 호출은 공짜다.
+         * "ko로 번역해보기"로 시험했다면 **버튼 한 번이 곧 돈**이었을 것이다
+         */
+        translate = await postJson(port, "/api/system/settings/translate/test", {
+          apiKey: profile.translate.apiKey,
+        }).catch((e) => ({ ok: false, message: String(e.message ?? e) }));
+      }
     }
 
     await probe.stop();
 
     return {
-      ok: !done?.diagnostic && (igdb?.ok ?? true) && (storage?.ok ?? true),
+      ok: !done?.diagnostic && (igdb?.ok ?? true) && (storage?.ok ?? true)
+        && (translate?.ok ?? true),
       code: done?.diagnostic ?? null,
       database: { ok: !done?.diagnostic },
       storage,
       igdb,
+      translate,
     };
   });
 
@@ -1186,6 +1200,11 @@ function cloudConfig(profile) {
       APP_STORAGE_PUBLIC_BASE_URL: storage.publicBaseUrl,
       APP_IGDB_CLIENT_ID: profile.igdb?.clientId,
       APP_IGDB_CLIENT_SECRET: profile.igdb?.clientSecret,
+      /*
+       * 번역 키도 IGDB와 같은 길로 넣는다 — 여기서 넣은 건 **부팅 기본값**이고,
+       * 앱 안(`app_setting`)에서 넣은 값이 있으면 그게 이긴다
+       */
+      TRANSLATE_API_KEY: profile.translate?.apiKey,
       ...(db.schema ? { SPRING_FLYWAY_SCHEMAS: db.schema } : {}),
     },
   };

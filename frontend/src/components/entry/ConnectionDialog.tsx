@@ -201,6 +201,9 @@ export default function ConnectionDialog({
                   detail: found.storage.message ?? (found.storage.ok ? "버킷에 접근했습니다" : ""),
                 }]
               : []),
+            ...(found.translate
+              ? [{ ok: found.translate.ok, label: "번역", detail: found.translate.message ?? "" }]
+              : []),
             ...(found.igdb
               ? [{ ok: found.igdb.ok, label: "IGDB", detail: found.igdb.message ?? "" }]
               : []),
@@ -410,6 +413,27 @@ export default function ConnectionDialog({
               bad={bad("igdb.clientSecret")}
             />
           </div>
+        </Section>
+
+        {/*
+          번역은 **키 하나뿐이라 "일부만 채움"이 없다** — 스토리지·IGDB처럼 빈칸 검사를
+          걸 이유가 없다. 대신 ⚠️ 여기만 한도를 넘으면 돈이 나가므로 그 사실을 적는다
+        */}
+        <Section
+          title="번역"
+          hint="선택입니다. 게임 소개문을 한국어로 옮깁니다. 비워두시면 번역 기능이 꺼집니다."
+        >
+          <SecretField
+            label="Google Cloud Translation API 키"
+            keyName="translate.apiKey"
+            value={form.translate?.apiKey ?? ""}
+            onChange={(v) => patch({ translate: { apiKey: v } })}
+            placeholder="AIza…"
+          />
+          <p className="mt-2 text-[11px] leading-relaxed text-amber-200/60">
+            무료 한도(월 50만 자)를 넘으면 <b>요금이 청구됩니다.</b> 구글 콘솔에서 하루 할당량을
+            함께 걸어두시길 권합니다 — 앱도 월 45만 자에서 미리 막습니다.
+          </p>
         </Section>
 
         {showGaps && gaps.length > 0 && (
