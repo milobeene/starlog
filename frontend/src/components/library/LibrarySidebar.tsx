@@ -274,12 +274,17 @@ export default function LibrarySidebar() {
                     style={
                       dropTarget === group.key
                         ? undefined
-                        : { background: tone.dim, borderColor: tone.dim, color: tone.text }
+                        : /*
+                          ⚠️ **글씨는 흰색이다** (v1.2, 사용자 지정). 색으로 쓰면 태그마다
+                          밝기가 달라 어떤 줄은 잘 읽히고 어떤 줄은 안 읽힌다 —
+                          색은 배경 한 겹으로만 말하고 글씨는 어디서나 같은 무게로 둔다
+                        */
+                        { background: tone.dim, borderColor: tone.dim }
                     }
                     className={`flex w-full items-center gap-2 rounded-md border px-2 py-2 text-xs font-semibold tracking-widest uppercase transition-colors ${
                       dropTarget === group.key
                         ? "border-white/30 bg-white/15 text-white ring-1 ring-white/30"
-                        : "border-transparent hover:brightness-125"
+                        : "border-transparent text-white/90 hover:brightness-125"
                     }`}
                   >
                     <span

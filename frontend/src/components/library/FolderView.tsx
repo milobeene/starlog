@@ -153,8 +153,7 @@ export default function FolderView({
           </button>
           <span className="text-white/20">/</span>
           <h3 className="text-lg font-medium text-white/90">{open.label}</h3>
-          <span className="num text-sm text-white/40">({open.count})</span>
-          {/* 이름·개수 다음에 작은 네모로 색을 한 번 더 (v1.2) — 폴더 목록과 이어 준다 */}
+          {/* 이름 → 색 → 개수 순서다 (v1.2, 사용자 지정). 색은 이름에 붙는 표식이라 */}
           {open.color && (
             <span
               aria-hidden
@@ -162,6 +161,7 @@ export default function FolderView({
               style={{ background: toneOf(open.color).text }}
             />
           )}
+          <span className="num text-sm text-white/40">({open.count})</span>
         </div>
 
         {visible.length === 0 ? (
