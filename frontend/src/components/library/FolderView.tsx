@@ -20,9 +20,36 @@ type Folder = { key: string; label: string; count: number; cards: BacklogCard[] 
  * **"지정된 태그 없음" 폴더가 반드시 필요하다** — 실데이터는 태그 안 붙은 항목이 더 많아서
  * 이게 없으면 게임이 사라져 보인다
  */
-export default function FolderView({ facets }: { facets: FacetsResponse }) {
+export default function FolderView({
+  facets,
+  keyword,
+  sort,
+  onMoved,
+}: {
+  facets: FacetsResponse;
+  /**
+   * 제목 검색어와 정렬 — **폴더 안에만 먹는다** (2026-08-29, 사용자 결정).
+   *
+   * 폴더 목록의 순서와 개수는 이것들과 무관하다. "5개로 뜬 폴더에 들어갔더니 하나"가
+   * 맞는 동작이다 — 폴더는 태그의 크기를 말하고, 검색은 그 안에서 고르는 일이다
+   */
+  keyword?: string;
+  sort?: string;
+  /** 게임을 옮긴 뒤. 사이드바와 파셋까지 함께 새로 받아야 두 화면이 안 어긋난다 */
+  onMoved?: () => void;
+}) {
   const [folders, setFolders] = useState<Folder[] | null>(null);
   const [openKey, setOpenKey] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  /** 폴더에 놓으면 그 태그로 옮긴다. 사이드바의 그룹 헤더와 같은 동작이다 */
+  const drop = async (folder: Folder, entryId: number) => {
+    await api.put(`/api/backlog/${entryId}/tag`, {
+      name: folder.key === "untagged" ? null : folder.label,
+    });
+    setReloadKey((k) => k + 1);
+    onMoved?.();
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -44,10 +71,12 @@ export default function FolderView({ facets }: { facets: FacetsResponse }) {
           return { key: `tag-${tag.id}`, label: tag.name, count: cards.length, cards };
         });
 
+      /*
+       * ⚠️ **비어 있어도 항상 넣는다** (2026-08-29). 여기가 드롭 대상이라
+       * 항목이 0이라고 사라지면 마지막 하나를 뗀 순간 뗄 곳이 없어진다 — 사이드바와 같은 규칙
+       */
       const untagged = all.items.filter((card) => card.tag === null);
-      if (untagged.length > 0) {
-        next.push({ key: "untagged", label: "태그 없음", count: untagged.length, cards: untagged });
-      }
+      next.push({ key: "untagged", label: "태그 없음", count: untagged.length, cards: untagged });
 
       setFolders(next);
     }
@@ -56,7 +85,7 @@ export default function FolderView({ facets }: { facets: FacetsResponse }) {
     return () => {
       cancelled = true;
     };
-  }, [facets]);
+  }, [facets, reloadKey]);
 
   if (!folders) {
     return (
@@ -73,6 +102,28 @@ export default function FolderView({ facets }: { facets: FacetsResponse }) {
   }
 
   const open = folders.find((folder) => folder.key === openKey);
+
+  /*
+   * 폴더 안에만 검색·정렬을 적용한다. 폴더 목록의 개수(`folder.count`)는 그대로 두므로
+   * "5개짜리 폴더에 들어가니 하나"가 나온다 — 그게 맞는 동작이다
+   */
+  const visible = (() => {
+    if (!open) return [];
+    const q = (keyword ?? "").trim().toLowerCase();
+    const picked = q
+      ? open.cards.filter((card) => card.displayName.toLowerCase().includes(q))
+      : [...open.cards];
+    if (sort === "rating") {
+      picked.sort((a, b) => (b.rating ?? -1) - (a.rating ?? -1));
+    } else if (sort === "lastPlayed") {
+      picked.sort((a, b) =>
+        (b.lastPlaythrough?.startedOn ?? "").localeCompare(a.lastPlaythrough?.startedOn ?? ""),
+      );
+    } else {
+      picked.sort((a, b) => a.displayName.localeCompare(b.displayName, "ko"));
+    }
+    return picked;
+  })();
 
   // 폴더를 열면 그 안만 본다
   if (open) {
@@ -93,11 +144,13 @@ export default function FolderView({ facets }: { facets: FacetsResponse }) {
           <span className="num text-sm text-white/40">({open.count})</span>
         </div>
 
-        {open.cards.length === 0 ? (
-          <CardGridSkeleton count={5} />
+        {visible.length === 0 ? (
+          <p className="py-10 text-center text-sm text-white/35">
+            {keyword ? "조건에 맞는 게임이 없습니다" : "이 폴더에 담긴 게임이 없습니다"}
+          </p>
         ) : (
           <div className={GAME_GRID}>
-            {open.cards.map((card) => (
+            {visible.map((card) => (
               <GameCard key={card.entryId} card={card} />
             ))}
           </div>
@@ -109,7 +162,12 @@ export default function FolderView({ facets }: { facets: FacetsResponse }) {
   return (
     <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
       {folders.map((folder) => (
-        <FolderBox key={folder.key} folder={folder} onOpen={() => setOpenKey(folder.key)} />
+        <FolderBox
+          key={folder.key}
+          folder={folder}
+          onOpen={() => setOpenKey(folder.key)}
+          onDropEntry={(id) => void drop(folder, id)}
+        />
       ))}
     </div>
   );
@@ -124,7 +182,17 @@ export default function FolderView({ facets }: { facets: FacetsResponse }) {
  *
  * 커버가 하나도 없으면(Untagged 등) 무채색 그래디언트로 떨어진다
  */
-function FolderBox({ folder, onOpen }: { folder: Folder; onOpen: () => void }) {
+function FolderBox({
+  folder,
+  onOpen,
+  onDropEntry,
+}: {
+  folder: Folder;
+  onOpen: () => void;
+  onDropEntry: (entryId: number) => void;
+}) {
+  const [over, setOver] = useState(false);
+
   const backdrop = folder.cards
     .map((card) => coverSrc(card.coverUrl, card.coverImageId, "t_cover_big"))
     .find((src): src is string => src !== null);
@@ -132,8 +200,21 @@ function FolderBox({ folder, onOpen }: { folder: Folder; onOpen: () => void }) {
   return (
     <button
       onClick={onOpen}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setOver(true);
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setOver(false);
+        const id = Number(e.dataTransfer.getData("text/entry-id"));
+        if (id) onDropEntry(id);
+      }}
       // 테두리는 앱 공통 관례를 따른다 — border-white/10, hover는 /25
-      className="group relative flex aspect-square items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-neutral-900 transition-colors hover:border-white/25"
+      className={`group relative flex aspect-square items-center justify-center overflow-hidden rounded-2xl border bg-neutral-900 transition-colors ${
+        over ? "border-white/60 ring-2 ring-white/30" : "border-white/10 hover:border-white/25"
+      }`}
     >
       {backdrop ? (
         <div

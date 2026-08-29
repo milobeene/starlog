@@ -16,7 +16,16 @@ export default function GameCard({ card }: { card: BacklogCard }) {
   const lastLine = formatLastPlaythrough(card.lastPlaythrough);
 
   return (
-    <Link href={`/library/detail?entry=${card.entryId}`} className="group flex cursor-pointer flex-col">
+    <Link
+      href={`/library/detail?entry=${card.entryId}`}
+      /*
+       * 폴더로 끌어다 놓아 태그를 옮긴다 (2026-08-29). 사이드바 항목과 같은 키를 쓴다 —
+       * 받는 쪽이 하나면 보내는 쪽도 하나여야 헷갈리지 않는다
+       */
+      draggable
+      onDragStart={(e) => e.dataTransfer.setData("text/entry-id", String(card.entryId))}
+      className="group flex cursor-pointer flex-col"
+    >
       <div className="relative mb-3">
         <GameCover
           coverUrl={card.coverUrl}

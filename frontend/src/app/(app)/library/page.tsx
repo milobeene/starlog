@@ -174,21 +174,34 @@ function LibraryContent() {
           </Dropdown>
         </div>
 
-        <FilterBox
-          facets={facets.data}
-          genres={genres.data}
-          options={options.data}
-          developers={companies.data?.overriddenDevelopers ?? null}
-          applied={filters}
-          onApply={setFilters}
-        />
+        {/*
+          ⚠️ **폴더 탭에서는 필터를 안 그린다** (2026-08-29, 사용자 지적).
+          폴더 목록은 필터를 안 타는데 필터 박스는 그대로 있어서, 걸어도 아무 일이
+          안 일어나는 상태였다 — 눌러도 반응이 없는 UI가 제일 나쁘다.
+          **제목 검색과 정렬은 남긴다** — 그건 폴더를 열었을 때 그 안에서 먹는다
+        */}
+        {view === "grid" && (
+          <FilterBox
+            facets={facets.data}
+            genres={genres.data}
+            options={options.data}
+            developers={companies.data?.overriddenDevelopers ?? null}
+            applied={filters}
+            onApply={setFilters}
+          />
+        )}
       </div>
 
       {/* 결과 */}
       <div className="page-x flex-1 overflow-y-auto pb-8">
         {view === "folder" ? (
           facets.data ? (
-            <FolderView facets={facets.data} />
+            <FolderView
+            facets={facets.data}
+            keyword={debounced}
+            sort={sort}
+            onMoved={() => facets.reload()}
+          />
           ) : (
             <CardGridSkeleton />
           )

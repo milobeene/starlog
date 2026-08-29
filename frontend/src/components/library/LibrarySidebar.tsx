@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useApi } from "@/lib/useApi";
+import { api } from "@/lib/api";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { coverSrc } from "@/lib/cover";
 import type { BacklogCard, BacklogName, PageResponse } from "@/lib/types";
@@ -42,6 +43,22 @@ export default function LibrarySidebar() {
   }
 
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  /** 드래그가 얹혀 있는 그룹. 놓을 자리를 눈에 보이게 한다 */
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+
+  /**
+   * 게임을 태그로 옮긴다 (2026-08-29).
+   *
+   * ⚠️ **놓은 뒤 둘 다 새로 받는다.** 사이드바는 `names`와 `covers` 두 응답을 겹쳐 쓰는데
+   * (태그가 covers에서 온다) 하나만 갱신하면 목록과 그룹이 어긋난 채로 남는다
+   */
+  const moveToTag = async (entryId: number, tagKey: string) => {
+    // 엔드포인트가 **이름**을 받는다(다이얼로그와 같은 길). null이면 태그가 벗겨진다
+    await api.put(`/api/backlog/${entryId}/tag`, {
+      name: tagKey === UNTAGGED ? null : tagKey,
+    });
+    await Promise.all([names.reload(), covers.reload()]);
+  };
 
   const coverById = useMemo(() => {
     const map = new Map<number, string | null>();
@@ -81,11 +98,20 @@ export default function LibrarySidebar() {
       .filter((key) => key !== UNTAGGED)
       .sort((a, b) => a.localeCompare(b, "ko"));
 
-    return [...tagged, ...(buckets.has(UNTAGGED) ? [UNTAGGED] : [])].map((key) => ({
+    /*
+     * ⚠️ **'태그 없음'은 비어 있어도 항상 마지막에 둔다** (2026-08-29, 사용자 요청).
+     * 여기가 드롭 대상이기 때문이다 — 태그를 떼려면 놓을 자리가 있어야 하는데,
+     * 항목이 0이라고 사라지면 마지막 하나를 뗀 순간 뗄 곳이 없어진다
+     */
+    return [...tagged, UNTAGGED].map((key) => ({
       key,
       items: buckets.get(key) ?? [],
     }));
   }, [names.data, tagById]);
+
+  const allCollapsed = groups.length > 0 && collapsed.size >= groups.length;
+  const toggleAll = () =>
+    setCollapsed(allCollapsed ? new Set() : new Set(groups.map((g) => g.key)));
 
   return (
     <>
@@ -135,10 +161,22 @@ export default function LibrarySidebar() {
         open ? "translate-x-0 shadow-2xl" : "-translate-x-full"
       }`}
     >
-      <div className="shrink-0 border-b border-white/10 p-5">
-        <h3 className="text-[10px] tracking-widest text-white/40 uppercase">
+      <div className="flex shrink-0 items-center gap-2 border-b border-white/10 p-5">
+        <h3 className="flex-1 text-[10px] tracking-widest text-white/40 uppercase">
           All Games {names.data && <span className="num text-white/25">({names.data.length})</span>}
         </h3>
+        {/*
+          한 번에 접기·펴기 (2026-08-29). 태그가 열 개를 넘으면 원하는 그룹을 찾으려
+          하나씩 접어야 했다. 상태 하나로 판단한다 — 전부 접혀 있으면 다음 누름은 펴기다
+        */}
+        {groups.length > 0 && (
+          <button
+            onClick={toggleAll}
+            className="shrink-0 text-[10px] tracking-widest text-white/35 uppercase transition-colors hover:text-white"
+          >
+            {allCollapsed ? "모두 펴기" : "모두 접기"}
+          </button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-2">
@@ -168,7 +206,26 @@ export default function LibrarySidebar() {
                         return next;
                       })
                     }
-                    className="flex w-full items-center gap-2 px-2 py-2 text-[11px] font-semibold tracking-widest text-white/60 uppercase transition-colors hover:text-white/85"
+                    /*
+                      드롭 대상 (2026-08-29). 게임을 끌어다 놓으면 그 태그로 옮긴다.
+                      `preventDefault`가 없으면 브라우저가 드롭을 아예 안 받는다
+                    */
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setDropTarget(group.key);
+                    }}
+                    onDragLeave={() => setDropTarget((t) => (t === group.key ? null : t))}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setDropTarget(null);
+                      const id = Number(e.dataTransfer.getData("text/entry-id"));
+                      if (id) void moveToTag(id, group.key);
+                    }}
+                    className={`flex w-full items-center gap-2 rounded px-2 py-2 text-[11px] font-semibold tracking-widest uppercase transition-colors ${
+                      dropTarget === group.key
+                        ? "bg-white/15 text-white ring-1 ring-white/30"
+                        : "text-white/60 hover:text-white/85"
+                    }`}
                   >
                     <span
                       className={`text-[10px] transition-transform ${isOpen ? "rotate-90" : ""}`}
@@ -188,6 +245,14 @@ export default function LibrarySidebar() {
                         return (
                           <li key={entry.entryId}>
                             <Link
+                              /*
+                                끌어서 다른 태그로 옮긴다. Link라 기본 드래그가 주소를
+                                실어 보내는데, 우리 키를 하나 더 얹어 그걸 읽는다
+                              */
+                              draggable
+                              onDragStart={(e) =>
+                                e.dataTransfer.setData("text/entry-id", String(entry.entryId))
+                              }
                               href={`/library/detail?entry=${entry.entryId}`}
                               className={`flex items-center gap-2.5 rounded px-2 py-1.5 text-sm transition-colors ${
                                 active
