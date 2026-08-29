@@ -1,5 +1,6 @@
 "use client";
 
+import { Collapsible } from "@/components/settings/SettingsSection";
 import Unit from "@/components/ui/Unit";
 import Link from "next/link";
 import { Suspense, useCallback, useRef, useState } from "react";
@@ -373,7 +374,12 @@ function BacklogDetail() {
                     내 기록 수정
                   </Button>
                 </h3>
+                {/*
+                  노트도 접는다 (v1.2). 총평이 길면 스크린샷과 그 아래가 통째로 밀린다 —
+                  프로필의 목록들과 **같은 높이**라 화면 사이에서 눈이 안 흔들린다
+                */}
                 {personalRecord.memo ? (
+                  <Collapsible>
                   <div className="rounded-lg border border-white/10 bg-white/5 p-6">
                     {/*
                       메모는 마크다운 원문이다 (`# 📝 총평` 헤더 + 중첩 불릿).
@@ -383,6 +389,7 @@ function BacklogDetail() {
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>{personalRecord.memo}</ReactMarkdown>
                     </div>
                   </div>
+                  </Collapsible>
                 ) : (
                   <div className="rounded-lg border border-white/10 bg-white/5 p-6 text-sm text-white/30">
                     작성된 메모가 없습니다.

@@ -63,6 +63,7 @@ const IGDB_FIELDS = ["clientId", "clientSecret"] as const;
 export default function ConnectionDialog({
   initial,
   inline = false,
+  mode = "cloud",
   notice = null,
   onClose,
   onSaved,
@@ -75,6 +76,16 @@ export default function ConnectionDialog({
    * **취소 버튼이 뜻을 잃는다.** 입구에서는 여러 개 중 하나를 고르므로 팝업이 맞다
    */
   inline?: boolean;
+  /**
+   * 어느 세이브인가 (v1.2).
+   *
+   * `local`이면 **DB·스토리지 섹션이 없다** — 로컬 세이브파일에는 연결 설정이라는 게
+   * 없기 때문이다. IGDB·번역은 `app_setting`에 저장되므로 `connections.json`을 안 거친다.
+   *
+   * ⚠️ 예전엔 로컬 전용 화면을 따로 만들어 뒀는데, **같은 일을 하는 화면 둘이
+   * 서로 다르게 생겼다** — 버튼 위치도 알림도 달랐다. 한 컴포넌트로 합쳐 그걸 없앤다
+   */
+  mode?: "cloud" | "local";
   /** 바깥에서 온 알림(저장 완료 등). 결과·진행과 **같은 자리**에 모아 보여준다 */
   notice?: string | null;
   onClose: () => void;
@@ -171,7 +182,7 @@ export default function ConnectionDialog({
      * 돌아왔을 때 방금 친 값이 사라지면 통과해놓고 저장할 게 없어진다
      */
     /* 전체 테스트는 네 섹션을 다 붙든다 — 전부 시험 중이니 전부 되살아나야 한다 */
-    (["db", "storage", "igdb", "translate"] as SectionKey[]).forEach((k) =>
+    activeSections.forEach((k) =>
       keepSection(k, form[k], { name: form.name, originalName: initial?.name ?? form.name },
         testOrigin()));
     putTask({
@@ -257,6 +268,10 @@ export default function ConnectionDialog({
     onSaved(form);
   };
 
+  /** 이 모드에서 실제로 보이는 섹션들. 전체 테스트·저장이 이것만 훑는다 */
+  const activeSections: SectionKey[] =
+    mode === "local" ? ["igdb", "translate"] : ["db", "storage", "igdb", "translate"];
+
   const bad = (key: string) => showGaps && gaps.includes(key);
 
   /**
@@ -270,7 +285,13 @@ export default function ConnectionDialog({
     const state = busy[part];
     const found = partResult[part];
     return (
-      <div className="mt-1 flex flex-wrap items-center gap-2">
+      <div className="mt-1 flex flex-wrap items-center justify-end gap-2">
+        {found && (
+          <span className={`mr-auto text-[11px] ${found.ok ? "text-emerald-300/80" : "text-red-400"}`}>
+            {found.ok ? "✓ " : "✕ "}
+            {found.message}
+          </span>
+        )}
         <Button onClick={() => testSection(part)} disabled={!ready || state !== undefined}>
           {state === "test" ? "확인 중…" : "테스트"}
         </Button>
@@ -281,12 +302,6 @@ export default function ConnectionDialog({
         >
           {state === "save" ? "저장 중…" : "저장"}
         </Button>
-        {found && (
-          <span className={`text-[11px] ${found.ok ? "text-emerald-300/80" : "text-red-400"}`}>
-            {found.ok ? "✓ " : "✕ "}
-            {found.message}
-          </span>
-        )}
         {state === "test" && (
           <span className="text-[11px] text-white/35">다른 화면에 다녀오셔도 됩니다</span>
         )}
@@ -413,6 +428,27 @@ export default function ConnectionDialog({
   const saveSection = async (key: SectionKey, taskId?: string) => {
     setBusy((b) => ({ ...b, [key]: "save" }));
     try {
+      /*
+       * ⚠️ **로컬은 connections.json이 없다.** IGDB·번역은 어차피 `app_setting`(DB)에
+       * 사는 값이라 백엔드로 바로 보낸다 — 경계는 "재시작이 필요한가"다(architecture §2)
+       */
+      if (mode === "local") {
+        if (key === "igdb") {
+          await api.put("/api/system/settings/igdb", {
+            clientId: form.igdb?.clientId ?? "",
+            clientSecret: form.igdb?.clientSecret ?? "",
+          });
+        } else if (key === "translate") {
+          await api.put("/api/system/settings/translate", {
+            apiKey: form.translate?.apiKey ?? "",
+          });
+        }
+        releaseSection(key);
+        if (taskId) closeTask(taskId);
+        setPartResult((r) => ({ ...r, [key]: { ok: true, message: "저장했습니다" } }));
+        return;
+      }
+
       const stored = (await getBridge()!.connections.list())
         .find((p) => p.name === (initial?.name ?? form.name));
       const base: ConnectionProfile = stored ?? { ...EMPTY, ...initial, name: form.name };
@@ -476,6 +512,12 @@ export default function ConnectionDialog({
   /* 테스트 중에는 아무것도 못 만진다 — 값이 바뀌면 시험 중인 대상과 화면이 어긋난다 */
   const body = (
       <fieldset disabled={testing} className={`flex flex-col gap-5 ${testing ? "opacity-50" : ""}`}>
+        {/*
+          이름·DB·스토리지는 **클라우드에만 있다** (v1.2). 로컬 세이브파일에는
+          연결 설정이라는 게 없고, 이름은 입구의 세이브 이름이 대신한다
+        */}
+        {mode === "cloud" && (
+          <>
         <Labeled label="이름" hint="목록에서 이 연결을 부를 이름입니다" bad={bad("name")}>
           <input
             value={form.name}
@@ -611,6 +653,9 @@ export default function ConnectionDialog({
           */}
           <Footer part="storage" ready={storageReady} />
         </Section>
+
+          </>
+        )}
 
         <Section
           title="IGDB"

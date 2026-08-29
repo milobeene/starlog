@@ -352,18 +352,37 @@ export default function GameMasterMaster() {
 
             put(0, targets[0].name);
             let synced = 0;
-            for (const [i, game] of targets.entries()) {
-              if (abort.current) break;
-              put(i, game.name);
-              try {
-                await api.post(`/api/games/${game.gameId}/resync`);
-                synced += 1;
-              } catch {
-                // 한 건이 실패해도 나머지는 돈다 — 다음에 다시 누르면 그것만 다시 잡힌다
-              }
-              // IGDB는 초당 4회다. 한 건씩 여유를 두고 부른다
-              await new Promise((r) => setTimeout(r, 300));
-            }
+            let done = 0;
+
+            /*
+             * ⚠️ **응답을 기다리지 않고 0.3초마다 쏜다** (2026-08-29).
+             *
+             * 예전엔 한 건이 끝나길 기다렸다가 0.3초를 더 쉬었다. IGDB 응답이 1초면
+             * 한 건에 1.3초라 100개에 2분이 넘었다. 지금은 전체 시간이 **건수 × 0.3초**로
+             * 고정된다 — 응답 속도와 무관해진다.
+             *
+             * **동시 실행 수를 제한하는 방식은 안 쓴다.** IGDB 한도는 "동시 4개"가 아니라
+             * **초당 4회**다. 동시 4개로 돌리면 응답이 빠를 때 초당 수십 번이 나간다 —
+             * 동시 실행 수는 발사 속도를 전혀 안 막는다. 간격을 재는 쪽이 한도와 같은 단위다
+             */
+            const flights = targets.map(
+              (game, i) =>
+                new Promise<void>((resolve) => {
+                  setTimeout(async () => {
+                    if (abort.current) return resolve();
+                    try {
+                      await api.post(`/api/games/${game.gameId}/resync`);
+                      synced += 1;
+                    } catch {
+                      // 한 건이 실패해도 나머지는 돈다 — 다시 누르면 그것만 다시 잡힌다
+                    }
+                    done += 1;
+                    put(done, game.name);
+                    resolve();
+                  }, i * 300);
+                }),
+            );
+            await Promise.all(flights);
 
             updateTask("bulk-sync", {
               title: abort.current ? "일괄 동기화 중단됨" : "일괄 동기화 완료",
@@ -447,8 +466,11 @@ export default function GameMasterMaster() {
 /**
  * 행의 액션 — **좁아지면 `…` 하나로 접힌다** (2026-08-29).
  *
- * 버튼 셋이 가로로 붙어 있으면 노트북 폭에서 게임 이름을 밀어낸다.
- * 접는 기준을 `lg`(1024px)로 잡은 건 **헤더의 프로필이 아이콘이 되는 폭과 같아서**다 —
+ * 버튼 셋이 가로로 붙어 있으면 좁은 폭에서 게임 이름을 밀어낸다.
+ *
+ * ⚠️ 기준은 **`sm`(640px)**이다 — 헤더의 프로필이 아이콘이 되는 바로 그 폭
+ * (`AppHeader`의 닉네임이 `sm:inline`, 사람 아이콘이 `sm:hidden`).
+ * 처음엔 `lg`(1024px)로 잡았는데 **노트북 폭에서 이미 접혀** 있었다.
  * 화면 곳곳이 제각각 접히면 "지금 좁은 화면인가"가 안 읽힌다.
  *
  * 팝오버는 바깥 클릭으로 닫는다. 스크롤로는 안 닫는다 — 목록이 길어 스크롤하다
@@ -491,19 +513,19 @@ function RowActions({
   return (
     <div ref={box} className="relative shrink-0">
       {/* 넓을 때 — 가로로 편다 */}
-      <div className="hidden items-center gap-3 text-xs text-white/40 lg:flex">{items}</div>
+      <div className="hidden items-center gap-3 text-xs text-white/40 sm:flex">{items}</div>
 
       {/* 좁을 때 — 점 셋 */}
       <button
         onClick={() => setOpen((v) => !v)}
         aria-label="작업"
-        className="flex h-7 w-7 items-center justify-center rounded text-white/40 transition-colors hover:bg-white/10 hover:text-white lg:hidden"
+        className="flex h-7 w-7 items-center justify-center rounded text-white/40 transition-colors hover:bg-white/10 hover:text-white sm:hidden"
       >
         ⋯
       </button>
       {open && (
         <div
-          className="absolute right-0 z-20 mt-1 flex min-w-28 flex-col gap-1 rounded-lg border border-white/10 bg-neutral-900 p-1.5 text-xs shadow-xl lg:hidden"
+          className="absolute right-0 z-20 mt-1 flex min-w-28 flex-col gap-1 rounded-lg border border-white/10 bg-neutral-900 p-1.5 text-xs shadow-xl sm:hidden"
           onClick={() => setOpen(false)}
         >
           {items}
@@ -525,7 +547,7 @@ function ActionItem({
   return (
     <button
       onClick={onClick}
-      className={`rounded px-2 py-1 text-left transition-colors hover:bg-white/10 lg:px-0 lg:py-0 lg:hover:bg-transparent ${
+      className={`rounded px-2 py-1 text-left transition-colors hover:bg-white/10 sm:px-0 sm:py-0 sm:hover:bg-transparent ${
         danger ? "hover:text-red-400" : "hover:text-white"
       }`}
     >

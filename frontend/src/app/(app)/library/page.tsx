@@ -1,5 +1,6 @@
 "use client";
 
+import { rememberLibrary, takeLibrary } from "@/lib/libraryState";
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import PageHeading from "@/components/ui/PageHeading";
@@ -66,12 +67,18 @@ function LibraryContent() {
   // 대시보드의 "More →"가 sort를 들고 온다
   const initialSort = searchParams.get("sort") ?? "lastPlayed";
 
-  const [query, setQuery] = useState("");
+  /*
+   * 돌아왔을 때 보던 화면으로 (v1.2). 상세에서 [Back to library]를 누르면
+   * 늘 루트로 갔던 것을 고친다 — 필터도 폴더도 페이지도 그대로다
+   */
+  const restored = takeLibrary();
+
+  const [query, setQuery] = useState(restored?.query ?? "");
   const [debounced, setDebounced] = useState("");
-  const [sort, setSort] = useState(initialSort);
-  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
-  const [page, setPage] = useState(0);
-  const [view, setView] = useState<"grid" | "folder">("grid");
+  const [sort, setSort] = useState(restored?.sort ?? initialSort);
+  const [filters, setFilters] = useState<Filters>(restored?.filters ?? EMPTY_FILTERS);
+  const [page, setPage] = useState(restored?.page ?? 0);
+  const [view, setView] = useState<"grid" | "folder">(restored?.view ?? "grid");
 
   // 타자마다 요청을 쏘면 76건짜리 목록에 초당 몇 방이 나간다
   useEffect(() => {
@@ -134,6 +141,24 @@ function LibraryContent() {
   );
 
   const list = useApi<PageResponse<BacklogCard>>(view === "grid" ? listPath : null);
+
+  /*
+   * ⚠️ **응답이 오기 전에는 기억해둔 것을 그린다.** 상태만 되살리고 다시 받으면
+   * 돌아올 때마다 스켈레톤이 스친다 — 브라우저 뒤로가기가 즉시인 이유는
+   * 그린 것을 그대로 다시 보여주기 때문이다.
+   *
+   * 조건이 바뀌면(필터·페이지) 기억해둔 것은 남의 것이므로 안 쓴다
+   */
+  const samePath = restored != null && restored.view === view && restored.page === page;
+  const cards = list.data ?? (samePath ? restored?.cards : null) ?? null;
+
+  useEffect(() => {
+    rememberLibrary({
+      view, filters, query, sort, page,
+      openFolder: null,
+      cards: list.data ?? null,
+    });
+  }, [view, filters, query, sort, page, list.data]);
 
   // 제목·필터·그리드가 한 덩어리로 스크롤한다. 따로 스크롤하는 건 사이드바뿐
   return (
@@ -220,20 +245,20 @@ function LibraryContent() {
           )
         ) : list.error ? (
           <ErrorNotice error={list.error} onRetry={list.reload} />
-        ) : list.loading ? (
+        ) : list.loading && !cards ? (
           <CardGridSkeleton />
-        ) : list.data && list.data.items.length > 0 ? (
+        ) : cards && cards.items.length > 0 ? (
           <>
             <div className="mb-6 text-xs text-white/40">
-              Showing <span className="num">{list.data.items.length}</span> on this page ·{" "}
-              <span className="num">{list.data.totalElements}</span> total games
+              Showing <span className="num">{cards.items.length}</span> on this page ·{" "}
+              <span className="num">{cards.totalElements}</span> total games
             </div>
             <div className={GAME_GRID}>
-              {list.data.items.map((card) => (
+              {cards.items.map((card) => (
                 <GameCard key={card.entryId} card={card} />
               ))}
             </div>
-            <Pagination page={page} totalPages={list.data.totalPages} onChange={setPage} />
+            <Pagination page={page} totalPages={cards.totalPages} onChange={setPage} />
           </>
         ) : hasAnyFilter(filters) || debounced ? (
           <EmptyState

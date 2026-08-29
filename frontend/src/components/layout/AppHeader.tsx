@@ -1,5 +1,6 @@
 "use client";
 
+import { rememberAppPath } from "@/lib/lastAppPath";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Dropdown from "@/components/ui/Dropdown";
@@ -62,6 +63,14 @@ export default function AppHeader() {
         */}
         <Link
           href="/"
+          /*
+           * ⚠️ **나가기 전에 어디였는지 담는다** (2026-08-29).
+           *
+           * v1.1에서 `onGoEntry`(백엔드가 죽었을 때)에만 넣었더니 **이 링크로 나갈 때는
+           * 안 담겼다.** 입구로 나가는 길이 둘인데 한쪽만 챙긴 것이다 —
+           * 그래서 [최근 접속]이 늘 대시보드로 갔다
+           */
+          onClick={() => rememberAppPath(window.location.pathname + window.location.search)}
           className="pointer-events-auto flex h-full shrink-0 translate-y-[0.049em] items-center font-display text-sm leading-none font-bold tracking-[0.15em] text-white sm:text-base sm:tracking-[0.2em] lg:text-lg"
         >
           STARLOG

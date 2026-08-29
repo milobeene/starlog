@@ -6,6 +6,8 @@ import EmptyState from "@/components/ui/EmptyState";
 import { CardGridSkeleton, Skeleton } from "@/components/ui/Skeleton";
 import { coverSrc } from "@/lib/cover";
 import { api } from "@/lib/api";
+import { invalidateQueries } from "@/lib/useApi";
+import { rememberLibrary, takeLibrary } from "@/lib/libraryState";
 import { GAME_GRID } from "@/lib/useGridColumns";
 import type { BacklogCard, FacetsResponse, PageResponse } from "@/lib/types";
 
@@ -39,14 +41,26 @@ export default function FolderView({
   onMoved?: () => void;
 }) {
   const [folders, setFolders] = useState<Folder[] | null>(null);
-  const [openKey, setOpenKey] = useState<string | null>(null);
+  /* 어느 폴더를 열어뒀는지도 기억한다 — 상세에 갔다 오면 그 폴더로 돌아온다 (v1.2) */
+  const [openKey, setOpenKey] = useState<string | null>(() => takeLibrary()?.openFolder ?? null);
   const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    const prev = takeLibrary();
+    if (prev) rememberLibrary({ ...prev, openFolder: openKey });
+  }, [openKey]);
 
   /** 폴더에 놓으면 그 태그로 옮긴다. 사이드바의 그룹 헤더와 같은 동작이다 */
   const drop = async (folder: Folder, entryId: number) => {
+    /* 원래 있던 폴더에 놓으면 아무것도 안 한다 (사이드바와 같은 규칙) */
+    const from = folders?.find((f) => f.cards.some((c) => c.entryId === entryId));
+    if (from?.key === folder.key) return;
+
     await api.put(`/api/backlog/${entryId}/tag`, {
       name: folder.key === "untagged" ? null : folder.label,
     });
+    /* 화면 전체를 무른다 — 사이드바까지 함께 맞아야 한다 */
+    invalidateQueries();
     setReloadKey((k) => k + 1);
     onMoved?.();
   };

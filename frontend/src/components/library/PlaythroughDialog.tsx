@@ -186,25 +186,6 @@ export default function PlaythroughDialog({
               토글 (v1.1). 플랫폼과 에뮬은 **동시에 고를 일이 없어서** 한 칸을 나눠 쓴다.
               바꾸면 아래 계정을 비운다 — 안 그러면 "스위치 + 스팀 계정"이 남는다
             */}
-            <div className="mb-1.5 flex gap-1">
-              {(["platform", "emulator"] as const).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => {
-                    setRunsOn(mode);
-                    setAccountId("");
-                  }}
-                  className={`rounded px-2 py-0.5 text-[10px] tracking-widest uppercase transition-colors ${
-                    runsOn === mode
-                      ? "bg-white/15 text-white"
-                      : "text-white/35 hover:bg-white/8 hover:text-white/70"
-                  }`}
-                >
-                  {mode === "platform" ? "플랫폼" : "에뮬"}
-                </button>
-              ))}
-            </div>
             {runsOn === "platform" ? (
               <select
                 value={platformId}
@@ -241,6 +222,25 @@ export default function PlaythroughDialog({
                 ))}
               </select>
             )}
+            <div className="mt-1.5 flex gap-1">
+              {(["platform", "emulator"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => {
+                    setRunsOn(mode);
+                    setAccountId("");
+                  }}
+                  className={`rounded px-2 py-0.5 text-[10px] tracking-widest uppercase transition-colors ${
+                    runsOn === mode
+                      ? "bg-white/15 text-white"
+                      : "text-white/35 hover:bg-white/8 hover:text-white/70"
+                  }`}
+                >
+                  {mode === "platform" ? "플랫폼" : "에뮬"}
+                </button>
+              ))}
+            </div>
           </Field>
         </div>
 

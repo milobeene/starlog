@@ -46,6 +46,8 @@ export default function AcquisitionDialog({
   );
   const [amount, setAmount] = useState(acquisition?.price ? String(acquisition.price.amount) : "");
   const [currency, setCurrency] = useState<Currency>(acquisition?.price?.currency ?? "KRW");
+  /** 구매일 때만 가격을 받는다 */
+  const paid = method === "PURCHASED";
   const [acquiredOn, setAcquiredOn] = useState(acquisition?.acquiredOn ?? "");
   const [label, setLabel] = useState(acquisition?.label ?? "");
   const [saving, setSaving] = useState(false);
@@ -87,7 +89,13 @@ export default function AcquisitionDialog({
       platformId: numberOrNull(platformId),
       platformAccountId: numberOrNull(accountId),
       subscriptionId: numberOrNull(subscriptionId),
-      price: amount === "" ? null : { amount: Number(amount), currency },
+      /*
+       * 가격을 비워도 **0으로 보낸다** (v1.2). 통화도 함께 — 예전엔 둘 다 null이라
+       * "0원에 얻었다"와 "얼마인지 안 적었다"가 구별이 안 됐고 범위 필터에서 사라졌다
+       */
+      price: paid
+        ? { amount: amount === "" ? 0 : Number(amount), currency }
+        : { amount: 0, currency },
       acquiredOn: acquiredOn || null,
       label: label.trim() || null,
     };
@@ -160,22 +168,36 @@ export default function AcquisitionDialog({
           </select>
         </Field>
 
+        {/*
+          ⚠️ **구매가 아니면 가격을 못 넣는다** (v1.2, 사용자 결정).
+          안 가진 게임(NOT_OWNED)이나 무료(FREE)에 금액이 붙으면 뜻이 없다 —
+          저장은 어차피 KRW 0으로 나가고, 서버도 같은 규칙으로 한 번 더 막는다
+        */}
         <div className="grid grid-cols-[1fr_auto] gap-3">
-          <Field label="Price" hint="실제 결제하신 금액. 비워 두시면 금액 없음으로 처리됩니다">
+          <Field
+            label="Price"
+            hint={
+              paid
+                ? "실제 결제하신 금액. 비워 두시면 0원으로 저장됩니다"
+                : "구매일 때만 입력하실 수 있습니다"
+            }
+          >
             <input
               type="text"
               inputMode="decimal"
-              value={amount}
+              disabled={!paid}
+              value={paid ? amount : ""}
               onChange={(event) => setAmount(event.target.value.replace(/[^\d.]/g, ""))}
               placeholder="15000"
-              className={`${FIELD_INPUT} num`}
+              className={`${FIELD_INPUT} num disabled:cursor-not-allowed disabled:opacity-40`}
             />
           </Field>
           <Field label="Currency">
             <select
               value={currency}
+              disabled={!paid}
               onChange={(event) => setCurrency(event.target.value as Currency)}
-              className={FIELD_SELECT}
+              className={`${FIELD_SELECT} disabled:cursor-not-allowed disabled:opacity-40`}
             >
               {CURRENCIES.map((item) => (
                 <option key={item} value={item}>

@@ -1,7 +1,7 @@
 "use client";
 
 import DateField from "@/components/ui/DateField";
-import { Suspense, useState } from "react";
+import { Suspense, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import PageHeading from "@/components/ui/PageHeading";
@@ -309,6 +309,7 @@ function SettingsContent() {
           </SettingsSection>
 
           <SettingsSection
+            collapsible
             title="사전"
             icon="book"
             description="게임에 사용하신 항목만 표시됩니다. 이름을 변경하시면 해당 게임 전체에 반영됩니다."
@@ -520,34 +521,63 @@ function Dictionary({
   const [editing, setEditing] = useState<FacetCount | null>(null);
   const [removing, setRemoving] = useState<FacetCount | null>(null);
   /**
-   * 끌고 있는 항목과 놓을 자리.
+   * 순서 바꾸기 — **끌고 있는 동안 실시간으로 자리가 바뀐다** (v1.2).
    *
-   * ⚠️ **낙관적으로 먼저 바꾼다.** 서버 왕복을 기다리면 손을 뗀 뒤 한 박자 늦게
-   * 움직여서 "안 옮겨졌나" 싶어 다시 끌게 된다. 실패하면 `onDone`이 서버 값으로 되돌린다
+   * 예전엔 놓아야만 순서가 바뀌어서 "지금 놓으면 어디로 가는지"를 알 수 없었다.
+   * 이제 지나가는 항목마다 목록을 즉시 재배열한다 — 손에 든 것이 흐려진 채로
+   * 그 자리에 서 있으므로 미리보기가 따로 필요 없다.
+   *
+   * ⚠️ **`dragId`를 ref로도 들고 있는다.** `dragover`는 초당 수십 번 오는데
+   * 상태만 쓰면 그 사이 렌더가 밀려 옛 값을 읽는다.
+   *
+   * ⚠️ **드롭 후 `onDone()`을 부르지 않는다.** 부르면 서버에서 목록을 다시 받아
+   * **옛 순서가 한 번 스쳤다가** 제자리로 온다(사용자가 본 그 깜빡임이다).
+   * 우리가 이미 맞는 순서를 들고 있으므로 그대로 두면 된다
    */
   const [order, setOrder] = useState<FacetCount[] | null>(null);
   const [dragId, setDragId] = useState<number | null>(null);
+  const dragRef = useRef<number | null>(null);
   const shown = order ?? items;
 
-  const drop = async (targetId: number) => {
-    if (dragId == null || dragId === targetId) return;
-    const next = [...shown];
-    const from = next.findIndex((i) => i.id === dragId);
-    const to = next.findIndex((i) => i.id === targetId);
-    if (from < 0 || to < 0) return;
-    next.splice(to, 0, ...next.splice(from, 1));
-    setOrder(next);
-    setDragId(null);
-    try {
-      await api.put(`${basePath}/order`, { tagIds: next.map((i) => i.id) });
-    } finally {
-      setOrder(null);
-      onDone();
-    }
+  /* 바깥에서 목록이 바뀌면(이름 변경·삭제) 내 사본을 버린다 */
+  const itemKey = items.map((i) => i.id).join(",");
+  const [seenKey, setSeenKey] = useState(itemKey);
+  if (seenKey !== itemKey) {
+    setSeenKey(itemKey);
+    setOrder(null);
+  }
+
+  /** 지나가는 항목 위로 끌면 그 자리에 끼운다 */
+  const hoverOver = (targetId: number) => {
+    const from = dragRef.current;
+    if (from == null || from === targetId) return;
+    setOrder((prev) => {
+      const list = prev ?? items;
+      const a = list.findIndex((i) => i.id === from);
+      const b = list.findIndex((i) => i.id === targetId);
+      if (a < 0 || b < 0 || a === b) return prev;
+      const next = [...list];
+      next.splice(b, 0, ...next.splice(a, 1));
+      return next;
+    });
   };
-  // 사전이 수십 개까지 늘어난다 — 두 줄만 보이고 나머지는 접어둔다
-  const [open, setOpen] = useState(false);
-  const collapsible = items.length > 12;
+
+  const finish = async () => {
+    const moved = dragRef.current;
+    dragRef.current = null;
+    setDragId(null);
+    /*
+     * 순서가 그대로면 아무것도 안 보낸다 — 짚었다 그냥 놓는 일이 잦다.
+     * 이게 없으면 손만 댔다 떼도 서버 왕복이 일어난다
+     */
+    if (moved == null || !order) return;
+    const same = order.every((item, i) => item.id === items[i]?.id);
+    if (same) {
+      setOrder(null);
+      return;
+    }
+    await api.put(`${basePath}/order`, { tagIds: order.map((i) => i.id) });
+  };
 
   return (
     <div>
@@ -559,28 +589,32 @@ function Dictionary({
         {reorderable && items.length > 1 && (
           <span className="text-[10px] text-white/20">끌어서 순서 변경</span>
         )}
-        {collapsible && (
-          <button
-            type="button"
-            onClick={() => setOpen((prev) => !prev)}
-            className="ml-auto text-[11px] text-white/35 transition-colors hover:text-white"
-          >
-            {open ? "접기" : "전체 보기"}
-          </button>
-        )}
+
       </div>
 
       {shown.length === 0 ? (
         <p className="text-xs text-white/25">사용 중인 항목이 없습니다. 게임에 지정하시면 이곳에 표시됩니다.</p>
       ) : (
-        <div className={`flex flex-wrap gap-1.5 ${open ? "" : "max-h-[4.5rem] overflow-hidden"}`}>
+        <div className="flex flex-wrap gap-1.5">
           {shown.map((item) => (
             <span
               key={item.id}
               draggable={reorderable}
-              onDragStart={() => setDragId(item.id)}
-              onDragOver={(e) => reorderable && e.preventDefault()}
-              onDrop={() => void drop(item.id)}
+              onDragStart={() => {
+                dragRef.current = item.id;
+                setDragId(item.id);
+              }}
+              onDragOver={(e) => {
+                if (!reorderable) return;
+                e.preventDefault();
+                hoverOver(item.id);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                void finish();
+              }}
+              /* 끌기가 어떻게 끝나든 흐린 상태를 반드시 푼다 — 취소해도 온다 */
+              onDragEnd={() => void finish()}
               className={`inline-flex items-center gap-2 rounded-full border py-1 pr-1.5 pl-2.5 text-xs text-white/70 ${
                 reorderable ? "cursor-grab active:cursor-grabbing" : ""
               } ${
@@ -664,21 +698,13 @@ function ReadOnlyDictionary({ label, names }: { label: string; names: string[] }
           {label}
         </span>
         <span className="num text-[10px] text-white/25">{names.length}</span>
-        {collapsible && (
-          <button
-            type="button"
-            onClick={() => setOpen((prev) => !prev)}
-            className="ml-auto text-[11px] text-white/35 transition-colors hover:text-white"
-          >
-            {open ? "접기" : "전체 보기"}
-          </button>
-        )}
+
       </div>
 
       {names.length === 0 ? (
         <p className="text-xs text-white/25">직접 입력하신 값이 없습니다. 게임 상세에서 수정하시면 이곳에 표시됩니다.</p>
       ) : (
-        <div className={`flex flex-wrap gap-1.5 ${open ? "" : "max-h-[4.5rem] overflow-hidden"}`}>
+        <div className="flex flex-wrap gap-1.5">
           {names.map((name) => (
             <span
               key={name}

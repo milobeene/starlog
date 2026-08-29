@@ -265,7 +265,12 @@ export default function DateField({
               ))}
             </div>
 
-            <div className="grid grid-cols-7 gap-0.5">
+            {/*
+              ⚠️ **6줄로 고정한다** (v1.2). 달에 따라 5줄이었다 6줄이었다 하면
+              팝업 높이가 달을 넘길 때마다 널뛴다 — 화살표가 손 밑에서 움직인다.
+              6줄은 한 달이 최대로 걸치는 주 수다(31일이 토요일에 시작할 때)
+            */}
+            <div className="grid grid-cols-7 gap-0.5" style={{ minHeight: 6 * 32 + 5 * 2 }}>
               {days.map((day, index) =>
                 day === null ? (
                   // 빈 칸도 자리는 차지해야 요일 열이 안 밀린다

@@ -2,8 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import ConnectionDialog from "@/components/entry/ConnectionDialog";
-import { Button } from "@/components/ui/Field";
-import { IgdbSettings, TranslationSettings, type SectionHandle } from "@/components/system/AppSettingsPanel";
+import { api } from "@/lib/api";
 import { getBridge, type ConnectionProfile, type SessionInfo } from "@/lib/desktop";
 
 /**
@@ -21,33 +20,38 @@ import { getBridge, type ConnectionProfile, type SessionInfo } from "@/lib/deskt
  * 다음에 그 연결로 들어올 때부터 적용되고, 화면이 그걸 분명히 말해야 한다
  */
 /**
- * 로컬 세이브파일의 연결 탭 (2026-08-29).
+ * 로컬 세이브파일의 연결 탭 (v1.2에서 클라우드와 **한 컴포넌트로 합침**).
  *
- * 클라우드 모드와 **할 수 있는 것을 같게 맞췄다** — 섹션마다 [테스트]·[저장]이 있고
- * 맨 아래 [전체 테스트]·[전체 저장]이 있다. 예전엔 번역에 테스트가 아예 없었고
- * 전체 버튼도 없어서, 같은 앱 안에서 모드에 따라 할 수 있는 일이 달랐다.
+ * 예전엔 로컬 전용 화면을 따로 뒀는데, **같은 일을 하는 화면 둘이 서로 다르게 생겼다** —
+ * 버튼 위치도, 알림도, 사용량 게이지 유무도 달랐다. 이제 `ConnectionDialog` 하나가
+ * `mode="local"`로 DB·스토리지 섹션만 감추고 나머지는 그대로 쓴다.
  *
- * 섹션의 동작을 `register`로 받아 순서대로 부른다 — 상태를 여기로 끌어올리면
- * 섹션 둘이 한 덩어리로 엉킨다
+ * ⚠️ 저장 경로는 갈린다 — 로컬은 `connections.json`이 없어 IGDB·번역을 `app_setting`에
+ * 바로 넣는다. 그 분기는 다이얼로그 안에 있다(경계는 "재시작이 필요한가", architecture §2)
  */
 function LocalConnectionSettings() {
-  const igdb = useRef<SectionHandle | null>(null);
-  const translate = useRef<SectionHandle | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [initial, setInitial] = useState<ConnectionProfile | null>(null);
 
-  const runAll = async (pick: (h: SectionHandle) => () => Promise<void>) => {
-    setBusy(true);
-    try {
-      // 하나가 실패해도 다음은 돈다 — 결과는 각 섹션의 알림이 따로 말한다
-      for (const ref of [igdb, translate]) {
-        if (ref.current) {
-          await pick(ref.current)().catch(() => {});
-        }
-      }
-    } finally {
-      setBusy(false);
-    }
-  };
+  useEffect(() => {
+    /* 지금 세이브의 IGDB·번역 키를 백엔드에서 받아 폼의 초기값으로 쓴다 */
+    api
+      .get<{ igdbClientId: string; igdbClientSecret: string; translateApiKey: string }>(
+        "/api/system/settings",
+      )
+      .then((found) =>
+        setInitial({
+          name: "",
+          db: { url: "", user: "", password: "", schema: "" },
+          storage: { endpoint: "", region: "", bucket: "", accessKey: "", secretKey: "", publicBaseUrl: "" },
+          igdb: { clientId: found.igdbClientId ?? "", clientSecret: found.igdbClientSecret ?? "" },
+          translate: { apiKey: found.translateApiKey ?? "" },
+          mediaTargets: { covers: false, screenshots: false },
+        } as ConnectionProfile),
+      )
+      .catch(() => setInitial(null));
+  }, []);
+
+  if (!initial) return <div className="h-40 skeleton-sweep rounded-lg bg-white/[0.06]" />;
 
   return (
     <div className="flex flex-col gap-4">
@@ -55,17 +59,13 @@ function LocalConnectionSettings() {
         지금은 로컬 세이브파일로 쓰고 계십니다. 데이터베이스 연결 설정은 입구 화면에서
         관리합니다.
       </Notice>
-      <IgdbSettings register={(h) => (igdb.current = h)} />
-      <TranslationSettings register={(h) => (translate.current = h)} />
-
-      <div className="flex items-center gap-3 border-t border-white/8 pt-5">
-        <Button onClick={() => runAll((h) => h.test)} disabled={busy}>
-          전체 테스트
-        </Button>
-        <Button variant="primary" onClick={() => runAll((h) => h.save)} disabled={busy}>
-          전체 저장
-        </Button>
-      </div>
+      <ConnectionDialog
+        initial={initial}
+        inline
+        mode="local"
+        onClose={() => {}}
+        onSaved={() => {}}
+      />
     </div>
   );
 }

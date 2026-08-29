@@ -293,7 +293,12 @@ public class StatsQueryService {
                 .from(acquisition)
                 .where(acquisition.backlogEntry.member.id.eq(memberId),
                         acquisition.backlogEntry.deletedAt.isNull(),
-                        acquisition.price.amount.isNotNull(),
+                        /*
+                         * ⚠️ **0원은 지출이 아니다** (2026-08-29). 가격을 안 적은 취득을
+                         * KRW 0으로 저장하기로 하면서, `isNotNull`만으로는 안 가진 게임
+                         * (NOT_OWNED 37건)까지 "돈 나간 것들"에 이름이 뜨게 됐다
+                         */
+                        acquisition.price.amount.gt(java.math.BigDecimal.ZERO),
                         acquisition.acquiredOn.isNotNull())
                 .fetch();
 

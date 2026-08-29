@@ -320,8 +320,18 @@ export default function FilterBox({
         </Field>
 
         <Field label={draft.ptRunsOn === "platform" ? "Platform" : "Emulator"}>
+          <Combobox
+            options={draft.ptRunsOn === "platform" ? platformOptions : emulatorOptions}
+            value={draft.ptRunsOn === "platform" ? draft.ptPlatformId : draft.ptEmulatorId}
+            onChange={(value) => {
+              set(draft.ptRunsOn === "platform" ? "ptPlatformId" : "ptEmulatorId", value);
+              set("ptAccountId", "");
+            }}
+            placeholder="전체"
+            className={INPUT}
+          />
           {/* 토글 — 동시에 고를 일이 없어 한 칸을 나눠 쓴다 (회차 다이얼로그와 같은 규칙) */}
-          <div className="mb-1 flex gap-1">
+          <div className="mt-1.5 flex gap-1">
             {(["platform", "emulator"] as const).map((mode) => (
               <button
                 key={mode}
@@ -342,16 +352,6 @@ export default function FilterBox({
               </button>
             ))}
           </div>
-          <Combobox
-            options={draft.ptRunsOn === "platform" ? platformOptions : emulatorOptions}
-            value={draft.ptRunsOn === "platform" ? draft.ptPlatformId : draft.ptEmulatorId}
-            onChange={(value) => {
-              set(draft.ptRunsOn === "platform" ? "ptPlatformId" : "ptEmulatorId", value);
-              set("ptAccountId", "");
-            }}
-            placeholder="전체"
-            className={INPUT}
-          />
         </Field>
 
         <Field label="Account">
@@ -385,16 +385,6 @@ export default function FilterBox({
           />
         </Field>
 
-        <Field label="Currency" >
-          <Combobox
-            options={currencyOptions}
-            value={draft.acqCurrency}
-            onChange={(value) => set("acqCurrency", value)}
-            placeholder="전체"
-            className={INPUT}
-          />
-        </Field>
-
         <Field label="Price">
           <div className="flex items-center gap-1.5">
             <input
@@ -412,6 +402,26 @@ export default function FilterBox({
               placeholder="최대"
               className={`${INPUT} num min-w-0 flex-1`}
             />
+          </div>
+          {/*
+            통화는 **가격의 단위**라 가격 바로 아래에 둔다 (v1.2).
+            환율을 안 쓰므로(§6.6) 통화를 안 고르면 ₩10,000과 $10,000이 같은 줄에 선다
+          */}
+          <div className="mt-1.5 flex gap-1">
+            {["", "KRW", "USD", "JPY"].map((c) => (
+              <button
+                key={c || "any"}
+                type="button"
+                onClick={() => set("acqCurrency", c)}
+                className={`rounded px-2 py-0.5 text-[10px] tracking-widest uppercase transition-colors ${
+                  draft.acqCurrency === c
+                    ? "bg-white/15 text-white"
+                    : "text-white/35 hover:bg-white/8 hover:text-white/70"
+                }`}
+              >
+                {c || "전체"}
+              </button>
+            ))}
           </div>
         </Field>
 

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
-import { useApi } from "@/lib/useApi";
+import { invalidateQueries, useApi } from "@/lib/useApi";
 import { api } from "@/lib/api";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { coverSrc } from "@/lib/cover";
@@ -55,11 +55,24 @@ export default function LibrarySidebar() {
    * (태그가 covers에서 온다) 하나만 갱신하면 목록과 그룹이 어긋난 채로 남는다
    */
   const moveToTag = async (entryId: number, tagKey: string) => {
+    /*
+     * ⚠️ **원래 있던 태그면 아무것도 안 한다** (v1.2). 예전엔 같은 자리에 놓아도
+     * 요청이 나가고 목록이 새로 그려져서, 안 바뀐 화면이 한 번 깜빡였다
+     */
+    const current = tagById.get(entryId) ?? null;
+    const next = tagKey === UNTAGGED ? null : tagKey;
+    if (current === next) return;
+
     // 엔드포인트가 **이름**을 받는다(다이얼로그와 같은 길). null이면 태그가 벗겨진다
     await api.put(`/api/backlog/${entryId}/tag`, {
       name: tagKey === UNTAGGED ? null : tagKey,
     });
-    await Promise.all([names.reload(), covers.reload(), facets.reload()]);
+    /*
+     * ⚠️ **화면 전체를 무를 수 있다.** 예전엔 사이드바의 세 응답만 다시 받아서
+     * **폴더 탭은 옛 상태로 남았다** — 반대도 마찬가지였다.
+     * `invalidateQueries`는 useApi로 받은 모든 것을 무르므로 어느 쪽에서 놓든 둘 다 맞는다
+     */
+    invalidateQueries();
   };
 
   const coverById = useMemo(() => {
@@ -83,9 +96,9 @@ export default function LibrarySidebar() {
    * 태그 없는 게임은 맨 아래 한 덩어리로 몬다. 실데이터는 태그 안 붙은 항목이 더 많아서
    * 이 그룹이 없으면 게임이 사라져 보인다.
    *
-   * 태그 정보는 목록 API(covers)에서 오는데 이름 목록(names)보다 늦게 도착한다.
-   * 그동안은 전부 "태그 없음"으로 묶이는데, 그래도 **목록 자체는 먼저 읽힌다** —
-   * 태그가 도착하면 조용히 재배치된다
+   * ⚠️ **태그가 도착하기 전에는 그리지 않는다** (v1.2, 사용자 요청).
+   * 예전엔 목록을 먼저 띄우고 태그가 오면 재배치했는데, **전부 '태그 없음'으로 한 번
+   * 그려졌다가 흩어지는 게** 로딩이 아니라 고장으로 보였다. 스켈레톤이 낫다
    */
   const groups = useMemo(() => {
     const buckets = new Map<string, typeof names.data>();
@@ -195,7 +208,8 @@ export default function LibrarySidebar() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-2">
-        {names.loading ? (
+        {/* 태그(covers)까지 와야 그린다 — 하나라도 없으면 스켈레톤 */}
+        {names.loading || covers.loading || !covers.data ? (
           <div className="flex flex-col gap-2 p-2">
             {Array.from({ length: 12 }, (_, index) => (
               <Skeleton key={index} className="h-6 w-full" />
@@ -207,7 +221,33 @@ export default function LibrarySidebar() {
               const isOpen = !collapsed.has(group.key);
               const label = group.key === UNTAGGED ? "태그 없음" : group.key;
               return (
-                <section key={group.key}>
+                <section
+                  key={group.key}
+                  /*
+                    ⚠️ **그룹 전체가 드롭 영역이다** (v1.2). 헤더 줄에만 받으면
+                    펼쳐진 게임 목록 위에 놓았을 때 아무 일도 안 일어나 — 사용자 눈에는
+                    "그 태그 안에 놓았는데" 실패한 것으로 보인다
+                  */
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDropTarget(group.key);
+                  }}
+                  onDragLeave={(e) => {
+                    // 자식으로 옮겨가는 것도 leave로 온다 — 진짜로 밖으로 나갔을 때만 끈다
+                    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                      setDropTarget((t) => (t === group.key ? null : t));
+                    }
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDropTarget(null);
+                    const id = Number(e.dataTransfer.getData("text/entry-id"));
+                    if (id) void moveToTag(id, group.key);
+                  }}
+                  className={`rounded-md transition-colors ${
+                    dropTarget === group.key ? "bg-white/[0.07]" : ""
+                  }`}
+                >
                   {/*
                     헤더를 버튼으로 두되 생김새는 라벨에 가깝게 — 얇은 글씨 + 개수.
                     필터처럼 보이면 사용자가 여기서 걸러질 거라 기대하는데, 그건 FilterBox의 몫이다
@@ -222,24 +262,13 @@ export default function LibrarySidebar() {
                       })
                     }
                     /*
-                      드롭 대상 (2026-08-29). 게임을 끌어다 놓으면 그 태그로 옮긴다.
-                      `preventDefault`가 없으면 브라우저가 드롭을 아예 안 받는다
+                      태그 줄에 흐린 배경을 깐다 (v1.2). 게임 목록과 같은 무게로 흐르니까
+                      **어디가 그룹 머리인지 눈에 안 걸렸다** — 배경 한 겹이 결을 만든다
                     */
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      setDropTarget(group.key);
-                    }}
-                    onDragLeave={() => setDropTarget((t) => (t === group.key ? null : t))}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      setDropTarget(null);
-                      const id = Number(e.dataTransfer.getData("text/entry-id"));
-                      if (id) void moveToTag(id, group.key);
-                    }}
-                    className={`flex w-full items-center gap-2 rounded px-2 py-2 text-[11px] font-semibold tracking-widest uppercase transition-colors ${
+                    className={`flex w-full items-center gap-2 rounded-md border px-2 py-2 text-[11px] font-semibold tracking-widest uppercase transition-colors ${
                       dropTarget === group.key
-                        ? "bg-white/15 text-white ring-1 ring-white/30"
-                        : "text-white/60 hover:text-white/85"
+                        ? "border-white/30 bg-white/15 text-white ring-1 ring-white/30"
+                        : "border-white/[0.06] bg-white/[0.05] text-white/70 hover:bg-white/[0.09] hover:text-white/90"
                     }`}
                   >
                     <span

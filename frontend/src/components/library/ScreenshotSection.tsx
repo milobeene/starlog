@@ -1,5 +1,6 @@
 "use client";
 
+import { Collapsible } from "@/components/settings/SettingsSection";
 import { useState } from "react";
 import DropZone from "@/components/media/DropZone";
 import SectionIcon from "@/components/ui/SectionIcon";
@@ -130,7 +131,9 @@ export default function ScreenshotSection({ entryId }: { entryId: number }) {
         </p>
       )}
 
+      {/* 스크린샷도 접는다 (v1.2) — 수십 장이면 화면 아래가 통째로 밀린다 */}
       {shots && shots.length > 0 && (
+        <Collapsible>
         <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
           {shots.map((shot, index) => {
             const picked = selected.has(shot.fileName);
@@ -187,6 +190,7 @@ export default function ScreenshotSection({ entryId }: { entryId: number }) {
             );
           })}
         </div>
+        </Collapsible>
       )}
 
       <DropZone

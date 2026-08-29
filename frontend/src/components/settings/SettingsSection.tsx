@@ -7,15 +7,19 @@ import SectionIcon, { type IconName } from "@/components/ui/SectionIcon";
  * 길어지면 접는다 (v1.1, 2026-08-29).
  *
  * 프로필 화면이 아래로 한없이 길어져서 구독을 보려면 한참 굴려야 했다.
- * 높이는 **플랫폼 8.5행**으로 통일한다 — 어중간하게 잘린 반 줄이 "더 있다"를 말한다.
- * 딱 떨어지게 자르면 거기가 끝인 줄 안다.
+ *
+ * 높이는 **3.5행**이다 (2026-08-29, 사용자 지정). 8.5행은 접은 티가 안 날 만큼 길었다.
+ * 네 번째 줄이 **딱 절반만** 보이게 갭까지 계산한다 — 어중간하게 잘린 반 줄이
+ * "더 있다"를 말한다. 딱 떨어지게 자르면 거기가 끝인 줄 안다.
+ *
+ * 행 하나 = 44px(패딩 포함) + gap 8px. 3행 + 갭 3개 + 반 행 = 44*3 + 8*3 + 22 = 178
  *
  * ⚠️ **넘칠 때만 버튼이 뜬다.** 항상 띄우면 다 보이는데도 누를 게 있어 헷갈린다.
  * 잘림 판정은 그려진 뒤에야 알 수 있어 ResizeObserver로 잰다 — 창 크기가 바뀌어도 다시 잰다
  */
-const COLLAPSED_MAX_PX = 306;
+export const COLLAPSED_MAX_PX = 178;
 
-function Collapsible({ children }: { children: React.ReactNode }) {
+export function Collapsible({ children }: { children: React.ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const [overflow, setOverflow] = useState(false);
   const [open, setOpen] = useState(false);
