@@ -274,7 +274,7 @@ export default function LibrarySidebar() {
                     style={
                       dropTarget === group.key
                         ? undefined
-                        : { background: tone.soft, borderColor: tone.soft, color: tone.text }
+                        : { background: tone.dim, borderColor: tone.dim, color: tone.text }
                     }
                     className={`flex w-full items-center gap-2 rounded-md border px-2 py-2 text-xs font-semibold tracking-widest uppercase transition-colors ${
                       dropTarget === group.key

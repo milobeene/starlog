@@ -248,6 +248,9 @@ function FolderBox({
         style={{ backgroundImage: `url(${image})` }}
       />
 
+      {/* 움직이는 그레인 — 타일 한 장을 모든 폴더가 공유한다 */}
+      <span aria-hidden className="grain-layer" />
+
       {/*
         한 겹 눌러 준다 (v1.2, 사용자 요청). 셰이더 그림이 밝아서 흰 대문자 라벨이
         묻혔다 — 호버하면 걷혀서 원래 색이 드러난다

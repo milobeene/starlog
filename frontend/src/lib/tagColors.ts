@@ -34,8 +34,16 @@ type Tone = {
   label: string;
   /** 글씨·테두리. 어두운 배경 위에서 읽혀야 하니 밝다 */
   text: string;
-  /** 배경 한 겹. 글씨를 안 덮게 아주 옅다 */
+  /** 배경 한 겹. 글씨를 안 덮게 아주 옅다 (사전의 칩) */
   soft: string;
+  /**
+   * 사이드바의 태그 줄 배경 (v1.2).
+   *
+   * ⚠️ `soft`보다 **채도를 크게 낮춘다.** 사이드바는 색 줄이 열 개 넘게 세로로
+   * 이어지는 자리라, 사전의 칩과 같은 채도면 목록이 알록달록해서 게임 이름이 안 읽힌다.
+   * 색은 알아볼 만큼만 남기고 배경으로 물러나야 한다
+   */
+  dim: string;
   /** 폴더 배경을 이루는 세 덩어리 — 밝은 것 / 중간 / 바닥 */
   hi: string;
   mid: string;
@@ -43,20 +51,20 @@ type Tone = {
 };
 
 export const TAG_COLORS: Record<TagColorName, Tone> = {
-  rose:     { label: "장미",   text: "#f0919d", soft: "rgba(240,145,157,0.20)", hi: "#e8546f", mid: "#a8365a", low: "#3a1424" },
-  coral:    { label: "산호",   text: "#f5a07c", soft: "rgba(245,160,124,0.20)", hi: "#f0714a", mid: "#b8482f", low: "#3b1710" },
-  amber:    { label: "호박",   text: "#efc072", soft: "rgba(239,192,114,0.20)", hi: "#f0ad3c", mid: "#a9741c", low: "#35240d" },
-  sand:     { label: "모래",   text: "#e3d494", soft: "rgba(227,212,148,0.20)", hi: "#dcc95f", mid: "#948333", low: "#2f2a14" },
-  olive:    { label: "올리브", text: "#c3d183", soft: "rgba(195,209,131,0.20)", hi: "#a8c44c", mid: "#68812c", low: "#212a10" },
-  sage:     { label: "세이지", text: "#9fd39a", soft: "rgba(159,211,154,0.20)", hi: "#63c266", mid: "#377b3f", low: "#132615" },
-  mint:     { label: "민트",   text: "#8fdcc0", soft: "rgba(143,220,192,0.20)", hi: "#3fd0a0", mid: "#24866b", low: "#0e2b22" },
-  teal:     { label: "청록",   text: "#84d2da", soft: "rgba(132,210,218,0.20)", hi: "#2fc2d2", mid: "#1d7b88", low: "#0b282c" },
-  sky:      { label: "하늘",   text: "#8fc2ef", soft: "rgba(143,194,239,0.20)", hi: "#3f9fee", mid: "#2a628f", low: "#0e2033" },
-  denim:    { label: "데님",   text: "#94a6ee", soft: "rgba(148,166,238,0.20)", hi: "#5470ea", mid: "#33438f", low: "#131834" },
-  lavender: { label: "라벤더", text: "#b79cf0", soft: "rgba(183,156,240,0.20)", hi: "#8b5ce8", mid: "#553794", low: "#1e1338" },
-  plum:     { label: "자두",   text: "#d494e4", soft: "rgba(212,148,228,0.20)", hi: "#b754d8", mid: "#71318a", low: "#281033" },
-  mauve:    { label: "모브",   text: "#e59ab4", soft: "rgba(229,154,180,0.20)", hi: "#d95f95", mid: "#8b3760", low: "#301224" },
-  clay:     { label: "흙",     text: "#d6ac93", soft: "rgba(214,172,147,0.20)", hi: "#c47c4f", mid: "#7d4d33", low: "#2a1a12" },
+  rose:     { label: "장미",   text: "#f0919d", dim: "rgba(201,153,159,0.22)", soft: "rgba(240,145,157,0.20)", hi: "#e8546f", mid: "#a8365a", low: "#3a1424" },
+  coral:    { label: "산호",   text: "#f5a07c", dim: "rgba(199,158,140,0.22)", soft: "rgba(245,160,124,0.20)", hi: "#f0714a", mid: "#b8482f", low: "#3b1710" },
+  amber:    { label: "호박",   text: "#efc072", dim: "rgba(192,170,133,0.22)", soft: "rgba(239,192,114,0.20)", hi: "#f0ad3c", mid: "#a9741c", low: "#35240d" },
+  sand:     { label: "모래",   text: "#e3d494", dim: "rgba(192,184,153,0.22)", soft: "rgba(227,212,148,0.20)", hi: "#dcc95f", mid: "#948333", low: "#2f2a14" },
+  olive:    { label: "올리브", text: "#c3d183", dim: "rgba(168,174,138,0.22)", soft: "rgba(195,209,131,0.20)", hi: "#a8c44c", mid: "#68812c", low: "#212a10" },
+  sage:     { label: "세이지", text: "#9fd39a", dim: "rgba(157,182,154,0.22)", soft: "rgba(159,211,154,0.20)", hi: "#63c266", mid: "#377b3f", low: "#132615" },
+  mint:     { label: "민트",   text: "#8fdcc0", dim: "rgba(149,185,172,0.22)", soft: "rgba(143,220,192,0.20)", hi: "#3fd0a0", mid: "#24866b", low: "#0e2b22" },
+  teal:     { label: "청록",   text: "#84d2da", dim: "rgba(141,177,181,0.22)", soft: "rgba(132,210,218,0.20)", hi: "#2fc2d2", mid: "#1d7b88", low: "#0b282c" },
+  sky:      { label: "하늘",   text: "#8fc2ef", dim: "rgba(152,177,200,0.22)", soft: "rgba(143,194,239,0.20)", hi: "#3f9fee", mid: "#2a628f", low: "#0e2033" },
+  denim:    { label: "데님",   text: "#94a6ee", dim: "rgba(155,164,200,0.22)", soft: "rgba(148,166,238,0.20)", hi: "#5470ea", mid: "#33438f", low: "#131834" },
+  lavender: { label: "라벤더", text: "#b79cf0", dim: "rgba(174,161,204,0.22)", soft: "rgba(183,156,240,0.20)", hi: "#8b5ce8", mid: "#553794", low: "#1e1338" },
+  plum:     { label: "자두",   text: "#d494e4", dim: "rgba(185,153,193,0.22)", soft: "rgba(212,148,228,0.20)", hi: "#b754d8", mid: "#71318a", low: "#281033" },
+  mauve:    { label: "모브",   text: "#e59ab4", dim: "rgba(195,158,170,0.22)", soft: "rgba(229,154,180,0.20)", hi: "#d95f95", mid: "#8b3760", low: "#301224" },
+  clay:     { label: "흙",     text: "#d6ac93", dim: "rgba(182,162,150,0.22)", soft: "rgba(214,172,147,0.20)", hi: "#c47c4f", mid: "#7d4d33", low: "#2a1a12" },
 };
 
 /**
@@ -95,6 +103,7 @@ export const NEUTRAL: Tone = {
   label: "없음",
   text: "rgba(255,255,255,0.70)",
   soft: "rgba(255,255,255,0.05)",
+  dim: "rgba(255,255,255,0.05)",
   hi: "#5a5a5a",
   mid: "#3a3a3a",
   low: "#161616",

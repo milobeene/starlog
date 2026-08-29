@@ -498,3 +498,53 @@
   outline: 2px solid rgba(255, 255, 255, 0.6);
   outline-offset: 2px;
 }
+
+/*
+ * 움직이는 필름 그레인 (v1.2).
+ *
+ * 폴더 배경 그림에는 **그레인을 굽지 않았다** — 구우면 정지 화면이라 안 움직인다.
+ * 대신 노이즈 타일 한 장을 얹고 위치를 튀게 한다.
+ *
+ * ## `steps()`로 튄다
+ *
+ * 부드럽게 움직이면 노이즈가 미끄러지는 것처럼 보여서 "흐르는 얼룩"이 된다.
+ * 필름 그레인은 매 프레임 **자리를 갈아치우는** 것이라 계단 함수라야 한다.
+ *
+ * ## 타일보다 크게 깔고 옮긴다
+ *
+ * `background-position`을 옮기면 타일 경계가 드러난다. 요소를 사방으로 넉넉히
+ * 키워두고(`-inset-[50%]`) 통째로 옮기면 어디를 옮겨도 빈 자리가 안 생긴다.
+ *
+ * 타일 하나를 모든 폴더가 공유하므로 폴더가 몇 개든 그림은 한 장이다
+ */
+@keyframes grain-shift {
+  0%   { transform: translate(0, 0); }
+  10%  { transform: translate(-6%, -4%); }
+  20%  { transform: translate(-11%, 3%); }
+  30%  { transform: translate(4%, -9%); }
+  40%  { transform: translate(-4%, 12%); }
+  50%  { transform: translate(-12%, 5%); }
+  60%  { transform: translate(8%, 2%); }
+  70%  { transform: translate(2%, -10%); }
+  80%  { transform: translate(-8%, 7%); }
+  90%  { transform: translate(6%, 6%); }
+  100% { transform: translate(0, 0); }
+}
+
+.grain-layer {
+  position: absolute;
+  /* 옮겨도 빈 자리가 안 생기게 사방으로 키운다 */
+  inset: -50%;
+  background-image: url("/tag-bg/grain.png");
+  background-repeat: repeat;
+  /* 알갱이 크기. 원본 192px을 그대로 쓰면 폴더에서 너무 곱다 */
+  background-size: 128px 128px;
+  opacity: 0.55;
+  pointer-events: none;
+  animation: grain-shift 1.1s steps(1) infinite;
+}
+
+/* 움직임을 싫어하는 사람에겐 멈춰 세운다 — 결은 그대로 남는다 */
+@media (prefers-reduced-motion: reduce) {
+  .grain-layer { animation: none; }
+}

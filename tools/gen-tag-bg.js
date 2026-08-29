@@ -9,7 +9,8 @@
 // ⚠️ 셰이더는 `tools/shaders.json`에 **베껴져 있다.** 원본(frontend/src/lib/fluidShader.ts)을
 // 고치면 여기도 다시 뽑아야 한다 — 자동으로 안 따라간다. 태그 배경용으로 둘을 바꿔뒀다:
 //   · 무지개 순회 제거 — 시간에 따라 색조가 돌면 태그 색이 아니게 된다
-//   · 그레인 0.06 → 0.24, 2px 블록 — 폴더는 손바닥만 해서 결이 없으면 그냥 색면이다
+//   · 그레인 제거 — 구우면 정지 화면이라 안 움직인다. 움직이는 층은 CSS가 얹는다
+//     (`.grain-layer` + `tools/gen-grain.js`가 만드는 grain.png)
 //
 // 색 팔레트는 `tools/tones.json`. 태그 색을 고치면 그것도 다시 만들어야 한다.
 const { app, BrowserWindow } = require("electron");
