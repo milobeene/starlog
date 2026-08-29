@@ -549,15 +549,42 @@ function Dictionary({
     setOrder(null);
   }
 
-  /** 지나가는 항목 위로 끌면 그 자리에 끼운다 */
-  const hoverOver = (targetId: number) => {
+  /**
+   * 놓을 자리를 **포인터 좌표로 정한다** (v1.2).
+   *
+   * ⚠️ 예전엔 칩 위에 얹혔을 때만 자리를 바꿨다. 양쪽 정렬로 **칩 사이가 넓어지면서**
+   * 그 틈에 놓으면 아무 일도 안 일어났다 — 사용자 눈에는 "사이에 두려는데 안 먹는다"다.
+   *
+   * 컨테이너가 통째로 받고, **각 칩의 가로 중심과 포인터를 견줘** 앞인지 뒤인지 정한다.
+   * 줄이 여러 개라 세로도 본다 — 같은 줄(세로 범위 안)에 있는 것만 후보다
+   */
+  const listRef = useRef<HTMLDivElement>(null);
+
+  const hoverAt = (x: number, y: number) => {
     const from = dragRef.current;
-    if (from == null || from === targetId) return;
+    if (from == null || !listRef.current) return;
+
+    const chips = [...listRef.current.querySelectorAll<HTMLElement>("[data-chip]")];
+    let targetId: number | null = null;
+    let after = false;
+
+    for (const chip of chips) {
+      const r = chip.getBoundingClientRect();
+      if (y < r.top || y > r.bottom) continue;   // 다른 줄
+      targetId = Number(chip.dataset.chip);
+      after = x > r.left + r.width / 2;
+      if (!after) break;                          // 이 칩 앞이면 여기서 끝
+    }
+    if (targetId == null || targetId === from) return;
+
     setOrder((prev) => {
       const list = prev ?? items;
       const a = list.findIndex((i) => i.id === from);
-      const b = list.findIndex((i) => i.id === targetId);
-      if (a < 0 || b < 0 || a === b) return prev;
+      let b = list.findIndex((i) => i.id === targetId);
+      if (a < 0 || b < 0) return prev;
+      if (after) b += 1;
+      if (b > a) b -= 1;                          // 자기를 뺀 뒤의 자리
+      if (a === b) return prev;
       const next = [...list];
       next.splice(b, 0, ...next.splice(a, 1));
       return next;
@@ -619,10 +646,25 @@ function Dictionary({
           ⚠️ **글자 양쪽 정렬처럼** 편다 (v1.2, 사용자 지정).
           격자로 폭을 균등하게 나눠봤더니 짧은 태그가 쓸데없이 넓어졌다 —
           원한 것은 **칸을 늘리는 게 아니라 사이를 벌리는 것**이다.
-          `text-align: justify`는 인라인 요소에 먹으므로 칩을 `inline-flex`로 두고,
-          마지막 줄이 억지로 늘어나지 않게 `after:w-full`로 빈 줄 하나를 흘려보낸다
+          `text-align: justify`는 인라인 요소에 먹으므로 칩을 `inline-flex`로 둔다.
+
+          ⚠️ **`::after` 트릭을 쓰지 않는다.** 그건 마지막 줄까지 억지로 펴는 장치인데,
+          그러면 태그가 두 개 남은 줄이 화면 폭만큼 벌어져 보인다 —
+          justify는 원래 마지막 줄을 왼쪽 정렬로 둔다. 그게 맞는 모양이다 (사용자 지정)
         */
-        <div className="text-justify after:inline-block after:w-full after:content-['']">
+        <div
+          ref={listRef}
+          onDragOver={(e) => {
+            if (!reorderable || dragRef.current == null) return;
+            e.preventDefault();
+            hoverAt(e.clientX, e.clientY);
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            void finish();
+          }}
+          className="text-justify"
+        >
           {/*
             ⚠️ **칩 사이에 진짜 공백을 넣는다.** JSX는 요소 사이의 줄바꿈을 지우는데,
             `text-align: justify`는 **단어 사이 공백을 늘려서** 줄을 편다 —
@@ -635,15 +677,6 @@ function Dictionary({
               onDragStart={() => {
                 dragRef.current = item.id;
                 setDragId(item.id);
-              }}
-              onDragOver={(e) => {
-                if (!reorderable) return;
-                e.preventDefault();
-                hoverOver(item.id);
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                void finish();
               }}
               /* 끌기가 어떻게 끝나든 흐린 상태를 반드시 푼다 — 취소해도 온다 */
               onDragEnd={() => void finish()}
@@ -753,10 +786,13 @@ function ReadOnlyDictionary({ label, names }: { label: string; names: string[] }
           ⚠️ **글자 양쪽 정렬처럼** 편다 (v1.2, 사용자 지정).
           격자로 폭을 균등하게 나눠봤더니 짧은 태그가 쓸데없이 넓어졌다 —
           원한 것은 **칸을 늘리는 게 아니라 사이를 벌리는 것**이다.
-          `text-align: justify`는 인라인 요소에 먹으므로 칩을 `inline-flex`로 두고,
-          마지막 줄이 억지로 늘어나지 않게 `after:w-full`로 빈 줄 하나를 흘려보낸다
+          `text-align: justify`는 인라인 요소에 먹으므로 칩을 `inline-flex`로 둔다.
+
+          ⚠️ **`::after` 트릭을 쓰지 않는다.** 그건 마지막 줄까지 억지로 펴는 장치인데,
+          그러면 태그가 두 개 남은 줄이 화면 폭만큼 벌어져 보인다 —
+          justify는 원래 마지막 줄을 왼쪽 정렬로 둔다. 그게 맞는 모양이다 (사용자 지정)
         */
-        <div className="text-justify after:inline-block after:w-full after:content-['']">
+        <div className="text-justify">
           {names.map((name) => (
             <span
               key={name}

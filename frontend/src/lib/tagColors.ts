@@ -60,26 +60,28 @@ export const TAG_COLORS: Record<TagColorName, Tone> = {
 };
 
 /**
- * 폴더 배경 — **정지된 유체** (v1.2, 사용자 요청).
+ * 폴더 배경 그림 (v1.2, 사용자 결정).
  *
- * 직선 그래디언트는 "위에서 아래로 어두워지는 띠"라 열몇 개가 나란히 서면 지루하다.
- * 원형 그래디언트 셋을 서로 어긋나게 겹치면 **덩어리가 뭉치고 번진 것처럼** 보인다 —
- * 물감 두 방울을 물에 떨어뜨린 모양에 가깝다.
+ * ## 왜 CSS가 아니라 그림인가
  *
- * ⚠️ **움직이지 않는다.** 앱 배경의 유체는 캔버스 애니메이션인데, 폴더가 열몇 개면
- * 그만큼 돌아야 해서 프레임이 떨어진다. 여기는 CSS 한 줄이라 공짜다.
+ * 원형 그래디언트를 겹쳐도 **앱 배경의 유체와 결이 달랐다.** 그건 노이즈로 좌표를
+ * 뒤틀어 만든 무늬라 CSS로는 흉내가 안 난다.
  *
- * 겹치는 순서가 중요하다 — 먼저 쓴 것이 위에 온다. 밝은 덩어리를 앞에 둬야
- * 어두운 바닥 위로 떠오른다
+ * 그래서 **같은 셰이더를 색마다 한 번씩 돌려 찍어뒀다.** 무지개 순회만 빼고
+ * (`float hue = fract(...)` 줄) 팔레트를 태그 색에서 만든다 — 색조는 그대로 두고
+ * 명암·채도만 벌리고, 이웃 색조를 ±0.045만 섞어 결을 낸다. 더 돌리면 무지개를 뺀
+ * 뜻이 사라진다.
+ *
+ * ⚠️ **실시간으로 안 돌린다.** 폴더가 열몇 개면 WebGL 컨텍스트가 그만큼 필요한데
+ * 브라우저가 개수를 세는 자원이라 앞의 것들이 강제로 사라진다(context lost).
+ * 그림 한 장이면 그 문제가 없다.
+ *
+ * 만드는 법은 `tools/gen-tag-bg.js`. 색을 고치면 다시 돌려야 한다 —
+ * 그림이 팔레트를 따라가지 않는다
  */
-export function fluidBackground(tone: Tone): string {
-  return [
-    `radial-gradient(58% 52% at 22% 24%, ${tone.hi} 0%, transparent 62%)`,
-    `radial-gradient(46% 44% at 82% 34%, ${tone.mid} 0%, transparent 66%)`,
-    `radial-gradient(70% 62% at 62% 88%, ${tone.mid} 0%, transparent 72%)`,
-    `radial-gradient(40% 38% at 8% 82%, ${tone.hi} 0%, transparent 70%)`,
-    tone.low,
-  ].join(", ");
+export function tagBackground(color: string | null | undefined): string | null {
+  if (!color || !(color in TAG_COLORS)) return null;
+  return `/tag-bg/${color}.jpg`;
 }
 
 export const TAG_COLOR_NAMES = Object.keys(TAG_COLORS) as TagColorName[];

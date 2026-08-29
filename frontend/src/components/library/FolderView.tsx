@@ -1,6 +1,6 @@
 "use client";
 
-import { fluidBackground, toneOf } from "@/lib/tagColors";
+import { tagBackground, toneOf } from "@/lib/tagColors";
 import { useEffect, useMemo, useState } from "react";
 import GameCard from "@/components/ui/GameCard";
 import EmptyState from "@/components/ui/EmptyState";
@@ -214,13 +214,15 @@ function FolderBox({
   const [over, setOver] = useState(false);
 
   /*
-   * ⚠️ **커버 블러를 색 그래디언트로 바꿨다** (v1.2).
+   * ⚠️ **커버 블러를 태그 색으로 바꿨다** (v1.2).
    *
    * 예전엔 첫 게임의 커버를 흐리게 깔았다. 그러면 **폴더의 얼굴이 그 안의 첫 게임**이라
    * 게임 하나만 옮겨도 폴더가 딴 것처럼 보였고, 색이 제각각이라 목록이 어수선했다.
-   * 태그 색을 쓰면 폴더가 자기 정체성을 갖는다 — 색을 안 고른 폴더만 중립이다
+   *
+   * 지금은 앱 배경과 **같은 셰이더로 찍어둔 그림**이다 — CSS 그래디언트로는 그 결이 안 났다
    */
   const tone = toneOf(folder.color);
+  const image = tagBackground(folder.color);
 
   return (
     <button
@@ -243,8 +245,13 @@ function FolderBox({
     >
       <div
         aria-hidden
-        className="absolute inset-0 transition-transform duration-700 ease-out group-hover:scale-110"
-        style={{ background: fluidBackground(tone) }}
+        className="absolute inset-0 bg-cover bg-center transition-transform duration-700 ease-out group-hover:scale-110"
+        style={
+          image
+            ? { backgroundImage: `url(${image})` }
+            : /* 색을 안 고른 폴더 — 중립 회색 */
+              { background: `linear-gradient(140deg, ${tone.mid}, ${tone.low})` }
+        }
       />
 
       {/* 라벨이 가운데 오므로 전체를 고르게 덮는다. 그래디언트가 이미 어두워 얇게 */}
