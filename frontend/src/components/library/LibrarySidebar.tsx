@@ -265,7 +265,7 @@ export default function LibrarySidebar() {
                       태그 줄에 흐린 배경을 깐다 (v1.2). 게임 목록과 같은 무게로 흐르니까
                       **어디가 그룹 머리인지 눈에 안 걸렸다** — 배경 한 겹이 결을 만든다
                     */
-                    className={`flex w-full items-center gap-2 rounded-md border px-2 py-2 text-[11px] font-semibold tracking-widest uppercase transition-colors ${
+                    className={`flex w-full items-center gap-2 rounded-md border px-2 py-2 text-xs font-semibold tracking-widest uppercase transition-colors ${
                       dropTarget === group.key
                         ? "border-white/30 bg-white/15 text-white ring-1 ring-white/30"
                         : "border-white/[0.06] bg-white/[0.05] text-white/70 hover:bg-white/[0.09] hover:text-white/90"

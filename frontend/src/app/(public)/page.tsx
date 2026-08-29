@@ -1,6 +1,7 @@
 "use client";
 
 import { takeAppPath } from "@/lib/lastAppPath";
+import { clearApiCache } from "@/lib/useApi";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useSyncExternalStore } from "react";
@@ -116,6 +117,8 @@ export default function EntryPage() {
      * 배경색도 같은 값에서 나오므로 함께 틀어진다
      */
     clearSessionCache();
+    /* ⚠️ 응답 캐시도 버린다 — 안 버리면 **남의 기록이 잠깐 보인다** (v1.2) */
+    clearApiCache();
     router.push("/dashboard");
   };
 

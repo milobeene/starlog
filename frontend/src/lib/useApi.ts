@@ -17,8 +17,34 @@ import { api, ApiError } from "./api";
 let version = 0;
 const listeners = new Set<() => void>();
 
+/**
+ * 응답 캐시 (v1.2).
+ *
+ * ## 왜 넣었나
+ *
+ * 상세에 들어갔다 [Back to library]로 나오면 화면이 통째로 다시 마운트된다 —
+ * Next의 App Router는 라우트가 바뀌면 컴포넌트를 버리기 때문이다. 그래서 돌아올 때마다
+ * **스켈레톤이 1~2초 스쳤다.** 브라우저 뒤로가기가 즉시인 이유는 그린 것을 그대로
+ * 다시 보여주기 때문인데, 여기서는 그럴 수가 없다.
+ *
+ * 그래서 **경로별 마지막 응답을 들고 있는다.** 돌아오면 그것을 즉시 그리고,
+ * 뒤에서 조용히 다시 받아 바뀐 것만 갈아 끼운다(stale-while-revalidate).
+ *
+ * ⚠️ **쓰기 뒤에는 통째로 버린다.** 안 그러면 방금 고친 것이 옛 값으로 한 번 스친다 —
+ * 태그 순서에서 실제로 그렇게 났다.
+ *
+ * ⚠️ 모듈 스코프라 문서가 다시 로드되면 사라진다. 다른 세이브파일로 옮길 때도
+ * `clearApiCache()`를 부른다 — 안 부르면 **남의 기록이 잠깐 보인다**
+ */
+const cache = new Map<string, unknown>();
+
+export function clearApiCache() {
+  cache.clear();
+}
+
 /** 쓰기 뒤에 부른다. 지금 떠 있는 모든 useApi가 다시 읽는다 */
 export function invalidateQueries() {
+  cache.clear();
   version += 1;
   listeners.forEach((listener) => listener());
 }
@@ -49,10 +75,17 @@ type State<T> = {
  * 최신 응답을 덮어쓴다 (race condition)
  */
 export function useApi<T>(path: string | null): State<T> & { reload: () => void } {
-  const [state, setState] = useState<State<T>>({
-    data: null,
-    error: null,
-    loading: path !== null,
+  const [state, setState] = useState<State<T>>(() => {
+    /*
+     * 캐시가 있으면 **그것으로 시작한다.** loading을 false로 두는 게 요점 —
+     * true면 화면이 스켈레톤을 먼저 그려서 캐시를 둔 보람이 없다
+     */
+    const cached = path === null ? undefined : (cache.get(path) as T | undefined);
+    return {
+      data: cached ?? null,
+      error: null,
+      loading: path !== null && cached === undefined,
+    };
   });
   const [nonce, setNonce] = useState(0);
   const globalVersion = useSyncExternalStore(subscribeVersion, getVersion, getServerVersion);
@@ -73,13 +106,18 @@ export function useApi<T>(path: string | null): State<T> & { reload: () => void 
        * data는 남기고 **error는 비운다.** 옛 에러가 남으면 화면이 error를 loading보다
        * 먼저 검사해서, 재시도를 눌러도 에러 화면이 그대로 걸려 있다 — 누른 티가 안 난다
        */
-      setState((prev) => ({ data: prev.data, error: null, loading: true }));
+      /*
+       * 들고 있는 게 있으면 **loading을 안 켠다.** 켜면 화면이 스켈레톤으로 갈아타서
+       * 조용히 갱신하려던 뜻이 사라진다 — 값이 오면 그때 조용히 바뀐다
+       */
+      setState((prev) => ({ data: prev.data, error: null, loading: prev.data === null }));
     });
 
     api
       .get<T>(path, controller.signal)
       .then((data) => {
         if (controller.signal.aborted) return;   // .catch만 가드하고 있었다
+        cache.set(path, data);
         setState({ data, error: null, loading: false });
       })
       .catch((error: unknown) => {

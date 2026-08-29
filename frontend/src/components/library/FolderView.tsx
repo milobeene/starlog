@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import GameCard from "@/components/ui/GameCard";
 import EmptyState from "@/components/ui/EmptyState";
 import { CardGridSkeleton, Skeleton } from "@/components/ui/Skeleton";
 import { coverSrc } from "@/lib/cover";
 import { api } from "@/lib/api";
-import { invalidateQueries } from "@/lib/useApi";
+import { invalidateQueries, useApi } from "@/lib/useApi";
 import { rememberLibrary, takeLibrary } from "@/lib/libraryState";
 import { GAME_GRID } from "@/lib/useGridColumns";
 import type { BacklogCard, FacetsResponse, PageResponse } from "@/lib/types";
@@ -40,15 +40,40 @@ export default function FolderView({
   /** 게임을 옮긴 뒤. 사이드바와 파셋까지 함께 새로 받아야 두 화면이 안 어긋난다 */
   onMoved?: () => void;
 }) {
-  const [folders, setFolders] = useState<Folder[] | null>(null);
   /* 어느 폴더를 열어뒀는지도 기억한다 — 상세에 갔다 오면 그 폴더로 돌아온다 (v1.2) */
   const [openKey, setOpenKey] = useState<string | null>(() => takeLibrary()?.openFolder ?? null);
-  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     const prev = takeLibrary();
     if (prev) rememberLibrary({ ...prev, openFolder: openKey });
   }, [openKey]);
+
+  /*
+   * ⚠️ **`useApi`로 받는다** (v1.2). 예전엔 여기서 직접 `api.get`을 불러서
+   * **응답 캐시를 못 탔다** — 상세에 갔다 오면 폴더 화면만 스켈레톤이 다시 떴다.
+   * 갱신도 `invalidateQueries` 하나로 통일된다(직접 부르면 자기만 다시 받는다)
+   */
+  const all = useApi<PageResponse<BacklogCard>>("/api/backlog?size=100&sort=name");
+
+  const folders = useMemo<Folder[] | null>(() => {
+    if (!all.data) return null;
+    /*
+     * ⚠️ **여기서 다시 정렬하지 않는다** (v1.1). 백엔드가 사용자가 정한 순서
+     * (`tag.sortOrder`)로 주므로, 이름순으로 덮으면 프로필에서 끌어 옮긴 게 무시된다
+     */
+    const next: Folder[] = facets.tags.map((tag) => {
+      const cards = all.data!.items.filter((card) => card.tag === tag.name);
+      return { key: `tag-${tag.id}`, label: tag.name, count: cards.length, cards };
+    });
+
+    /*
+     * '태그 없음'은 **비어 있어도 항상 마지막에** 둔다 — 여기가 드롭 대상이라
+     * 항목이 0이라고 사라지면 마지막 하나를 뗀 순간 뗄 곳이 없어진다
+     */
+    const untagged = all.data.items.filter((card) => card.tag === null);
+    next.push({ key: "untagged", label: "태그 없음", count: untagged.length, cards: untagged });
+    return next;
+  }, [all.data, facets]);
 
   /** 폴더에 놓으면 그 태그로 옮긴다. 사이드바의 그룹 헤더와 같은 동작이다 */
   const drop = async (folder: Folder, entryId: number) => {
@@ -61,43 +86,8 @@ export default function FolderView({
     });
     /* 화면 전체를 무른다 — 사이드바까지 함께 맞아야 한다 */
     invalidateQueries();
-    setReloadKey((k) => k + 1);
     onMoved?.();
   };
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      const all = await api.get<PageResponse<BacklogCard>>("/api/backlog?size=100&sort=name");
-      if (cancelled) return;
-
-      /*
-       * ⚠️ **여기서 다시 정렬하지 않는다** (v1.1). 백엔드가 사용자가 정한 순서
-       * (`tag.sortOrder`)로 주므로, 이름순으로 덮으면 프로필에서 끌어 옮긴 게 무시된다.
-       * 태그 없음은 여전히 맨 마지막이고 그건 아래에서 붙인다
-       */
-      const next: Folder[] = [...facets.tags]
-        .map((tag) => {
-          const cards = all.items.filter((card) => card.tag === tag.name);
-          return { key: `tag-${tag.id}`, label: tag.name, count: cards.length, cards };
-        });
-
-      /*
-       * ⚠️ **비어 있어도 항상 넣는다** (2026-08-29). 여기가 드롭 대상이라
-       * 항목이 0이라고 사라지면 마지막 하나를 뗀 순간 뗄 곳이 없어진다 — 사이드바와 같은 규칙
-       */
-      const untagged = all.items.filter((card) => card.tag === null);
-      next.push({ key: "untagged", label: "태그 없음", count: untagged.length, cards: untagged });
-
-      setFolders(next);
-    }
-
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [facets, reloadKey]);
 
   if (!folders) {
     return (

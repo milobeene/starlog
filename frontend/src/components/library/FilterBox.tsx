@@ -463,10 +463,18 @@ export default function FilterBox({
         >
           Apply
         </button>
-        {hasAnyFilter(applied) && (
+        {/*
+          ⚠️ **적용 안 한 입력도 지울 수 있어야 한다** (v1.2). 예전엔 `applied`만 봐서,
+          칸에 뭘 잔뜩 쳐놓고 Apply를 안 눌렀으면 지우는 버튼이 안 떴다 —
+          한 칸씩 손으로 비우는 수밖에 없었다
+        */}
+        {(hasAnyFilter(applied) || hasAnyFilter(draft)) && (
           <button
             type="button"
-            onClick={() => onApply(EMPTY_FILTERS)}
+            onClick={() => {
+            setDraft(EMPTY_FILTERS);
+            onApply(EMPTY_FILTERS);
+          }}
             className="px-2 text-[11px] tracking-wider text-white/40 uppercase transition-colors hover:text-white"
           >
             Clear all

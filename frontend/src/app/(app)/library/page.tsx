@@ -153,9 +153,15 @@ function LibraryContent() {
   const cards = list.data ?? (samePath ? restored?.cards : null) ?? null;
 
   useEffect(() => {
+    /*
+     * ⚠️ **openFolder를 건드리지 않는다** (v1.2). 예전엔 여기서 null로 덮어써서
+     * 폴더 안에 있다가 상세로 갔다 오면 **폴더 목록으로 튕겼다** — FolderView가
+     * 자기 상태를 저장하는데 이 effect가 매번 지워버린 것이다
+     */
+    const prev = takeLibrary();
     rememberLibrary({
       view, filters, query, sort, page,
-      openFolder: null,
+      openFolder: prev?.openFolder ?? null,
       cards: list.data ?? null,
     });
   }, [view, filters, query, sort, page, list.data]);

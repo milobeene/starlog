@@ -562,6 +562,33 @@ function Dictionary({
     });
   };
 
+  /**
+   * 저장은 **한 번에 하나만, 마지막 것으로** (v1.2).
+   *
+   * ⚠️ 빠르게 여러 번 옮기면 PUT이 겹쳐서 **먼저 보낸 옛 순서가 나중에 도착**했다.
+   * 그래서 마지막 수정이 사라진 것처럼 보였다.
+   *
+   * 막는 대신 이렇게 한다 — 보내는 중이면 최신 순서를 `pending`에 적어두고,
+   * 끝나면 그것만 한 번 더 보낸다. **드래그를 막지 않으면서도 마지막이 반드시 이긴다.**
+   * 중간 순서는 보낼 이유가 없다 (덮어쓰기라 마지막 하나면 충분하다)
+   */
+  const sending = useRef(false);
+  const pending = useRef<number[] | null>(null);
+
+  const flush = async () => {
+    if (sending.current) return;
+    sending.current = true;
+    try {
+      while (pending.current) {
+        const ids = pending.current;
+        pending.current = null;
+        await api.put(`${basePath}/order`, { tagIds: ids });
+      }
+    } finally {
+      sending.current = false;
+    }
+  };
+
   const finish = async () => {
     const moved = dragRef.current;
     dragRef.current = null;
@@ -576,7 +603,8 @@ function Dictionary({
       setOrder(null);
       return;
     }
-    await api.put(`${basePath}/order`, { tagIds: order.map((i) => i.id) });
+    pending.current = order.map((i) => i.id);
+    void flush();
   };
 
   return (
