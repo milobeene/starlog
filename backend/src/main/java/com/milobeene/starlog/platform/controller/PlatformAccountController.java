@@ -35,7 +35,7 @@ public class PlatformAccountController {
     public ResponseEntity<IdResponse> register(@LoginMember Long memberId,
                                                @Valid @RequestBody PlatformAccountCreateRequest request) {
         Long accountId = platformAccountService.register(
-                memberId, request.platformId(), request.accountLabel());
+                memberId, request.platformId(), request.emulatorId(), request.accountLabel());
 
         return ResponseEntity.created(URI.create("/api/me/platform-accounts/" + accountId))
                 .body(IdResponse.of(accountId));

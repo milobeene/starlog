@@ -1,5 +1,6 @@
 package com.milobeene.starlog.backlog.repository;
 
+import com.querydsl.core.BooleanBuilder;
 import com.milobeene.starlog.backlog.domain.BacklogEntry;
 import com.milobeene.starlog.backlog.domain.QAcquisition;
 import com.milobeene.starlog.backlog.domain.QBacklogEntry;
@@ -86,9 +87,9 @@ public class BacklogEntryRepositoryImpl implements BacklogEntryRepositoryCustom 
                 hasResolvedGenre(entry, condition),
                 developedBy(entry, condition),
                 releasedInYear(entry, condition),
-                playedOnDevice(entry, condition),
-                acquiredOnPlatform(entry, condition),
-                acquiredWithAccount(entry, condition)
+                matchesPlaythrough(entry, condition),
+                matchesAcquisition(entry, condition),
+                null
         };
     }
 
@@ -205,50 +206,88 @@ public class BacklogEntryRepositoryImpl implements BacklogEntryRepositoryCustom 
                 : entry.releasedOnResolved.year().eq(condition.releaseYear());
     }
 
-    /** 기기는 **회차** 기준이다 — "그때 무엇으로 플레이했나" */
-    private BooleanExpression playedOnDevice(QBacklogEntry entry, BacklogSearchCondition condition) {
-        if (condition.deviceId() == null) {
+    /**
+     * 회차 축 — "언제 무엇으로 했나" (v1.1).
+     *
+     * 조인이 아니라 **exists 서브쿼리**다. 조인하면 회차가 셋인 게임이 결과에 세 번 나온다.
+     *
+     * ⚠️ **한 회차가 조건을 모두 만족해야 한다.** 조건마다 서브쿼리를 따로 만들면
+     * "스위치로 한 회차가 있고, 2026년에 한 회차가 있다"가 통과해 버린다 —
+     * 물어본 것은 "2026년에 스위치로 한 적이 있나"다.
+     *
+     * 날짜는 **기간 겹침**이다(사용자 결정). 진행 중(종료일 없음)인 회차도 살아 있는 것으로 본다
+     */
+    private BooleanExpression matchesPlaythrough(QBacklogEntry entry,
+                                                 BacklogSearchCondition condition) {
+        if (!condition.hasPlaythroughFilter()) {
             return null;
         }
         QPlaythrough playthrough = QPlaythrough.playthrough;
+        BooleanBuilder where = new BooleanBuilder(playthrough.backlogEntry.eq(entry));
 
-        return JPAExpressions.selectOne()
-                .from(playthrough)
-                .where(playthrough.backlogEntry.eq(entry),
-                        playthrough.device.id.eq(condition.deviceId()))
-                .exists();
-    }
-
-    /** 플랫폼(Steam·Nintendo…)도 취득 기준이다. 계정과 달리 마스터 값이라 여러 계정에 걸친다 */
-    private BooleanExpression acquiredOnPlatform(QBacklogEntry entry,
-                                                 BacklogSearchCondition condition) {
-        if (condition.platformId() == null) {
-            return null;
+        if (condition.ptDeviceId() != null) {
+            where.and(playthrough.device.id.eq(condition.ptDeviceId()));
         }
-        QAcquisition acquisition = new QAcquisition("acquisitionForPlatform");
+        if (condition.ptPlatformId() != null) {
+            where.and(playthrough.platform.id.eq(condition.ptPlatformId()));
+        }
+        if (condition.ptEmulatorId() != null) {
+            where.and(playthrough.emulator.id.eq(condition.ptEmulatorId()));
+        }
+        if (condition.ptAccountId() != null) {
+            where.and(playthrough.platformAccount.id.eq(condition.ptAccountId()));
+        }
+        // 겹침: 시작이 검색 끝보다 늦지 않고, 끝이 검색 시작보다 이르지 않다
+        if (condition.ptTo() != null) {
+            where.and(playthrough.startedOn.loe(condition.ptTo()));
+        }
+        if (condition.ptFrom() != null) {
+            where.and(playthrough.finishedOn.isNull()
+                    .or(playthrough.finishedOn.goe(condition.ptFrom())));
+        }
 
-        return JPAExpressions.selectOne()
-                .from(acquisition)
-                .where(acquisition.backlogEntry.eq(entry),
-                        acquisition.platform.id.eq(condition.platformId()))
-                .exists();
+        return JPAExpressions.selectOne().from(playthrough).where(where).exists();
     }
 
     /**
-     * 계정은 **취득** 기준이다 — "그 계정으로 가진 게임".
-     * 회차에도 계정이 붙지만 뜻이 다르고, facets 카운트도 취득 기준이라 맞췄다 (API 설계서 §1.2)
+     * 취득 축 — "어떻게 손에 넣었나" (v1.1).
+     *
+     * ⚠️ **가격은 통화를 먼저 고른다.** 환율 변환이 범위 밖이라(§6.6) 통화 없이
+     * amount만 비교하면 ₩10,000과 $10,000이 같은 줄에 선다
      */
-    private BooleanExpression acquiredWithAccount(QBacklogEntry entry,
-                                                  BacklogSearchCondition condition) {
-        if (condition.platformAccountId() == null) {
+    private BooleanExpression matchesAcquisition(QBacklogEntry entry,
+                                                 BacklogSearchCondition condition) {
+        if (!condition.hasAcquisitionFilter()) {
             return null;
         }
-        QAcquisition acquisition = QAcquisition.acquisition;
+        QAcquisition acquisition = new QAcquisition("acquisitionForFilter");
+        BooleanBuilder where = new BooleanBuilder(acquisition.backlogEntry.eq(entry));
 
-        return JPAExpressions.selectOne()
-                .from(acquisition)
-                .where(acquisition.backlogEntry.eq(entry),
-                        acquisition.platformAccount.id.eq(condition.platformAccountId()))
-                .exists();
+        if (condition.acqMethod() != null) {
+            where.and(acquisition.method.eq(condition.acqMethod()));
+        }
+        if (condition.acqPlatformId() != null) {
+            where.and(acquisition.platform.id.eq(condition.acqPlatformId()));
+        }
+        if (condition.acqAccountId() != null) {
+            where.and(acquisition.platformAccount.id.eq(condition.acqAccountId()));
+        }
+        if (condition.acqCurrency() != null) {
+            where.and(acquisition.price.currency.eq(condition.acqCurrency()));
+        }
+        if (condition.acqMinPrice() != null) {
+            where.and(acquisition.price.amount.goe(condition.acqMinPrice()));
+        }
+        if (condition.acqMaxPrice() != null) {
+            where.and(acquisition.price.amount.loe(condition.acqMaxPrice()));
+        }
+        if (condition.acqFrom() != null) {
+            where.and(acquisition.acquiredOn.goe(condition.acqFrom()));
+        }
+        if (condition.acqTo() != null) {
+            where.and(acquisition.acquiredOn.loe(condition.acqTo()));
+        }
+
+        return JPAExpressions.selectOne().from(acquisition).where(where).exists();
     }
 }

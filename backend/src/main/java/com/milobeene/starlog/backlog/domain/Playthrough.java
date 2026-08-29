@@ -6,6 +6,7 @@ import com.milobeene.starlog.common.util.TextValues;
 import com.milobeene.starlog.platform.domain.Device;
 import com.milobeene.starlog.platform.domain.Emulator;
 import com.milobeene.starlog.platform.domain.InputMethod;
+import com.milobeene.starlog.platform.domain.Platform;
 import com.milobeene.starlog.platform.domain.PlatformAccount;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -48,6 +49,20 @@ public class Playthrough extends BaseEntity {
     @JoinColumn(name = "device_id")
     private Device device;
 
+    /**
+     * 어디서 했나 (v1.1).
+     *
+     * 예전에는 계정이나 에뮬레이터만 들고 있어서 "스팀에서 했다"를 적으려면 계정을
+     * 반드시 만들어야 했고, 실물 패키지처럼 계정이라는 개념이 없는 경우는 적을 자리가 없었다.
+     *
+     * ⚠️ **에뮬레이터와 동시에 채워지지 않는다** — 화면의 토글이 하나를 고르게 한다.
+     * DB 제약을 안 거는 이유: 기존 데이터에 계정 없이 에뮬만 있는 행이 있고,
+     * 그걸 CHECK로 막으면 마이그레이션이 통째로 실패한다
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "platform_id")
+    private Platform platform;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "platform_account_id")
     private PlatformAccount platformAccount;
@@ -82,11 +97,18 @@ public class Playthrough extends BaseEntity {
      * 참조 연결. 엔티티는 리포지토리를 모르므로 서비스가 조회해서 넘긴다.
      * 넷 다 회원이 소유한 선택지라 서비스가 소유권까지 확인한 뒤 넘겨준다
      */
-    public void assignReferences(Device device, PlatformAccount platformAccount,
+    public void assignReferences(Device device, Platform platform, PlatformAccount platformAccount,
                                  Emulator emulator, InputMethod inputMethod) {
+        /*
+         * ⚠️ **플랫폼과 에뮬은 함께 오지 않는다** (v1.1). 화면의 토글이 하나를 고르게 하지만
+         * 서버는 클라이언트를 믿지 않는다 — 둘 다 오면 에뮬 쪽을 버린다.
+         * 예외를 던지지 않는 이유: 예전 데이터에는 에뮬만 있는 회차가 있고,
+         * 그걸 수정할 때 플랫폼을 새로 고르면 잠깐 둘 다인 상태가 자연스럽게 생긴다
+         */
         this.device = device;
+        this.platform = platform;
         this.platformAccount = platformAccount;
-        this.emulator = emulator;
+        this.emulator = platform != null ? null : emulator;
         this.inputMethod = inputMethod;
     }
 

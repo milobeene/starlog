@@ -36,10 +36,17 @@ export interface NamedRef {
   name: string;
 }
 
+/**
+ * 계정 하나 (v1.1에서 에뮬레이터도 담는다).
+ *
+ * `platform`과 `emulator` 중 **채워진 쪽이 소속**이다 — 화면은 `(Steam) Beene`처럼
+ * 소속을 앞에 두고 그린다(`accountLabel` 헬퍼)
+ */
 export interface PlatformAccountRef {
   accountId: number;
   label: string;
-  platform: NamedRef;
+  platform: NamedRef | null;
+  emulator: NamedRef | null;
 }
 
 /* ── 목록 카드 (GET /api/backlog) ─────────────────────────── */
@@ -167,6 +174,8 @@ export interface Playthrough {
   status: PlaythroughStatus;
   label: string | null;
   device: DeviceRef | null;
+  /** 어디서 했나 (v1.1). 에뮬레이터와 동시에 채워지지 않는다 */
+  platform: PlatformRef | null;
   platformAccount: AccountRef | null;
   emulator: EmulatorRef | null;
   inputMethod: InputMethodRef | null;
@@ -409,8 +418,10 @@ export interface GenreDistribution {
 export interface AccountOption {
   id: number;
   name: string;
-  platformId: number;
-  platformName: string;
+  platformId: number | null;
+  platformName: string | null;
+  emulatorId: number | null;
+  emulatorName: string | null;
 }
 
 export interface OptionsResponse {

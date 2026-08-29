@@ -278,7 +278,7 @@ public class MemberImportService {
             if (platform == null) {
                 throw new InvalidInputException("계정이 가리키는 플랫폼이 백업에 없습니다: " + item.platform());
             }
-            PlatformAccount account = new PlatformAccount(member, platform, item.label());
+            PlatformAccount account = PlatformAccount.onPlatform(member, platform, item.label());
             platformAccountRepository.persist(account);
             catalog.accounts().put(item.label(), account);
         });
@@ -379,11 +379,17 @@ public class MemberImportService {
         each(item.playthroughs(), pt -> {
             Playthrough playthrough = Playthrough.of(entry, pt.sequenceNo(), new PlaythroughCommand(
                     pt.startedOn(), pt.finishedOn(), PlaythroughStatus.valueOf(pt.status()),
-                    null, null, null, null, pt.label()));
-            // 커맨드는 id를 받는데 여기엔 id가 없다 — 엔티티를 직접 물린다
+                    null, null, null, null, null, pt.label()));
+            /*
+             * 커맨드는 id를 받는데 여기엔 id가 없다 — 엔티티를 직접 물린다.
+             * ⚠️ 내보내기 형식에는 아직 플랫폼이 없다(v1.1 이전 파일도 읽어야 한다).
+             * **계정에서 역산한다** — 마이그레이션 V11의 백필과 같은 규칙이다
+             */
+            PlatformAccount importedAccount = optional(catalog.accounts(), pt.platformAccount());
             playthrough.assignReferences(
                     optional(catalog.devices(), pt.device()),
-                    optional(catalog.accounts(), pt.platformAccount()),
+                    importedAccount == null ? null : importedAccount.getPlatform(),
+                    importedAccount,
                     optional(catalog.emulators(), pt.emulator()),
                     optional(catalog.inputMethods(), pt.inputMethod()));
             playthroughRepository.persist(playthrough);

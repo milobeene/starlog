@@ -234,8 +234,8 @@ public class DataInitializer implements ApplicationRunner {
                                     InputMethod inputMethod) {
             Playthrough playthrough = Playthrough.of(entry, sequenceNo,
                     new PlaythroughCommand(startedOn, finishedOn, status,
-                            null, null, null, null, null));
-            playthrough.assignReferences(device, null, null, inputMethod);
+                            null, null, null, null, null, null));
+            playthrough.assignReferences(device, null, null, null, inputMethod);
             em.persist(playthrough);
             entry.addPlaythrough(playthrough);
             entry.syncDerivedState();

@@ -1,5 +1,7 @@
 package com.milobeene.starlog.platform.service;
 
+import com.milobeene.starlog.common.exception.InvalidInputException;
+import com.milobeene.starlog.platform.domain.Emulator;
 import com.milobeene.starlog.common.exception.ConflictException;
 import com.milobeene.starlog.common.util.TextValues;
 import com.milobeene.starlog.common.exception.NotFoundException;
@@ -26,6 +28,7 @@ public class PlatformAccountService {
 
     private final PlatformAccountRepository platformAccountRepository;
     private final PlatformService platformService;
+    private final EmulatorService emulatorService;
     private final MemberRepository memberRepository;
 
     /**
@@ -35,16 +38,28 @@ public class PlatformAccountService {
      * 나머지 선택지 넷과 달리 되살리기를 **조용히 하지 않고 409로 되묻는다** —
      * 계정은 취득 기록(구매 이력)까지 물고 있어서 사용자가 알고 되살리는 편이 낫다 (§7.4)
      */
+    /**
+     * 계정 등록 (v1.1에서 에뮬레이터도 받는다).
+     *
+     * ⚠️ **플랫폼과 에뮬 중 하나만** 온다. 둘 다이거나 둘 다 아니면 엔티티가 거절하고,
+     * 최종 방어선은 DB의 CHECK다
+     */
     @Transactional
-    public Long register(Long memberId, Long platformId, String accountLabel) {
+    public Long register(Long memberId, Long platformId, Long emulatorId, String accountLabel) {
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new NotFoundException("회원을 찾을 수 없습니다. id=" + memberId));
-        Platform platform = platformService.findAlive(memberId, platformId);
+        if ((platformId == null) == (emulatorId == null)) {
+            throw new InvalidInputException("플랫폼이나 에뮬레이터 중 하나만 골라 주세요");
+        }
+
+        Platform platform = platformId == null ? null : platformService.findAlive(memberId, platformId);
+        Emulator emulator = emulatorId == null ? null : emulatorService.findOne(memberId, emulatorId);
 
         String label = TextValues.require(accountLabel, "계정 라벨은 비울 수 없습니다");
+        String ownerKey = PlatformAccount.ownerKeyOf(platform, emulator);
 
         Optional<PlatformAccount> existing = platformAccountRepository
-                .findByMemberIdAndPlatformIdAndAccountLabel(memberId, platformId, label);
+                .findByMemberIdAndOwnerKeyAndAccountLabel(memberId, ownerKey, label);
         if (existing.isPresent()) {
             PlatformAccount found = existing.get();
             if (found.isDeleted()) {
@@ -53,7 +68,9 @@ public class PlatformAccountService {
             throw new ConflictException("이미 등록된 계정입니다: " + label);
         }
 
-        PlatformAccount account = new PlatformAccount(member, platform, label);
+        PlatformAccount account = platform != null
+                ? PlatformAccount.onPlatform(member, platform, label)
+                : PlatformAccount.onEmulator(member, emulator, label);
         platformAccountRepository.persist(account);
 
         return account.getId();
@@ -66,8 +83,7 @@ public class PlatformAccountService {
         String label = TextValues.require(accountLabel, "계정 라벨은 비울 수 없습니다");
 
         platformAccountRepository
-                .findByMemberIdAndPlatformIdAndAccountLabel(
-                        memberId, account.getPlatform().getId(), label)
+                .findByMemberIdAndOwnerKeyAndAccountLabel(memberId, account.getOwnerKey(), label)
                 .filter(other -> !other.getId().equals(accountId))
                 .ifPresent(other -> {
                     throw new ConflictException("이미 있는 계정 라벨입니다: " + label);

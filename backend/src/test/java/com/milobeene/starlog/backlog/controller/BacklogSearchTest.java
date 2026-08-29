@@ -137,14 +137,14 @@ class BacklogSearchTest extends ControllerTestSupport {
 
     @Test
     public void 기기로_필터링한다() throws Exception {
-        //given — 기기는 회차 기준이다
+        //given — 기기는 회차 기준이다 (v1.1에서 파라미터가 ptDeviceId로 갈렸다)
         Member member = saveMember();
         Long played = addEntry(member, saveGame("Hollow Knight"));
         addEntry(member, saveGame("Celeste"));
         Long deviceId = startPlaythrough(member, played);
 
         //when //then
-        mockMvc.perform(get("/api/backlog").param("deviceId", String.valueOf(deviceId))
+        mockMvc.perform(get("/api/backlog").param("ptDeviceId", String.valueOf(deviceId))
                         .header("X-Member-Id", member.getId()))
                 .andExpect(jsonPath("$.totalElements").value(1))
                 .andExpect(jsonPath("$.items[0].entryId").value(played));
@@ -306,7 +306,7 @@ class BacklogSearchTest extends ControllerTestSupport {
 
     @Test
     public void 플랫폼_계정으로_필터링한다() throws Exception {
-        //given — 계정 필터는 **취득** 기준이다 (facets 카운트와 같은 뜻, API 설계서 §1.2)
+        //given — 계정 필터는 **취득** 기준이다 (v1.1: acqAccountId. 회차 계정은 ptAccountId로 따로 있다)
         Member member = saveMember();
         Long owned = addEntry(member, saveGame("Hollow Knight"));
         addEntry(member, saveGame("Celeste"));
@@ -314,7 +314,7 @@ class BacklogSearchTest extends ControllerTestSupport {
         Platform steam = new Platform(
                 em.getReference(Member.class, member.getId()), "Steam " + System.nanoTime());
         em.persist(steam);
-        PlatformAccount account = new PlatformAccount(
+        PlatformAccount account = PlatformAccount.onPlatform(
                 em.find(Member.class, member.getId()), steam, "본계정");
         em.persist(account);
         em.flush();
@@ -328,7 +328,7 @@ class BacklogSearchTest extends ControllerTestSupport {
         em.flush();
 
         //when //then
-        mockMvc.perform(get("/api/backlog").param("platformAccountId", String.valueOf(account.getId()))
+        mockMvc.perform(get("/api/backlog").param("acqAccountId", String.valueOf(account.getId()))
                         .header("X-Member-Id", member.getId()))
                 .andExpect(jsonPath("$.totalElements").value(1))
                 .andExpect(jsonPath("$.items[0].entryId").value(owned));

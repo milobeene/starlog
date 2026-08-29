@@ -204,6 +204,6 @@ class BacklogControllerTest extends ControllerTestSupport {
     private void addPlaythrough(Member member, Long entryId, LocalDate startedOn, LocalDate finishedOn) {
         playthroughService.add(member.getId(), entryId,
                 new PlaythroughCommand(startedOn, finishedOn, PlaythroughStatus.COMPLETED,
-                        null, null, null, null, null));
+                        null, null, null, null, null, null));
     }
 }

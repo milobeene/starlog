@@ -1,5 +1,6 @@
 package com.milobeene.starlog.platform.domain;
 
+import com.milobeene.starlog.common.exception.InvalidInputException;
 import com.milobeene.starlog.common.util.TextValues;
 import com.milobeene.starlog.member.domain.Member;
 import com.milobeene.starlog.member.domain.MemberOwnedEntity;
@@ -16,17 +17,37 @@ import lombok.Getter;
 @Entity
 @Table(uniqueConstraints = @UniqueConstraint(
         name = "uk_platform_account",
-        columnNames = {"member_id", "platform_id", "account_label"}))
+        columnNames = {"member_id", "owner_key", "account_label"}))
 public class PlatformAccount extends MemberOwnedEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // FK를 가진 쪽 = 연관관계의 주인. LAZY를 반드시 명시 (ToOne 기본값은 EAGER)
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "platform_id", nullable = false)
+    /*
+     * ⚠️ **플랫폼과 에뮬레이터 중 하나만 채워진다** (v1.1). 에뮬레이터에도 계정이 있는
+     * 경우가 있어서(닌텐도 계정을 넣고 쓰는 식) 자리를 열었다.
+     * 둘 다이거나 둘 다 아닌 상태는 DB의 CHECK가 막는다 — 여기 검증은 최선 노력이다
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "platform_id")
     private Platform platform;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "emulator_id")
+    private Emulator emulator;
+
+    /**
+     * 유니크 제약용 소유자 키 — `P12` 또는 `E3`.
+     *
+     * ⚠️ **nullable 컬럼으로는 유니크를 못 건다.** PostgreSQL도 H2도 NULL을 서로 다른
+     * 값으로 보기 때문에 같은 (플랫폼, 라벨)이 두 번 들어간다. 부분 유니크 인덱스는
+     * H2가 지원하지 않아 dev/prod가 갈린다. 한 칸으로 모으면 **한 제약으로 둘 다 막힌다.**
+     *
+     * 값 자체는 뜻이 없다 — 오직 제약을 세우기 위한 것이라 밖으로 안 내보낸다
+     */
+    @Column(name = "owner_key", nullable = false, length = 24)
+    private String ownerKey;
 
     @Column(name = "account_label", nullable = false, length = 50)
     private String accountLabel;
@@ -36,10 +57,47 @@ public class PlatformAccount extends MemberOwnedEntity {
      */
     protected PlatformAccount() {}
 
-    public PlatformAccount(Member member, Platform platform, String accountLabel) {
+    private PlatformAccount(Member member, Platform platform, Emulator emulator, String label) {
         super(member);
+        if ((platform == null) == (emulator == null)) {
+            throw new InvalidInputException("플랫폼이나 에뮬레이터 중 하나만 골라 주세요");
+        }
         this.platform = platform;
-        this.accountLabel = requireLabel(accountLabel);
+        this.emulator = emulator;
+        this.accountLabel = requireLabel(label);
+        this.ownerKey = keyOf(platform, emulator);
+    }
+
+    public static PlatformAccount onPlatform(Member member, Platform platform, String label) {
+        return new PlatformAccount(member, platform, null, label);
+    }
+
+    public static PlatformAccount onEmulator(Member member, Emulator emulator, String label) {
+        return new PlatformAccount(member, null, emulator, label);
+    }
+
+    /** 소속을 옮긴다. `ownerKey`가 따라가야 유니크가 제 몫을 한다 */
+    public void moveTo(Platform platform, Emulator emulator) {
+        if ((platform == null) == (emulator == null)) {
+            throw new InvalidInputException("플랫폼이나 에뮬레이터 중 하나만 골라 주세요");
+        }
+        this.platform = platform;
+        this.emulator = emulator;
+        this.ownerKey = keyOf(platform, emulator);
+    }
+
+    /** 화면에 보이는 소속 이름. 플랫폼이든 에뮬이든 하나다 */
+    public String ownerName() {
+        return platform != null ? platform.getName() : emulator.getName();
+    }
+
+    /** 소속 키를 밖에서도 만든다 — 서비스가 "이미 있나"를 물을 때 필요하다 */
+    public static String ownerKeyOf(Platform platform, Emulator emulator) {
+        return keyOf(platform, emulator);
+    }
+
+    private static String keyOf(Platform platform, Emulator emulator) {
+        return platform != null ? "P" + platform.getId() : "E" + emulator.getId();
     }
 
     /** 라벨은 표시용 별칭이다. 실제 플랫폼 계정과 연동하지 않는다 (§6.5) */

@@ -87,8 +87,9 @@ class FlywayMigrationTest {
         //
         // **V5에서 셋이 한꺼번에 빠져 32** — audit_log·usage_quota·spring_session을 지웠다.
         // 감사 로그와 쿼터는 물어볼 상황이 없어서, 세션은 로그인이 없어서 (architecture §9).
-        // api_call_log는 회원을 안 물어서 FK를 늘리지 않는다
-        assertThat(count).isEqualTo(32);
+        // api_call_log는 회원을 안 물어서 FK를 늘리지 않는다.
+        // **V11에서 둘이 더해져 34** — playthrough.platform_id와 platform_account.emulator_id
+        assertThat(count).isEqualTo(34);
     }
 
     @Test

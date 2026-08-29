@@ -413,7 +413,7 @@ class MemberExportImportTest extends ControllerTestSupport {
 
         Platform platform = new Platform(member, "Steam");
         platformRepository.persist(platform);
-        PlatformAccount account = new PlatformAccount(member, platform, "Beene");
+        PlatformAccount account = PlatformAccount.onPlatform(member, platform, "Beene");
         platformAccountRepository.persist(account);
         Device device = new Device(member, "Nintendo Switch", "거실 스위치", "독 모드");
         deviceRepository.persist(device);
@@ -430,7 +430,7 @@ class MemberExportImportTest extends ControllerTestSupport {
         playthroughService.add(member.getId(), entryId, new PlaythroughCommand(
                 LocalDate.parse("2026-01-01"), LocalDate.parse("2026-01-20"),
                 PlaythroughStatus.COMPLETED,
-                device.getId(), account.getId(), null, null, null));
+                device.getId(), null, account.getId(), null, null, null));
         acquisitionService.add(member.getId(), entryId, new AcquisitionCommand(
                 AcquisitionMethod.PURCHASED, platform.getId(), account.getId(), null,
                 new BigDecimal("19800"), "KRW", LocalDate.parse("2025-12-24"), null));

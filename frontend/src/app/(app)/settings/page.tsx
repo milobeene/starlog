@@ -179,7 +179,8 @@ function SettingsContent() {
                   */}
                   <span className="flex flex-1 items-center gap-2">
                     <span className="rounded border border-white/12 px-1.5 py-0.5 text-[10px] tracking-wide text-white/55">
-                      {account.platform.name}
+                      {/* 소속은 플랫폼이거나 에뮬이거나 — 채워진 쪽을 그린다 (v1.1) */}
+                      {account.platform?.name ?? account.emulator?.name}
                     </span>
                     <span>{account.label}</span>
                   </span>
@@ -387,6 +388,7 @@ function SettingsContent() {
       )}
       {dialog?.kind === "account" && (
         <AccountDialog
+          emulators={me.data?.emulators ?? []}
           platforms={me.data?.platforms ?? []}
           edit={dialog.edit}
           onClose={() => setDialog(null)}
@@ -856,16 +858,24 @@ function BulkChangeNotice() {
  */
 function AccountDialog({
   platforms,
+  emulators,
   edit,
   onClose,
   onSaved,
 }: {
   platforms: MemberPlatform[];
+  /** 에뮬레이터에도 계정이 있는 경우가 있다 (v1.1) */
+  emulators: MemberEmulator[];
   edit?: PlatformAccountRef;
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [platformId, setPlatformId] = useState(edit ? String(edit.platform.id) : "");
+  /** 소속이 플랫폼인가 에뮬인가. 수정할 때는 이미 정해져 있어 바꿀 수 없다 */
+  const [ownerKind, setOwnerKind] = useState<"platform" | "emulator">(
+    edit?.emulator ? "emulator" : "platform",
+  );
+  const [platformId, setPlatformId] = useState(edit?.platform ? String(edit.platform.id) : "");
+  const [emulatorId, setEmulatorId] = useState(edit?.emulator ? String(edit.emulator.id) : "");
   const [label, setLabel] = useState(edit?.label ?? "");
   const [revivable, setRevivable] = useState<number | null>(null);
 
@@ -902,7 +912,9 @@ function AccountDialog({
         }
         try {
           await api.post("/api/me/platform-accounts", {
-            platformId: Number(platformId),
+            // 고르지 않은 쪽은 안 보낸다 — 서버가 "하나만"을 검사한다
+            platformId: ownerKind === "platform" ? Number(platformId) : null,
+            emulatorId: ownerKind === "emulator" ? Number(emulatorId) : null,
             accountLabel: label,
           });
         } catch (caught) {
@@ -920,6 +932,49 @@ function AccountDialog({
       }}
     >
       {edit && <BulkChangeNotice />}
+      {/*
+        소속 토글 (v1.1). 수정할 때는 안 보인다 — 소속을 바꾸면 유니크 키가 통째로
+        달라져서 "옮기기"가 아니라 "새로 만들기"가 된다
+      */}
+      {!edit && (
+        <div className="mb-1 flex gap-1">
+          {(["platform", "emulator"] as const).map((kind) => (
+            <button
+              key={kind}
+              type="button"
+              onClick={() => setOwnerKind(kind)}
+              className={`rounded px-2.5 py-1 text-[10px] tracking-widest uppercase transition-colors ${
+                ownerKind === kind
+                  ? "bg-white/15 text-white"
+                  : "text-white/35 hover:bg-white/8 hover:text-white/70"
+              }`}
+            >
+              {kind === "platform" ? "플랫폼" : "에뮬레이터"}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {ownerKind === "emulator" ? (
+        <Field
+          label="Emulator"
+          hint={edit ? "소속은 바꿀 수 없습니다. 새 계정을 추가해 주세요" : undefined}
+        >
+          <select
+            value={emulatorId}
+            onChange={(event) => setEmulatorId(event.target.value)}
+            disabled={Boolean(edit)}
+            className={FIELD_SELECT}
+          >
+            <option value="">선택</option>
+            {emulators.map((emulator) => (
+              <option key={emulator.emulatorId} value={emulator.emulatorId}>
+                {emulator.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      ) : (
       <Field
         label="Platform"
         hint={edit ? "플랫폼은 바꿀 수 없습니다. 새 계정을 추가해 주세요" : undefined}
@@ -938,6 +993,7 @@ function AccountDialog({
           ))}
         </select>
       </Field>
+      )}
       <Field label="Label" hint="예) 본계정, 서브계정">
         <input
           value={label}

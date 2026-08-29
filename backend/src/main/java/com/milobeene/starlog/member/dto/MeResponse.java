@@ -69,11 +69,24 @@ public record MeResponse(
         }
     }
 
-    public record PlatformAccountItem(Long accountId, String label, PlatformRef platform) {
+    /**
+     * 계정 하나 (v1.1에서 에뮬레이터도 담는다).
+     *
+     * `platform`은 플랫폼 계정일 때만, `emulator`는 에뮬 계정일 때만 채워진다 —
+     * 화면은 **둘 중 채워진 쪽을 소속으로 그린다**(`(Steam) Beene`).
+     * 하나로 합쳐 `owner` 하나만 줄 수도 있지만, 그러면 편집 화면이 "지금 어느 쪽인가"를
+     * 되물을 방법이 없어진다 (토글의 초기값을 못 정한다)
+     */
+    public record PlatformAccountItem(Long accountId, String label,
+                                      PlatformRef platform, PlatformRef emulator) {
 
         static PlatformAccountItem from(PlatformAccount account) {
-            return new PlatformAccountItem(account.getId(), account.getAccountLabel(),
-                    new PlatformRef(account.getPlatform().getId(), account.getPlatform().getName()));
+            return new PlatformAccountItem(
+                    account.getId(), account.getAccountLabel(),
+                    account.getPlatform() == null ? null
+                            : new PlatformRef(account.getPlatform().getId(), account.getPlatform().getName()),
+                    account.getEmulator() == null ? null
+                            : new PlatformRef(account.getEmulator().getId(), account.getEmulator().getName()));
         }
     }
 

@@ -206,7 +206,7 @@ class AcquisitionServiceTest {
         //when — 회차를 추가한다
         playthroughService.add(memberId, entryId, new PlaythroughCommand(
                 LocalDate.of(2026, 3, 1), null, PlaythroughStatus.PLAYING,
-                null, null, null, null, null));
+                null, null, null, null, null, null));
 
         em.flush();
         em.clear();

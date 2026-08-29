@@ -169,7 +169,8 @@ class PostgresSchemaTest {
          */
         assertThat(backlogEntryRepository.search(member.getId(),
                         new BacklogSearchCondition(null, null, tagId, null, null, null, null,
-                                null, null, null),
+                                null, null, null, null, null, null,
+                                null, null, null, null, null, null, null, null),
                         BacklogSort.LAST_PLAYED, org.springframework.data.domain.PageRequest.of(0, 10)))
                 .hasSize(1);
 

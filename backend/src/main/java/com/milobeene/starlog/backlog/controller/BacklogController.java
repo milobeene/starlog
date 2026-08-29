@@ -1,5 +1,8 @@
 package com.milobeene.starlog.backlog.controller;
 
+import com.milobeene.starlog.backlog.domain.AcquisitionMethod;
+import java.time.LocalDate;
+import java.math.BigDecimal;
 import com.milobeene.starlog.backlog.domain.BacklogStatus;
 import com.milobeene.starlog.backlog.dto.BacklogAddRequest;
 import com.milobeene.starlog.backlog.dto.BacklogCardResponse;
@@ -88,16 +91,36 @@ public class BacklogController {
             @RequestParam(required = false) String genreName,
             @RequestParam(required = false) String developer,
             @RequestParam(required = false) Integer releaseYear,
-            @RequestParam(required = false) Long deviceId,
-            @RequestParam(required = false) Long platformId,
-            @RequestParam(required = false) Long platformAccountId,
+            /*
+             * 회차 축 (v1.1) — "언제 무엇으로 했나". 접두어 `pt`로 취득 축과 가른다.
+             * 예전엔 deviceId(회차)와 platformId(취득)가 접두어 없이 나란히 있어서
+             * **같은 이름의 필터가 서로 다른 것을 세고 있었다**
+             */
+            @RequestParam(required = false) Long ptDeviceId,
+            @RequestParam(required = false) Long ptPlatformId,
+            @RequestParam(required = false) Long ptEmulatorId,
+            @RequestParam(required = false) Long ptAccountId,
+            @RequestParam(required = false) LocalDate ptFrom,
+            @RequestParam(required = false) LocalDate ptTo,
+
+            /* 취득 축 — "어떻게 손에 넣었나" */
+            @RequestParam(required = false) AcquisitionMethod acqMethod,
+            @RequestParam(required = false) String acqCurrency,
+            @RequestParam(required = false) BigDecimal acqMinPrice,
+            @RequestParam(required = false) BigDecimal acqMaxPrice,
+            @RequestParam(required = false) Long acqPlatformId,
+            @RequestParam(required = false) Long acqAccountId,
+            @RequestParam(required = false) LocalDate acqFrom,
+            @RequestParam(required = false) LocalDate acqTo,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "lastPlayed") String sort) {
 
         BacklogSearchCondition condition = new BacklogSearchCondition(
                 q, status, tagId, genreId, genreName, developer, releaseYear,
-                deviceId, platformId, platformAccountId);
+                ptDeviceId, ptPlatformId, ptEmulatorId, ptAccountId, ptFrom, ptTo,
+                acqMethod, acqCurrency, acqMinPrice, acqMaxPrice,
+                acqPlatformId, acqAccountId, acqFrom, acqTo);
 
         return backlogQueryService.findCards(memberId, condition, page, size, BacklogSort.from(sort));
     }

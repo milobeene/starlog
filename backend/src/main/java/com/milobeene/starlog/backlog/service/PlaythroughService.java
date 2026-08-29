@@ -1,5 +1,7 @@
 package com.milobeene.starlog.backlog.service;
 
+import com.milobeene.starlog.platform.service.PlatformService;
+import com.milobeene.starlog.platform.domain.Platform;
 import com.milobeene.starlog.backlog.domain.BacklogEntry;
 import com.milobeene.starlog.backlog.domain.Playthrough;
 import com.milobeene.starlog.backlog.domain.PlaythroughCommand;
@@ -27,6 +29,7 @@ public class PlaythroughService {
 
     private final PlaythroughRepository playthroughRepository;
     private final DeviceService deviceService;
+    private final PlatformService platformService;
     private final EmulatorService emulatorService;
     private final InputMethodService inputMethodService;
     private final PlatformAccountService platformAccountService;
@@ -134,6 +137,13 @@ public class PlaythroughService {
         Device device = (command.deviceId() == null) ? null
                 : deviceService.findOne(ownerId, command.deviceId());
 
+        /*
+         * 플랫폼 (v1.1). 계정이 없어도 "어디서 했나"를 적을 수 있다 —
+         * 실물 패키지처럼 계정이라는 개념이 없는 경우가 있다
+         */
+        Platform platform = (command.platformId() == null) ? null
+                : platformService.findOne(ownerId, command.platformId());
+
         PlatformAccount account = (command.platformAccountId() == null) ? null
                 : platformAccountService.findOne(ownerId, command.platformAccountId());
 
@@ -143,7 +153,7 @@ public class PlaythroughService {
         InputMethod inputMethod = (command.inputMethodId() == null) ? null
                 : inputMethodService.findOne(ownerId, command.inputMethodId());
 
-        playthrough.assignReferences(device, account, emulator, inputMethod);
+        playthrough.assignReferences(device, platform, account, emulator, inputMethod);
     }
 
     private Playthrough findOwnedPlaythrough(Long memberId, Long playthroughId) {

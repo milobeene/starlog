@@ -90,7 +90,7 @@ class PlaythroughServiceTest {
         //when
         playthroughService.add(memberId, entryId, new PlaythroughCommand(
                 LocalDate.of(2026, 5, 1), LocalDate.of(2026, 6, 20), PlaythroughStatus.COMPLETED,
-                device.getId(), null, null, pad.getId(), "  DLC - 쿠파 왕국  "));
+                device.getId(), null, null, null, pad.getId(), "  DLC - 쿠파 왕국  "));
 
         em.flush();
         em.clear();
@@ -187,7 +187,7 @@ class PlaythroughServiceTest {
         //when
         playthroughService.add(memberId, entryId, new PlaythroughCommand(
                 LocalDate.of(2026, 6, 3), LocalDate.of(2026, 6, 11), PlaythroughStatus.PAUSED,
-                null, null, null, null, null));
+                null, null, null, null, null, null));
 
         em.flush();
         em.clear();
@@ -205,7 +205,7 @@ class PlaythroughServiceTest {
         Long entryId = givenEntry("Palworld");
         playthroughService.add(memberId, entryId, new PlaythroughCommand(
                 LocalDate.of(2024, 3, 13), LocalDate.of(2025, 7, 21), PlaythroughStatus.PAUSED,
-                null, null, null, null, null));
+                null, null, null, null, null, null));
 
         //when
         playthroughService.add(memberId, entryId, playing(LocalDate.of(2026, 7, 14)));
@@ -226,12 +226,12 @@ class PlaythroughServiceTest {
         Device device = saveDevice("Nintendo Switch");
         playthroughService.add(memberId, entryId, new PlaythroughCommand(
                 LocalDate.of(2022, 1, 1), LocalDate.of(2023, 1, 1), PlaythroughStatus.COMPLETED,
-                null, null, null, null, null));
+                null, null, null, null, null, null));
 
         //when — 2회차 진행 중
         playthroughService.add(memberId, entryId, new PlaythroughCommand(
                 LocalDate.of(2026, 5, 27), null, PlaythroughStatus.PLAYING,
-                device.getId(), null, null, null, null));
+                device.getId(), null, null, null, null, null));
 
         em.flush();
         em.clear();
@@ -292,7 +292,7 @@ class PlaythroughServiceTest {
         //when & then — 종료일과 상태는 한 몸이다
         assertThatThrownBy(() -> playthroughService.add(memberId, entryId, new PlaythroughCommand(
                 LocalDate.of(2026, 1, 1), LocalDate.of(2026, 2, 1), PlaythroughStatus.PLAYING,
-                null, null, null, null, null)))
+                null, null, null, null, null, null)))
                 .isInstanceOf(InvalidInputException.class);
     }
 
@@ -308,7 +308,7 @@ class PlaythroughServiceTest {
         //when — 2025년 중단 기록을 나중에 입력한다 (번호는 2번이지만 날짜는 과거)
         playthroughService.add(memberId, entryId, new PlaythroughCommand(
                 LocalDate.of(2025, 1, 1), LocalDate.of(2025, 2, 1), PlaythroughStatus.DROPPED,
-                null, null, null, null, null));
+                null, null, null, null, null, null));
 
         em.flush();
         em.clear();
@@ -424,10 +424,10 @@ class PlaythroughServiceTest {
         //given — 계정을 소프트 삭제하는 이유가 이것이다 (§6.5)
         Long entryId = givenEntry("Persona 5");
         Platform steam = savePlatform("Steam");
-        Long accountId = platformAccountService.register(memberId, steam.getId(), "본계정");
+        Long accountId = platformAccountService.register(memberId, steam.getId(), null, "본계정");
         playthroughService.add(memberId, entryId, new PlaythroughCommand(
                 LocalDate.of(2026, 1, 1), LocalDate.of(2026, 2, 1), PlaythroughStatus.COMPLETED,
-                null, accountId, null, null, null));
+                null, null, accountId, null, null, null));
 
         //when
         platformAccountService.delete(memberId, accountId);
@@ -465,7 +465,7 @@ class PlaythroughServiceTest {
         Member other = saveMember("other-owner@example.com");
         em.flush();
         Platform steam = savePlatform(other.getId(), "Steam");
-        PlatformAccount othersAccount = new PlatformAccount(other, steam, "남의 계정");
+        PlatformAccount othersAccount = PlatformAccount.onPlatform(other, steam, "남의 계정");
         em.persist(othersAccount);
         em.flush();
 
@@ -474,7 +474,7 @@ class PlaythroughServiceTest {
         //when //then
         assertThatThrownBy(() -> playthroughService.add(memberId, entryId,
                 new PlaythroughCommand(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 5),
-                        PlaythroughStatus.COMPLETED, null, othersAccount.getId(), null, null, null)))
+                        PlaythroughStatus.COMPLETED, null, null, othersAccount.getId(), null, null, null)))
                 .isInstanceOf(NotFoundException.class);
     }
 
@@ -487,13 +487,13 @@ class PlaythroughServiceTest {
         Long entryId = givenEntry("Celeste");
         Platform steam = savePlatform("Steam");
         Member me = em.find(Member.class, memberId);
-        PlatformAccount account = new PlatformAccount(me, steam, "본계정");
+        PlatformAccount account = PlatformAccount.onPlatform(me, steam, "본계정");
         em.persist(account);
         em.flush();
 
         Long playthroughId = playthroughService.add(memberId, entryId,
                 new PlaythroughCommand(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 5),
-                        PlaythroughStatus.COMPLETED, null, account.getId(), null, null, null));
+                        PlaythroughStatus.COMPLETED, null, null, account.getId(), null, null, null));
 
         account.softDelete(java.time.LocalDateTime.now());
         em.flush();
@@ -501,7 +501,7 @@ class PlaythroughServiceTest {
         //when //then
         assertThatCode(() -> playthroughService.update(memberId, playthroughId,
                 new PlaythroughCommand(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 8),
-                        PlaythroughStatus.COMPLETED, null, account.getId(), null, null, null)))
+                        PlaythroughStatus.COMPLETED, null, null, account.getId(), null, null, null)))
                 .doesNotThrowAnyException();
     }
 
@@ -513,7 +513,7 @@ class PlaythroughServiceTest {
         //when //then
         assertThatThrownBy(() -> playthroughService.add(memberId, entryId,
                 new PlaythroughCommand(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 5),
-                        PlaythroughStatus.COMPLETED, 999999L, null, null, null, null)))
+                        PlaythroughStatus.COMPLETED, 999999L, null, null, null, null, null)))
                 .isInstanceOf(NotFoundException.class);
     }
 
@@ -646,7 +646,7 @@ class PlaythroughServiceTest {
         //when
         Long playthroughId = playthroughService.add(memberId, entryId,
                 new PlaythroughCommand(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 5),
-                        PlaythroughStatus.COMPLETED, bedroomDevice.getId(), null, null, null, null));
+                        PlaythroughStatus.COMPLETED, bedroomDevice.getId(), null, null, null, null, null));
 
         //then
         assertThat(em.find(Playthrough.class, playthroughId).getDevice().getId())
@@ -666,7 +666,7 @@ class PlaythroughServiceTest {
         //when //then
         assertThatThrownBy(() -> playthroughService.add(memberId, entryId,
                 new PlaythroughCommand(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 5),
-                        PlaythroughStatus.COMPLETED, othersDevice.getId(), null, null, null, null)))
+                        PlaythroughStatus.COMPLETED, othersDevice.getId(), null, null, null, null, null)))
                 .isInstanceOf(NotFoundException.class);
     }
 
@@ -725,12 +725,12 @@ class PlaythroughServiceTest {
     }
 
     private PlaythroughCommand inProgress(LocalDate startedOn, PlaythroughStatus status) {
-        return new PlaythroughCommand(startedOn, null, status, null, null, null, null, null);
+        return new PlaythroughCommand(startedOn, null, status, null, null, null, null, null, null);
     }
 
     private PlaythroughCommand finished(LocalDate startedOn, LocalDate finishedOn) {
         return new PlaythroughCommand(startedOn, finishedOn, PlaythroughStatus.COMPLETED,
-                null, null, null, null, null);
+                null, null, null, null, null, null);
     }
 
     private Member saveMember(String email) {

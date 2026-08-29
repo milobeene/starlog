@@ -28,7 +28,7 @@ class MeControllerTest extends ControllerTestSupport {
         //given
         Member member = saveMember();
         Platform steam = savePlatform(member, "Steam");
-        platformAccountService.register(member.getId(), steam.getId(), "본계정");
+        platformAccountService.register(member.getId(), steam.getId(), null, "본계정");
 
         mockMvc.perform(post("/api/me/devices").header("X-Member-Id", member.getId())
                 .contentType(MediaType.APPLICATION_JSON)
@@ -88,7 +88,7 @@ class MeControllerTest extends ControllerTestSupport {
         //given
         Member member = saveMember();
         Platform steam = savePlatform(member, "Steam");
-        Long accountId = platformAccountService.register(member.getId(), steam.getId(), "부계정");
+        Long accountId = platformAccountService.register(member.getId(), steam.getId(), null, "부계정");
 
         //when
         mockMvc.perform(delete("/api/me/platform-accounts/{id}", accountId)
@@ -105,7 +105,7 @@ class MeControllerTest extends ControllerTestSupport {
         //given
         Member member = saveMember();
         Platform steam = savePlatform(member, "Steam");
-        Long accountId = platformAccountService.register(member.getId(), steam.getId(), "본계정");
+        Long accountId = platformAccountService.register(member.getId(), steam.getId(), null, "본계정");
         platformAccountService.delete(member.getId(), accountId);
 
         //when //then — 백로그 항목과 같은 형태의 응답이다

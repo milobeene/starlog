@@ -34,5 +34,12 @@ public record OptionsResponse(
      *
      * Ref에 nullable 필드를 붙이지 않은 이유 — 기기·에뮬·구독에 의미 없는 null이 따라다닌다
      */
-    public record AccountRef(Long id, String name, Long platformId, String platformName) {}
+    /**
+     * 다이얼로그의 계정 선택지 (v1.1에서 에뮬 계정 포함).
+     *
+     * `platformId`나 `emulatorId` 중 하나만 채워진다. 화면은 **고른 소속으로 걸러**
+     * 계정 목록을 좁힌다 — 스팀을 골랐는데 닌텐도 계정이 보이면 안 된다
+     */
+    public record AccountRef(Long id, String name, Long platformId, String platformName,
+                             Long emulatorId, String emulatorName) {}
 }

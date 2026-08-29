@@ -154,6 +154,8 @@ public record BacklogDetailResponse(
             PlaythroughStatus status,
             String label,
             DeviceRef device,
+            /** 어디서 했나 (v1.1). 에뮬레이터와 동시에 채워지지 않는다 */
+            PlatformRef platform,
             PlatformAccountRef platformAccount,
             EmulatorRef emulator,
             InputMethodRef inputMethod
@@ -165,6 +167,8 @@ public record BacklogDetailResponse(
                     p.getStatus(), p.getLabel(),
                     p.getDevice() == null ? null
                             : new DeviceRef(p.getDevice().getId(), p.getDevice().optionLabel()),
+                    p.getPlatform() == null ? null
+                            : new PlatformRef(p.getPlatform().getId(), p.getPlatform().getName()),
                     PlatformAccountRef.from(p.getPlatformAccount()),
                     p.getEmulator() == null ? null
                             : new EmulatorRef(p.getEmulator().getId(), p.getEmulator().getName()),

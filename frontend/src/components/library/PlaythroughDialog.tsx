@@ -37,6 +37,16 @@ export default function PlaythroughDialog({
   const [status, setStatus] = useState<PlaythroughStatus>(run?.status ?? "PLAYING");
   const [deviceId, setDeviceId] = useState(run?.device ? String(run.device.deviceId) : "");
   const [emulatorId, setEmulatorId] = useState(run?.emulator ? String(run.emulator.emulatorId) : "");
+  const [platformId, setPlatformId] = useState(run?.platform ? String(run.platform.platformId) : "");
+  /**
+   * 플랫폼으로 했나, 에뮬레이터로 했나 (v1.1).
+   *
+   * **동시에 고를 일이 없다** — 스팀에서 하면서 동시에 에뮬을 쓰는 경우는 없다.
+   * 기존 회차는 에뮬이 있으면 에뮬 쪽으로 연다
+   */
+  const [runsOn, setRunsOn] = useState<"platform" | "emulator">(
+    run?.emulator ? "emulator" : "platform",
+  );
   const [accountId, setAccountId] = useState(
     run?.platformAccount ? String(run.platformAccount.accountId) : "",
   );
@@ -53,11 +63,24 @@ export default function PlaythroughDialog({
    * 라벨은 회원이 정하는 자유 문자열이라 플랫폼마다 같은 이름이 흔하고,
    * 그대로 두면 선택지에 구별 불가능한 항목이 여러 개 뜬다
    */
+  /*
+   * ⚠️ **고른 소속의 계정만 보여준다** (v1.1). 스팀을 골랐는데 닌텐도 계정이 뜨면
+   * "스팀 + 닌텐도 계정" 같은 모순이 저장된다 — 취득 다이얼로그와 같은 규칙이다
+   */
+  const owner = runsOn === "platform" ? numberOrNull(platformId) : numberOrNull(emulatorId);
   const accountChoices = withCurrent(
-    (options?.platformAccounts ?? []).map((account) => ({
-      id: account.id,
-      name: accountLabel(account.platformName, account.name),
-    })),
+    (options?.platformAccounts ?? [])
+      .filter((account) =>
+        owner == null
+          ? false
+          : runsOn === "platform"
+            ? account.platformId === owner
+            : account.emulatorId === owner,
+      )
+      .map((account) => ({
+        id: account.id,
+        name: accountLabel(account.platformName ?? account.emulatorName, account.name),
+      })),
     run?.platformAccount && {
       id: run.platformAccount.accountId,
       name: run.platformAccount.label,
@@ -77,8 +100,10 @@ export default function PlaythroughDialog({
       finishedOn: finishedOn || null,
       status,
       deviceId: numberOrNull(deviceId),
+      // 고르지 않은 쪽은 비워 보낸다 — 토글을 바꿨을 때 옛 값이 남으면 둘 다인 상태가 된다
+      platformId: runsOn === "platform" ? numberOrNull(platformId) : null,
+      emulatorId: runsOn === "emulator" ? numberOrNull(emulatorId) : null,
       platformAccountId: numberOrNull(accountId),
-      emulatorId: numberOrNull(emulatorId),
       inputMethodId: numberOrNull(inputMethodId),
       label: label.trim() || null,
     };
@@ -156,15 +181,66 @@ export default function PlaythroughDialog({
               ))}
             </select>
           </Field>
-          <Field label="Emulator">
-            <select value={emulatorId} onChange={(e) => setEmulatorId(e.target.value)} className={FIELD_SELECT}>
-              <option value="">선택 안 함</option>
-              {withCurrent(options?.emulators ?? [], run?.emulator && { id: run.emulator.emulatorId, name: run.emulator.name }).map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
+          <Field label={runsOn === "platform" ? "Platform" : "Emulator"}>
+            {/*
+              토글 (v1.1). 플랫폼과 에뮬은 **동시에 고를 일이 없어서** 한 칸을 나눠 쓴다.
+              바꾸면 아래 계정을 비운다 — 안 그러면 "스위치 + 스팀 계정"이 남는다
+            */}
+            <div className="mb-1.5 flex gap-1">
+              {(["platform", "emulator"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => {
+                    setRunsOn(mode);
+                    setAccountId("");
+                  }}
+                  className={`rounded px-2 py-0.5 text-[10px] tracking-widest uppercase transition-colors ${
+                    runsOn === mode
+                      ? "bg-white/15 text-white"
+                      : "text-white/35 hover:bg-white/8 hover:text-white/70"
+                  }`}
+                >
+                  {mode === "platform" ? "플랫폼" : "에뮬"}
+                </button>
               ))}
-            </select>
+            </div>
+            {runsOn === "platform" ? (
+              <select
+                value={platformId}
+                onChange={(e) => {
+                  setPlatformId(e.target.value);
+                  setAccountId("");
+                }}
+                className={FIELD_SELECT}
+              >
+                <option value="">선택 안 함</option>
+                {withCurrent(
+                  options?.platforms ?? [],
+                  run?.platform && { id: run.platform.platformId, name: run.platform.name },
+                ).map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <select
+                value={emulatorId}
+                onChange={(e) => {
+                  setEmulatorId(e.target.value);
+                  setAccountId("");
+                }}
+                className={FIELD_SELECT}
+              >
+                <option value="">선택 안 함</option>
+                {withCurrent(options?.emulators ?? [], run?.emulator && { id: run.emulator.emulatorId, name: run.emulator.name }).map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            )}
           </Field>
         </div>
 

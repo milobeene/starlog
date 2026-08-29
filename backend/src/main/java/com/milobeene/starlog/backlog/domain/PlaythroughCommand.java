@@ -8,6 +8,8 @@ public record PlaythroughCommand(
         LocalDate finishedOn,      // null = 진행 중
         PlaythroughStatus status,
         Long deviceId,
+        /** 어디서 했나 (v1.1). 에뮬레이터와 동시에 오지 않는다 */
+        Long platformId,
         Long platformAccountId,
         Long emulatorId,
         Long inputMethodId,

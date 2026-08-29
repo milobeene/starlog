@@ -74,7 +74,10 @@ public class MeQueryService {
                 platformAccountService.findSelectable(memberId).stream()
                         .map(a -> new OptionsResponse.AccountRef(
                                 a.getId(), a.getAccountLabel(),
-                                a.getPlatform().getId(), a.getPlatform().getName())).toList(),
+                                a.getPlatform() == null ? null : a.getPlatform().getId(),
+                                a.getPlatform() == null ? null : a.getPlatform().getName(),
+                                a.getEmulator() == null ? null : a.getEmulator().getId(),
+                                a.getEmulator() == null ? null : a.getEmulator().getName())).toList(),
                 subscriptionRepository.findByMemberIdOrderByStartedOnDesc(memberId).stream()
                         .map(s -> new OptionsResponse.Ref(s.getId(), s.getServiceName())).toList(),
                 tagRepository.findUsedByMemberId(memberId).stream().map(Tag::getName).toList(),

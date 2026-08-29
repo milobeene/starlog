@@ -14,6 +14,8 @@ public record PlaythroughRequest(
         LocalDate finishedOn,      // null = 진행 중
         @NotNull PlaythroughStatus status,
         Long deviceId,
+        /** 플랫폼 또는 에뮬레이터 중 하나 (v1.1). 화면의 토글이 정한다 */
+        Long platformId,
         Long platformAccountId,
         Long emulatorId,
         Long inputMethodId,        // enum이던 시절엔 문자열이었다 (V2에서 테이블로 승격)
@@ -22,6 +24,6 @@ public record PlaythroughRequest(
 
     public PlaythroughCommand toCommand() {
         return new PlaythroughCommand(startedOn, finishedOn, status,
-                deviceId, platformAccountId, emulatorId, inputMethodId, label);
+                deviceId, platformId, platformAccountId, emulatorId, inputMethodId, label);
     }
 }
