@@ -26,21 +26,28 @@ export default function GameCard({ card }: { card: BacklogCard }) {
       onDragStart={(e) => e.dataTransfer.setData("text/entry-id", String(card.entryId))}
       className="group flex cursor-pointer flex-col"
     >
-      {/*
-        **플레이 중이면 커버가 빛난다** (v1.1.3). 상태 배지가 이미 있지만 작아서,
-        그리드를 훑을 때 "지금 하는 것"이 한눈에 안 들어왔다.
-        `rounded-lg`를 함께 주는 이유 — 그림자는 요소의 모서리를 따라가는데
-        이 껍데기에 반경이 없으면 둥근 커버 뒤로 **네모난 빛**이 삐져나온다
-      */}
-      <div
-        className={`relative mb-3 rounded-lg ${
-          card.status === "PLAYING" ? "shadow-[0_0_0_1px_rgba(52,211,153,0.5),0_0_18px_2px_rgba(52,211,153,0.35)]" : ""
-        }`}
-      >
+      <div className="relative mb-3">
+        {/*
+          **플레이 중이면 커버가 빛난다** (v1.1.3). 상태 배지가 이미 있지만 작아서
+          그리드를 훑을 때 "지금 하는 것"이 한눈에 안 들어왔다.
+
+          ⚠️ **그림자를 커버 자신에게 준다.** 바깥 껍데기에 주면 그쪽은 반경이 없고
+          크기도 커버와 미묘하게 달라서, 빛이 **커버에서 어긋난 네모**로 뜬다 (실제로 그랬다).
+          이 요소가 `rounded-xl`과 커버의 정확한 상자를 들고 있는 유일한 곳이다
+        */}
         <GameCover
           coverUrl={card.coverUrl}
           coverImageId={card.coverImageId}
           name={card.displayName}
+          /*
+            호버하면 빛이 **오므라든다** — 커버가 확대되는 것과 같은 500ms·ease-out이라
+            둘이 한 동작으로 읽힌다. 다른 속도면 빛만 따로 노는 것처럼 보인다
+          */
+          className={
+            card.status === "PLAYING"
+              ? "shadow-[0_0_22px_-2px_rgba(52,211,153,0.65)] transition-[box-shadow] duration-500 ease-out group-hover:shadow-[0_0_8px_-3px_rgba(52,211,153,0.45)]"
+              : ""
+          }
         />
         <div className="absolute top-2 left-2.5 z-10">
           <StatusBadge status={card.status} />
