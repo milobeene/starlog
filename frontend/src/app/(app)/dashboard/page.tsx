@@ -8,6 +8,7 @@ import StarIcon from "@/components/ui/StarIcon";
 import ErrorNotice from "@/components/ui/ErrorNotice";
 import { RowSkeleton, Skeleton } from "@/components/ui/Skeleton";
 import StatTile from "@/components/dashboard/StatTile";
+import MonthlyCompletionsChart from "@/components/dashboard/MonthlyCompletionsChart";
 import MonthlySpendingChart from "@/components/dashboard/MonthlySpendingChart";
 import { useApi } from "@/lib/useApi";
 import { useSession } from "@/lib/session";
@@ -16,6 +17,7 @@ import { formatHours } from "@/lib/format";
 import type {
   BacklogCard,
   FacetsResponse,
+  MonthlyCompletions,
   MonthlySpending,
   PageResponse,
   PlaytimeStats,
@@ -30,6 +32,7 @@ export default function DashboardPage() {
   const facets = useApi<FacetsResponse>("/api/backlog/facets");
   const playtime = useApi<PlaytimeStats>("/api/stats/playtime");
   const spending = useApi<MonthlySpending>("/api/stats/spending/monthly");
+  const completions = useApi<MonthlyCompletions>("/api/stats/completions/monthly");
   const playing = useApi<PageResponse<BacklogCard>>("/api/backlog?status=PLAYING&size=5");
 
   const statuses = facets.data?.statuses ?? [];
@@ -140,7 +143,21 @@ export default function DashboardPage() {
         metaClassName="text-yellow-500/80"
       />
 
-      {/* 차트 — 월별 지출 하나뿐 */}
+      {/*
+        차트 둘. **완료가 위, 지출이 아래다** (사용자 결정 2026-08-29) —
+        이 앱의 주인공은 "얼마 썼나"가 아니라 "몇 개 깼나"다
+      */}
+      <div className="page-x w-full py-8 sm:py-10">
+        <h3 className="mb-8 text-2xl font-medium tracking-tight text-white/90">
+          Monthly Completions
+        </h3>
+        {completions.loading ? (
+          <Skeleton className="h-72 w-full" />
+        ) : completions.data ? (
+          <MonthlyCompletionsChart data={completions.data} />
+        ) : null}
+      </div>
+
       <div className="page-x mb-10 w-full py-8 sm:py-10">
         <h3 className="mb-8 text-2xl font-medium tracking-tight text-white/90">Monthly Spending</h3>
         {spending.loading ? (

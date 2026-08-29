@@ -359,6 +359,18 @@ export interface MonthlySpending {
   yearlyAverages: { year: number; amounts: Record<string, number> }[];
 }
 
+/**
+ * 월별 완료 추이 (GET /api/stats/completions/monthly).
+ *
+ * `MonthlySpending`과 같은 모양이다 — 대시보드에서 나란히 서므로 읽는 법이 같아야 한다.
+ * 다른 것은 통화가 없다는 것과, 요약이 **평균이 아니라 합계**라는 것뿐이다
+ */
+export interface MonthlyCompletions {
+  /** items — 그 달에 완료한 게임의 표시명(오버라이드 반영). 이름순 정렬 */
+  months: { period: string; count: number; items: string[] }[];
+  years: { year: number; count: number }[];
+}
+
 export interface PageResponse<T> {
   page: number;
   size: number;

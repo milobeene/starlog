@@ -43,6 +43,13 @@ export default function DateField({
   const [cursor, setCursor] = useState(() => monthOf(value));
   /** 연도 격자를 띄웠나. 달력을 닫을 때 함께 접는다 — 다시 열면 달력부터가 자연스럽다 */
   const [yearPicker, setYearPicker] = useState(false);
+  /**
+   * 연도 격자가 보여주는 12년의 시작.
+   *
+   * ⚠️ **cursor에서 계산하면 안 된다.** 그러면 화살표로 연도를 넘겨도 cursor가 그대로라
+   * 격자가 제자리다 — 12년 밖으로는 영영 못 나간다. 따로 들고 화살표가 이걸 옮긴다
+   */
+  const [yearBase, setYearBase] = useState(2020);
 
   /** 그려졌으면 실제 높이로, 아니면 추정치로. 달의 주 수(5·6)에 따라 34px이 갈린다 */
   const panelSize = () => {
@@ -117,7 +124,7 @@ export default function DateField({
    * 헤더를 눌러 연도 격자를 띄우고, 고르면 **그 해 1월**로 간다 —
    * 달까지 기억해두면 "2015년 8월"에서 연도만 바꿨을 때 8월이 튀어나와 헷갈린다
    */
-  const yearBase = cursor.year - (((cursor.year % 12) + 12) % 12);
+
 
   return (
     <div ref={rootRef} className="relative">
@@ -189,23 +196,33 @@ export default function DateField({
             <div className="mb-2 flex items-center justify-between">
               <button
                 type="button"
-                aria-label="이전 달"
-                onClick={() => setCursor(addMonths(cursor, -1))}
+                aria-label={yearPicker ? "이전 12년" : "이전 달"}
+                onClick={() =>
+                  yearPicker ? setYearBase((y) => y - 12) : setCursor(addMonths(cursor, -1))
+                }
                 className="flex h-7 w-7 items-center justify-center rounded text-white/50 transition-colors hover:bg-white/10 hover:text-white"
               >
                 ‹
               </button>
               <button
                 type="button"
-                onClick={() => setYearPicker((on) => !on)}
+                onClick={() => {
+                  // 열 때 지금 연도가 든 12년 칸으로 맞춘다
+                  if (!yearPicker) setYearBase(cursor.year - 6);
+                  setYearPicker((on) => !on);
+                }}
                 className="num rounded px-2 py-0.5 text-sm font-medium transition-colors hover:bg-white/10"
               >
-                {cursor.year}. {String(cursor.month).padStart(2, "0")}
+                {yearPicker
+                  ? `${yearBase} – ${yearBase + 11}`
+                  : `${cursor.year}. ${String(cursor.month).padStart(2, "0")}`}
               </button>
               <button
                 type="button"
-                aria-label="다음 달"
-                onClick={() => setCursor(addMonths(cursor, 1))}
+                aria-label={yearPicker ? "다음 12년" : "다음 달"}
+                onClick={() =>
+                  yearPicker ? setYearBase((y) => y + 12) : setCursor(addMonths(cursor, 1))
+                }
                 className="flex h-7 w-7 items-center justify-center rounded text-white/50 transition-colors hover:bg-white/10 hover:text-white"
               >
                 ›

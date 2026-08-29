@@ -1,8 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import type { Money, MonthlySpending } from "@/lib/types";
 import MoneyText from "@/components/ui/Money";
+import {
+  ChartGrid,
+  ChartItems,
+  ChartMonthAxis,
+  ChartYearSwitch,
+  HEIGHT,
+  PAD,
+  PLOT_H,
+  WIDTH,
+  xOf,
+  yearsOf,
+} from "./chartBase";
 
 /**
  * 월별 지출 꺾은선.
@@ -14,19 +26,9 @@ import MoneyText from "@/components/ui/Money";
  * recharts(~100KB)를 들이는 값을 못 한다
  */
 const LINE_COLORS = ["#e5893a", "#6fb3ae", "#a78bfa"];
-const MONTH_LABELS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"];
-
-const WIDTH = 1000;
-const HEIGHT = 260;
-const PAD = { top: 20, right: 56, bottom: 34, left: 64 };
-const PLOT_W = WIDTH - PAD.left - PAD.right;
-const PLOT_H = HEIGHT - PAD.top - PAD.bottom;
 
 export default function MonthlySpendingChart({ data }: { data: MonthlySpending }) {
-  const years = useMemo(() => {
-    const found = [...new Set(data.months.map((month) => Number(month.period.slice(0, 4))))];
-    return found.length > 0 ? found.sort((a, b) => a - b) : [new Date().getFullYear()];
-  }, [data.months]);
+  const years = useMemo(() => yearsOf(data.months.map((m) => m.period)), [data.months]);
 
   const [year, setYear] = useState(() => years[years.length - 1]);
   const [hover, setHover] = useState<number | null>(null);
@@ -63,47 +65,25 @@ export default function MonthlySpendingChart({ data }: { data: MonthlySpending }
     return Object.fromEntries(entries);
   }, [currencies, series]);
 
-  const stepX = PLOT_W / 11;
-  const xOf = (index: number) => PAD.left + index * stepX;
+  /** 그 해의 월평균. 12개월 고정 분모라 데이터가 없는 달도 분모에 든다 */
+  const yearAverage = data.yearlyAverages.find((entry) => entry.year === year);
+
   const yOf = (value: number, currency: string) =>
     PAD.top + (1 - value / maxByCurrency[currency]) * PLOT_H;
 
-  const yearIndex = years.indexOf(year);
-
   return (
     <div className="w-full">
-      {/* 연도 전환 — 양쪽 버튼 */}
-      <div className="mb-3 flex items-center gap-3">
-        <button
-          onClick={() => setYear(years[yearIndex - 1])}
-          disabled={yearIndex <= 0}
-          aria-label="이전 해"
-          className="flex h-7 w-7 items-center justify-center rounded text-white/40 transition-colors hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-25"
-        >
-          ‹
-        </button>
-        <span className="num min-w-[3.5rem] text-center text-sm font-medium tracking-wider">{year}</span>
-        <button
-          onClick={() => setYear(years[yearIndex + 1])}
-          disabled={yearIndex < 0 || yearIndex >= years.length - 1}
-          aria-label="다음 해"
-          className="flex h-7 w-7 items-center justify-center rounded text-white/40 transition-colors hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-25"
-        >
-          ›
-        </button>
-
-        <div className="ml-auto flex gap-4">
-          {currencies.map((currency, index) => (
-            <span key={currency} className="flex items-center gap-1.5 text-xs text-white/50">
-              <span
-                className="inline-block h-0.5 w-4"
-                style={{ background: LINE_COLORS[index % LINE_COLORS.length] }}
-              />
-              {currency}
-            </span>
-          ))}
-        </div>
-      </div>
+      <ChartYearSwitch years={years} year={year} onChange={setYear}>
+        {currencies.map((currency, index) => (
+          <span key={currency} className="flex items-center gap-1.5 text-xs text-white/50">
+            <span
+              className="inline-block h-0.5 w-4"
+              style={{ background: LINE_COLORS[index % LINE_COLORS.length] }}
+            />
+            {currency}
+          </span>
+        ))}
+      </ChartYearSwitch>
 
       {/*
         **onMouseLeave가 svg가 아니라 이 박스에 걸린다.** 툴팁 줄은 svg 바깥 형제라,
@@ -115,31 +95,8 @@ export default function MonthlySpendingChart({ data }: { data: MonthlySpending }
         onMouseLeave={() => setHover(null)}
       >
         <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="h-72 w-full min-w-[640px]">
-          {/* 가로 눈금 + 세로 축 값 (첫 통화 기준) */}
-          {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
-            const y = PAD.top + ratio * PLOT_H;
-            const primary = currencies[0];
-            const value = primary ? maxByCurrency[primary] * (1 - ratio) : 0;
-            return (
-              <g key={ratio}>
-                <line
-                  x1={PAD.left}
-                  x2={WIDTH - PAD.right}
-                  y1={y}
-                  y2={y}
-                  stroke="rgba(255,255,255,0.4)"
-                  strokeDasharray="4 6"
-                  strokeWidth="1"
-                  opacity="0.15"
-                />
-                {primary && (
-                  <text x={PAD.left - 10} y={y + 4} textAnchor="end" fontSize="11" className="fill-white/30">
-                    {compact(value)}
-                  </text>
-                )}
-              </g>
-            );
-          })}
+          {/* 축 값은 첫 통화 기준이다 — 통화마다 스케일이 갈리므로 대표 하나만 적는다 */}
+          <ChartGrid max={currencies[0] ? maxByCurrency[currencies[0]] : null} />
 
           {/* 꺾은선 — 데이터 없는 달은 건너뛰고 이어 그린다 */}
           {currencies.map((currency, index) => {
@@ -184,35 +141,7 @@ export default function MonthlySpendingChart({ data }: { data: MonthlySpending }
             />
           )}
 
-          {/* 12개월 라벨 — 지출이 없는 달도 축에는 남는다 */}
-          {MONTH_LABELS.map((label, index) => (
-            <text
-              key={label}
-              x={xOf(index)}
-              y={HEIGHT - 12}
-              textAnchor="middle"
-              fontSize="11"
-              className={hover === index ? "fill-white/80" : "fill-white/30"}
-            >
-              {label}
-            </text>
-          ))}
-
-          {/*
-            히트 영역을 따로 깐다 — 선과 점만으로는 마우스가 얹히는 면적이 너무 좁다.
-            투명 사각형이 각 달의 세로 띠 전체를 받는다
-          */}
-          {MONTH_LABELS.map((label, index) => (
-            <rect
-              key={`hit-${label}`}
-              x={xOf(index) - stepX / 2}
-              y={PAD.top}
-              width={stepX}
-              height={PLOT_H}
-              fill="transparent"
-              onMouseEnter={() => setHover(index)}
-            />
-          ))}
+          <ChartMonthAxis hover={hover} onHover={setHover} />
         </svg>
 
         {/* 툴팁 — SVG 밖에 두면 위치 계산 없이 폭을 그대로 쓴다 */}
@@ -250,7 +179,7 @@ export default function MonthlySpendingChart({ data }: { data: MonthlySpending }
                 <>
                   <span aria-hidden className="w-px self-stretch bg-white/15" />
                   {/* key가 달이라 다른 달로 옮기면 리마운트된다 — 펼친 상태가 따라오지 않는다 */}
-                  <SpendingItems key={hover} items={itemsByMonth[hover]} />
+                  <ChartItems key={hover} items={itemsByMonth[hover]} />
                 </>
               )}
             </>
@@ -262,69 +191,25 @@ export default function MonthlySpendingChart({ data }: { data: MonthlySpending }
           말하고 있어서, 문장을 덧붙이면 같은 말을 두 번 하는 셈이다
         */}
       </div>
+
+      {/*
+        ⚠️ **연평균은 백엔드가 계산해 내려보내는데 화면이 안 그리고 있었다** (2026-08-29).
+        만들어두고 안 붙인 상태라 사용자가 "본 적이 없다"고 했다.
+        **분모는 12개월 고정**이다 — 데이터 있는 달만으로 나누면 연초에 몰아 산 해가
+        부풀어 해끼리 비교가 안 된다
+      */}
+      {yearAverage && (
+        <p className="mt-2 flex flex-wrap items-baseline gap-x-3 px-1 text-[11px] text-white/35">
+          <span>
+            <span className="num text-white/55">{year}</span>년 월평균
+          </span>
+          {currencies.map((currency) => (
+            <span key={currency} className="num text-white/70">
+              <MoneyText money={{ amount: yearAverage.amounts[currency] ?? 0, currency } as Money} />
+            </span>
+          ))}
+        </p>
+      )}
     </div>
   );
-}
-
-/**
- * 그 달에 돈이 나간 것들 — 한 줄로 흘리고 넘치면 `…`.
- *
- * **잘렸을 때만 펼치기 버튼이 뜬다.** 항상 띄우면 다 보이는데도 누를 게 있어 헷갈린다.
- * 잘림 판정은 `scrollWidth > clientWidth`인데, 이건 **그려진 뒤에야 알 수 있다** —
- * 그래서 ResizeObserver로 잰다.
- *
- * 관찰자를 쓰는 두 번째 이유 — **박스 폭이 변할 때도 다시 재야 한다**(창 크기, 통화 개수).
- * 내용이 바뀌면 effect가 다시 붙고, observe()가 초기 콜백을 한 번 쏴서 재측정된다.
- *
- * 펼침 상태를 effect로 되돌리지 않는다. 호출부가 달 인덱스를 key로 주므로
- * 달이 바뀌면 이 컴포넌트가 통째로 새로 뜬다 — 상태 초기화는 리마운트가 하는 일이다
- */
-function SpendingItems({ items }: { items: string[] }) {
-  const ref = useRef<HTMLSpanElement>(null);
-  const [clipped, setClipped] = useState(false);
-  const [expanded, setExpanded] = useState(false);
-
-  const text = items.join(", ");
-
-  useEffect(() => {
-    const element = ref.current;
-    if (!element) return;
-
-    const measure = () => setClipped(element.scrollWidth > element.clientWidth + 1);
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [text]);
-
-  return (
-    <span className="flex min-w-0 flex-1 items-baseline gap-2">
-      <span
-        ref={ref}
-        // 펼치면 줄바꿈으로 풀린다. min-w-0이 없으면 flex 자식이 안 줄어들어 truncate가 안 먹는다
-        className={`min-w-0 text-white/45 ${expanded ? "break-words whitespace-normal" : "truncate"}`}
-        title={text}
-      >
-        {text}
-      </span>
-
-      {/* 접혀 있고 잘렸을 때, 또는 이미 펼쳤을 때만 보인다 */}
-      {(clipped || expanded) && (
-        <button
-          type="button"
-          onClick={() => setExpanded((prev) => !prev)}
-          className="num shrink-0 text-[10px] text-white/35 underline-offset-2 transition-colors hover:text-white/80 hover:underline"
-        >
-          {/* 전체 개수가 아니라 "더 있다"는 표시다 — 몇 개가 가려졌는지는 알 수 없다 */}
-          {expanded ? "접기" : "더보기"}
-        </button>
-      )}
-    </span>
-  );
-}
-
-/** 축 라벨용 축약 — 89800 → 89.8k */
-function compact(value: number): string {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
-  return value.toFixed(0);
 }

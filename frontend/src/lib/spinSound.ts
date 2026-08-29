@@ -21,10 +21,17 @@
  * 첫 소리가 안 난다.
  */
 
-const MIN_HZ = 70;
-const MAX_HZ = 900;
+/*
+ * ⚠️ **최고점을 낮게 잡는다** (2026-08-29, 사용자 피드백).
+ *
+ * 처음엔 900Hz까지 올렸는데 날카로워서 장난감이 아니라 경고음으로 들렸다.
+ * 320Hz면 사람 목소리 아래라 배경에 깔린다 — 회전이 빨라지는 느낌은
+ * 절대 음높이가 아니라 **올라간다는 사실**에서 오므로 범위를 좁혀도 살아 있다.
+ */
+const MIN_HZ = 50;
+const MAX_HZ = 320;
 /** 최고 음량. 헤더의 장난감이라 존재감이 크면 안 된다 */
-const PEAK_GAIN = 0.055;
+const PEAK_GAIN = 0.028;
 
 let ctx: AudioContext | null = null;
 
@@ -49,13 +56,19 @@ export function startSpin() {
   if (!c || spin) return;
 
   const osc = c.createOscillator();
-  osc.type = "sawtooth";
+  /*
+   * 톱니 → **삼각파**로 바꿨다 (2026-08-29). 톱니는 배음이 1/n으로 천천히 줄어 거칠고,
+   * 삼각은 1/n²으로 빨리 줄어 부드럽다. 그래도 사인처럼 밋밋하지는 않아
+   * "돌아가는 것"의 질감은 남는다
+   */
+  osc.type = "triangle";
   osc.frequency.value = MIN_HZ;
 
   const filter = c.createBiquadFilter();
   filter.type = "lowpass";
-  filter.frequency.value = 400;
-  filter.Q.value = 0.8;
+  filter.frequency.value = 260;
+  // Q를 1 아래로 둔다 — 올리면 차단 주파수 근처가 솟아 '삐' 하는 봉우리가 생긴다
+  filter.Q.value = 0.6;
 
   const gain = c.createGain();
   gain.gain.value = 0;
@@ -78,10 +91,11 @@ export function setSpinSpeed(degPerSec: number, maxDegPerSec: number) {
 
   // 주파수는 지수로 올린다 — 사람 귀는 비율로 듣는다(옥타브). 선형이면 저음에서만 확 변한다
   const hz = MIN_HZ * (MAX_HZ / MIN_HZ) ** ratio;
-  spin.osc.frequency.linearRampToValueAtTime(hz, t + 0.03);
-  spin.filter.frequency.linearRampToValueAtTime(300 + ratio * 3200, t + 0.03);
+  // 램프를 0.03 → 0.06초로 늘렸다. 짧으면 프레임마다 값이 튀어 '지글'거린다
+  spin.osc.frequency.linearRampToValueAtTime(hz, t + 0.06);
+  spin.filter.frequency.linearRampToValueAtTime(240 + ratio * 900, t + 0.06);
   // 아주 느릴 땐 아예 안 들리게 — 멈추기 직전의 웅웅거림이 지저분하다
-  spin.gain.gain.linearRampToValueAtTime(PEAK_GAIN * ratio ** 0.7, t + 0.03);
+  spin.gain.gain.linearRampToValueAtTime(PEAK_GAIN * ratio ** 1.4, t + 0.06);
 }
 
 /** 회전 끝. 남은 소리를 짧게 재우고 정리한다 */
