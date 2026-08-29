@@ -71,6 +71,26 @@ public class TranslationQuota {
     public static final int MAX_CHARS_PER_CALL = 25_000;
 
     private final ApiCallLogRepository repository;
+    private final AppSettingService appSettings;
+
+    /**
+     * 사람이 적어둔 하루 한도. 안 적었거나 숫자가 아니면 null — 그때는 **안 막는다**.
+     *
+     * 화면도 이 값을 쓴다(`SystemStatusService`). 한 곳에서 읽어야 **게이지가 보여주는 선과
+     * 실제로 막는 선이 같다** — 다르면 "게이지는 여유가 있는데 거절당하는" 상태가 생긴다
+     */
+    public Long dailyLimit() {
+        String raw = appSettings.all().get(AppSettingService.TRANSLATE_DAILY_CHARS);
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            long value = Long.parseLong(raw.strip());
+            return value > 0 ? value : null;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
 
     /** 이번 달에 쓴 글자 수 */
     public long usedThisMonth() {
@@ -82,10 +102,14 @@ public class TranslationQuota {
      *
      * ⚠️ **하루도 태평양 기준이다.** 구글의 일 할당량이 그쪽 자정에 리셋되므로,
      * 우리 자정으로 세면 한국 시간 아침에 이미 리셋된 것을 못 보고 남은 양을 적게 보여준다.
-     * 월 경계와 같은 이유고 같은 시각계다
+     * 월 경계와 같은 이유고 같은 시각계다 (한국 시간으로는 오후 4~5시에 날이 바뀐다).
+     *
+     * ⚠️ **성공한 것만 센다** (v1.1.3). 월 가드와 반대다 — 저쪽은 넉넉히 세는 게 안전하지만
+     * 이 값은 화면에 그대로 나가고 일 한도 검사에도 쓰인다. 거절당한 호출은 구글이 안 세므로
+     * 여기서 세면 **한도를 넘긴 것처럼 보이고, 남은 양도 실제보다 적게 나온다**
      */
     public long usedToday() {
-        return repository.sumUnitsSince(ApiProvider.TRANSLATE, startOfDay());
+        return repository.sumSucceededUnitsSince(ApiProvider.TRANSLATE, startOfDay());
     }
 
     /** 화면이 그대로 그린다 — 쓴 양·막는 선·공짜 한도가 한 벌로 가야 뜻이 통한다 */
@@ -105,6 +129,7 @@ public class TranslationQuota {
      *                                  외부가 고장 난 게 아니라 **우리가 스스로 막은 것**이라서다
      */
     public void check(int chars) {
+        checkDaily(chars);
         if (chars <= 0) {
             throw new com.milobeene.starlog.common.exception.InvalidInputException(
                     "번역할 내용이 없습니다");
@@ -142,6 +167,30 @@ public class TranslationQuota {
     public void record(int chars, boolean success) {
         repository.persist(com.milobeene.starlog.system.domain.ApiCallLog.of(
                 ApiProvider.TRANSLATE, "translate", AppClock.now(), success, (long) chars));
+    }
+
+    /**
+     * 하루 한도 검사 (v1.1.3).
+     *
+     * **사람이 적어둔 값이 있을 때만** 본다. 안 적었으면 우리가 알 방법이 없어서 그냥 보낸다 —
+     * 구글의 할당량이 최후 방어선이고, 넘으면 거절될 뿐 돈은 안 나간다.
+     *
+     * ⚠️ 그래도 **미리 막는 편이 낫다.** 안 막으면 앱은 거절당할 요청을 계속 보내고,
+     * 사용자에게는 그냥 "번역 실패"로 보인다 — 왜 실패인지가 화면에 안 나온다.
+     * 여기서 막으면 이유를 말해줄 수 있다
+     */
+    private void checkDaily(int chars) {
+        Long limit = dailyLimit();
+        if (limit == null) {
+            return;
+        }
+        long used = usedToday();
+        if (used + chars > limit) {
+            throw new TooManyRequestsException("TRANSLATE_DAILY_QUOTA_EXCEEDED",
+                    ("오늘 쓸 수 있는 번역량(%,d자)을 다 쓰셨습니다. 지금까지 %,d자를 쓰셨고 "
+                            + "이번 요청은 %,d자입니다. 한국 시간 오후 4~5시(태평양 자정)에 새로 채워집니다.")
+                            .formatted(limit, used, chars));
+        }
     }
 
     /**

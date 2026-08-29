@@ -19,18 +19,41 @@ import SectionIcon, { type IconName } from "@/components/ui/SectionIcon";
  */
 export const COLLAPSED_MAX_PX = 178;
 
-export function Collapsible({ children }: { children: React.ReactNode }) {
+/**
+ * `open`을 넘기면 **밖에서 여닫는다** (v1.1.3). 그때는 제 버튼을 안 그린다 —
+ * 스크린샷 구역은 펼치기 버튼이 내용 아래가 아니라 **제목 줄**에 있어야 해서다
+ * (수십 장이면 버튼이 화면 밖으로 밀려 손이 안 닿았다).
+ * `onOverflowChange`로 "접을 만큼 긴가"를 알려줘 밖에서 버튼을 숨길 수 있게 한다
+ */
+export function Collapsible({
+  children,
+  open: openProp,
+  onOverflowChange,
+}: {
+  children: React.ReactNode;
+  open?: boolean;
+  onOverflowChange?: (overflow: boolean) => void;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const [overflow, setOverflow] = useState(false);
-  const [open, setOpen] = useState(false);
+  const [openState, setOpen] = useState(false);
+  const controlled = openProp !== undefined;
+  const open = controlled ? openProp : openState;
 
   useEffect(() => {
     const element = ref.current;
     if (!element) return;
-    const measure = () => setOverflow(element.scrollHeight > COLLAPSED_MAX_PX + 8);
+    const measure = () => {
+      const next = element.scrollHeight > COLLAPSED_MAX_PX + 8;
+      setOverflow(next);
+      onOverflowChange?.(next);
+    };
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
+    // onOverflowChange는 부모가 매 렌더 새로 만들 수 있어 의존성에 넣지 않는다 —
+    // 넣으면 관찰자가 렌더마다 붙었다 떨어진다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -42,11 +65,12 @@ export function Collapsible({ children }: { children: React.ReactNode }) {
       >
         {children}
       </div>
-      {overflow && (
+      {overflow && !controlled && (
+        /* 히트박스를 글자 밖까지 넓힌다 (v1.1.3) — 11px 글자만큼만 눌리면 손이 자꾸 빗나간다 */
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="mt-3 text-[11px] text-white/35 transition-colors hover:text-white"
+          className="-mx-2 mt-2 rounded-md px-2 py-2 text-[11px] text-white/35 transition-colors hover:bg-white/5 hover:text-white"
         >
           {open ? "접기" : "전체 보기"}
         </button>

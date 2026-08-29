@@ -36,6 +36,10 @@ type Shot = {
 };
 
 export default function ScreenshotSection({ entryId }: { entryId: number }) {
+  /** 펼침 상태를 여기서 든다 — 버튼이 제목 줄에 있어서 Collapsible 밖이다 */
+  const [expanded, setExpanded] = useState(false);
+  /** 접을 만큼 긴가. Collapsible이 실제로 재서 알려준다 — 장수로 어림하면 창 폭에 따라 틀린다 */
+  const [canCollapse, setCanCollapse] = useState(false);
   /* 조회는 화면 전체가 쓰는 훅에 맡긴다 — 로딩·에러·재조회가 이미 한 벌로 들어 있다 */
   const list = useApi<Shot[]>(`/api/backlog/${entryId}/screenshots`);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -114,14 +118,34 @@ export default function ScreenshotSection({ entryId }: { entryId: number }) {
           <SectionIcon name="note" />
           Screenshots
         </span>
-        <span className="flex gap-2">
+        <span className="flex items-center gap-3">
           {selected.size > 0 && (
             <Button variant="danger" onClick={removeSelected} disabled={busy}>
               {selected.size}장 삭제
             </Button>
           )}
-          {/* 탐색기 열기는 일렉트론에서만 뜻이 있다 — 브라우저는 로컬 경로를 못 연다 */}
-          {getBridge() && <Button onClick={openFolder}>폴더 열기</Button>}
+          {/*
+            탐색기 열기는 일렉트론에서만 뜻이 있다 — 브라우저는 로컬 경로를 못 연다.
+            **작은 글씨로 내렸다** (v1.1.3) — 이 자리의 주된 동작은 펼치기다
+          */}
+          {getBridge() && (
+            <button
+              type="button"
+              onClick={openFolder}
+              className="-mx-2 rounded-md px-2 py-2 text-[11px] font-normal text-white/35 transition-colors hover:bg-white/5 hover:text-white"
+            >
+              폴더 열기
+            </button>
+          )}
+          {/*
+            펼치기가 **제목 줄로 올라왔다** (v1.1.3). 내용 아래에 있으면 스크린샷이
+            수십 장일 때 버튼이 화면 밖으로 밀려 손이 안 닿는다
+          */}
+          {canCollapse && (
+            <Button onClick={() => setExpanded((v) => !v)}>
+              {expanded ? "접기" : "펼치기"}
+            </Button>
+          )}
         </span>
       </h3>
 
@@ -133,7 +157,7 @@ export default function ScreenshotSection({ entryId }: { entryId: number }) {
 
       {/* 스크린샷도 접는다 (v1.2) — 수십 장이면 화면 아래가 통째로 밀린다 */}
       {shots && shots.length > 0 && (
-        <Collapsible>
+        <Collapsible open={expanded} onOverflowChange={setCanCollapse}>
         <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
           {shots.map((shot, index) => {
             const picked = selected.has(shot.fileName);

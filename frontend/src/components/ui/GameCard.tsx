@@ -26,7 +26,17 @@ export default function GameCard({ card }: { card: BacklogCard }) {
       onDragStart={(e) => e.dataTransfer.setData("text/entry-id", String(card.entryId))}
       className="group flex cursor-pointer flex-col"
     >
-      <div className="relative mb-3">
+      {/*
+        **플레이 중이면 커버가 빛난다** (v1.1.3). 상태 배지가 이미 있지만 작아서,
+        그리드를 훑을 때 "지금 하는 것"이 한눈에 안 들어왔다.
+        `rounded-lg`를 함께 주는 이유 — 그림자는 요소의 모서리를 따라가는데
+        이 껍데기에 반경이 없으면 둥근 커버 뒤로 **네모난 빛**이 삐져나온다
+      */}
+      <div
+        className={`relative mb-3 rounded-lg ${
+          card.status === "PLAYING" ? "shadow-[0_0_0_1px_rgba(52,211,153,0.5),0_0_18px_2px_rgba(52,211,153,0.35)]" : ""
+        }`}
+      >
         <GameCover
           coverUrl={card.coverUrl}
           coverImageId={card.coverImageId}

@@ -95,6 +95,17 @@ export default function LibrarySidebar() {
   }, [covers.data]);
 
   /*
+   * 제목 색을 상태로 가른다 (v1.1.3, 사용자 지정).
+   * **아직 손 안 댄 것(백로그·위시리스트)만 흐리게** 두고 나머지는 흰 글씨다 —
+   * 전부 흐리면 목록이 통째로 배경처럼 읽혀서 "내가 한 게임"이 눈에 안 들어온다
+   */
+  const statusById = useMemo(() => {
+    const map = new Map<number, string>();
+    covers.data?.forEach((card) => map.set(card.entryId, card.status));
+    return map;
+  }, [covers.data]);
+
+  /*
    * 태그별로 묶는다. **정렬은 항상 이름순** — 그룹 안에서도, 그룹 자체도 (다른 정렬 옵션 없음).
    * names가 이미 이름순으로 오므로 그룹 안은 순서를 그대로 쓰면 된다.
    *
@@ -302,10 +313,13 @@ export default function LibrarySidebar() {
                   </button>
 
                   {isOpen && (
-                    <ul className="flex flex-col gap-0.5">
+                    /* 태그 줄과의 사이도 항목 사이와 같게 (v1.1.3) — 첫 게임만 붙어 있었다 */
+                    <ul className="mt-0.5 flex flex-col gap-0.5">
                       {group.items.map((entry) => {
                         const active = String(entry.entryId) === currentId;
                         const thumb = coverById.get(entry.entryId);
+                        const status = statusById.get(entry.entryId);
+                        const untouched = status === "BACKLOG" || status === "WISHLIST";
                         return (
                           <li key={entry.entryId}>
                             <Link
@@ -321,7 +335,9 @@ export default function LibrarySidebar() {
                               className={`flex items-center gap-2.5 rounded px-2 py-1.5 text-sm transition-colors ${
                                 active
                                   ? "bg-white/10 text-white"
-                                  : "text-white/60 hover:bg-white/5 hover:text-white"
+                                  : untouched
+                                    ? "text-white/45 hover:bg-white/5 hover:text-white"
+                                    : "text-white/90 hover:bg-white/5 hover:text-white"
                               }`}
                               title={entry.displayName}
                             >

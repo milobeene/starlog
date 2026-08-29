@@ -36,6 +36,19 @@ public interface ApiCallLogRepository extends BaseRepository<ApiCallLog, Long> {
     long sumUnitsSince(@Param("provider") ApiProvider provider,
                        @Param("since") LocalDateTime since);
 
+    /**
+     * **성공한 것만** 센다 (v1.1.3).
+     *
+     * 위쪽(실패 포함)은 월 가드용이다 — 적게 세는 쪽이 위험하니 일부러 넉넉히 센다.
+     * 하지만 **사람에게 보여주는 숫자**는 달라야 한다: 한도에 걸려 거절당한 호출은
+     * 구글이 세지 않는데 우리가 세면, 게이지가 `11,263 / 10,000`처럼 넘은 것으로 보인다.
+     * 실제로 그래서 "한도를 초과했는데 왜 됐지"로 읽혔다
+     */
+    @Query("select coalesce(sum(l.units), 0) from ApiCallLog l" +
+            " where l.provider = :provider and l.calledAt >= :since and l.success = true")
+    long sumSucceededUnitsSince(@Param("provider") ApiProvider provider,
+                                @Param("since") LocalDateTime since);
+
     /** 가장 오래된 기록. 화면의 "언제부터 센 것인지"에 쓴다 */
     @Query("select min(l.calledAt) from ApiCallLog l where l.provider = :provider")
     LocalDateTime oldestOf(@Param("provider") ApiProvider provider);

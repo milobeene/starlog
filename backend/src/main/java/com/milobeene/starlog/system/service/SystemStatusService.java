@@ -81,21 +81,11 @@ public class SystemStatusService {
         TranslationQuota.Usage used = translationQuota.usage();
         return new SystemStatusResponse.TranslationUsage(
                 used.usedChars(), used.guardChars(), used.freeChars(), used.remainingChars(),
-                translationQuota.usedToday(), dailyLimit());
-    }
-
-    /** 사람이 적어둔 하루 한도. 없거나 숫자가 아니면 null — 화면이 게이지를 안 그린다 */
-    private Long dailyLimit() {
-        String raw = appSettingService.all().get(AppSettingService.TRANSLATE_DAILY_CHARS);
-        if (raw == null || raw.isBlank()) {
-            return null;
-        }
-        try {
-            long value = Long.parseLong(raw.strip());
-            return value > 0 ? value : null;
-        } catch (NumberFormatException e) {
-            return null;
-        }
+                /*
+                 * 한도를 여기서 다시 파싱하지 않는다 (v1.1.3) — 실제로 막는 쪽과 같은 값을
+                 * 써야 "게이지는 여유가 있는데 거절당하는" 어긋남이 안 생긴다
+                 */
+                translationQuota.usedToday(), translationQuota.dailyLimit());
     }
 
     /**
