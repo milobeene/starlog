@@ -37,6 +37,15 @@ public class AppSettingService {
      */
     public static final String TRANSLATE_API_KEY = "translate.apiKey";
 
+    /**
+     * 구글 클라우드 콘솔에 걸어둔 **하루 할당량**을 사람이 적어두는 자리 (2026-08-29).
+     *
+     * ⚠️ **우리가 이 값을 강제하지 않는다.** 진짜 한도는 구글 쪽 설정이고 여기는 사본이다 —
+     * 화면이 "오늘 얼마나 썼나"를 그 선에 견주어 보여주기 위한 것뿐이다.
+     * 그래서 **비어 있으면 게이지를 아예 안 그린다.** 근거 없는 선을 진짜로 믿게 하지 않는다
+     */
+    public static final String TRANSLATE_DAILY_CHARS = "translate.dailyChars";
+
     private final AppSettingRepository repository;
     /** 부팅 설정. DB에 아무것도 없을 때의 폴백이다 — `bootRun` 개발 경로가 그대로 산다 */
     private final IgdbProperties bootProperties;

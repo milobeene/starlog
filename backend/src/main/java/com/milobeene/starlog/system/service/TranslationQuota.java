@@ -77,6 +77,17 @@ public class TranslationQuota {
         return repository.sumUnitsSince(ApiProvider.TRANSLATE, startOfMonth());
     }
 
+    /**
+     * 오늘 쓴 글자 수 (2026-08-29).
+     *
+     * ⚠️ **하루도 태평양 기준이다.** 구글의 일 할당량이 그쪽 자정에 리셋되므로,
+     * 우리 자정으로 세면 한국 시간 아침에 이미 리셋된 것을 못 보고 남은 양을 적게 보여준다.
+     * 월 경계와 같은 이유고 같은 시각계다
+     */
+    public long usedToday() {
+        return repository.sumUnitsSince(ApiProvider.TRANSLATE, startOfDay());
+    }
+
     /** 화면이 그대로 그린다 — 쓴 양·막는 선·공짜 한도가 한 벌로 가야 뜻이 통한다 */
     public Usage usage() {
         long used = usedThisMonth();
@@ -154,6 +165,15 @@ public class TranslationQuota {
      *
      * `calledAt`이 시스템 시각으로 저장되므로 비교 기준도 같은 시각계로 되돌린다
      */
+    /** 오늘의 시작 — 월 경계와 같은 방식으로 태평양 자정을 우리 시각으로 옮긴다 */
+    private LocalDateTime startOfDay() {
+        ZonedDateTime nowThere = AppClock.now().atZone(ZoneId.systemDefault())
+                .withZoneSameInstant(QUOTA_ZONE);
+        return nowThere.toLocalDate().atStartOfDay(QUOTA_ZONE)
+                .withZoneSameInstant(ZoneId.systemDefault())
+                .toLocalDateTime();
+    }
+
     private LocalDateTime startOfMonth() {
         ZonedDateTime nowThere = AppClock.now().atZone(ZoneId.systemDefault())
                 .withZoneSameInstant(QUOTA_ZONE);

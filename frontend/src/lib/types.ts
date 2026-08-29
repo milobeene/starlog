@@ -371,6 +371,14 @@ export interface MonthlyCompletions {
   years: { year: number; count: number }[];
 }
 
+/** GET /api/system/settings — 앱 설정(키). 사용량 탭이 "키가 있나"를 이걸로 본다 */
+export interface AppSettings {
+  igdbClientId: string;
+  igdbClientSecret: string;
+  fromBootConfig: boolean;
+  translateApiKey: string;
+}
+
 export interface PageResponse<T> {
   page: number;
   size: number;
@@ -473,7 +481,17 @@ export interface ScreenshotResponse {
 export interface SystemStatus {
   apiUsage: ApiUsage[];
   storage: { coverCount: number; totalBytes: number; configured: boolean };
-  database: { product: string; sizeBytes: number | null };
+  /**
+   * 데이터 크기. `sizeBytes`는 **내 테이블 합**, `totalBytes`가 DB 전체다 —
+   * 클라우드에서 전체만 보면 7MB가 시스템 카탈로그라 숫자가 안 움직인다
+   */
+  database: {
+    product: string;
+    sizeBytes: number | null;
+    totalBytes: number | null;
+    coverBytes: number;
+    mediaBytes: number;
+  };
   /** 호출 기록 보존 기간. 화면이 "N일치만 보관합니다"로 쓴다 */
   retentionDays: number;
   /**
@@ -485,6 +503,9 @@ export interface SystemStatus {
     guardChars: number;
     freeChars: number;
     remainingChars: number;
+    usedTodayChars: number;
+    /** 사람이 적어둔 하루 한도. **null이면 게이지를 안 그린다** */
+    dailyLimitChars: number | null;
   };
 }
 

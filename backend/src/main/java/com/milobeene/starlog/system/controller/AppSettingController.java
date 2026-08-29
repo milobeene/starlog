@@ -1,5 +1,6 @@
 package com.milobeene.starlog.system.controller;
 
+import com.milobeene.starlog.common.exception.InvalidInputException;
 import com.milobeene.starlog.system.dto.AppSettingsResponse;
 import com.milobeene.starlog.system.dto.IgdbTestResult;
 import com.milobeene.starlog.system.service.AppSettingService;
@@ -55,6 +56,42 @@ public class AppSettingController {
     }
 
     public record TranslateKeyRequest(@NotNull String apiKey) {}
+
+    /**
+     * 하루 할당량 저장 (2026-08-29).
+     *
+     * 빈 문자열이면 **지운다** — "설정 안 함"이 유효한 상태다.
+     * 화면은 값이 없으면 게이지 대신 안내를 띄운다
+     */
+    public record DailyLimitRequest(String dailyChars) {}
+
+    @PutMapping("/translate/daily-limit")
+    public void updateDailyLimit(@RequestBody DailyLimitRequest request) {
+        String raw = request.dailyChars() == null ? "" : request.dailyChars().strip();
+        if (raw.isEmpty()) {
+            appSettingService.put(AppSettingService.TRANSLATE_DAILY_CHARS, "");
+            return;
+        }
+        long value;
+        try {
+            value = Long.parseLong(raw);
+        } catch (NumberFormatException e) {
+            throw new InvalidInputException("하루 할당량은 숫자여야 합니다");
+        }
+        /*
+         * ⚠️ 음수와 월 한도 초과를 막는다 (사용자 요청). 음수면 게이지가 뒤집히고,
+         * 월 한도보다 큰 하루 한도는 **하루에 다 쓸 수 있다는 뜻이 되어** 앞뒤가 안 맞는다
+         */
+        if (value <= 0) {
+            throw new InvalidInputException("하루 할당량은 0보다 커야 합니다");
+        }
+        if (value > TranslationQuota.GUARD_MONTHLY_CHARS) {
+            throw new InvalidInputException(
+                    "하루 할당량은 월 한도(%,d자)를 넘을 수 없습니다".formatted(
+                            TranslationQuota.GUARD_MONTHLY_CHARS));
+        }
+        appSettingService.put(AppSettingService.TRANSLATE_DAILY_CHARS, String.valueOf(value));
+    }
 
     /**
      * 번역 키 저장 (2026-08-28).

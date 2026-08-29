@@ -11,7 +11,8 @@ import GameMasterPanel from "@/components/system/GameMasterPanel";
 import ConnectionPanel from "@/components/system/ConnectionPanel";
 import AppSettingsPanel from "@/components/system/AppSettingsPanel";
 import { useApi } from "@/lib/useApi";
-import type { SystemStatus } from "@/lib/types";
+import { api } from "@/lib/api";
+import type { AppSettings, SystemStatus } from "@/lib/types";
 
 /**
  * 시스템 화면 (v1.0 8단계).
@@ -95,11 +96,17 @@ function SystemContent() {
 
 function UsageTab() {
   const status = useApi<SystemStatus>("/api/system");
+  const settings = useApi<AppSettings>("/api/system/settings");
 
   if (status.error) return <ErrorNotice error={status.error} onRetry={status.reload} />;
   if (status.loading || !status.data) return <Skeleton className="h-64 w-full" />;
 
   const { apiUsage, storage, database, retentionDays, translation } = status.data;
+
+  const saveDailyLimit = async (value: string) => {
+    await api.put("/api/system/settings/translate/daily-limit", { dailyChars: value });
+    status.reload();
+  };
 
   return (
     <div className="flex flex-col gap-10">
@@ -108,25 +115,39 @@ function UsageTab() {
         storage={storage}
         retentionDays={retentionDays}
         translation={translation}
+        onSaveDailyLimit={saveDailyLimit}
+        hasTranslateKey={Boolean(settings.data?.translateApiKey)}
+        hasIgdbKey={Boolean(settings.data?.igdbClientId)}
       />
 
       {/*
-        **저장소에는 데이터베이스만 남긴다** (2026-08-28). 커버 수·용량은 스토리지 사용량이라
-        위의 API 사용량 카드로 옮겼다 — 한 화면에 "저장소"가 둘 있으면 뭐가 뭔지 흐려진다.
-        제품명(`PostgreSQL`)도 뺐다 — JDBC가 알려주는 건 형식뿐이라 Neon인지 Supabase인지는
-        알 방법이 없고, 형식만 적어두면 아는 게 없는 것과 같다
+        **'데이터 크기'다** (2026-08-29). 예전엔 '데이터베이스'였는데 이제 셋을 나란히 둔다 —
+        세이브·커버·스크린샷이 각각 어디서 자라는지가 한눈에 보여야 지울 곳을 안다.
+        커버·스크린샷은 **스토리지를 쓰는 중이어도 로컬 폴더를 잰다** —
+        마스터 커버 폴백과 예전에 받아둔 것이 거기 남는다
       */}
       <section>
         <h3 className="text-[11px] font-semibold tracking-widest text-white/50 uppercase">
-          데이터베이스
+          데이터 크기
         </h3>
         <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Stat
-            label="크기"
-            value={
-              database.sizeBytes === null ? "—" : <Bytes bytes={database.sizeBytes} />
+            label="세이브"
+            value={database.sizeBytes === null ? "—" : <Bytes bytes={database.sizeBytes} />}
+            /*
+              ⚠️ 클라우드에서 큰 숫자는 **내 테이블 합**이다. DB 전체를 크게 띄우면
+              7MB가 시스템 카탈로그라 게임을 넣어도 안 움직인다 (실측 확인)
+            */
+            hint={
+              database.totalBytes !== null && database.totalBytes !== database.sizeBytes ? (
+                <>
+                  DB 전체 <Bytes bytes={database.totalBytes} />
+                </>
+              ) : null
             }
           />
+          <Stat label="커버" value={<Bytes bytes={database.coverBytes} />} />
+          <Stat label="스크린샷" value={<Bytes bytes={database.mediaBytes} />} />
         </div>
         {database.sizeBytes === null && (
           <p className="mt-2 text-[11px] text-white/30">
@@ -138,13 +159,23 @@ function UsageTab() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: React.ReactNode }) {
+function Stat({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: React.ReactNode;
+  /** 작은 글씨 한 줄. 큰 숫자만으로 오해가 생기는 자리에만 쓴다 */
+  hint?: React.ReactNode;
+}) {
   return (
     <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-3">
       <div className="text-[10px] font-semibold tracking-widest text-white/40 uppercase">
         {label}
       </div>
       <div className="num mt-1 text-xl font-light text-white/90">{value}</div>
+      {hint && <div className="num mt-0.5 text-[11px] text-white/30">{hint}</div>}
     </div>
   );
 }

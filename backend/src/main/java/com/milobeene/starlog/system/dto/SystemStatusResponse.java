@@ -35,7 +35,15 @@ public record SystemStatusResponse(
      * 사이의 5만은 **우리가 적게 셀 수 있는 오차**를 위한 여유다
      */
     public record TranslationUsage(long usedChars, long guardChars,
-                                   long freeChars, long remainingChars) {}
+                                   long freeChars, long remainingChars,
+                                   /** 오늘 쓴 글자 수 (2026-08-29) */
+                                   long usedTodayChars,
+                                   /**
+                                    * 사람이 적어둔 하루 한도. **null이면 화면이 게이지를 안 그린다** —
+                                    * 우리가 정한 값이 아니라 구글 콘솔 설정의 사본이라, 없는 걸
+                                    * 기본값으로 채우면 근거 없는 선이 진짜처럼 보인다
+                                    */
+                                   Long dailyLimitChars) {}
 
     /**
      * 한 API의 사용량.
@@ -58,5 +66,17 @@ public record SystemStatusResponse(
     public record StorageStatus(long coverCount, long totalBytes, boolean configured) {}
 
     /** sizeBytes는 PostgreSQL에서만 나온다. H2(로컬 모드)에서는 파일 크기를 쓴다 */
-    public record DatabaseStatus(String product, Long sizeBytes) {}
+    /**
+     * 데이터 크기 (2026-08-29 개편).
+     *
+     * `sizeBytes`는 **내 테이블 합**이고 `totalBytes`가 DB 전체다. 클라우드에서
+     * `pg_database_size`만 보여주면 **7MB가 PostgreSQL 시스템 카탈로그라 숫자가 안 움직인다** —
+     * 게임을 넣어도 10.0MB 그대로여서 쓸모가 없었다(실측 확인).
+     * 로컬(H2)에서는 둘 다 세이브파일 크기로 같다.
+     *
+     * `coverBytes`·`mediaBytes`는 데이터 폴더의 실제 폴더 크기다. **스토리지를 쓰는
+     * 중이어도 로컬 폴더를 잰다** — 마스터 커버 폴백과 예전에 받아둔 것이 거기 남는다
+     */
+    public record DatabaseStatus(String product, Long sizeBytes, Long totalBytes,
+                                 long coverBytes, long mediaBytes) {}
 }

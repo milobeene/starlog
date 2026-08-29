@@ -1,6 +1,7 @@
 package com.milobeene.starlog.system.service;
 
 import com.milobeene.starlog.backlog.repository.CoverImageRepository;
+import com.milobeene.starlog.common.storage.MediaPaths;
 import com.milobeene.starlog.common.storage.StorageProperties;
 import com.milobeene.starlog.common.util.AppClock;
 import com.milobeene.starlog.system.domain.ApiProvider;
@@ -41,6 +42,8 @@ public class SystemStatusService {
     private final ApiCallLogRepository apiCallLogRepository;
     private final CoverImageRepository coverImageRepository;
     private final StorageProperties storageProperties;
+    private final MediaPaths mediaPaths;
+    private final AppSettingService appSettingService;
     private final JdbcTemplate jdbc;
     private final TranslationQuota translationQuota;
 
@@ -63,7 +66,9 @@ public class SystemStatusService {
                         coverImageRepository.countAll(),
                         coverImageRepository.totalSizeBytes(),
                         storageProperties.hasCredentials()),
-                new SystemStatusResponse.DatabaseStatus(productName(), databaseSize()),
+                new SystemStatusResponse.DatabaseStatus(
+                        productName(), myTablesSize(), databaseSize(),
+                        folderSize(mediaPaths.covers()), folderSize(mediaPaths.media())),
                 RETENTION_DAYS,
                 translationUsage());
     }
@@ -75,7 +80,63 @@ public class SystemStatusService {
     private SystemStatusResponse.TranslationUsage translationUsage() {
         TranslationQuota.Usage used = translationQuota.usage();
         return new SystemStatusResponse.TranslationUsage(
-                used.usedChars(), used.guardChars(), used.freeChars(), used.remainingChars());
+                used.usedChars(), used.guardChars(), used.freeChars(), used.remainingChars(),
+                translationQuota.usedToday(), dailyLimit());
+    }
+
+    /** 사람이 적어둔 하루 한도. 없거나 숫자가 아니면 null — 화면이 게이지를 안 그린다 */
+    private Long dailyLimit() {
+        String raw = appSettingService.all().get(AppSettingService.TRANSLATE_DAILY_CHARS);
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            long value = Long.parseLong(raw.strip());
+            return value > 0 ? value : null;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /**
+     * 폴더 하나의 실제 크기.
+     *
+     * ⚠️ **실패해도 0을 준다.** 폴더가 없거나 권한이 없을 수 있는데, 그 때문에
+     * 시스템 화면 전체가 500으로 죽으면 안 된다 — 크기는 곁다리 정보다
+     */
+    private long folderSize(java.nio.file.Path dir) {
+        if (dir == null || !java.nio.file.Files.isDirectory(dir)) {
+            return 0;
+        }
+        try (var walk = java.nio.file.Files.walk(dir)) {
+            return walk.filter(java.nio.file.Files::isRegularFile).mapToLong(p -> {
+                try {
+                    return java.nio.file.Files.size(p);
+                } catch (java.io.IOException e) {
+                    return 0;
+                }
+            }).sum();
+        } catch (java.io.IOException | RuntimeException e) {
+            return 0;
+        }
+    }
+
+    /**
+     * **내 테이블만** 합친다 (2026-08-29).
+     *
+     * `pg_database_size`는 시스템 카탈로그 7MB를 포함해서 게임을 넣어도 숫자가 안 움직였다
+     * (10,518,528 B 중 7,372,800 B가 카탈로그였다 — 실측). 내 데이터가 얼마나 쌓였는지는
+     * public 스키마만 세야 보인다. H2에는 이 뷰가 없으니 파일 크기로 떨어진다
+     */
+    private Long myTablesSize() {
+        try {
+            return jdbc.queryForObject(
+                    "select coalesce(sum(pg_total_relation_size(c.oid)), 0) from pg_class c"
+                            + " join pg_namespace n on n.oid = c.relnamespace"
+                            + " where n.nspname = 'public'", Long.class);
+        } catch (RuntimeException ignored) {
+            return databaseSize();
+        }
     }
 
     /**
