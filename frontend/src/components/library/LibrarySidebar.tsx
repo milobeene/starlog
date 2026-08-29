@@ -7,7 +7,7 @@ import { useApi } from "@/lib/useApi";
 import { api } from "@/lib/api";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { coverSrc } from "@/lib/cover";
-import type { BacklogCard, BacklogName, PageResponse } from "@/lib/types";
+import type { BacklogCard, BacklogName, FacetsResponse, PageResponse } from "@/lib/types";
 
 /**
  * 전체 게임 목록 — 이름순, 페이징 없음. 필터는 여기 없다 (툴바의 필터 박스가 전부 맡는다).
@@ -26,6 +26,8 @@ const UNTAGGED = "\u0000untagged";
 export default function LibrarySidebar() {
   const names = useApi<BacklogName[]>("/api/backlog/names");
   const covers = useApi<PageResponse<BacklogCard>>("/api/backlog?size=100&sort=name");
+  /** 태그 순서를 받으려고 파셋도 받는다 — 사용자가 프로필에서 정한 순서다 (v1.1) */
+  const facets = useApi<FacetsResponse>("/api/backlog/facets");
   // 상세 경로가 `/library/detail?entry=57`로 바뀌었다 (정적 내보내기 때문)
   const currentId = useSearchParams().get("entry") ?? undefined;
 
@@ -57,7 +59,7 @@ export default function LibrarySidebar() {
     await api.put(`/api/backlog/${entryId}/tag`, {
       name: tagKey === UNTAGGED ? null : tagKey,
     });
-    await Promise.all([names.reload(), covers.reload()]);
+    await Promise.all([names.reload(), covers.reload(), facets.reload()]);
   };
 
   const coverById = useMemo(() => {
@@ -94,9 +96,22 @@ export default function LibrarySidebar() {
       buckets.get(key)!.push(entry);
     });
 
+    /*
+     * ⚠️ **파셋이 준 순서를 따른다** (v1.1). 이름순으로 정렬하면 프로필의 사전에서
+     * 끌어 옮긴 순서가 무시되고, 같은 목록이 화면마다 다르게 보인다.
+     * 파셋에 없는 태그(도착 전)는 뒤에 이름순으로 붙인다
+     */
+    const rank = new Map((facets.data?.tags ?? []).map((tag, index) => [tag.name, index]));
     const tagged = [...buckets.keys()]
       .filter((key) => key !== UNTAGGED)
-      .sort((a, b) => a.localeCompare(b, "ko"));
+      .sort((a, b) => {
+        const ra = rank.get(a);
+        const rb = rank.get(b);
+        if (ra != null && rb != null) return ra - rb;
+        if (ra != null) return -1;
+        if (rb != null) return 1;
+        return a.localeCompare(b, "ko");
+      });
 
     /*
      * ⚠️ **'태그 없음'은 비어 있어도 항상 마지막에 둔다** (2026-08-29, 사용자 요청).
@@ -107,7 +122,7 @@ export default function LibrarySidebar() {
       key,
       items: buckets.get(key) ?? [],
     }));
-  }, [names.data, tagById]);
+  }, [names.data, tagById, facets.data]);
 
   const allCollapsed = groups.length > 0 && collapsed.size >= groups.length;
   const toggleAll = () =>

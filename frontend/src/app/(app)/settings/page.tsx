@@ -117,6 +117,7 @@ function SettingsContent() {
             게임 메모와 같은 마크다운 렌더를 써서 보는 것과 쓰는 것을 가른다
           */}
           <SettingsSection
+            collapsible
             title="메모"
             icon="note"
             description="게이밍 기어 스펙, 모딩 설정, 세팅값처럼 어디에도 안 들어가는 것들을 적어 두세요. 마크다운을 지원합니다."
@@ -138,6 +139,7 @@ function SettingsContent() {
           </SettingsSection>
 
           <SettingsSection
+            collapsible
             title="플랫폼"
             icon="account"
             description="Steam·PSN 등 게임을 구매하시는 곳입니다. 계정은 이 위에 매답니다."
@@ -161,6 +163,7 @@ function SettingsContent() {
           </SettingsSection>
 
           <SettingsSection
+            collapsible
             title="플랫폼 계정"
             icon="account"
             description="플랫폼별 계정입니다. 취득·회차 기록에서 선택하실 수 있습니다."
@@ -193,6 +196,7 @@ function SettingsContent() {
           </SettingsSection>
 
           <SettingsSection
+            collapsible
             title="보유 기기"
             icon="device"
             description="회차 기록에서 선택하실 수 있습니다. 같은 기종을 여러 대 두시려면 라벨로 구분해 주세요."
@@ -216,6 +220,7 @@ function SettingsContent() {
           </SettingsSection>
 
           <SettingsSection
+            collapsible
             title="에뮬레이터"
             icon="device"
             description="설정값이나 주의점을 메모로 남기실 수 있습니다."
@@ -238,6 +243,7 @@ function SettingsContent() {
           </SettingsSection>
 
           <SettingsSection
+            collapsible
             title="입력 방식"
             icon="device"
             description="회차 기록에서 어떤 컨트롤러로 플레이하셨는지 남기실 때 사용됩니다."
@@ -262,6 +268,7 @@ function SettingsContent() {
           </SettingsSection>
 
           <SettingsSection
+            collapsible
             title="구독"
             icon="subscription"
             description="지출 통계에 월 단위로 반영됩니다."
@@ -311,6 +318,7 @@ function SettingsContent() {
                 items={facets.data?.tags ?? []}
                 basePath="/api/me/tags"
                 onDone={refresh}
+                reorderable
               />
               <Dictionary
                 label="장르"
@@ -494,14 +502,47 @@ function Dictionary({
   items,
   basePath,
   onDone,
+  reorderable,
 }: {
   label: string;
   items: FacetCount[];
   basePath: string;
   onDone: () => void;
+  /**
+   * 드래그로 순서를 바꿀 수 있나 (v1.1). 태그만 켠다 —
+   * **이 순서를 라이브러리 사이드바와 폴더 탭이 그대로 따르기 때문**이다.
+   * 장르는 따라가는 화면이 없어 순서에 뜻이 없다
+   */
+  reorderable?: boolean;
 }) {
   const [editing, setEditing] = useState<FacetCount | null>(null);
   const [removing, setRemoving] = useState<FacetCount | null>(null);
+  /**
+   * 끌고 있는 항목과 놓을 자리.
+   *
+   * ⚠️ **낙관적으로 먼저 바꾼다.** 서버 왕복을 기다리면 손을 뗀 뒤 한 박자 늦게
+   * 움직여서 "안 옮겨졌나" 싶어 다시 끌게 된다. 실패하면 `onDone`이 서버 값으로 되돌린다
+   */
+  const [order, setOrder] = useState<FacetCount[] | null>(null);
+  const [dragId, setDragId] = useState<number | null>(null);
+  const shown = order ?? items;
+
+  const drop = async (targetId: number) => {
+    if (dragId == null || dragId === targetId) return;
+    const next = [...shown];
+    const from = next.findIndex((i) => i.id === dragId);
+    const to = next.findIndex((i) => i.id === targetId);
+    if (from < 0 || to < 0) return;
+    next.splice(to, 0, ...next.splice(from, 1));
+    setOrder(next);
+    setDragId(null);
+    try {
+      await api.put(`${basePath}/order`, { tagIds: next.map((i) => i.id) });
+    } finally {
+      setOrder(null);
+      onDone();
+    }
+  };
   // 사전이 수십 개까지 늘어난다 — 두 줄만 보이고 나머지는 접어둔다
   const [open, setOpen] = useState(false);
   const collapsible = items.length > 12;
@@ -513,6 +554,9 @@ function Dictionary({
           {label}
         </span>
         <span className="num text-[10px] text-white/25">{items.length}</span>
+        {reorderable && items.length > 1 && (
+          <span className="text-[10px] text-white/20">끌어서 순서 변경</span>
+        )}
         {collapsible && (
           <button
             type="button"
@@ -524,14 +568,24 @@ function Dictionary({
         )}
       </div>
 
-      {items.length === 0 ? (
+      {shown.length === 0 ? (
         <p className="text-xs text-white/25">사용 중인 항목이 없습니다. 게임에 지정하시면 이곳에 표시됩니다.</p>
       ) : (
         <div className={`flex flex-wrap gap-1.5 ${open ? "" : "max-h-[4.5rem] overflow-hidden"}`}>
-          {items.map((item) => (
+          {shown.map((item) => (
             <span
               key={item.id}
-              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 py-1 pr-1.5 pl-2.5 text-xs text-white/70"
+              draggable={reorderable}
+              onDragStart={() => setDragId(item.id)}
+              onDragOver={(e) => reorderable && e.preventDefault()}
+              onDrop={() => void drop(item.id)}
+              className={`inline-flex items-center gap-2 rounded-full border py-1 pr-1.5 pl-2.5 text-xs text-white/70 ${
+                reorderable ? "cursor-grab active:cursor-grabbing" : ""
+              } ${
+                dragId === item.id
+                  ? "border-white/40 bg-white/15 opacity-60"
+                  : "border-white/10 bg-white/5"
+              }`}
             >
               {item.name}
               <span className="num text-white/25">{item.count}</span>

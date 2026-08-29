@@ -176,8 +176,12 @@ public interface BacklogEntryRepository
             "   b.tag.id, b.tag.name, count(b))" +
             " from BacklogEntry b" +
             " where b.member.id = :memberId and b.deletedAt is null and b.tag is not null" +
-            " group by b.tag.id, b.tag.name" +
-            " order by b.tag.name asc")
+            " group by b.tag.id, b.tag.name, b.tag.sortOrder" +
+            /*
+             * ⚠️ **이름순이 아니라 사용자가 정한 순서다** (v1.1). 사이드바·폴더 탭이
+             * 이 순서를 그대로 쓴다 — 화면마다 다르면 같은 목록으로 안 보인다
+             */
+            " order by b.tag.sortOrder asc, b.tag.name asc")
     List<FacetCount> countByTag(@Param("memberId") Long memberId);
 
     /**

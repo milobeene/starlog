@@ -1,4 +1,55 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
 import SectionIcon, { type IconName } from "@/components/ui/SectionIcon";
+
+/**
+ * 길어지면 접는다 (v1.1, 2026-08-29).
+ *
+ * 프로필 화면이 아래로 한없이 길어져서 구독을 보려면 한참 굴려야 했다.
+ * 높이는 **플랫폼 8.5행**으로 통일한다 — 어중간하게 잘린 반 줄이 "더 있다"를 말한다.
+ * 딱 떨어지게 자르면 거기가 끝인 줄 안다.
+ *
+ * ⚠️ **넘칠 때만 버튼이 뜬다.** 항상 띄우면 다 보이는데도 누를 게 있어 헷갈린다.
+ * 잘림 판정은 그려진 뒤에야 알 수 있어 ResizeObserver로 잰다 — 창 크기가 바뀌어도 다시 잰다
+ */
+const COLLAPSED_MAX_PX = 306;
+
+function Collapsible({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [overflow, setOverflow] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const measure = () => setOverflow(element.scrollHeight > COLLAPSED_MAX_PX + 8);
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div>
+      <div
+        ref={ref}
+        className={open ? "" : "overflow-hidden"}
+        style={open ? undefined : { maxHeight: COLLAPSED_MAX_PX }}
+      >
+        {children}
+      </div>
+      {overflow && (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="mt-3 text-[11px] text-white/35 transition-colors hover:text-white"
+        >
+          {open ? "접기" : "전체 보기"}
+        </button>
+      )}
+    </div>
+  );
+}
 
 /** 설정 화면의 섹션 하나. 제목 + 오른쪽 액션 + 내용 */
 export default function SettingsSection({
@@ -7,6 +58,7 @@ export default function SettingsSection({
   description,
   action,
   divider = "bottom",
+  collapsible,
   children,
 }: {
   title: string;
@@ -26,6 +78,8 @@ export default function SettingsSection({
    * 여기서 `pt-10`을 더하면 그 사이만 유난히 벌어진다
    */
   divider?: "top" | "bottom" | "none";
+  /** 내용이 길면 접는다. 목록이 붙는 섹션에 켠다 */
+  collapsible?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -47,7 +101,7 @@ export default function SettingsSection({
         {/* shrink-0 — 좁은 화면에서 "수정"이 "수 / 정"으로 쪼개지던 것을 막는다 */}
         {action && <div className="shrink-0 whitespace-nowrap">{action}</div>}
       </div>
-      {children}
+      {collapsible ? <Collapsible>{children}</Collapsible> : children}
     </section>
   );
 }

@@ -38,9 +38,13 @@ export default function DeletedEntriesSection() {
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
-  // `loading ||`을 빼야 완전 삭제 직후 섹션이 통째로 깜빡 사라지지 않는다
+  /*
+   * `loading ||`을 빼야 완전 삭제 직후 섹션이 통째로 깜빡 사라지지 않는다.
+   *
+   * ⚠️ **비어도 섹션은 남긴다** (v1.1, 사용자 요청). 예전엔 0건이면 통째로 사라졌는데,
+   * 그러면 "삭제한 게임을 어디서 되살리지"의 답이 화면에 없다 — 있어야 찾는다
+   */
   if (!deleted.data) return null;
-  if (deleted.data.totalElements === 0) return null;
 
   const revive = async (entryId: number) => {
     setBusy(entryId);
@@ -85,9 +89,14 @@ export default function DeletedEntriesSection() {
        * 둘 다 있으면 선이 두 겹이 된다 (여백만 남긴다)
        */
       divider="none"
+      collapsible
       description="삭제하신 게임은 기한 없이 보관됩니다. 되살리시면 예전 회차·취득·평점·메모가 그대로 돌아옵니다."
     >
       {error && <p className="mb-2 text-xs text-red-400">{error}</p>}
+
+      {deleted.data.totalElements === 0 && (
+        <p className="text-xs text-white/25">삭제하신 게임이 없습니다.</p>
+      )}
 
       <ul className="flex flex-col gap-2">
         {deleted.data.items.map((entry) => (

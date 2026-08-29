@@ -59,13 +59,11 @@ export default function FolderView({
       if (cancelled) return;
 
       /*
-       * 정렬은 **이름순, 태그 없음은 맨 마지막** — 사이드바와 같은 규칙이다.
-       *
-       * 백엔드 파셋도 이름순으로 주지만 그건 DB 콜레이션이라 한글 순서가 브라우저와 어긋날 수 있다.
-       * 두 화면이 다른 순서로 보이면 같은 데이터인지 의심하게 되므로 여기서 다시 정렬한다
+       * ⚠️ **여기서 다시 정렬하지 않는다** (v1.1). 백엔드가 사용자가 정한 순서
+       * (`tag.sortOrder`)로 주므로, 이름순으로 덮으면 프로필에서 끌어 옮긴 게 무시된다.
+       * 태그 없음은 여전히 맨 마지막이고 그건 아래에서 붙인다
        */
       const next: Folder[] = [...facets.tags]
-        .sort((a, b) => a.name.localeCompare(b.name, "ko"))
         .map((tag) => {
           const cards = all.items.filter((card) => card.tag === tag.name);
           return { key: `tag-${tag.id}`, label: tag.name, count: cards.length, cards };

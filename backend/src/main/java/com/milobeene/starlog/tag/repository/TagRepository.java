@@ -21,6 +21,14 @@ public interface TagRepository extends BaseRepository<Tag, Long> {
             " join BacklogEntry b on b.tag = t" +
             " where t.member.id = :memberId" +
             " and b.deletedAt is null" +   // 삭제된 항목에만 붙은 태그는 숨긴다. 되살리면 다시 나온다
-            " order by t.name")
+            /*
+             * ⚠️ **이름순이 아니라 sortOrder순이다** (v1.1). 사용자가 사전에서 정한 순서를
+             * 사이드바·폴더가 그대로 따라야 한다 — 화면마다 순서가 다르면 같은 목록으로 안 보인다.
+             * 같은 값이 있을 수 있으니(이론상) 이름으로 tie-break를 준다
+             */
+            " order by t.sortOrder, t.name")
     List<Tag> findUsedByMemberId(@Param("memberId") Long memberId);
+
+    /** 순서 재배치용. 안 쓰이는 태그까지 전부 — 순서는 사전 전체에 매긴다 */
+    List<Tag> findByMemberIdOrderBySortOrderAscNameAsc(Long memberId);
 }

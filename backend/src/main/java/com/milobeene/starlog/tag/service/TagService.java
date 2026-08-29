@@ -16,6 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -48,6 +50,36 @@ public class TagService {
     /** 사전 목록 (자동완성·필터 옵션). 아무 항목에도 안 붙은 태그는 안 나온다 */
     public List<Tag> findDictionary(Long memberId) {
         return tagRepository.findUsedByMemberId(memberId);
+    }
+
+    /**
+     * 순서 바꾸기 (v1.1).
+     *
+     * 받은 id 순서대로 0부터 다시 매긴다. **목록에 없는 태그는 뒤로 밀린다** —
+     * 화면이 보고 있는 사이 다른 곳에서 태그가 생겼을 수 있는데, 그걸 이유로
+     * 통째로 거절하면 사용자는 무엇이 잘못됐는지 알 방법이 없다.
+     *
+     * ⚠️ **남의 태그가 섞이면 거절한다.** 소유권은 조용히 넘어가면 안 된다
+     */
+    @Transactional
+    public void reorder(Long memberId, List<Long> tagIds) {
+        List<Tag> mine = tagRepository.findByMemberIdOrderBySortOrderAscNameAsc(memberId);
+        Map<Long, Tag> byId = mine.stream().collect(Collectors.toMap(Tag::getId, tag -> tag));
+
+        int order = 0;
+        for (Long id : tagIds) {
+            Tag tag = byId.remove(id);
+            if (tag == null) {
+                throw new InvalidInputException("내 태그가 아니거나 이미 없는 태그입니다: " + id);
+            }
+            tag.moveTo(order++);
+        }
+        // 목록에 없던 것들은 원래 순서를 지키며 뒤로
+        for (Tag left : mine) {
+            if (byId.containsKey(left.getId())) {
+                left.moveTo(order++);
+            }
+        }
     }
 
     /** 이름 변경 (FR-TAG-02). 같은 이름이 이미 있으면 예외 — 병합하지 않는다 */

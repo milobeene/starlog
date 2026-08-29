@@ -1,5 +1,7 @@
 package com.milobeene.starlog.tag.controller;
 
+import java.util.List;
+import jakarta.validation.constraints.NotNull;
 import com.milobeene.starlog.common.web.LoginMember;
 import com.milobeene.starlog.tag.dto.NameRequest;
 import com.milobeene.starlog.tag.service.TagService;
@@ -26,6 +28,19 @@ import org.springframework.web.bind.annotation.RestController;
 public class TagController {
 
     private final TagService tagService;
+
+    /**
+     * 순서 바꾸기 (v1.1).
+     *
+     * ⚠️ **`/{tagId}` 앞에 둔다.** 스프링은 더 구체적인 패턴을 먼저 고르지만,
+     * `order`가 tagId로 읽히는 실수를 원천에서 막으려면 눈에도 앞에 있어야 한다
+     */
+    public record ReorderRequest(@NotNull List<Long> tagIds) {}
+
+    @PutMapping("/order")
+    public void reorder(@LoginMember Long memberId, @RequestBody @Valid ReorderRequest request) {
+        tagService.reorder(memberId, request.tagIds());
+    }
 
     @PutMapping("/{tagId}")
     public void rename(@LoginMember Long memberId, @PathVariable Long tagId,
