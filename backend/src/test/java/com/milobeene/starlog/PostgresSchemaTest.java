@@ -92,14 +92,19 @@ class PostgresSchemaTest {
         // 컨텍스트 기동 자체가 검증 (Flyway 적용 + Hibernate validate).
         // H2 호환 모드가 통과시키던 문법이 여기서 걸린다
         assertThat(jdbc.queryForObject(
+                // **flyway_schema_history를 뺀다** — Flyway의 장부지 우리 스키마가 아니다.
+                // 이걸 안 빼서 아래 숫자가 계속 하나씩 어긋나 있었다 (도커가 없는 로컬에서는
+                // 이 클래스가 통째로 안 돌아 CI에서야 드러났다)
                 "select count(*) from information_schema.tables where table_schema = 'public'"
-                        + " and table_type = 'BASE TABLE'", Integer.class))
+                        + " and table_type = 'BASE TABLE' and table_name <> 'flyway_schema_history'",
+                Integer.class))
                 // 25 → 24: 태그 조인 테이블이 사라졌다 (§6.7 v1.6)
                 // 24 → 26: V2가 spring_session 2개를 더한다 (O-4)
                 // 26 → 27: V3이 usage_quota를 더한다 (일일 쿼터)
                 // 27 → 23: **V5가 넷을 지우고 하나를 더한다** — audit_log·usage_quota·
                 //          spring_session 2개가 나가고 api_call_log가 들어온다
-                .isEqualTo(23);
+                // 23 → 24: V6이 app_setting을 더한다 (IGDB 키가 DB에 산다)
+                .isEqualTo(24);
     }
 
     @Test
