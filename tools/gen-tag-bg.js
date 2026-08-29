@@ -1,3 +1,17 @@
+// 태그 배경 그림 만들기 (v1.2).
+//
+//   cd desktop && npx electron ../tools/gen-tag-bg.js ../frontend/public/tag-bg
+//
+// 앱 배경과 **같은 셰이더**를 색마다 한 번씩 돌려 512px JPEG로 찍는다.
+// 실시간으로 안 돌리는 이유 — 폴더가 열몇 개면 WebGL 컨텍스트가 그만큼 필요한데
+// 브라우저가 개수를 세는 자원이라 앞의 것이 강제로 사라진다(context lost).
+//
+// ⚠️ 셰이더는 `tools/shaders.json`에 **베껴져 있다.** 원본(frontend/src/lib/fluidShader.ts)을
+// 고치면 여기도 다시 뽑아야 한다 — 자동으로 안 따라간다. 태그 배경용으로 둘을 바꿔뒀다:
+//   · 무지개 순회 제거 — 시간에 따라 색조가 돌면 태그 색이 아니게 된다
+//   · 그레인 0.06 → 0.24, 2px 블록 — 폴더는 손바닥만 해서 결이 없으면 그냥 색면이다
+//
+// 색 팔레트는 `tools/tones.json`. 태그 색을 고치면 그것도 다시 만들어야 한다.
 const { app, BrowserWindow } = require("electron");
 const fs = require("fs");
 const path = require("path");
