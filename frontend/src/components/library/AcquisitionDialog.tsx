@@ -7,7 +7,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { Button, Field, FIELD_INPUT, FIELD_SELECT } from "@/components/ui/Field";
 import { api, errorMessage } from "@/lib/api";
 import { ACQUISITION_METHOD_LABEL } from "@/lib/labels";
-import { withCurrent } from "@/lib/options";
+import { withCurrent, withCurrentAmong } from "@/lib/options";
 import type { Acquisition, AcquisitionMethod, Currency, OptionsResponse } from "@/lib/types";
 
 const METHODS: AcquisitionMethod[] = [
@@ -61,10 +61,11 @@ export default function AcquisitionDialog({
    * 편집 중인 값은 소프트 삭제됐을 수 있어 withCurrent로 지켜준다 —
    * 목록에서 빠진 채 저장하면 원래 붙어 있던 계정이 조용히 날아간다 (lib/options.ts)
    */
-  const accountChoices = withCurrent(
+  const accountChoices = withCurrentAmong(
     (options?.platformAccounts ?? []).filter(
       (account) => String(account.platformId) === platformId,
     ),
+    options?.platformAccounts ?? [],
     acquisition?.platformAccount && {
       id: acquisition.platformAccount.accountId,
       name: acquisition.platformAccount.label,

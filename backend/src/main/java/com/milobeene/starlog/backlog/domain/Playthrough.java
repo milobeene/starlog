@@ -105,10 +105,24 @@ public class Playthrough extends BaseEntity {
          * 예외를 던지지 않는 이유: 예전 데이터에는 에뮬만 있는 회차가 있고,
          * 그걸 수정할 때 플랫폼을 새로 고르면 잠깐 둘 다인 상태가 자연스럽게 생긴다
          */
+        Emulator effective = platform != null ? null : emulator;
+
+        /*
+         * ⚠️ **계정이 그 소속의 것인지 본다** (v1.2). 화면은 소속을 바꿀 때 계정을 비우지만
+         * 서버가 안 보면 `platform=스팀 + account=닌텐도계정`이 그대로 저장된다.
+         *
+         * 소속을 아예 안 골랐을 때는 통과시킨다 — V11 이전에는 계정만 있는 회차가
+         * 정상이었고, 그런 옛 기록을 열어 딴 곳을 고칠 때 막히면 안 된다
+         */
+        if (platformAccount != null && (platform != null || effective != null)
+                && !platformAccount.belongsTo(platform, effective)) {
+            throw new InvalidInputException("계정이 고른 소속의 것이 아닙니다");
+        }
+
         this.device = device;
         this.platform = platform;
         this.platformAccount = platformAccount;
-        this.emulator = platform != null ? null : emulator;
+        this.emulator = effective;
         this.inputMethod = inputMethod;
     }
 

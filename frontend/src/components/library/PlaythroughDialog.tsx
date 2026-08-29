@@ -8,7 +8,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { Button, Field, FIELD_INPUT, FIELD_SELECT } from "@/components/ui/Field";
 import { api, errorMessage } from "@/lib/api";
 import { PLAYTHROUGH_STATUS_LABEL } from "@/lib/labels";
-import { withCurrent } from "@/lib/options";
+import { withCurrent, withCurrentAmong } from "@/lib/options";
 import type { OptionsResponse, Playthrough, PlaythroughStatus } from "@/lib/types";
 
 const STATUSES: PlaythroughStatus[] = ["PLAYING", "PAUSED", "DROPPED", "COMPLETED"];
@@ -68,7 +68,11 @@ export default function PlaythroughDialog({
    * "스팀 + 닌텐도 계정" 같은 모순이 저장된다 — 취득 다이얼로그와 같은 규칙이다
    */
   const owner = runsOn === "platform" ? numberOrNull(platformId) : numberOrNull(emulatorId);
-  const accountChoices = withCurrent(
+  const allAccounts = (options?.platformAccounts ?? []).map((account) => ({
+    id: account.id,
+    name: accountLabel(account.platformName ?? account.emulatorName, account.name),
+  }));
+  const accountChoices = withCurrentAmong(
     (options?.platformAccounts ?? [])
       .filter((account) =>
         owner == null
@@ -81,6 +85,7 @@ export default function PlaythroughDialog({
         id: account.id,
         name: accountLabel(account.platformName ?? account.emulatorName, account.name),
       })),
+    allAccounts,
     run?.platformAccount && {
       id: run.platformAccount.accountId,
       name: run.platformAccount.label,
@@ -246,13 +251,24 @@ export default function PlaythroughDialog({
 
         <div className="grid grid-cols-2 gap-4">
           <Field label="Account">
-            <select value={accountId} onChange={(e) => setAccountId(e.target.value)} className={FIELD_SELECT}>
-              <option value="">선택 안 함</option>
-              {/*
-                회차는 취득과 달리 플랫폼으로 좁히지 않는다 — "스팀에서 산 걸 스위치에서 했다"가
-                성립하므로 계정과 기기를 묶으면 안 된다. 대신 **어느 플랫폼 계정인지 병기**한다.
-                라벨이 "Beene"으로 겹쳐서 이게 없으면 선택지가 같은 이름 여러 개로 보인다
-              */}
+            {/*
+              **소속을 먼저 고르게 잠근다** (v1.2, 취득 다이얼로그와 같은 규칙).
+              목록은 이미 고른 소속의 것만인데 잠그지 않으면, 소속이 비었을 때 선택지가
+              통째로 빈 채로 열려서 "계정이 하나도 없다"로 보인다
+            */}
+            <select
+              value={accountId}
+              onChange={(e) => setAccountId(e.target.value)}
+              className={FIELD_SELECT}
+              disabled={!owner}
+            >
+              <option value="">
+                {owner
+                  ? "선택 안 함"
+                  : runsOn === "platform"
+                    ? "플랫폼을 먼저 고르세요"
+                    : "에뮬을 먼저 고르세요"}
+              </option>
               {accountChoices.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name}

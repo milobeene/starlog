@@ -107,7 +107,7 @@ public class PlatformAccountService {
     /** 회차·취득 입력 시 고를 수 있는 계정. 삭제된 건 빠진다 */
     public List<PlatformAccount> findSelectable(Long memberId) {
         return platformAccountRepository
-                .findByMemberIdAndDeletedAtIsNullOrderByAccountLabelAsc(memberId);
+                .findSelectable(memberId);
     }
 
     /** 삭제된 것 포함. 과거 기록에 붙은 계정을 보여줄 때 쓴다 */

@@ -139,7 +139,7 @@ public class MemberExportService {
         return new MemberExport.Catalog(
                 platformRepository.findByMemberIdAndDeletedAtIsNullOrderByNameAsc(memberId).stream()
                         .map(p -> p.getName()).toList(),
-                platformAccountRepository.findByMemberIdAndDeletedAtIsNullOrderByAccountLabelAsc(memberId).stream()
+                platformAccountRepository.findSelectable(memberId).stream()
                         .map(a -> new MemberExport.Account(a.getAccountLabel(), a.getPlatform().getName()))
                         .toList(),
                 deviceRepository.findByMemberIdAndDeletedAtIsNullOrderByLabelAsc(memberId).stream()

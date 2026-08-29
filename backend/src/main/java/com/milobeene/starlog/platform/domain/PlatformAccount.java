@@ -91,6 +91,20 @@ public class PlatformAccount extends MemberOwnedEntity {
         return platform != null ? platform.getName() : emulator.getName();
     }
 
+    /**
+     * 고른 소속의 계정인가 (v1.2).
+     *
+     * 화면이 소속을 바꿀 때 계정을 비우지만 **서버는 클라이언트를 믿지 않는다** —
+     * `platformId=스팀 + platformAccountId=닌텐도계정`이 그대로 저장되면
+     * 눈으로는 못 알아채는 모순이 남는다. 프록시라 id만 본다
+     */
+    public boolean belongsTo(Platform platform, Emulator emulator) {
+        Long ownerId = (this.platform != null) ? this.platform.getId() : this.emulator.getId();
+        Long askedId = (platform != null) ? platform.getId()
+                : (emulator != null) ? emulator.getId() : null;
+        return ownerId.equals(askedId);
+    }
+
     /** 소속 키를 밖에서도 만든다 — 서비스가 "이미 있나"를 물을 때 필요하다 */
     public static String ownerKeyOf(Platform platform, Emulator emulator) {
         return keyOf(platform, emulator);

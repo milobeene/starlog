@@ -2,6 +2,8 @@ package com.milobeene.starlog.platform.repository;
 
 import com.milobeene.starlog.common.repository.BaseRepository;
 import com.milobeene.starlog.platform.domain.PlatformAccount;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -25,8 +27,27 @@ public interface PlatformAccountRepository extends BaseRepository<PlatformAccoun
     Optional<PlatformAccount> findByMemberIdAndPlatformIdAndAccountLabel(
             Long memberId, Long platformId, String accountLabel);
 
-    /** 회차·취득 입력 시 고를 수 있는 계정. 삭제된 건 선택지에서 빠진다 */
-    List<PlatformAccount> findByMemberIdAndDeletedAtIsNullOrderByAccountLabelAsc(Long memberId);
+    /**
+     * 회차·취득 입력 시 고를 수 있는 계정. 삭제된 건 선택지에서 빠진다.
+     *
+     * **소속으로 묶어 정렬한다** (v1.2). 라벨만으로 정렬하면 스팀 계정과 닌텐도 계정이
+     * 이름순으로 뒤섞여, 선택지가 `Beene (GOG)` `Beene (Steam)` `Milo (GOG)`처럼
+     * 소속을 오간다 — 고를 때 눈이 계속 되돌아간다. 화면에 붙는 이름이
+     * `라벨 (소속)`이라 정렬 키도 소속을 앞에 둔다.
+     *
+     * `coalesce`인 이유 — 계정의 소속은 **플랫폼이거나 에뮬이거나 하나뿐이다** (V11).
+     * `left join`이라 소속이 없는 행도 안 사라진다 (nulls는 DB마다 위아래가 갈리지만
+     * 있을 수 없는 상태라 신경 쓰지 않는다).
+     *
+     * ⚠️ **join fetch가 붙은 이유는 정렬이 아니다** — 호출부가 계정마다 소속 이름을
+     * 꺼내 라벨을 만든다. 프록시로 두면 계정 수만큼 쿼리가 더 나간다 (JPA 원칙 4번)
+     */
+    @Query("select a from PlatformAccount a"
+            + " left join fetch a.platform p"
+            + " left join fetch a.emulator e"
+            + " where a.member.id = :memberId and a.deletedAt is null"
+            + " order by coalesce(p.name, e.name) asc, a.accountLabel asc, a.id asc")
+    List<PlatformAccount> findSelectable(@Param("memberId") Long memberId);
 
     /** 플랫폼을 지울 때 딸린 계정도 함께 닫기 위해 (§6.5) */
     List<PlatformAccount> findByPlatformIdAndDeletedAtIsNull(Long platformId);

@@ -80,6 +80,14 @@ public class Acquisition extends BaseEntity {
      * 실물 구매처럼 계정이 없으면 platformAccount는 null이고 platform만 남는다 (§6.6)
      */
     public void assignReferences(Platform platform, PlatformAccount platformAccount) {
+        /*
+         * ⚠️ 회차와 같은 검사다 (v1.2) — 화면이 플랫폼을 바꿀 때 계정을 비우지만,
+         * 서버가 안 보면 "스팀 + 닌텐도 계정"이 저장된다. 취득에는 에뮬이 없어서 한쪽만 본다
+         */
+        if (platformAccount != null && platform != null
+                && !platformAccount.belongsTo(platform, null)) {
+            throw new InvalidInputException("계정이 고른 플랫폼의 것이 아닙니다");
+        }
         this.platform = platform;
         this.platformAccount = platformAccount;
     }

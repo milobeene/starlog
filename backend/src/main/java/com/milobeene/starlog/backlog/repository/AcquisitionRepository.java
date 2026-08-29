@@ -34,21 +34,29 @@ public interface AcquisitionRepository extends BaseRepository<Acquisition, Long>
      * 같은 라벨("Beene")을 여러 플랫폼에 쓰는 게 흔해서 선택지에 같은 글자가 여러 줄 뜬다.
      * FacetCount의 모양을 안 바꾸는 쪽을 택했다 — 필드를 늘리면 파셋 다섯 종이 전부 따라 바뀐다
      */
+    /*
+     * ⚠️ **조인을 명시로 바꿨다** (v1.2). `a.platformAccount.platform.name`은 암시적
+     * **inner** 조인이라, V11 이후 생길 수 있는 **에뮬 소속 계정이 통째로 사라진다**
+     * (platform이 null이니 조인이 안 붙는다). 필터 목록에는 있는데 파셋에만 없는
+     * 상태가 되어, 눈으로는 "왜 이 계정만 개수가 안 나오지"로 보인다
+     */
     @Query("select new com.milobeene.starlog.backlog.dto.FacetCount(" +
-            "   a.platformAccount.id," +
-            "   concat('(', a.platformAccount.platform.name, ') ', a.platformAccount.accountLabel)," +
+            "   pa.id," +
+            "   concat('(', coalesce(p.name, e.name), ') ', pa.accountLabel)," +
             "   count(distinct a.backlogEntry.id))" +
             " from Acquisition a" +
+            "   join a.platformAccount pa" +
+            "   left join pa.platform p" +
+            "   left join pa.emulator e" +
             " where a.backlogEntry.member.id = :memberId" +
             "   and a.backlogEntry.deletedAt is null" +
-            "   and a.platformAccount is not null and a.platformAccount.deletedAt is null" +
-            " group by a.platformAccount.id, a.platformAccount.accountLabel, a.platformAccount.platform.name" +
+            "   and pa.deletedAt is null" +
+            " group by pa.id, pa.accountLabel, p.name, e.name" +
             /*
              * 화면에 보이는 문자열 순서(`(GOG) Beene` → `(Steam) Beene`)와 맞추고
              * tie-break까지 준다. 라벨만으로 정렬하면 **concat을 붙인 바로 그 상황** —
              * 같은 라벨을 여러 플랫폼에 쓸 때 — 두 행의 정렬 키가 같아져 순서가 흔들린다
              */
-            " order by a.platformAccount.platform.name asc,"
-            + " a.platformAccount.accountLabel asc, a.platformAccount.id asc")
+            " order by coalesce(p.name, e.name) asc, pa.accountLabel asc, pa.id asc")
     List<FacetCount> countByPlatformAccount(@Param("memberId") Long memberId);
 }

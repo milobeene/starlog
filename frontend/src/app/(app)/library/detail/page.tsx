@@ -124,6 +124,11 @@ function BacklogDetail() {
 
   const { resolved, master, overrides, personalRecord } = data;
   const totalPlaytime = formatHours(personalRecord.playTimeHours);
+  /*
+   * 진행 중인 회차 — **종료일이 비었나로 본다.** 서버의 BR-PT-03과 같은 기준이다
+   * (상태로 보면 "플레이 중"인데 종료일이 있는 회차를 놓친다)
+   */
+  const ongoingRun = data.playthroughs.find((run) => run.finishedOn == null) ?? null;
 
   return (
     <>
@@ -272,7 +277,20 @@ function BacklogDetail() {
                         {data.playthroughs.length}
                         <Unit space>runs</Unit>
                       </span>
-                    <Button onClick={() => setDialog({ kind: "playthrough", run: null })}>
+                    {/*
+                      **진행 중인 회차가 있으면 못 더한다** (v1.2). 서버가 BR-PT-03으로
+                      이미 막지만(409), 누른 뒤 다이얼로그를 다 채우고서야 거절당했다.
+                      판정 기준은 서버와 같은 **종료일 없음**이다 — 상태가 아니다
+                    */}
+                    <Button
+                      onClick={() => setDialog({ kind: "playthrough", run: null })}
+                      disabled={ongoingRun != null}
+                      title={
+                        ongoingRun
+                          ? `${ongoingRun.sequenceNo}회차가 진행 중입니다`
+                          : undefined
+                      }
+                    >
                       회차 추가
                     </Button>
                   </span>
@@ -283,6 +301,12 @@ function BacklogDetail() {
                   기기 이름은 계정 라벨에 이미 붙어 있어서(`Beene (한성컴퓨터 PC)`)
                   같은 정보를 두 칸이 나눠 갖고 있던 셈이다 — 합치면 기간이 한 줄에 들어간다
                 */}
+                {ongoingRun && (
+                  <p className="mb-3 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/50">
+                    <span className="num text-white/70">{ongoingRun.sequenceNo}</span>회차가 진행
+                    중입니다. 종료일을 적어 닫으면 다음 회차를 더할 수 있습니다.
+                  </p>
+                )}
                 <DataTable
                   headers={["Run", "Period", "Status", "Account", "Label"]}
                   empty={data.playthroughs.length === 0 ? "등록된 회차 기록이 없습니다" : undefined}

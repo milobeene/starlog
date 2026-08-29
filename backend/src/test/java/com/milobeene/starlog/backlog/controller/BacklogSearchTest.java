@@ -334,6 +334,33 @@ class BacklogSearchTest extends ControllerTestSupport {
                 .andExpect(jsonPath("$.items[0].entryId").value(owned));
     }
 
+    @Test
+    public void 통화만_골라도_필터가_걸린다() throws Exception {
+        //given — 통화는 취득 축의 단독 조건이 될 수 있다 (화면의 KRW/USD/JPY 토글)
+        Member member = saveMember();
+        Long won = addEntry(member, saveGame("Hollow Knight"));
+        Long dollar = addEntry(member, saveGame("Celeste"));
+        buy(member, won, "KRW", "10000");
+        buy(member, dollar, "USD", "10000");
+
+        //when //then — 예전엔 hasAcquisitionFilter가 통화를 안 봐서 둘 다 나왔다
+        mockMvc.perform(get("/api/backlog").param("acqCurrency", "USD")
+                        .header("X-Member-Id", member.getId()))
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.items[0].entryId").value(dollar));
+    }
+
+    private void buy(Member member, Long entryId, String currency, String amount) throws Exception {
+        mockMvc.perform(post("/api/backlog/{id}/acquisitions", entryId)
+                        .header("X-Member-Id", member.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"method\":\"PURCHASED\",\"acquiredOn\":\"2026-01-01\""
+                                + ",\"price\":{\"currency\":\"" + currency + "\""
+                                + ",\"amount\":" + amount + "}}"))
+                .andExpect(status().isCreated());
+        em.flush();
+    }
+
     // ── FR-QRY-04 나머지 정렬 축 + BR-QRY-01 (감사에서 rating·releasedOn·동점 0건으로 드러남)
 
     @Test

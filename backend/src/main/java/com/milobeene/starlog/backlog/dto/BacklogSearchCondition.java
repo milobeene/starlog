@@ -86,7 +86,13 @@ public record BacklogSearchCondition(
 
     /** 취득 축에 뭐라도 걸렸나 */
     public boolean hasAcquisitionFilter() {
-        return acqMethod != null || acqMinPrice != null || acqMaxPrice != null
+        /*
+         * ⚠️ **acqCurrency가 빠져 있었다** (v1.2). 통화만 고르고 Apply를 누르면
+         * 여기가 false를 돌려줘 취득 서브쿼리 자체가 안 붙었다 — 화면은 "필터 걸림"인데
+         * 결과는 전부였다. 축에 칸을 더할 때 이 목록을 같이 안 고치면 조용히 무시된다
+         */
+        return acqMethod != null || acqCurrency != null
+                || acqMinPrice != null || acqMaxPrice != null
                 || acqPlatformId != null || acqAccountId != null
                 || acqFrom != null || acqTo != null;
     }
