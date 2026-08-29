@@ -108,6 +108,20 @@ export default function EntryPage() {
   const enter = (port: number | null | undefined) => {
     setBackendPort(port);
     /*
+     * ⚠️ **`app://`가 아니면 통째로 옮긴다** (v1.2).
+     *
+     * 창은 평생 `app://` 한 장이라는 게 v1.0의 전제인데, 어떤 이유로든 창이
+     * `http://127.0.0.1:포트`(스프링이 서빙하는 사본)에 가 있으면 **거기서 빠져나올 길이
+     * 없다** — `router.push`는 지금 오리진 안에서 도는데, 세이브를 바꾸면 그 포트가
+     * 죽어서 빈 화면이 되고 새로고침하면 검은 화면이 된다.
+     *
+     * 여기서 한 번 걸러주면 스스로 제자리로 돌아온다
+     */
+    if (typeof window !== "undefined" && window.location.protocol !== "app:") {
+      window.location.href = "app://starlog/dashboard";
+      return;
+    }
+    /*
      * ⚠️ **세션 캐시를 반드시 버린다** (2026-08-28).
      *
      * `lib/session.ts`는 `/api/me`를 한 번 받아 모듈에 들고 있는다. 예전엔 접속할 때마다

@@ -529,6 +529,8 @@ function createWindow() {
   if (saved.maximized) win.maximize();
 
   // 외부 링크는 앱 안이 아니라 기본 브라우저로 (IGDB 출처 표기 등)
+  bindDevShortcuts(win.webContents);
+
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: "deny" };
@@ -1302,6 +1304,31 @@ if (!app.requestSingleInstanceLock()) {
  */
 if (process.platform === "win32") {
   Menu.setApplicationMenu(null);
+}
+
+/**
+ * 메뉴를 없앤 대가를 갚는다 (v1.2, 사용자 제보).
+ *
+ * ⚠️ **윈도우에서 Ctrl+R과 Ctrl+Shift+I가 안 먹었다.** 그 단축키는 기본 메뉴의
+ * 액셀러레이터라서, 메뉴를 지우면 같이 사라진다 — 맥은 시스템 메뉴가 따로 있어 멀쩡했다.
+ *
+ * 메뉴를 되살리는 대신 키를 직접 받는다. 메뉴 막대는 계속 없고 단축키만 산다.
+ * 복사·붙여넣기는 크로미움이 직접 처리하므로 여기 없어도 된다
+ */
+function bindDevShortcuts(contents) {
+  contents.on("before-input-event", (event, input) => {
+    if (input.type !== "keyDown") return;
+    const mod = process.platform === "darwin" ? input.meta : input.control;
+    const key = (input.key || "").toLowerCase();
+
+    if (mod && !input.shift && key === "r") {
+      contents.reload();
+      event.preventDefault();
+    } else if ((mod && input.shift && key === "i") || key === "f12") {
+      contents.toggleDevTools();
+      event.preventDefault();
+    }
+  });
 }
 
 app.whenReady().then(() => {

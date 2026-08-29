@@ -615,7 +615,13 @@ function Dictionary({
       {shown.length === 0 ? (
         <p className="text-xs text-white/25">사용 중인 항목이 없습니다. 게임에 지정하시면 이곳에 표시됩니다.</p>
       ) : (
-        <div className="flex flex-wrap gap-1.5">
+        /*
+          ⚠️ **격자로 바꿨다** (v1.2, 사용자 지적). `flex-wrap`은 칩 폭이 글자 수를 따라가서
+          줄마다 끝이 들쭉날쭉했다 — 색을 입히고 나니 그 지저분함이 더 도드라졌다.
+          `auto-fill`은 폭이 남으면 칸을 더 만들고, 모자라면 줄을 바꾼다. 어느 폭에서도
+          오른쪽 끝이 가지런하다
+        */
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-1.5">
           {shown.map((item) => (
             <span
               key={item.id}
@@ -645,7 +651,7 @@ function Dictionary({
                     }
                   : undefined
               }
-              className={`inline-flex items-center gap-2 rounded-full border py-1 pr-1.5 pl-2.5 text-xs ${
+              className={`inline-flex min-w-0 items-center gap-2 rounded-full border py-1 pr-1.5 pl-2.5 text-xs ${
                 "color" in item && (item as TagFacet).color ? "" : "text-white/70"
               } ${
                 !reorderable ? "" : saving ? "cursor-wait opacity-60" : "cursor-grab active:cursor-grabbing"
@@ -655,8 +661,8 @@ function Dictionary({
                   : "border-white/10 bg-white/5"
               }`}
             >
-              {item.name}
-              <span className="num text-white/25">{item.count}</span>
+              <span className="min-w-0 flex-1 truncate">{item.name}</span>
+              <span className="num shrink-0 text-white/25">{item.count}</span>
               <button
                 type="button"
                 onClick={() => setEditing(item)}
@@ -736,7 +742,13 @@ function ReadOnlyDictionary({ label, names }: { label: string; names: string[] }
       {names.length === 0 ? (
         <p className="text-xs text-white/25">직접 입력하신 값이 없습니다. 게임 상세에서 수정하시면 이곳에 표시됩니다.</p>
       ) : (
-        <div className="flex flex-wrap gap-1.5">
+        /*
+          ⚠️ **격자로 바꿨다** (v1.2, 사용자 지적). `flex-wrap`은 칩 폭이 글자 수를 따라가서
+          줄마다 끝이 들쭉날쭉했다 — 색을 입히고 나니 그 지저분함이 더 도드라졌다.
+          `auto-fill`은 폭이 남으면 칸을 더 만들고, 모자라면 줄을 바꾼다. 어느 폭에서도
+          오른쪽 끝이 가지런하다
+        */
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-1.5">
           {names.map((name) => (
             <span
               key={name}
@@ -790,7 +802,13 @@ function RenameDialog({
       </p>
       {colorable && (
         <Field label="Color" hint="라이브러리의 사이드바와 폴더에 이 색이 쓰입니다">
-          <div className="flex flex-wrap gap-1.5">
+          {/*
+          ⚠️ **격자로 바꿨다** (v1.2, 사용자 지적). `flex-wrap`은 칩 폭이 글자 수를 따라가서
+          줄마다 끝이 들쭉날쭉했다 — 색을 입히고 나니 그 지저분함이 더 도드라졌다.
+          `auto-fill`은 폭이 남으면 칸을 더 만들고, 모자라면 줄을 바꾼다. 어느 폭에서도
+          **오른쪽 끝이 가지런하다**
+        */}
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-1.5">
             {/* 색 없음 — 지금까지의 중립 회색 */}
             <button
               type="button"
