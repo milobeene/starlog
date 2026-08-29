@@ -1,6 +1,6 @@
 "use client";
 
-import { toneOf } from "@/lib/tagColors";
+import { fluidBackground, toneOf } from "@/lib/tagColors";
 import { useEffect, useMemo, useState } from "react";
 import GameCard from "@/components/ui/GameCard";
 import EmptyState from "@/components/ui/EmptyState";
@@ -244,7 +244,7 @@ function FolderBox({
       <div
         aria-hidden
         className="absolute inset-0 transition-transform duration-700 ease-out group-hover:scale-110"
-        style={{ background: tone.grad }}
+        style={{ background: fluidBackground(tone) }}
       />
 
       {/* 라벨이 가운데 오므로 전체를 고르게 덮는다. 그래디언트가 이미 어두워 얇게 */}

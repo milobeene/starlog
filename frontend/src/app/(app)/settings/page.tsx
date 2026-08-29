@@ -2,7 +2,7 @@
 
 import { TAG_COLOR_NAMES, TAG_COLORS, toneOf } from "@/lib/tagColors";
 import DateField from "@/components/ui/DateField";
-import { Suspense, useRef, useState } from "react";
+import { Fragment, Suspense, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import PageHeading from "@/components/ui/PageHeading";
@@ -616,15 +616,21 @@ function Dictionary({
         <p className="text-xs text-white/25">사용 중인 항목이 없습니다. 게임에 지정하시면 이곳에 표시됩니다.</p>
       ) : (
         /*
-          ⚠️ **격자로 바꿨다** (v1.2, 사용자 지적). `flex-wrap`은 칩 폭이 글자 수를 따라가서
-          줄마다 끝이 들쭉날쭉했다 — 색을 입히고 나니 그 지저분함이 더 도드라졌다.
-          `auto-fill`은 폭이 남으면 칸을 더 만들고, 모자라면 줄을 바꾼다. 어느 폭에서도
-          오른쪽 끝이 가지런하다
+          ⚠️ **글자 양쪽 정렬처럼** 편다 (v1.2, 사용자 지정).
+          격자로 폭을 균등하게 나눠봤더니 짧은 태그가 쓸데없이 넓어졌다 —
+          원한 것은 **칸을 늘리는 게 아니라 사이를 벌리는 것**이다.
+          `text-align: justify`는 인라인 요소에 먹으므로 칩을 `inline-flex`로 두고,
+          마지막 줄이 억지로 늘어나지 않게 `after:w-full`로 빈 줄 하나를 흘려보낸다
         */
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-1.5">
+        <div className="text-justify after:inline-block after:w-full after:content-['']">
+          {/*
+            ⚠️ **칩 사이에 진짜 공백을 넣는다.** JSX는 요소 사이의 줄바꿈을 지우는데,
+            `text-align: justify`는 **단어 사이 공백을 늘려서** 줄을 편다 —
+            공백이 없으면 늘릴 것이 없어 아무 일도 안 일어난다
+          */}
           {shown.map((item) => (
+            <Fragment key={item.id}>
             <span
-              key={item.id}
               draggable={reorderable && !saving}
               onDragStart={() => {
                 dragRef.current = item.id;
@@ -651,7 +657,7 @@ function Dictionary({
                     }
                   : undefined
               }
-              className={`inline-flex min-w-0 items-center gap-2 rounded-full border py-1 pr-1.5 pl-2.5 text-xs ${
+              className={`mb-1.5 inline-flex items-center gap-2 rounded-full border py-1 pr-1.5 pl-2.5 text-left align-middle text-xs ${
                 "color" in item && (item as TagFacet).color ? "" : "text-white/70"
               } ${
                 !reorderable ? "" : saving ? "cursor-wait opacity-60" : "cursor-grab active:cursor-grabbing"
@@ -661,8 +667,8 @@ function Dictionary({
                   : "border-white/10 bg-white/5"
               }`}
             >
-              <span className="min-w-0 flex-1 truncate">{item.name}</span>
-              <span className="num shrink-0 text-white/25">{item.count}</span>
+              {item.name}
+              <span className="num text-white/25">{item.count}</span>
               <button
                 type="button"
                 onClick={() => setEditing(item)}
@@ -688,7 +694,8 @@ function Dictionary({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
-            </span>
+            </span>{" "}
+            </Fragment>
           ))}
         </div>
       )}
@@ -743,12 +750,13 @@ function ReadOnlyDictionary({ label, names }: { label: string; names: string[] }
         <p className="text-xs text-white/25">직접 입력하신 값이 없습니다. 게임 상세에서 수정하시면 이곳에 표시됩니다.</p>
       ) : (
         /*
-          ⚠️ **격자로 바꿨다** (v1.2, 사용자 지적). `flex-wrap`은 칩 폭이 글자 수를 따라가서
-          줄마다 끝이 들쭉날쭉했다 — 색을 입히고 나니 그 지저분함이 더 도드라졌다.
-          `auto-fill`은 폭이 남으면 칸을 더 만들고, 모자라면 줄을 바꾼다. 어느 폭에서도
-          오른쪽 끝이 가지런하다
+          ⚠️ **글자 양쪽 정렬처럼** 편다 (v1.2, 사용자 지정).
+          격자로 폭을 균등하게 나눠봤더니 짧은 태그가 쓸데없이 넓어졌다 —
+          원한 것은 **칸을 늘리는 게 아니라 사이를 벌리는 것**이다.
+          `text-align: justify`는 인라인 요소에 먹으므로 칩을 `inline-flex`로 두고,
+          마지막 줄이 억지로 늘어나지 않게 `after:w-full`로 빈 줄 하나를 흘려보낸다
         */
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-1.5">
+        <div className="text-justify after:inline-block after:w-full after:content-['']">
           {names.map((name) => (
             <span
               key={name}

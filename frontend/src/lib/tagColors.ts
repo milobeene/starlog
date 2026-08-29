@@ -30,24 +30,57 @@ export type TagColorName =
   | "rose" | "coral" | "amber" | "sand" | "olive" | "sage" | "mint"
   | "teal" | "sky" | "denim" | "lavender" | "plum" | "mauve" | "clay";
 
-type Tone = { label: string; text: string; soft: string; grad: string };
+type Tone = {
+  label: string;
+  /** 글씨·테두리. 어두운 배경 위에서 읽혀야 하니 밝다 */
+  text: string;
+  /** 배경 한 겹. 글씨를 안 덮게 아주 옅다 */
+  soft: string;
+  /** 폴더 배경을 이루는 세 덩어리 — 밝은 것 / 중간 / 바닥 */
+  hi: string;
+  mid: string;
+  low: string;
+};
 
 export const TAG_COLORS: Record<TagColorName, Tone> = {
-  rose:     { label: "장미",   text: "#f0919d", soft: "rgba(240,145,157,0.20)", grad: "linear-gradient(135deg,#c2455f 0%,#8e2f52 45%,#4a1b35 100%)" },
-  coral:    { label: "산호",   text: "#f5a07c", soft: "rgba(245,160,124,0.20)", grad: "linear-gradient(135deg,#e0673f 0%,#a8422e 45%,#4d1f18 100%)" },
-  amber:    { label: "호박",   text: "#efc072", soft: "rgba(239,192,114,0.20)", grad: "linear-gradient(135deg,#d99a2b 0%,#9e6a1c 45%,#463012 100%)" },
-  sand:     { label: "모래",   text: "#e3d494", soft: "rgba(227,212,148,0.20)", grad: "linear-gradient(135deg,#c8b95c 0%,#8d803a 45%,#3f3a1c 100%)" },
-  olive:    { label: "올리브", text: "#c3d183", soft: "rgba(195,209,131,0.20)", grad: "linear-gradient(135deg,#93ac45 0%,#63762c 45%,#2c3516 100%)" },
-  sage:     { label: "세이지", text: "#9fd39a", soft: "rgba(159,211,154,0.20)", grad: "linear-gradient(135deg,#5aa85a 0%,#39723f 45%,#19321e 100%)" },
-  mint:     { label: "민트",   text: "#8fdcc0", soft: "rgba(143,220,192,0.20)", grad: "linear-gradient(135deg,#3fb891 0%,#288068 45%,#123a2f 100%)" },
-  teal:     { label: "청록",   text: "#84d2da", soft: "rgba(132,210,218,0.20)", grad: "linear-gradient(135deg,#31a8b6 0%,#20757f 45%,#0f353a 100%)" },
-  sky:      { label: "하늘",   text: "#8fc2ef", soft: "rgba(143,194,239,0.20)", grad: "linear-gradient(135deg,#3c8fd6 0%,#2a6197 45%,#132c45 100%)" },
-  denim:    { label: "데님",   text: "#94a6ee", soft: "rgba(148,166,238,0.20)", grad: "linear-gradient(135deg,#4a63cf 0%,#334391 45%,#181e42 100%)" },
-  lavender: { label: "라벤더", text: "#b79cf0", soft: "rgba(183,156,240,0.20)", grad: "linear-gradient(135deg,#7b53d1 0%,#553793 45%,#271943 100%)" },
-  plum:     { label: "자두",   text: "#d494e4", soft: "rgba(212,148,228,0.20)", grad: "linear-gradient(135deg,#a04ac0 0%,#6f3186 45%,#33163d 100%)" },
-  mauve:    { label: "모브",   text: "#e59ab4", soft: "rgba(229,154,180,0.20)", grad: "linear-gradient(135deg,#c25184 0%,#8a375c 45%,#3f192a 100%)" },
-  clay:     { label: "흙",     text: "#d6ac93", soft: "rgba(214,172,147,0.20)", grad: "linear-gradient(135deg,#b0714c 0%,#7c4c33 45%,#392318 100%)" },
+  rose:     { label: "장미",   text: "#f0919d", soft: "rgba(240,145,157,0.20)", hi: "#e8546f", mid: "#a8365a", low: "#3a1424" },
+  coral:    { label: "산호",   text: "#f5a07c", soft: "rgba(245,160,124,0.20)", hi: "#f0714a", mid: "#b8482f", low: "#3b1710" },
+  amber:    { label: "호박",   text: "#efc072", soft: "rgba(239,192,114,0.20)", hi: "#f0ad3c", mid: "#a9741c", low: "#35240d" },
+  sand:     { label: "모래",   text: "#e3d494", soft: "rgba(227,212,148,0.20)", hi: "#dcc95f", mid: "#948333", low: "#2f2a14" },
+  olive:    { label: "올리브", text: "#c3d183", soft: "rgba(195,209,131,0.20)", hi: "#a8c44c", mid: "#68812c", low: "#212a10" },
+  sage:     { label: "세이지", text: "#9fd39a", soft: "rgba(159,211,154,0.20)", hi: "#63c266", mid: "#377b3f", low: "#132615" },
+  mint:     { label: "민트",   text: "#8fdcc0", soft: "rgba(143,220,192,0.20)", hi: "#3fd0a0", mid: "#24866b", low: "#0e2b22" },
+  teal:     { label: "청록",   text: "#84d2da", soft: "rgba(132,210,218,0.20)", hi: "#2fc2d2", mid: "#1d7b88", low: "#0b282c" },
+  sky:      { label: "하늘",   text: "#8fc2ef", soft: "rgba(143,194,239,0.20)", hi: "#3f9fee", mid: "#2a628f", low: "#0e2033" },
+  denim:    { label: "데님",   text: "#94a6ee", soft: "rgba(148,166,238,0.20)", hi: "#5470ea", mid: "#33438f", low: "#131834" },
+  lavender: { label: "라벤더", text: "#b79cf0", soft: "rgba(183,156,240,0.20)", hi: "#8b5ce8", mid: "#553794", low: "#1e1338" },
+  plum:     { label: "자두",   text: "#d494e4", soft: "rgba(212,148,228,0.20)", hi: "#b754d8", mid: "#71318a", low: "#281033" },
+  mauve:    { label: "모브",   text: "#e59ab4", soft: "rgba(229,154,180,0.20)", hi: "#d95f95", mid: "#8b3760", low: "#301224" },
+  clay:     { label: "흙",     text: "#d6ac93", soft: "rgba(214,172,147,0.20)", hi: "#c47c4f", mid: "#7d4d33", low: "#2a1a12" },
 };
+
+/**
+ * 폴더 배경 — **정지된 유체** (v1.2, 사용자 요청).
+ *
+ * 직선 그래디언트는 "위에서 아래로 어두워지는 띠"라 열몇 개가 나란히 서면 지루하다.
+ * 원형 그래디언트 셋을 서로 어긋나게 겹치면 **덩어리가 뭉치고 번진 것처럼** 보인다 —
+ * 물감 두 방울을 물에 떨어뜨린 모양에 가깝다.
+ *
+ * ⚠️ **움직이지 않는다.** 앱 배경의 유체는 캔버스 애니메이션인데, 폴더가 열몇 개면
+ * 그만큼 돌아야 해서 프레임이 떨어진다. 여기는 CSS 한 줄이라 공짜다.
+ *
+ * 겹치는 순서가 중요하다 — 먼저 쓴 것이 위에 온다. 밝은 덩어리를 앞에 둬야
+ * 어두운 바닥 위로 떠오른다
+ */
+export function fluidBackground(tone: Tone): string {
+  return [
+    `radial-gradient(58% 52% at 22% 24%, ${tone.hi} 0%, transparent 62%)`,
+    `radial-gradient(46% 44% at 82% 34%, ${tone.mid} 0%, transparent 66%)`,
+    `radial-gradient(70% 62% at 62% 88%, ${tone.mid} 0%, transparent 72%)`,
+    `radial-gradient(40% 38% at 8% 82%, ${tone.hi} 0%, transparent 70%)`,
+    tone.low,
+  ].join(", ");
+}
 
 export const TAG_COLOR_NAMES = Object.keys(TAG_COLORS) as TagColorName[];
 
@@ -56,7 +89,9 @@ export const NEUTRAL: Tone = {
   label: "없음",
   text: "rgba(255,255,255,0.70)",
   soft: "rgba(255,255,255,0.05)",
-  grad: "linear-gradient(140deg,#3a3a3a,#141414)",
+  hi: "#5a5a5a",
+  mid: "#3a3a3a",
+  low: "#161616",
 };
 
 export function toneOf(color: string | null | undefined): Tone {
