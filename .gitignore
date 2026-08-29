@@ -50,7 +50,6 @@ frontend/.next/
 frontend/out/
 frontend/build/
 frontend/coverage/
-frontend/.vercel
 frontend/next-env.d.ts
 *.tsbuildinfo
 npm-debug.log*

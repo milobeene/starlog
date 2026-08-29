@@ -26,7 +26,10 @@ export default function StatTile({
       <div>
         <div className="num mb-1 text-3xl font-light tracking-tighter sm:text-4xl lg:text-5xl">
           {value}
-          {unit && <span className="text-2xl text-white/60 sm:text-3xl lg:text-4xl">{unit}</span>}
+          {/* 단위는 본문 폰트다 — 모노에 두면 `h`가 숫자보다 커 보이고 한글 단위는 글리프가 없다 */}
+            {unit && (
+              <span className="font-sans text-2xl text-white/60 sm:text-3xl lg:text-4xl">{unit}</span>
+            )}
         </div>
         {hint && <div className="truncate text-sm text-white/40">{hint}</div>}
         {children}

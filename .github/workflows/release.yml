@@ -44,6 +44,13 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      # ⚠️ **테스트를 여기서 돌린다.** 예전에는 bootJar만 돌려서 375개가 개발자 로컬에서만
+      # 검증됐다 — 안 돌리고 넘어가면 아무도 못 잡는다.
+      # ubuntu 러너엔 도커가 있으므로 PostgresSchemaTest(실 PostgreSQL 검증)도 함께 돈다
+      - name: 테스트
+        working-directory: backend
+        run: ./gradlew test
+
       - name: 정적 빌드 + bootJar
         run: ./tools/build-desktop.sh
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { accountLabel } from "@/lib/labels";
 import DateField from "@/components/ui/DateField";
 import { useState } from "react";
 import Modal from "@/components/ui/Modal";
@@ -55,7 +56,7 @@ export default function PlaythroughDialog({
   const accountChoices = withCurrent(
     (options?.platformAccounts ?? []).map((account) => ({
       id: account.id,
-      name: `${account.name} (${account.platformName})`,
+      name: accountLabel(account.platformName, account.name),
     })),
     run?.platformAccount && {
       id: run.platformAccount.accountId,

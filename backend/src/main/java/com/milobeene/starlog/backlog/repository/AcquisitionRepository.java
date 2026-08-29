@@ -36,7 +36,7 @@ public interface AcquisitionRepository extends BaseRepository<Acquisition, Long>
      */
     @Query("select new com.milobeene.starlog.backlog.dto.FacetCount(" +
             "   a.platformAccount.id," +
-            "   concat(a.platformAccount.accountLabel, ' (', a.platformAccount.platform.name, ')')," +
+            "   concat('(', a.platformAccount.platform.name, ') ', a.platformAccount.accountLabel)," +
             "   count(distinct a.backlogEntry.id))" +
             " from Acquisition a" +
             " where a.backlogEntry.member.id = :memberId" +
@@ -44,7 +44,7 @@ public interface AcquisitionRepository extends BaseRepository<Acquisition, Long>
             "   and a.platformAccount is not null and a.platformAccount.deletedAt is null" +
             " group by a.platformAccount.id, a.platformAccount.accountLabel, a.platformAccount.platform.name" +
             /*
-             * 화면에 보이는 문자열 순서(`Beene (GOG)` → `Beene (Steam)`)와 맞추고
+             * 화면에 보이는 문자열 순서(`(GOG) Beene` → `(Steam) Beene`)와 맞추고
              * tie-break까지 준다. 라벨만으로 정렬하면 **concat을 붙인 바로 그 상황** —
              * 같은 라벨을 여러 플랫폼에 쓸 때 — 두 행의 정렬 키가 같아져 순서가 흔들린다
              */

@@ -138,3 +138,21 @@ export function formatLastPlaythrough(
    */
   return `${last.sequenceNo}회차\u2009·\u2009${period}`;
 }
+
+/**
+ * 플랫폼 계정 표기 — **플랫폼이 먼저다** (2026-08-29, 사용자 결정).
+ *
+ * `Beene (Steam)`이 아니라 `(Steam) Beene`이다. 라벨이 "Beene"으로 다 같은 경우가
+ * 흔해서, 뒤에 붙이면 **목록이 같은 이름 여러 줄로 보이고** 소속은 끝까지 읽어야 나온다.
+ * 앞에 두면 눈이 왼쪽 정렬된 플랫폼을 먼저 훑는다.
+ *
+ * ⚠️ 백엔드 파셋 쿼리(`AcquisitionRepository.countByPlatformAccount`)도 같은 순서로
+ * 문자열을 만든다. 한쪽만 바꾸면 필터 목록과 상세 화면의 표기가 어긋난다
+ */
+export function accountLabel(
+  owner: string | null | undefined,
+  label: string | null | undefined,
+): string {
+  if (!label) return "—";
+  return owner ? `(${owner}) ${label}` : label;
+}

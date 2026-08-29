@@ -48,19 +48,12 @@ export default function ConnectionList({
     >
       <div className="flex flex-col gap-2">
         {/*
-          ⚠️ **평문 저장은 명시적 결정이었다** (결정 13). 그 대가를 사용자가 알고 있어야
-          규칙이 선다 — 파일을 갈라둔 이유(§7)가 "이건 복사하지 마"를 규칙으로 만들려던 것인데,
-          어디 있는 파일인지 말해주지 않으면 그 규칙을 지킬 수가 없다
+          경고 상자를 한 줄 안내로 낮췄다 (사용자 결정 2026-08-29). 파일이 어디 있는지는
+          데이터 폴더 창의 [앱 폴더]가 알려주므로, 여기서 같은 말을 두 번 할 이유가 없다
         */}
-        <p className="mb-1 rounded-md border border-amber-400/20 bg-amber-400/[0.06] px-3 py-2.5 text-[11px] leading-relaxed text-amber-200/70">
-          여기 넣으신 주소와 키는 이 컴퓨터의 앱 폴더에 <b className="text-amber-100">암호화 없이</b>{" "}
-          저장됩니다. 앱 폴더를 통째로 남에게 주거나 공유 폴더에 두지 마세요.
-          <button
-            onClick={() => getBridge()!.openFolder("appData")}
-            className="ml-1.5 underline underline-offset-2 hover:text-amber-100"
-          >
-            위치 보기
-          </button>
+        <p className="mb-1 px-1 text-[11px] leading-relaxed text-white/35">
+          주소와 키는 앱 폴더의 <code className="text-white/50">connections.json</code>에 저장됩니다.
+          데이터 폴더 창의 [앱 폴더]에서 열어보실 수 있습니다.
         </p>
 
         {profiles === null && <div className="h-16 skeleton-sweep rounded-lg bg-white/[0.06]" />}

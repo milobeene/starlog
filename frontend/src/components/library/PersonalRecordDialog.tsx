@@ -1,5 +1,6 @@
 "use client";
 
+import Unit from "@/components/ui/Unit";
 import { useState } from "react";
 import Modal from "@/components/ui/Modal";
 import { Button, Field, FIELD_INPUT } from "@/components/ui/Field";
@@ -112,7 +113,8 @@ export default function PersonalRecordDialog({
           <p className="-mt-2 text-[11px] text-white/45">
             저장 시 <span className="num">{hours || 0}</span> +{" "}
             <span className="num">{addHours}</span> ={" "}
-            <span className="num text-white/80">{total}시간</span>으로 기록됩니다
+            <span className="num text-white/80">{total}</span>
+              <Unit>시간</Unit>으로 기록됩니다
           </p>
         )}
 

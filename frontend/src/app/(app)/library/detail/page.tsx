@@ -1,5 +1,6 @@
 "use client";
 
+import Unit from "@/components/ui/Unit";
 import Link from "next/link";
 import { Suspense, useCallback, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -266,7 +267,10 @@ function BacklogDetail() {
                     Playthrough Records
                   </span>
                   <span className="flex items-center gap-3">
-                    <span className="num text-xs text-white/30">{data.playthroughs.length} runs</span>
+                    <span className="num text-xs text-white/30">
+                        {data.playthroughs.length}
+                        <Unit space>runs</Unit>
+                      </span>
                     <Button onClick={() => setDialog({ kind: "playthrough", run: null })}>
                       회차 추가
                     </Button>
@@ -316,7 +320,10 @@ function BacklogDetail() {
                     Purchase History
                   </span>
                   <span className="flex items-center gap-3">
-                    <span className="num text-xs text-white/30">{data.acquisitions.length} records</span>
+                    <span className="num text-xs text-white/30">
+                        {data.acquisitions.length}
+                        <Unit space>records</Unit>
+                      </span>
                     <Button onClick={() => setDialog({ kind: "acquisition", item: null })}>
                       기록 추가
                     </Button>
@@ -594,8 +601,15 @@ function BacklogDetail() {
 }
 
 /** 시간 값 — null이면 대시 */
-function hours(value: number | null): string {
-  return value == null ? "—" : `${value}h`;
+/** 시간 표시. **단위 `h`는 본문 폰트로 뺀다** — 모노에서는 숫자보다 커 보인다 */
+function hours(value: number | null) {
+  if (value == null) return "—";
+  return (
+    <>
+      {value}
+      <Unit>h</Unit>
+    </>
+  );
 }
 
 /** 항목 삭제. 데스크탑은 우측 열 끝, 폰은 화면 맨 아래에 같은 버튼이 놓인다 */

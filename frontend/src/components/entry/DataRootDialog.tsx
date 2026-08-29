@@ -81,6 +81,8 @@ export default function DataRootDialog({
       onClose={onClose}
       footer={
         <>
+          {/* 앱 폴더가 먼저다 — connections.json을 보러 가는 길이 여기 말고 없다 */}
+          <Button onClick={() => getBridge()!.openFolder("appData")}>앱 폴더</Button>
           <Button onClick={() => getBridge()!.openFolder("root")}>지금 폴더 열기</Button>
           <Button onClick={onClose}>취소</Button>
           <Button variant="primary" onClick={save} disabled={busy || !check?.ok || !changed}>

@@ -170,15 +170,15 @@ function SettingsContent() {
               {(me.data?.platformAccounts ?? []).map((account) => (
                 <Row key={account.accountId}>
                   {/*
-                    플랫폼을 라벨 **바로 옆**에 붙인다. 예전엔 오른쪽 끝에 흐린 글씨로 뒀는데,
-                    라벨이 "Beene"으로 다 같아서 목록이 같은 이름 여러 줄로 보였다 —
-                    소속이 멀리 떨어져 있으면 짝을 눈으로 이어야 해서 안 읽힌다
+                    **플랫폼이 먼저다** (2026-08-29). 라벨이 "Beene"으로 다 같은 경우가 흔해서
+                    뒤에 붙이면 목록이 같은 이름 여러 줄로 보인다 — 왼쪽 정렬된 플랫폼을
+                    먼저 훑게 두면 그 문제가 사라진다
                   */}
                   <span className="flex flex-1 items-center gap-2">
-                    <span>{account.label}</span>
                     <span className="rounded border border-white/12 px-1.5 py-0.5 text-[10px] tracking-wide text-white/55">
                       {account.platform.name}
                     </span>
+                    <span>{account.label}</span>
                   </span>
                   <EditButton onClick={() => setDialog({ kind: "account", edit: account })} />
                   <DeleteButton

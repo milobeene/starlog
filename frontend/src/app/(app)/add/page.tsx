@@ -113,7 +113,7 @@ export default function AddPage() {
       <div className="page-x page-top mx-auto w-full max-w-3xl pb-16">
         <PageHeading
           eyebrow="Add"
-          title="게임 담기"
+          title="Expand Your Collection"
           subtitle="이름으로 검색하여 라이브러리에 추가하실 수 있습니다."
         />
 

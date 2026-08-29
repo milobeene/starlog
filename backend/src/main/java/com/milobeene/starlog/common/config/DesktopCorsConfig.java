@@ -19,7 +19,6 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  *
  * ## 왜 `desktop` 프로필에만 있나
  *
- * 웹 배포(prod)는 프론트가 Vercel, 백엔드가 Render라 오리진이 원래 다르고 그쪽 설정이 따로 있다.
  * 여기서 열어두면 **로컬 앱의 규칙이 서버에도 새어 나간다**.
  *
  * ⚠️ **와일드카드를 안 쓴다.** 로컬에서만 도는 서버라도 브라우저가 붙을 수 있고,
