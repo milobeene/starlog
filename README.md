@@ -7,7 +7,7 @@
 **내 인프라 위에서 돌아가는 게임 백로그 관리 앱**
 
 [![Release](https://img.shields.io/github/v/release/milobeene/starlog?style=flat-square)](https://github.com/milobeene/starlog/releases)
-[![License](https://img.shields.io/github/license/milobeene/starlog?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/github/license/milobeene/starlog?style=flat-square&v=2)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Windows-lightgrey?style=flat-square)
 
 <img src=".github/screenshots/entry.jpg" width="820" alt="">
