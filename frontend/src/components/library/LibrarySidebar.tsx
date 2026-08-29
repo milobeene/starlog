@@ -8,7 +8,7 @@ import { invalidateQueries, useApi } from "@/lib/useApi";
 import { api } from "@/lib/api";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { coverSrc } from "@/lib/cover";
-import type { BacklogCard, BacklogName, FacetsResponse, PageResponse } from "@/lib/types";
+import type { BacklogCard, BacklogName, FacetsResponse } from "@/lib/types";
 
 /**
  * 전체 게임 목록 — 이름순, 페이징 없음. 필터는 여기 없다 (툴바의 필터 박스가 전부 맡는다).
@@ -26,7 +26,11 @@ const UNTAGGED = "\u0000untagged";
 
 export default function LibrarySidebar() {
   const names = useApi<BacklogName[]>("/api/backlog/names");
-  const covers = useApi<PageResponse<BacklogCard>>("/api/backlog?size=100&sort=name");
+  /*
+   * ⚠️ FolderView와 같은 이유로 **전량**이다 (v1.1.2). 여기가 잘리면 `tagById`에
+   * 항목이 없어 `?? null`로 떨어지고, 멀쩡히 태그가 있는 게임이 "태그 없음"에 담긴다
+   */
+  const covers = useApi<BacklogCard[]>("/api/backlog/cards");
   /** 태그 순서를 받으려고 파셋도 받는다 — 사용자가 프로필에서 정한 순서다 (v1.1) */
   const facets = useApi<FacetsResponse>("/api/backlog/facets");
   // 상세 경로가 `/library/detail?entry=57`로 바뀌었다 (정적 내보내기 때문)
@@ -78,7 +82,7 @@ export default function LibrarySidebar() {
 
   const coverById = useMemo(() => {
     const map = new Map<number, string | null>();
-    covers.data?.items.forEach((card) =>
+    covers.data?.forEach((card) =>
       map.set(card.entryId, coverSrc(card.coverUrl, card.coverImageId, "t_thumb")),
     );
     return map;
@@ -86,7 +90,7 @@ export default function LibrarySidebar() {
 
   const tagById = useMemo(() => {
     const map = new Map<number, string | null>();
-    covers.data?.items.forEach((card) => map.set(card.entryId, card.tag));
+    covers.data?.forEach((card) => map.set(card.entryId, card.tag));
     return map;
   }, [covers.data]);
 

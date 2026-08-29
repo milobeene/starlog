@@ -74,6 +74,30 @@ public class BacklogEntryRepositoryImpl implements BacklogEntryRepositoryCustom 
         return PageableExecutionUtils.getPage(content, pageable, countQuery::fetchOne);
     }
 
+    /**
+     * 전부. 조건도 페이지도 없다 — 사이드바·폴더가 쓴다.
+     *
+     * `search`와 같은 fetch join을 그대로 태운다. 카드가 태그와 마지막 회차를 그리므로
+     * 빼면 항목 수만큼 쿼리가 더 나간다 (JPA 원칙 4번). 정렬은 이름순 하나면 된다 —
+     * 폴더는 받아서 태그별로 다시 나누므로 그 안의 순서만 정해지면 그만이다
+     */
+    @Override
+    public List<BacklogEntry> findAllCards(Long memberId) {
+        QBacklogEntry entry = QBacklogEntry.backlogEntry;
+        QPlaythrough last = new QPlaythrough("lastPlaythroughForAll");
+
+        return queryFactory
+                .selectFrom(entry)
+                .join(entry.game).fetchJoin()
+                .leftJoin(entry.tag).fetchJoin()
+                .leftJoin(entry.lastPlaythrough, last).fetchJoin()
+                .leftJoin(last.device).fetchJoin()
+                .leftJoin(last.emulator).fetchJoin()
+                .where(entry.member.id.eq(memberId), entry.deletedAt.isNull())
+                .orderBy(BacklogSort.NAME.toOrderSpecifiers(entry))
+                .fetch();
+    }
+
     /** null은 QueryDSL이 알아서 무시한다 — 조건 없음이 곧 필터 없음이다 */
     private BooleanExpression[] predicates(QBacklogEntry entry, Long memberId,
                                            BacklogSearchCondition condition) {

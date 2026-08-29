@@ -180,6 +180,25 @@ public class BacklogQueryService {
         return urls;
     }
 
+    /**
+     * 사이드바·폴더용 **전량** 조회 (v1.1.2).
+     *
+     * `findCards`와 달리 페이지가 없다. 상한을 올리는 대신 페이지를 없앤 이유 —
+     * 상한은 넘는 순간 **조용히** 잘리고, 화면에는 "그 항목만 태그가 없는" 모습으로
+     * 나타나 원인이 안 보인다. 100에서 실제로 그렇게 났다
+     */
+    public List<BacklogCardResponse> findAllCards(Long memberId) {
+        List<BacklogEntry> entries = backlogEntryRepository.findAllCards(memberId);
+
+        // 커버는 여기서도 한 방에 (K-5). 항목마다 부르면 그게 N+1이다
+        Map<Long, String> coverUrls = coverUrlsOf(entries);
+
+        // 트랜잭션 안에서 끝낸다 — 장르가 LAZY라 밖으로 나가면 못 읽는다
+        return entries.stream()
+                .map(entry -> BacklogCardResponse.from(entry, coverUrls.get(entry.getId())))
+                .toList();
+    }
+
     /** 서버는 클라이언트를 믿지 않는다. size=100000이 오면 그대로 실행하지 않는다 */
     private int normalizeSize(int size) {
         return Math.clamp(size, 1, MAX_SIZE);

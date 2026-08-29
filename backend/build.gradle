@@ -5,7 +5,7 @@ plugins {
 }
 
 group = 'com.milobeene'
-version = '1.1.1'
+version = '1.1.2'
 
 /*
  * jar 이름을 버전에서 떼어낸다 (O-3). Render의 시작 명령이 파일 이름을 그대로 적는데,

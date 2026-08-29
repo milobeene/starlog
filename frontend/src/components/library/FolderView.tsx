@@ -10,7 +10,7 @@ import { api } from "@/lib/api";
 import { invalidateQueries, useApi } from "@/lib/useApi";
 import { rememberLibrary, takeLibrary } from "@/lib/libraryState";
 import { GAME_GRID } from "@/lib/useGridColumns";
-import type { BacklogCard, FacetsResponse, PageResponse } from "@/lib/types";
+import type { BacklogCard, FacetsResponse } from "@/lib/types";
 
 type Folder = {
   key: string;
@@ -61,7 +61,12 @@ export default function FolderView({
    * **응답 캐시를 못 탔다** — 상세에 갔다 오면 폴더 화면만 스켈레톤이 다시 떴다.
    * 갱신도 `invalidateQueries` 하나로 통일된다(직접 부르면 자기만 다시 받는다)
    */
-  const all = useApi<PageResponse<BacklogCard>>("/api/backlog?size=100&sort=name");
+  /*
+   * ⚠️ **페이지가 아니라 전량이다** (v1.1.2). 예전엔 `?size=100`이었는데 서버 상한도
+   * 정확히 100이라, 항목이 그걸 넘는 순간 **뒤쪽이 조용히 잘렸다** — 잘린 항목은
+   * 어느 폴더에도 안 들어가서 "그 게임만 사라진" 것처럼 보였다 (105개에서 다섯)
+   */
+  const all = useApi<BacklogCard[]>("/api/backlog/cards");
 
   const folders = useMemo<Folder[] | null>(() => {
     if (!all.data) return null;
@@ -70,7 +75,7 @@ export default function FolderView({
      * (`tag.sortOrder`)로 주므로, 이름순으로 덮으면 프로필에서 끌어 옮긴 게 무시된다
      */
     const next: Folder[] = facets.tags.map((tag) => {
-      const cards = all.data!.items.filter((card) => card.tag === tag.name);
+      const cards = all.data!.filter((card) => card.tag === tag.name);
       return { key: `tag-${tag.id}`, label: tag.name, count: cards.length, cards, color: tag.color };
     });
 
@@ -78,7 +83,7 @@ export default function FolderView({
      * '태그 없음'은 **비어 있어도 항상 마지막에** 둔다 — 여기가 드롭 대상이라
      * 항목이 0이라고 사라지면 마지막 하나를 뗀 순간 뗄 곳이 없어진다
      */
-    const untagged = all.data.items.filter((card) => card.tag === null);
+    const untagged = all.data.filter((card) => card.tag === null);
     next.push({
       key: "untagged", label: "태그 없음", count: untagged.length, cards: untagged, color: null,
     });

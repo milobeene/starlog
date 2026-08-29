@@ -361,6 +361,29 @@ class BacklogSearchTest extends ControllerTestSupport {
         em.flush();
     }
 
+    @Test
+    public void 전량_카드는_페이지_상한을_넘겨도_다_준다() throws Exception {
+        /*
+         * given — 목록(`GET /api/backlog`)의 상한은 100이다. 사이드바와 폴더는 그걸
+         * `size=100`으로 대신 쓰다가 **101번째부터 조용히 잃었다** (실데이터 105개에서
+         * 다섯이 사라졌고, 화면에는 "그 항목만 태그가 없는" 모습으로 나타났다)
+         */
+        Member member = saveMember();
+        for (int i = 0; i < 105; i++) {
+            addEntry(member, saveGame("Game " + i));
+        }
+
+        //when //then — 상한을 넘겨 달라고 해도 페이지 쪽은 100에서 잘린다
+        mockMvc.perform(get("/api/backlog").param("size", "1000")
+                        .header("X-Member-Id", member.getId()))
+                .andExpect(jsonPath("$.items.length()").value(100));
+
+        // 전량 엔드포인트는 105개를 그대로 준다
+        mockMvc.perform(get("/api/backlog/cards")
+                        .header("X-Member-Id", member.getId()))
+                .andExpect(jsonPath("$.length()").value(105));
+    }
+
     // ── FR-QRY-04 나머지 정렬 축 + BR-QRY-01 (감사에서 rating·releasedOn·동점 0건으로 드러남)
 
     @Test

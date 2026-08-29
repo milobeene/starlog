@@ -125,6 +125,19 @@ public class BacklogController {
         return backlogQueryService.findCards(memberId, condition, page, size, BacklogSort.from(sort));
     }
 
+    /**
+     * **전량 카드** — 사이드바와 폴더 뷰용 (v1.1.2).
+     *
+     * 목록(`GET /api/backlog`)과 갈라 둔 이유는 페이지가 없다는 것 자체다.
+     * 예전엔 두 화면이 `?size=100`으로 대신했는데, 서버 상한도 정확히 100이라
+     * 항목이 그걸 넘는 순간 **뒤쪽이 조용히 잘렸다.** 잘린 항목은 화면에서
+     * "태그도 커버도 없는 것"으로 보여서 원인이 안 드러난다
+     */
+    @GetMapping("/cards")
+    public List<BacklogCardResponse> cards(@LoginMember Long memberId) {
+        return backlogQueryService.findAllCards(memberId);
+    }
+
     /** 필터 사이드바 (화면 1 부속). 목록과 분리해서 페이지를 넘겨도 다시 안 센다 */
     @GetMapping("/facets")
     public FacetsResponse facets(@LoginMember Long memberId) {
