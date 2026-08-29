@@ -1,5 +1,6 @@
 "use client";
 
+import { takeAppPath } from "@/lib/lastAppPath";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useSyncExternalStore } from "react";
@@ -118,13 +119,24 @@ export default function EntryPage() {
     router.push("/dashboard");
   };
 
+  /**
+   * 살아 있는 백엔드로 되돌아갈 때는 **나가기 전 화면으로** 간다 (2026-08-29).
+   *
+   * 세션 캐시는 안 버린다 — 같은 세이브파일로 돌아가는 것이라 프로필이 그대로다.
+   * 오히려 버리면 헤더가 한 번 비었다 다시 채워진다
+   */
+  const resumeInto = (port: number | null | undefined) => {
+    setBackendPort(port);
+    router.push(takeAppPath());
+  };
+
   /** 살아 있으면 즉시, 아니면 평소대로 기동. 어느 쪽이든 고르는 단계는 없다 */
   const resume = async () => {
     if (!session) return;
     if (session.alive) {
       const alive = await getBridge()!.session.resume();
       if (alive) {
-        enter(alive.port);
+        resumeInto(alive.port);
         return;
       }
     }

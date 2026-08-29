@@ -41,6 +41,8 @@ export default function DateField({
 
   /** 보고 있는 달. 값이 있으면 그 달에서 시작한다 */
   const [cursor, setCursor] = useState(() => monthOf(value));
+  /** 연도 격자를 띄웠나. 달력을 닫을 때 함께 접는다 — 다시 열면 달력부터가 자연스럽다 */
+  const [yearPicker, setYearPicker] = useState(false);
 
   /** 그려졌으면 실제 높이로, 아니면 추정치로. 달의 주 수(5·6)에 따라 34px이 갈린다 */
   const panelSize = () => {
@@ -108,6 +110,15 @@ export default function DateField({
   const today = todayString();
   const days = monthGrid(cursor);
 
+  /*
+   * 연도 고르기 (2026-08-29).
+   *
+   * **한 달씩 넘기는 버튼만으로는 못 간다.** 2015년에 산 게임을 적으려면 130번을 눌러야 한다.
+   * 헤더를 눌러 연도 격자를 띄우고, 고르면 **그 해 1월**로 간다 —
+   * 달까지 기억해두면 "2015년 8월"에서 연도만 바꿨을 때 8월이 튀어나와 헷갈린다
+   */
+  const yearBase = cursor.year - (((cursor.year % 12) + 12) % 12);
+
   return (
     <div ref={rootRef} className="relative">
       <button
@@ -115,7 +126,10 @@ export default function DateField({
         onClick={() => {
           // 여는 순간 값의 달로 되돌린다. 3월을 보다 닫았는데 다시 열어도 3월이면 헷갈린다.
           // effect가 아니라 여기서 하는 이유 — 상태 초기화는 "그 일이 일어난 곳"이 제자리다
-          if (!open) setCursor(monthOf(value));
+          if (!open) {
+            setCursor(monthOf(value));
+            setYearPicker(false);
+          }
           setOpen(!open);
         }}
         className={`flex w-full items-center justify-between rounded-md border border-white/10 bg-white/5 px-3 py-2 text-left text-sm transition-colors hover:border-white/25 focus:border-white/30 focus:outline-none ${className}`}
@@ -181,9 +195,13 @@ export default function DateField({
               >
                 ‹
               </button>
-              <span className="num text-sm font-medium">
+              <button
+                type="button"
+                onClick={() => setYearPicker((on) => !on)}
+                className="num rounded px-2 py-0.5 text-sm font-medium transition-colors hover:bg-white/10"
+              >
                 {cursor.year}. {String(cursor.month).padStart(2, "0")}
-              </span>
+              </button>
               <button
                 type="button"
                 aria-label="다음 달"
@@ -194,6 +212,29 @@ export default function DateField({
               </button>
             </div>
 
+            {yearPicker ? (
+              <div className="grid grid-cols-4 gap-1 py-1">
+                {Array.from({ length: 12 }, (_, i) => yearBase + i).map((year) => (
+                  <button
+                    key={year}
+                    type="button"
+                    onClick={() => {
+                      // 그 해 1월로. 달을 유지하면 연도만 바꿨을 때 엉뚱한 달이 나온다
+                      setCursor({ year, month: 1 });
+                      setYearPicker(false);
+                    }}
+                    className={`num h-9 rounded text-xs transition-colors ${
+                      year === cursor.year
+                        ? "bg-white/15 text-white"
+                        : "text-white/60 hover:bg-white/10 hover:text-white"
+                    }`}
+                  >
+                    {year}
+                  </button>
+                ))}
+              </div>
+            ) : (
+            <>
             <div className="mb-1 grid grid-cols-7 gap-0.5">
               {WEEKDAYS.map((day, index) => (
                 <span
@@ -244,6 +285,8 @@ export default function DateField({
             >
               오늘
             </button>
+            </>
+            )}
           </div>,
           document.body,
         )}

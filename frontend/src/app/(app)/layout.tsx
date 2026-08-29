@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import AppHeader from "@/components/layout/AppHeader";
 import TaskToasts from "@/components/layout/TaskToasts";
 import { getBridge } from "@/lib/desktop";
+import { rememberAppPath } from "@/lib/lastAppPath";
 import { useSession } from "@/lib/session";
 
 /**
@@ -30,7 +31,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
    * 검은 화면이 번쩍이고 진행 중이던 알림이 사라졌다. 이제는 라우팅만 하므로
    * `TaskToasts`가 살아남아 "어디까지 됐는지"를 입구에서도 계속 보여준다
    */
-  useEffect(() => getBridge()?.onGoEntry(() => router.push("/")), [router]);
+  useEffect(
+    () =>
+      getBridge()?.onGoEntry(() => {
+        /*
+         * ⚠️ **나가기 전에 어디였는지 담아둔다** (2026-08-29).
+         * 입구의 [최근 접속]이 이 경로로 돌아온다 — 백엔드는 안 죽었으므로
+         * 대시보드로 되돌리면 보던 것을 잃는다
+         */
+        rememberAppPath(window.location.pathname + window.location.search);
+        router.push("/");
+      }),
+    [router],
+  );
 
   if (session.status !== "member") return null;
 

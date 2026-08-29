@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { playBurst, setSpinSpeed, startSpin, stopSpin } from "@/lib/spinSound";
 import ParticleBurst from "@/components/ui/ParticleBurst";
 
 /**
@@ -41,7 +42,13 @@ export default function HeaderSymbol() {
     pointerId: -1,
   });
 
-  useEffect(() => () => cancelAnimationFrame(st.current.raf), []);
+  useEffect(
+    () => () => {
+      cancelAnimationFrame(st.current.raf);
+      stopSpin(); // 화면을 옮기는 순간 소리가 남으면 영영 울린다
+    },
+    [],
+  );
 
 
   // 위 안전망이 항상 최신 release를 부르게 한다 (effect는 마운트 때 한 번만 붙는다)
@@ -56,6 +63,15 @@ export default function HeaderSymbol() {
     const dt = Math.min((now - s.last) / 1000, 0.05);
     s.last = now;
 
+    /*
+     * ⚠️ **소리는 각도 변화에서 실측한다** (2026-08-29).
+     *
+     * `s.speed`를 그대로 쓰면 안 된다 — settling에서는 각도를 보간할 뿐이라
+     * `s.speed`가 손 뗀 순간의 값에 멈춰 있다. 되돌아가며 느려지는 동안에도
+     * 소리는 계속 최고음일 것이다. 실제로 움직인 각도로 재면 두 구간이 한 식으로 풀린다
+     */
+    const before = s.angle;
+
     if (s.mode === "charging") {
       /*
        * smoothstep — 시작도 끝도 완만하다. 선형으로 올리면 누르는 순간 툭 튀고,
@@ -65,6 +81,7 @@ export default function HeaderSymbol() {
       s.speed = MAX_SPEED * p * p * (3 - 2 * p);
       s.angle += s.speed * dt;
       draw();
+      if (dt > 0) setSpinSpeed(Math.abs(s.angle - before) / dt, MAX_SPEED);
       s.raf = requestAnimationFrame(frame);
       return;
     }
@@ -73,6 +90,7 @@ export default function HeaderSymbol() {
       const p = Math.min(1, (now - s.start) / s.dur);
       s.angle = s.from + (s.to - s.from) * (1 - (1 - p) ** 3);
       draw();
+      if (dt > 0) setSpinSpeed(Math.abs(s.angle - before) / dt, MAX_SPEED);
       if (p < 1) {
         s.raf = requestAnimationFrame(frame);
         return;
@@ -81,6 +99,7 @@ export default function HeaderSymbol() {
       s.speed = 0;
       s.angle = 0; // to는 항상 360의 배수라 화면은 그대로다. 각도가 무한히 커지는 것만 막는다
       draw();
+      stopSpin();
     }
   };
 
@@ -101,6 +120,9 @@ export default function HeaderSymbol() {
     } catch {
       /* 잡기에 실패하면 그냥 이 요소 위에서 떼야 멈춘다 */
     }
+
+    // 자동재생 정책 때문에 **제스처 안에서** AudioContext를 만들어야 한다
+    startSpin();
 
     const s = st.current;
     cancelAnimationFrame(s.raf);
@@ -131,6 +153,7 @@ export default function HeaderSymbol() {
           y: rect.top + rect.height / 2,
         });
       }
+      playBurst();
     }
 
     /*
