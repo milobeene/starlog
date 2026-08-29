@@ -36,6 +36,15 @@ public class Tag extends BaseEntity {
     private int sortOrder;
 
     /**
+     * 팔레트 이름 (v1.2). `rose`·`amber` 같은 것이고 **색값이 아니다.**
+     *
+     * 실제 색은 화면이 들고 있다 — 나중에 톤을 다듬어도 DB를 안 건드린다.
+     * null은 "색 없음"이고 중립 회색으로 그린다
+     */
+    @Column(length = 16)
+    private String color;
+
+    /**
      * JPA 전용 기본 생성자
      */
     protected Tag() {}
@@ -48,6 +57,11 @@ public class Tag extends BaseEntity {
     /** 이름 변경 (FR-TAG-02). 기존 이름과의 충돌 검사는 서비스가 한다 — 형제를 봐야 하므로 */
     public void rename(String name) {
         this.name = requireName(name);
+    }
+
+    /** 색만 바꾼다. null이면 색 없음으로 되돌린다 */
+    public void recolor(String color) {
+        this.color = color;
     }
 
     /** 순서만 바꾼다. 이름은 건드리지 않는다 */

@@ -1,5 +1,6 @@
 "use client";
 
+import { TAG_COLOR_NAMES, TAG_COLORS, toneOf } from "@/lib/tagColors";
 import DateField from "@/components/ui/DateField";
 import { Suspense, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
@@ -20,6 +21,7 @@ import PaletteEditor from "@/components/settings/PaletteEditor";
 import DeletedEntriesSection from "@/components/settings/DeletedEntriesSection";
 import { paletteOf, toPayload } from "@/lib/palette";
 import { BILLING_CYCLE_LABEL } from "@/lib/labels";
+import type { TagFacet } from "@/lib/types";
 import type {
   CompanyDictionary,
   FacetCount,
@@ -563,31 +565,15 @@ function Dictionary({
   };
 
   /**
-   * 저장은 **한 번에 하나만, 마지막 것으로** (v1.2).
+   * 저장하는 동안에는 **드래그를 막는다** (사용자 결정 2026-08-29).
    *
-   * ⚠️ 빠르게 여러 번 옮기면 PUT이 겹쳐서 **먼저 보낸 옛 순서가 나중에 도착**했다.
-   * 그래서 마지막 수정이 사라진 것처럼 보였다.
+   * ⚠️ 빠르게 여러 번 옮기면 PUT이 겹쳐 **먼저 보낸 옛 순서가 나중에 도착**했다 —
+   * 마지막 수정이 사라진 것처럼 보였다.
    *
-   * 막는 대신 이렇게 한다 — 보내는 중이면 최신 순서를 `pending`에 적어두고,
-   * 끝나면 그것만 한 번 더 보낸다. **드래그를 막지 않으면서도 마지막이 반드시 이긴다.**
-   * 중간 순서는 보낼 이유가 없다 (덮어쓰기라 마지막 하나면 충분하다)
+   * 큐로 마지막 것만 보내는 방법도 있지만, 그러면 **화면에 보이는 순서와 서버의 순서가
+   * 잠깐 어긋난 채로 또 끌 수 있다.** 짧게 막는 쪽이 "지금 무엇이 참인가"가 분명하다
    */
-  const sending = useRef(false);
-  const pending = useRef<number[] | null>(null);
-
-  const flush = async () => {
-    if (sending.current) return;
-    sending.current = true;
-    try {
-      while (pending.current) {
-        const ids = pending.current;
-        pending.current = null;
-        await api.put(`${basePath}/order`, { tagIds: ids });
-      }
-    } finally {
-      sending.current = false;
-    }
-  };
+  const [saving, setSaving] = useState(false);
 
   const finish = async () => {
     const moved = dragRef.current;
@@ -603,8 +589,12 @@ function Dictionary({
       setOrder(null);
       return;
     }
-    pending.current = order.map((i) => i.id);
-    void flush();
+    setSaving(true);
+    try {
+      await api.put(`${basePath}/order`, { tagIds: order.map((i) => i.id) });
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -615,7 +605,9 @@ function Dictionary({
         </span>
         <span className="num text-[10px] text-white/25">{items.length}</span>
         {reorderable && items.length > 1 && (
-          <span className="text-[10px] text-white/20">끌어서 순서 변경</span>
+          <span className="text-[10px] text-white/20">
+            {saving ? "저장 중…" : "끌어서 순서 변경"}
+          </span>
         )}
 
       </div>
@@ -627,7 +619,7 @@ function Dictionary({
           {shown.map((item) => (
             <span
               key={item.id}
-              draggable={reorderable}
+              draggable={reorderable && !saving}
               onDragStart={() => {
                 dragRef.current = item.id;
                 setDragId(item.id);
@@ -643,8 +635,20 @@ function Dictionary({
               }}
               /* 끌기가 어떻게 끝나든 흐린 상태를 반드시 푼다 — 취소해도 온다 */
               onDragEnd={() => void finish()}
-              className={`inline-flex items-center gap-2 rounded-full border py-1 pr-1.5 pl-2.5 text-xs text-white/70 ${
-                reorderable ? "cursor-grab active:cursor-grabbing" : ""
+              /* 색이 있으면 칩 전체가 그 톤을 입는다 — 사이드바·폴더와 같은 색이다 */
+              style={
+                "color" in item && (item as TagFacet).color
+                  ? {
+                      color: toneOf((item as TagFacet).color).text,
+                      background: toneOf((item as TagFacet).color).soft,
+                      borderColor: toneOf((item as TagFacet).color).soft,
+                    }
+                  : undefined
+              }
+              className={`inline-flex items-center gap-2 rounded-full border py-1 pr-1.5 pl-2.5 text-xs ${
+                "color" in item && (item as TagFacet).color ? "" : "text-white/70"
+              } ${
+                !reorderable ? "" : saving ? "cursor-wait opacity-60" : "cursor-grab active:cursor-grabbing"
               } ${
                 dragId === item.id
                   ? "border-white/40 bg-white/15 opacity-60"
@@ -759,18 +763,60 @@ function RenameDialog({
   onSaved: () => void;
 }) {
   const [name, setName] = useState(item.name);
+  /** 색은 태그에만 있다. 장르·기기에는 자리 자체를 안 만든다 */
+  const colorable = basePath.endsWith("/tags");
+  const [color, setColor] = useState<string | null>(
+    colorable ? ((item as TagFacet).color ?? null) : null,
+  );
+
   return (
     <FormDialog
-      title="이름 바꾸기"
+      title={colorable ? "태그 수정" : "이름 바꾸기"}
       onClose={onClose}
       onSubmit={async () => {
         await api.put(`${basePath}/${item.id}`, { name });
+        /*
+         * 색은 엔드포인트가 따로다 — 이름은 담긴 항목까지 파급이 있고 색은 표시뿐이라
+         * 성질이 다르다. 안 바뀌었으면 부르지 않는다
+         */
+        if (colorable && color !== ((item as TagFacet).color ?? null)) {
+          await api.put(`${basePath}/${item.id}/color`, { color });
+        }
         onSaved();
       }}
     >
       <p className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-[11px] leading-relaxed text-white/45">
         적용 중인 <b className="text-white/75">{item.count}개 항목</b>에 일괄 반영됩니다.
       </p>
+      {colorable && (
+        <Field label="Color" hint="라이브러리의 사이드바와 폴더에 이 색이 쓰입니다">
+          <div className="flex flex-wrap gap-1.5">
+            {/* 색 없음 — 지금까지의 중립 회색 */}
+            <button
+              type="button"
+              onClick={() => setColor(null)}
+              aria-label="색 없음"
+              className={`h-7 w-7 rounded-full border-2 bg-white/10 transition-transform ${
+                color === null ? "scale-110 border-white" : "border-transparent hover:scale-105"
+              }`}
+            />
+            {TAG_COLOR_NAMES.map((name_) => (
+              <button
+                key={name_}
+                type="button"
+                onClick={() => setColor(name_)}
+                aria-label={TAG_COLORS[name_].label}
+                title={TAG_COLORS[name_].label}
+                style={{ background: TAG_COLORS[name_].text }}
+                className={`h-7 w-7 rounded-full border-2 transition-transform ${
+                  color === name_ ? "scale-110 border-white" : "border-transparent hover:scale-105"
+                }`}
+              />
+            ))}
+          </div>
+        </Field>
+      )}
+
       <Field label="Name">
         <input
           value={name}

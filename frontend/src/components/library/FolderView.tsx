@@ -1,5 +1,6 @@
 "use client";
 
+import { toneOf } from "@/lib/tagColors";
 import { useEffect, useMemo, useState } from "react";
 import GameCard from "@/components/ui/GameCard";
 import EmptyState from "@/components/ui/EmptyState";
@@ -11,7 +12,14 @@ import { rememberLibrary, takeLibrary } from "@/lib/libraryState";
 import { GAME_GRID } from "@/lib/useGridColumns";
 import type { BacklogCard, FacetsResponse, PageResponse } from "@/lib/types";
 
-type Folder = { key: string; label: string; count: number; cards: BacklogCard[] };
+type Folder = {
+  key: string;
+  label: string;
+  count: number;
+  cards: BacklogCard[];
+  /** 태그 색(팔레트 이름). '태그 없음'과 안 고른 태그는 null */
+  color: string | null;
+};
 
 /**
  * 태그로 묶어 보는 뷰. **폴더 박스를 고르면 그 안만 본다** (아코디언 아님).
@@ -63,7 +71,7 @@ export default function FolderView({
      */
     const next: Folder[] = facets.tags.map((tag) => {
       const cards = all.data!.items.filter((card) => card.tag === tag.name);
-      return { key: `tag-${tag.id}`, label: tag.name, count: cards.length, cards };
+      return { key: `tag-${tag.id}`, label: tag.name, count: cards.length, cards, color: tag.color };
     });
 
     /*
@@ -71,7 +79,9 @@ export default function FolderView({
      * 항목이 0이라고 사라지면 마지막 하나를 뗀 순간 뗄 곳이 없어진다
      */
     const untagged = all.data.items.filter((card) => card.tag === null);
-    next.push({ key: "untagged", label: "태그 없음", count: untagged.length, cards: untagged });
+    next.push({
+      key: "untagged", label: "태그 없음", count: untagged.length, cards: untagged, color: null,
+    });
     return next;
   }, [all.data, facets]);
 
@@ -144,6 +154,14 @@ export default function FolderView({
           <span className="text-white/20">/</span>
           <h3 className="text-lg font-medium text-white/90">{open.label}</h3>
           <span className="num text-sm text-white/40">({open.count})</span>
+          {/* 이름·개수 다음에 작은 네모로 색을 한 번 더 (v1.2) — 폴더 목록과 이어 준다 */}
+          {open.color && (
+            <span
+              aria-hidden
+              className="h-3 w-3 rounded-[3px]"
+              style={{ background: toneOf(open.color).text }}
+            />
+          )}
         </div>
 
         {visible.length === 0 ? (
@@ -195,9 +213,14 @@ function FolderBox({
 }) {
   const [over, setOver] = useState(false);
 
-  const backdrop = folder.cards
-    .map((card) => coverSrc(card.coverUrl, card.coverImageId, "t_cover_big"))
-    .find((src): src is string => src !== null);
+  /*
+   * ⚠️ **커버 블러를 색 그래디언트로 바꿨다** (v1.2).
+   *
+   * 예전엔 첫 게임의 커버를 흐리게 깔았다. 그러면 **폴더의 얼굴이 그 안의 첫 게임**이라
+   * 게임 하나만 옮겨도 폴더가 딴 것처럼 보였고, 색이 제각각이라 목록이 어수선했다.
+   * 태그 색을 쓰면 폴더가 자기 정체성을 갖는다 — 색을 안 고른 폴더만 중립이다
+   */
+  const tone = toneOf(folder.color);
 
   return (
     <button
@@ -218,23 +241,16 @@ function FolderBox({
         over ? "border-white/60 ring-2 ring-white/30" : "border-white/10 hover:border-white/25"
       }`}
     >
-      {backdrop ? (
-        <div
-          aria-hidden
-          className="absolute inset-0 scale-125 bg-cover bg-center opacity-80 blur-xl transition-transform duration-700 ease-out group-hover:scale-[1.45]"
-          style={{ backgroundImage: `url(${backdrop})` }}
-        />
-      ) : (
-        <div
-          aria-hidden
-          className="absolute inset-0 bg-gradient-to-br from-neutral-600/50 via-neutral-800/60 to-neutral-900"
-        />
-      )}
-
-      {/* 라벨이 가운데 오므로 전체를 고르게 덮는다 */}
       <div
         aria-hidden
-        className="absolute inset-0 bg-black/45 transition-colors duration-300 group-hover:bg-black/30"
+        className="absolute inset-0 transition-transform duration-700 ease-out group-hover:scale-110"
+        style={{ background: tone.grad }}
+      />
+
+      {/* 라벨이 가운데 오므로 전체를 고르게 덮는다. 그래디언트가 이미 어두워 얇게 */}
+      <div
+        aria-hidden
+        className="absolute inset-0 bg-black/20 transition-colors duration-300 group-hover:bg-black/5"
       />
 
       {/* 이름이 주인공 — 박스를 가득 채우고 길면 줄바꿈해서 줄인다 */}

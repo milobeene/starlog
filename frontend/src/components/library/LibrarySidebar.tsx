@@ -1,5 +1,6 @@
 "use client";
 
+import { toneOf } from "@/lib/tagColors";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -220,6 +221,10 @@ export default function LibrarySidebar() {
             {groups.map((group) => {
               const isOpen = !collapsed.has(group.key);
               const label = group.key === UNTAGGED ? "태그 없음" : group.key;
+              /* 파셋이 색을 준다. '태그 없음'과 아직 안 온 태그는 중립 */
+              const tone = toneOf(
+                (facets.data?.tags ?? []).find((t) => t.name === group.key)?.color,
+              );
               return (
                 <section
                   key={group.key}
@@ -265,10 +270,16 @@ export default function LibrarySidebar() {
                       태그 줄에 흐린 배경을 깐다 (v1.2). 게임 목록과 같은 무게로 흐르니까
                       **어디가 그룹 머리인지 눈에 안 걸렸다** — 배경 한 겹이 결을 만든다
                     */
+                    /* 색은 인라인이다 — Tailwind는 런타임 값으로 클래스를 못 만든다 */
+                    style={
+                      dropTarget === group.key
+                        ? undefined
+                        : { background: tone.soft, borderColor: tone.soft, color: tone.text }
+                    }
                     className={`flex w-full items-center gap-2 rounded-md border px-2 py-2 text-xs font-semibold tracking-widest uppercase transition-colors ${
                       dropTarget === group.key
                         ? "border-white/30 bg-white/15 text-white ring-1 ring-white/30"
-                        : "border-white/[0.06] bg-white/[0.05] text-white/70 hover:bg-white/[0.09] hover:text-white/90"
+                        : "border-transparent hover:brightness-125"
                     }`}
                   >
                     <span

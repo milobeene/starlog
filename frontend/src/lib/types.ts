@@ -345,11 +345,16 @@ export interface GameSearchResult {
 /* ── 집계 응답 (GET /api/backlog/facets) ──────────────────── */
 
 export interface FacetsResponse {
-  tags: FacetCount[];
+  tags: TagFacet[];
   genres: FacetCount[];
   statuses: StatusCount[];
   devices: FacetCount[];
   platformAccounts: FacetCount[];
+}
+
+/** 태그 파셋 — 색이 하나 더 붙는다 (v1.2). 팔레트 이름이고 색값이 아니다 */
+export interface TagFacet extends FacetCount {
+  color: string | null;
 }
 
 /* ── 통계 (GET /api/stats/**) ─────────────────────────────── */

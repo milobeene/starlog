@@ -6,6 +6,7 @@ import com.milobeene.starlog.common.repository.BaseRepository;
 import com.milobeene.starlog.backlog.dto.BacklogNameResponse;
 import com.milobeene.starlog.backlog.dto.DeletedEntryResponse;
 import com.milobeene.starlog.backlog.dto.FacetCount;
+import com.milobeene.starlog.backlog.dto.TagFacet;
 import com.milobeene.starlog.backlog.dto.StatusCount;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -172,17 +173,17 @@ public interface BacklogEntryRepository
      * 태그별 항목 수 (H-4, 사이드바 그룹). 태그가 항목당 하나라 조인 테이블이 없어졌고,
      * 그래서 count(distinct)도 필요 없다 — 행 하나가 항목 하나다
      */
-    @Query("select new com.milobeene.starlog.backlog.dto.FacetCount(" +
-            "   b.tag.id, b.tag.name, count(b))" +
+    @Query("select new com.milobeene.starlog.backlog.dto.TagFacet(" +
+            "   b.tag.id, b.tag.name, count(b), b.tag.color)" +
             " from BacklogEntry b" +
             " where b.member.id = :memberId and b.deletedAt is null and b.tag is not null" +
-            " group by b.tag.id, b.tag.name, b.tag.sortOrder" +
+            " group by b.tag.id, b.tag.name, b.tag.sortOrder, b.tag.color" +
             /*
              * ⚠️ **이름순이 아니라 사용자가 정한 순서다** (v1.1). 사이드바·폴더 탭이
              * 이 순서를 그대로 쓴다 — 화면마다 다르면 같은 목록으로 안 보인다
              */
             " order by b.tag.sortOrder asc, b.tag.name asc")
-    List<FacetCount> countByTag(@Param("memberId") Long memberId);
+    List<TagFacet> countByTag(@Param("memberId") Long memberId);
 
     /**
      * 태그 삭제 전파 (FR-TAG-02). 조인 행을 지우던 자리를 벌크 update가 대신한다.

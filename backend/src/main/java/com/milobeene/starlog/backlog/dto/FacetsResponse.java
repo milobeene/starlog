@@ -10,7 +10,7 @@ import java.util.List;
  * 삭제된 항목에만 붙은 태그·장르는 여기 안 나온다 (§6.7 자동 소멸)
  */
 public record FacetsResponse(
-        List<FacetCount> tags,
+        List<TagFacet> tags,
         List<FacetCount> genres,
         List<StatusCount> statuses,
         List<FacetCount> devices,

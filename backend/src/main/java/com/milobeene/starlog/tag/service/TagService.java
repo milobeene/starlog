@@ -82,6 +82,27 @@ public class TagService {
         }
     }
 
+    /**
+     * 색 바꾸기 (v1.2).
+     *
+     * ⚠️ **팔레트에 있는 이름만 받는다.** 자유 입력이면 어두운 배경에서 안 읽히는 색이
+     * 섞이고 화면마다 톤이 갈린다. 목록은 서버가 들고 있고 화면도 같은 것을 쓴다 —
+     * 한쪽만 늘리면 저장은 되는데 안 보이는 색이 생긴다
+     */
+    public static final List<String> PALETTE = List.of(
+            "rose", "coral", "amber", "sand", "olive", "sage", "mint", "teal",
+            "sky", "denim", "lavender", "plum", "mauve", "clay");
+
+    @Transactional
+    public void recolor(Long memberId, Long tagId, String color) {
+        Tag tag = findOwnedTag(memberId, tagId);
+        String normalized = TextValues.normalize(color);
+        if (normalized != null && !PALETTE.contains(normalized)) {
+            throw new InvalidInputException("고를 수 없는 색입니다: " + normalized);
+        }
+        tag.recolor(normalized);
+    }
+
     /** 이름 변경 (FR-TAG-02). 같은 이름이 이미 있으면 예외 — 병합하지 않는다 */
     @Transactional
     public void rename(Long memberId, Long tagId, String newName) {

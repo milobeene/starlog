@@ -42,6 +42,15 @@ public class TagController {
         tagService.reorder(memberId, request.tagIds());
     }
 
+    /** 색 바꾸기 (v1.2). 팔레트 이름이거나 null(색 없음) */
+    public record ColorRequest(String color) {}
+
+    @PutMapping("/{tagId}/color")
+    public void recolor(@LoginMember Long memberId, @PathVariable Long tagId,
+                        @RequestBody ColorRequest request) {
+        tagService.recolor(memberId, tagId, request.color());
+    }
+
     @PutMapping("/{tagId}")
     public void rename(@LoginMember Long memberId, @PathVariable Long tagId,
                        @Valid @RequestBody NameRequest request) {
