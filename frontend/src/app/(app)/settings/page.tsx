@@ -673,6 +673,8 @@ function Dictionary({
           {shown.map((item) => (
             <Fragment key={item.id}>
             <span
+              /* ⚠️ 놓을 자리를 이 표식으로 찾는다 — 없으면 드래그가 통째로 죽는다 */
+              data-chip={item.id}
               draggable={reorderable && !saving}
               onDragStart={() => {
                 dragRef.current = item.id;

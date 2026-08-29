@@ -221,7 +221,6 @@ function FolderBox({
    *
    * 지금은 앱 배경과 **같은 셰이더로 찍어둔 그림**이다 — CSS 그래디언트로는 그 결이 안 났다
    */
-  const tone = toneOf(folder.color);
   const image = tagBackground(folder.color);
 
   return (
@@ -246,18 +245,16 @@ function FolderBox({
       <div
         aria-hidden
         className="absolute inset-0 bg-cover bg-center transition-transform duration-700 ease-out group-hover:scale-110"
-        style={
-          image
-            ? { backgroundImage: `url(${image})` }
-            : /* 색을 안 고른 폴더 — 중립 회색 */
-              { background: `linear-gradient(140deg, ${tone.mid}, ${tone.low})` }
-        }
+        style={{ backgroundImage: `url(${image})` }}
       />
 
-      {/* 라벨이 가운데 오므로 전체를 고르게 덮는다. 그래디언트가 이미 어두워 얇게 */}
+      {/*
+        한 겹 눌러 준다 (v1.2, 사용자 요청). 셰이더 그림이 밝아서 흰 대문자 라벨이
+        묻혔다 — 호버하면 걷혀서 원래 색이 드러난다
+      */}
       <div
         aria-hidden
-        className="absolute inset-0 bg-black/20 transition-colors duration-300 group-hover:bg-black/5"
+        className="absolute inset-0 bg-black/40 transition-colors duration-300 group-hover:bg-black/20"
       />
 
       {/* 이름이 주인공 — 박스를 가득 채우고 길면 줄바꿈해서 줄인다 */}

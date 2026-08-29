@@ -79,8 +79,12 @@ export const TAG_COLORS: Record<TagColorName, Tone> = {
  * 만드는 법은 `tools/gen-tag-bg.js`. 색을 고치면 다시 돌려야 한다 —
  * 그림이 팔레트를 따라가지 않는다
  */
-export function tagBackground(color: string | null | undefined): string | null {
-  if (!color || !(color in TAG_COLORS)) return null;
+export function tagBackground(color: string | null | undefined): string {
+  /*
+   * 색을 안 고른 폴더도 **같은 셰이더로 찍은 무채색 그림**을 쓴다 (v1.2).
+   * CSS 그래디언트로 떨어뜨려 두면 그 하나만 결이 달라서 눈에 걸린다
+   */
+  if (!color || !(color in TAG_COLORS)) return "/tag-bg/neutral.jpg";
   return `/tag-bg/${color}.jpg`;
 }
 
