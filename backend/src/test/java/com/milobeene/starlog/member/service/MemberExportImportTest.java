@@ -399,6 +399,50 @@ class MemberExportImportTest extends ControllerTestSupport {
 
     /* ── 픽스처 ─────────────────────────────────────────── */
 
+    @Test
+    public void 같은_이름의_계정이_소속마다_있어도_제_소속으로_돌아온다() {
+        /*
+         * given — 계정의 유니크는 `(회원, 소속, 라벨)`이라 **같은 라벨이 소속마다 하나씩**
+         * 있을 수 있다. 형식 1은 라벨만 적어서 되읽을 때 둘이 뭉개졌고, 엉뚱한 소속의
+         * 계정이 붙었다. v1.1.1의 검증이 그걸 400으로 잡으면서 **가져오기가 통째로 실패**했다
+         */
+        Member source = saveMember();
+        var game = saveGame("Overwatch");
+        em.flush();
+        Long entryId = backlogService.addToBacklog(source.getId(), game.getId());
+
+        Platform blizzard = new Platform(source, "Blizzard");
+        Platform nexon = new Platform(source, "Nexon");
+        platformRepository.persist(blizzard);
+        platformRepository.persist(nexon);
+        PlatformAccount onBlizzard = PlatformAccount.onPlatform(source, blizzard, "메인");
+        PlatformAccount onNexon = PlatformAccount.onPlatform(source, nexon, "메인");
+        platformAccountRepository.persist(onBlizzard);
+        platformAccountRepository.persist(onNexon);
+        em.flush();
+
+        acquisitionService.add(source.getId(), entryId, new AcquisitionCommand(
+                AcquisitionMethod.FREE, blizzard.getId(), onBlizzard.getId(), null,
+                null, null, LocalDate.parse("2021-01-01"), null));
+        em.flush();
+        em.clear();
+
+        //when
+        MemberExport data = exportService.export(source.getId());
+        Member target = saveMember();
+        em.flush();
+        importService.importInto(target.getId(), data);
+        em.flush();
+        em.clear();
+
+        //then — 라벨이 같아도 블리자드 쪽 계정으로 돌아와야 한다
+        var acquisition = onlyEntryOf(target).getAcquisitions().getFirst();
+        assertThat(acquisition.getPlatform().getName()).isEqualTo("Blizzard");
+        assertThat(acquisition.getPlatformAccount().getAccountLabel()).isEqualTo("메인");
+        assertThat(acquisition.getPlatformAccount().getPlatform().getName())
+                .as("넥슨의 '메인'이 붙으면 안 된다").isEqualTo("Blizzard");
+    }
+
     private BacklogEntry onlyEntryOf(Member member) {
         List<BacklogEntry> entries = backlogEntryRepository.findAllForExport(member.getId());
         assertThat(entries).hasSize(1);

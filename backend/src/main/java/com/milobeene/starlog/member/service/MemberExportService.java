@@ -2,6 +2,7 @@ package com.milobeene.starlog.member.service;
 
 import com.milobeene.starlog.backlog.domain.BacklogEntry;
 import com.milobeene.starlog.backlog.domain.Playthrough;
+import com.milobeene.starlog.platform.domain.PlatformAccount;
 import com.milobeene.starlog.backlog.repository.AcquisitionRepository;
 import com.milobeene.starlog.backlog.repository.BacklogEntryGenreRepository;
 import com.milobeene.starlog.backlog.repository.BacklogEntryRepository;
@@ -188,6 +189,7 @@ public class MemberExportService {
                         p.getStatus().name(), p.getLabel(),
                         p.getDevice() == null ? null : p.getDevice().getLabel(),
                         accountLabel(p),
+                        ownerName(p.getPlatformAccount()),
                         p.getEmulator() == null ? null : p.getEmulator().getName(),
                         p.getInputMethod() == null ? null : p.getInputMethod().getName()))
                 .toList();
@@ -199,9 +201,19 @@ public class MemberExportService {
                         a.getMethod().name(),
                         a.getPlatform() == null ? null : a.getPlatform().getName(),
                         a.getPlatformAccount() == null ? null : a.getPlatformAccount().getAccountLabel(),
+                        ownerName(a.getPlatformAccount()),
                         a.getSubscription() == null ? null : a.getSubscription().getServiceName(),
                         money(a.getPrice()), a.getAcquiredOn(), a.getLabel()))
                 .toList();
+    }
+
+    /**
+     * 계정의 소속 이름 — **라벨만으로는 계정을 못 집기 때문에 함께 적는다** (형식 2).
+     *
+     * 계정은 플랫폼이거나 에뮬이거나 하나다 (V11). `ownerName()`이 그 하나를 준다
+     */
+    private static String ownerName(PlatformAccount account) {
+        return account == null ? null : account.ownerName();
     }
 
     private static String accountLabel(Playthrough p) {

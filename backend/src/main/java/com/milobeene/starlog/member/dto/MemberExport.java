@@ -26,6 +26,9 @@ import java.util.List;
  * ## 참조를 잇는 방식
  * 선택지(플랫폼·기기 등)는 **이름으로** 잇는다. id는 DB마다 다르기 때문이다.
  * 그래서 이름이 유니크해야 하는데, 실제로 회원 안에서 유니크 제약이 걸려 있다.
+ *
+ * ⚠️ **계정만 예외다** — 유니크가 `(회원, 소속, 라벨)`이라 라벨은 소속마다 겹칠 수 있다.
+ * 그래서 계정을 가리킬 때는 라벨 옆에 소속 이름을 함께 적는다 (형식 2, v1.1.3).
  * 게임은 **`externalId`(IGDB) 또는 이름**으로 잇는다.
  */
 public record MemberExport(
@@ -39,7 +42,8 @@ public record MemberExport(
         List<Entry> entries
 ) {
 
-    public static final int FORMAT_VERSION = 1;
+    /** 2 — 회차·취득이 계정을 `라벨 + 소속`으로 가리킨다 (v1.1.3) */
+    public static final int FORMAT_VERSION = 2;
 
     /** 자격증명 없음 — 클래스 주석 참고 */
     public record Profile(String email, String nickname, String memo,
@@ -127,12 +131,24 @@ public record MemberExport(
     /** location은 v1.0 6단계에 생겼다. 옛 파일에는 없어서 null이면 EXTERNAL로 읽는다 */
     public record Cover(String storageKey, String contentType, long sizeBytes, String location) {}
 
+    /**
+     * ⚠️ **`platformAccount`(라벨)만으로는 계정을 못 집는다** (형식 2).
+     *
+     * 계정의 유니크는 `(회원, 소속, 라벨)`이라 **같은 라벨이 소속마다 하나씩 있을 수 있다** —
+     * `Beene(Steam)`과 `Beene(Nintendo)`처럼. 라벨만 적으면 되읽을 때 둘이 한 칸으로
+     * 뭉개져 **엉뚱한 소속의 계정이 붙는다.** 그래서 소속 이름을 함께 적는다.
+     *
+     * 옛 파일(형식 1)에는 이 값이 없어 null로 들어온다 — 그때는 라벨로만 찾는다
+     */
     public record Playthrough(int sequenceNo, LocalDate startedOn, LocalDate finishedOn,
                               String status, String label,
                               String device, String platformAccount,
+                              String platformAccountPlatform,
                               String emulator, String inputMethod) {}
 
+    /** `platform`은 **취득 자체의** 플랫폼이고, `platformAccountPlatform`은 **계정의** 소속이다 */
     public record Acquisition(String method, String platform, String platformAccount,
+                              String platformAccountPlatform,
                               String subscription, Money price, LocalDate acquiredOn,
                               String label) {}
 }

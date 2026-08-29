@@ -107,9 +107,17 @@ public class MemberImportService {
         if (data == null || data.entries() == null) {
             throw new InvalidInputException("가져올 데이터가 비어 있습니다");
         }
-        if (data.formatVersion() != MemberExport.FORMAT_VERSION) {
+        /*
+         * ⚠️ **옛 형식도 읽는다** (v1.1.3). 형식 2가 회차·취득에 계정의 소속을 더했는데,
+         * 그건 **칸이 하나 는 것**이라 형식 1 파일도 그대로 읽힌다 (없으면 null이고,
+         * 그때는 라벨로만 계정을 찾는다 — 지금까지와 같은 동작이다).
+         *
+         * 같지 않으면 무조건 거절하던 것을 고친 이유 — 그대로 두면 **1.1.2까지 만든
+         * 세이브파일을 이 버전으로는 못 여는** 상태가 된다. 위쪽 버전(미래 파일)은 여전히 막는다
+         */
+        if (data.formatVersion() < 1 || data.formatVersion() > MemberExport.FORMAT_VERSION) {
             throw new InvalidInputException(
-                    "지원하지 않는 백업 형식입니다. 이 버전은 %d를 읽습니다 (파일은 %d)"
+                    "지원하지 않는 백업 형식입니다. 이 버전은 %d까지 읽습니다 (파일은 %d)"
                             .formatted(MemberExport.FORMAT_VERSION, data.formatVersion()));
         }
 
@@ -230,7 +238,10 @@ public class MemberImportService {
 
     /** 이름 → 엔티티. 회차·취득이 이름으로 참조를 잇는다 */
     private record Catalog(Map<String, Platform> platforms,
+                           /** 라벨 → 계정. **겹칠 수 있다** — 옛 파일(형식 1) 폴백 전용이다 */
                            Map<String, PlatformAccount> accounts,
+                           /** `소속\u0000라벨` → 계정. 형식 2부터 이쪽으로 찾는다 */
+                           Map<String, PlatformAccount> accountsByOwner,
                            Map<String, Device> devices,
                            Map<String, Emulator> emulators,
                            Map<String, InputMethod> inputMethods,
@@ -250,7 +261,8 @@ public class MemberImportService {
      */
     private Catalog importCatalog(Member member, MemberExport.Catalog data) {
         Catalog catalog = new Catalog(new HashMap<>(), new HashMap<>(), new HashMap<>(),
-                new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>());
+                new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>(),
+                new HashMap<>());
         if (data == null) {
             return catalog;
         }
@@ -281,6 +293,7 @@ public class MemberImportService {
             PlatformAccount account = PlatformAccount.onPlatform(member, platform, item.label());
             platformAccountRepository.persist(account);
             catalog.accounts().put(item.label(), account);
+            catalog.accountsByOwner().put(accountKey(platform.getName(), item.label()), account);
         });
 
         each(data.devices(), item -> {
@@ -385,7 +398,8 @@ public class MemberImportService {
              * ⚠️ 내보내기 형식에는 아직 플랫폼이 없다(v1.1 이전 파일도 읽어야 한다).
              * **계정에서 역산한다** — 마이그레이션 V11의 백필과 같은 규칙이다
              */
-            PlatformAccount importedAccount = optional(catalog.accounts(), pt.platformAccount());
+            PlatformAccount importedAccount =
+                    account(catalog, pt.platformAccount(), pt.platformAccountPlatform());
             playthrough.assignReferences(
                     optional(catalog.devices(), pt.device()),
                     importedAccount == null ? null : importedAccount.getPlatform(),
@@ -406,7 +420,7 @@ public class MemberImportService {
                     ac.acquiredOn(), ac.label()));
             acquisition.assignReferences(
                     optional(catalog.platforms(), ac.platform()),
-                    optional(catalog.accounts(), ac.platformAccount()));
+                    account(catalog, ac.platformAccount(), ac.platformAccountPlatform()));
             if (ac.subscription() != null) {
                 acquisition.assignSubscription(
                         required(catalog.subscriptions(), ac.subscription(), "구독"));
@@ -426,6 +440,35 @@ public class MemberImportService {
     }
 
     /** 없으면 조용히 null — 회차의 기기처럼 원래 비어 있을 수 있는 참조 */
+    /**
+     * 계정을 찾는다 — **소속까지 보고** (형식 2).
+     *
+     * 라벨만으로 찾으면 `Beene(Steam)`과 `Beene(Nintendo)`가 한 칸으로 뭉개져
+     * 엉뚱한 계정이 붙는다. 그게 실제로 났고, v1.1.1의 검증이 그걸 400으로 잡아
+     * **가져오기가 통째로 실패했다** (그전에는 조용히 틀린 계정으로 저장됐다).
+     *
+     * 옛 파일에는 소속이 없어 null이 온다 — 그때만 라벨로 찾는다.
+     * 소속이 적혀 있는데 못 찾는 경우도 라벨로 한 번 더 본다: 소속 이름이 바뀐 파일이
+     * 있을 수 있고, 여기서 null을 주면 **계정이 조용히 사라지기** 때문이다
+     */
+    private static PlatformAccount account(Catalog catalog, String label, String ownerName) {
+        if (label == null) {
+            return null;
+        }
+        if (ownerName != null) {
+            PlatformAccount exact = catalog.accountsByOwner().get(accountKey(ownerName, label));
+            if (exact != null) {
+                return exact;
+            }
+        }
+        return catalog.accounts().get(label);
+    }
+
+    /** `\u0000`으로 잇는 이유 — 라벨이나 소속 이름에 절대 안 들어가는 문자라 경계가 안 섞인다 */
+    private static String accountKey(String ownerName, String label) {
+        return ownerName + '\u0000' + label;
+    }
+
     private static <T> T optional(Map<String, T> byName, String name) {
         return name == null ? null : byName.get(name);
     }
