@@ -4,10 +4,13 @@ export default function SearchInput({
   value,
   onChange,
   placeholder = "Search games...",
+  disabled,
 }: {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  /** 잠글 때. 담는 중처럼 겹치면 안 되는 일이 도는 동안 */
+  disabled?: boolean;
 }) {
   return (
     <div className="relative flex-1 sm:max-w-md">
@@ -29,12 +32,13 @@ export default function SearchInput({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
+        disabled={disabled}
         /*
          * type=search면 크롬이 제 지우기 버튼(::-webkit-search-cancel-button)을 그린다.
          * 그건 브라우저 색이라 어두운 화면에서 혼자 튄다 — 죽이고 아래에서 직접 그린다.
          * type을 text로 바꾸지 않는 이유: Esc로 비우기와 검색 시맨틱은 그대로 쓰고 싶다
          */
-        className="w-full rounded-md border border-white/10 bg-white/5 py-2 pr-9 pl-10 text-sm text-white transition-colors placeholder:text-white/30 focus:border-white/30 focus:bg-white/10 focus:outline-none [&::-webkit-search-cancel-button]:appearance-none"
+        className="w-full rounded-md border border-white/10 bg-white/5 py-2 pr-9 pl-10 text-sm text-white transition-colors placeholder:text-white/30 focus:border-white/30 focus:bg-white/10 focus:outline-none disabled:cursor-not-allowed disabled:opacity-45 [&::-webkit-search-cancel-button]:appearance-none"
       />
 
       {/* Combobox의 지우기 버튼과 같은 모양·같은 무채색으로 맞춘다 */}

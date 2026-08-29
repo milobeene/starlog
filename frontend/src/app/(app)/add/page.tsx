@@ -10,6 +10,7 @@ import { Button, Field, FIELD_INPUT } from "@/components/ui/Field";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { coverSrc } from "@/lib/cover";
 import { api, ApiError, busyMessage, ERROR, errorMessage } from "@/lib/api";
+import { closeTask, putTask, updateTask, useTaskRunning } from "@/lib/tasks";
 import type { GameSearchResult } from "@/lib/types";
 
 /** 마스터에 없는 게임은 gameId가 없어 externalId가 유일한 식별자다 */
@@ -84,9 +85,30 @@ export default function AddPage() {
     };
   }, [debounced]);
 
+  /**
+   * 담기 — **알림으로 뺐다** (2026-08-29).
+   *
+   * 예전엔 담자마자 상세 화면으로 튀었다. 여러 개를 연달아 담을 때 매번 돌아와야 해서
+   * 흐름이 끊겼다. 이제는 이 화면에 머물고, 알림이 [보러가기]·[이어서 담기]를 준다.
+   *
+   * ⚠️ **입력 락은 걸지 않는다** (사용자 결정). 연결 설정과 달리 여기서 붙드는 값이 없다 —
+   * 검색어는 다시 치면 그만이고, 담긴 결과는 서버에 남는다
+   */
+  /*
+   * ⚠️ **담는 중인지는 알림이 안다** (2026-08-29). 로컬 상태 `adding`도 있지만
+   * 그건 "어느 행이 도는가"고, 차단 여부는 화면을 옮겼다 와도 유지돼야 한다
+   */
+  const adding_ = useTaskRunning("add-game");
+
   const add = async (game: GameSearchResult) => {
     setAdding(keyOf(game));
     setError(null);
+    putTask({
+      id: "add-game",
+      kind: "add-game",
+      title: `담는 중 — ${game.name}`,
+      progress: { done: 0, total: 0 },
+    });
     try {
       /*
        * 마스터에 이미 있으면 gameId, IGDB에만 있으면 externalId를 보낸다.
@@ -96,14 +118,37 @@ export default function AddPage() {
         gameId: game.gameId,
         externalId: game.externalId,
       });
-      router.push(`/library/detail?entry=${created.id}`);
+      updateTask("add-game", {
+        title: "라이브러리에 담았습니다",
+        progress: undefined,
+        result: { ok: true, message: game.name },
+        actions: [
+          {
+            label: "담은 게임 보러가기",
+            primary: true,
+            run: () => router.push(`/library/detail?entry=${created.id}`),
+          },
+          { label: "이어서 담기", run: () => router.push("/add") },
+        ],
+      });
     } catch (caught) {
       if (caught instanceof ApiError && caught.code === ERROR.REVIVABLE) {
         const body = caught.body as Revivable | undefined;
+        closeTask("add-game");
         if (body?.targetId) setRevive({ name: game.name, targetId: body.targetId });
       } else {
-        setError(errorMessage(caught, "라이브러리에 담지 못했습니다. 잠시 후 다시 시도해 주세요."));
+        // 실패는 알림 한 줄로 끝낸다 (사용자 결정) — 화면 위 빨간 상자까지 띄우면 두 번 말한다
+        updateTask("add-game", {
+          title: "담지 못했습니다",
+          progress: undefined,
+          result: {
+            ok: false,
+            message: errorMessage(caught, "잠시 후 다시 시도해 주세요."),
+          },
+          actions: undefined,
+        });
       }
+    } finally {
       setAdding(null);
     }
   };
@@ -118,7 +163,17 @@ export default function AddPage() {
         />
 
         <div className="mt-8 flex items-center gap-3">
-          <SearchInput value={query} onChange={setQuery} placeholder="게임 이름으로 검색…" />
+          {/*
+            담는 동안 검색과 담기를 막는다 (사용자 결정 2026-08-29) —
+            IGDB 호출이 겹치면 초당 한도에 걸리고, 같은 게임을 두 번 담게 된다.
+            **직접 등록은 안 막는다** — 외부 호출이 없어 겹칠 것이 없다
+          */}
+          <SearchInput
+            value={query}
+            onChange={setQuery}
+            placeholder={adding_ ? "담는 중입니다…" : "게임 이름으로 검색…"}
+            disabled={adding_}
+          />
           <Button onClick={() => setManualOpen(true)}>직접 등록</Button>
         </div>
 
@@ -166,7 +221,7 @@ export default function AddPage() {
                   </div>
                   <Button
                     variant="primary"
-                    disabled={adding === keyOf(game)}
+                    disabled={adding_ || adding === keyOf(game)}
                     onClick={() => void add(game)}
                   >
                     {adding === keyOf(game) ? "담는 중" : "담기"}

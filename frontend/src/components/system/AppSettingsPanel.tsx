@@ -36,7 +36,16 @@ type TestResult = { ok: boolean; tokenIssued: boolean; searchWorks: boolean; mes
  * 그래서 **한 곳으로 모았다** — 둘 다 "연결" 탭이다. 클라우드는 연결 설정 폼 안에,
  * 로컬은 이 컴포넌트로. 로컬은 연결 설정이라는 게 없으니 자리가 겹치지 않는다
  */
-export function IgdbSettings() {
+/**
+ * 섹션이 자기 동작을 위로 넘긴다 (2026-08-29).
+ *
+ * 로컬 모드의 [전체 테스트]·[전체 저장]이 이걸 모아 순서대로 부른다.
+ * 값이 자식 안에 있어서 부모가 직접 못 부르는데, 상태를 위로 끌어올리면
+ * 섹션 둘이 부모 하나에 엉킨다 — **동작만 넘기는 게 덜 엉킨다**
+ */
+export type SectionHandle = { test: () => Promise<void>; save: () => Promise<void> };
+
+export function IgdbSettings({ register }: { register?: (h: SectionHandle) => void } = {}) {
   const [loaded, setLoaded] = useState<Settings | null>(null);
   const [id, setId] = useState("");
   const [secret, setSecret] = useState("");
@@ -133,6 +142,10 @@ export function IgdbSettings() {
       setError(errorMessage(caught, "저장하지 못했습니다."));
     }
   };
+
+  useEffect(() => {
+    register?.({ test, save });
+  });
 
   if (!loaded) return <div className="h-40 skeleton-sweep rounded-lg bg-white/[0.06]" />;
 
@@ -297,7 +310,7 @@ type TranslateSettings = { translateApiKey: string | null; translation: Translat
  * IGDB에는 있는데 여기 없는 이유 — **시험 삼아 한 번 부르는 것도 글자를 쓰고, 그게 곧 돈이다.**
  * 키가 틀렸는지는 실제로 번역할 때 알게 되고 그때 구글의 메시지를 그대로 보여준다
  */
-export function TranslationSettings() {
+export function TranslationSettings({ register }: { register?: (h: SectionHandle) => void } = {}) {
   const [loaded, setLoaded] = useState<TranslateSettings | null>(null);
   const [key, setKey] = useState("");
   const [saved, setSaved] = useState(false);
@@ -324,6 +337,50 @@ export function TranslationSettings() {
       setError(errorMessage(caught, "저장하지 못했습니다."));
     }
   };
+
+  /**
+   * 키 확인 — **글자를 한 자도 안 쓴다** (2026-08-29에 로컬 모드에도 붙임).
+   *
+   * 클라우드 모드의 연결 설정에는 있는데 여기만 없었다. `languages`(지원 언어 목록)를
+   * 부르므로 보낼 글자가 없어 요금이 안 붙는다 — 번역은 테스트가 곧 돈이 될 수 있어서
+   * 무엇으로 시험하느냐가 설계의 일부다
+   */
+  const test = async () => {
+    setError(null);
+    putTask({
+      id: "connection-test",
+      kind: "connection-test",
+      title: "번역 키 확인 중",
+      progress: { done: 0, total: 0 },
+    });
+    try {
+      const found = await api.post<{ ok: boolean; message: string }>(
+        "/api/system/settings/translate/test",
+        { apiKey: key },
+      );
+      updateTask("connection-test", {
+        title: `번역 — ${found.ok ? "연결됨" : "연결 실패"}`,
+        progress: undefined,
+        actions: found.ok
+          ? [{ label: "저장", primary: true, run: async () => {
+              await save();
+              closeTask("connection-test");
+            } }]
+          : undefined,
+        result: { ok: found.ok, message: found.message },
+      });
+    } catch (caught) {
+      updateTask("connection-test", {
+        title: "번역 키 확인 실패",
+        progress: undefined,
+        result: { ok: false, message: errorMessage(caught, "확인하지 못했습니다.") },
+      });
+    }
+  };
+
+  useEffect(() => {
+    register?.({ test, save });
+  });
 
   if (!loaded) return <div className="h-32 skeleton-sweep rounded-lg bg-white/[0.06]" />;
 
@@ -386,6 +443,9 @@ export function TranslationSettings() {
       </div>
 
       <div className="flex items-center gap-3">
+        <Button onClick={test} disabled={!key.trim()}>
+          테스트
+        </Button>
         <Button variant="primary" onClick={save}>
           저장
         </Button>

@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ConnectionDialog from "@/components/entry/ConnectionDialog";
-import { IgdbSettings, TranslationSettings } from "@/components/system/AppSettingsPanel";
+import { Button } from "@/components/ui/Field";
+import { IgdbSettings, TranslationSettings, type SectionHandle } from "@/components/system/AppSettingsPanel";
 import { getBridge, type ConnectionProfile, type SessionInfo } from "@/lib/desktop";
 
 /**
@@ -19,6 +20,56 @@ import { getBridge, type ConnectionProfile, type SessionInfo } from "@/lib/deskt
  * DataSource·스토리지는 **부팅할 때 조립된다**(architecture §2). 그래서 여기서 바꾼 값은
  * 다음에 그 연결로 들어올 때부터 적용되고, 화면이 그걸 분명히 말해야 한다
  */
+/**
+ * 로컬 세이브파일의 연결 탭 (2026-08-29).
+ *
+ * 클라우드 모드와 **할 수 있는 것을 같게 맞췄다** — 섹션마다 [테스트]·[저장]이 있고
+ * 맨 아래 [전체 테스트]·[전체 저장]이 있다. 예전엔 번역에 테스트가 아예 없었고
+ * 전체 버튼도 없어서, 같은 앱 안에서 모드에 따라 할 수 있는 일이 달랐다.
+ *
+ * 섹션의 동작을 `register`로 받아 순서대로 부른다 — 상태를 여기로 끌어올리면
+ * 섹션 둘이 한 덩어리로 엉킨다
+ */
+function LocalConnectionSettings() {
+  const igdb = useRef<SectionHandle | null>(null);
+  const translate = useRef<SectionHandle | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const runAll = async (pick: (h: SectionHandle) => () => Promise<void>) => {
+    setBusy(true);
+    try {
+      // 하나가 실패해도 다음은 돈다 — 결과는 각 섹션의 알림이 따로 말한다
+      for (const ref of [igdb, translate]) {
+        if (ref.current) {
+          await pick(ref.current)().catch(() => {});
+        }
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Notice>
+        지금은 로컬 세이브파일로 쓰고 계십니다. 데이터베이스 연결 설정은 입구 화면에서
+        관리합니다.
+      </Notice>
+      <IgdbSettings register={(h) => (igdb.current = h)} />
+      <TranslationSettings register={(h) => (translate.current = h)} />
+
+      <div className="flex items-center gap-3 border-t border-white/8 pt-5">
+        <Button onClick={() => runAll((h) => h.test)} disabled={busy}>
+          전체 테스트
+        </Button>
+        <Button variant="primary" onClick={() => runAll((h) => h.save)} disabled={busy}>
+          전체 저장
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function ConnectionPanel() {
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [profile, setProfile] = useState<ConnectionProfile | null>(null);
@@ -50,16 +101,7 @@ export default function ConnectionPanel() {
    * 키를 관리하게 된다 (2026-08-28). 예전엔 "앱 설정" 탭에도 같은 칸이 있어 두 군데였다
    */
   if (session && session.mode !== "cloud") {
-    return (
-      <div className="flex flex-col gap-4">
-        <Notice>
-          지금은 로컬 세이브파일로 쓰고 계십니다. 데이터베이스 연결 설정은 입구 화면에서
-          관리합니다.
-        </Notice>
-        <IgdbSettings />
-        <TranslationSettings />
-      </div>
-    );
+    return <LocalConnectionSettings />;
   }
 
   if (!profile) {

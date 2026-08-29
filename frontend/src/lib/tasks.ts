@@ -19,7 +19,13 @@ import { useSyncExternalStore } from "react";
  * 아무 알림이나 여기로 보내면 곧 토스트가 화면을 덮는다. **오래 걸려서 결과를 놓칠 수 있는
  * 일**만 담는다 — 연결 테스트, 일괄 동기화, 단건 재동기화. 나머지는 그 자리에서 보여준다.
  */
-export type TaskKind = "connection-test" | "bulk-sync" | "resync" | "save-transfer";
+export type TaskKind =
+  | "connection-test"
+  | "bulk-sync"
+  | "resync"
+  | "save-transfer"
+  /** 게임 담기 (2026-08-29). 담고 나서 "보러가기 / 이어서 담기"가 이어진다 */
+  | "add-game";
 
 export type Task = {
   id: string;

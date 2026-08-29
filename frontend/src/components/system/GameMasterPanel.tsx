@@ -1,7 +1,7 @@
 "use client";
 
 import DateField from "@/components/ui/DateField";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Modal from "@/components/ui/Modal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import GameCover from "@/components/ui/GameCover";
@@ -49,7 +49,7 @@ export default function GameMasterMaster() {
   const [syncTargets, setSyncTargets] = useState<GameMaster[] | null>(null);
   /** 중단 신호. 루프가 매 바퀴 확인한다 — 되돌릴 게 없어서 그냥 멈추면 된다 */
   const abort = useRef(false);
-  const [dialog, setDialog] = useState<{ kind: "name" | "info"; game: GameRow } | null>(null);
+  const [dialog, setDialog] = useState<{ kind: "info"; game: GameRow } | null>(null);
 
   const masterList = useApi<PageResponse<GameMaster>>(
     includeExternal ? null : `/api/games/master${qs({ q: keyword, page, size: PAGE_SIZE })}`,
@@ -146,6 +146,25 @@ export default function GameMasterMaster() {
         {selected.size > 0 && (
           <>
             <span className="text-xs text-white/40">{selected.size}개 선택</span>
+            {/*
+              선택 동기화 (2026-08-29). '일괄 동기화'는 **오래된 것 전부**를 잡지만,
+              고른 것만 돌리고 싶을 때가 있다 — 방금 고친 몇 개를 다시 받아오는 경우다.
+              같은 진행 표시(bulk-sync)를 쓴다: 사용자에겐 같은 종류의 일이다
+            */}
+            <Button
+              onClick={() =>
+                setSyncTargets(
+                  rows.filter(
+                    (row) =>
+                      row.gameId != null &&
+                      selected.has(row.gameId) &&
+                      row.source !== "MANUAL",
+                  ) as GameMaster[],
+                )
+              }
+            >
+              선택 동기화
+            </Button>
             <Button variant="danger" onClick={() => setBulkDeleting(true)}>
               선택 삭제
             </Button>
@@ -223,21 +242,29 @@ export default function GameMasterMaster() {
                   : "border-white/10 bg-white/5"
               }`}
             >
-              {/* 마스터에 있는 것만 고를 수 있다 — IGDB 결과는 아직 우리 것이 아니다 */}
+              {/*
+                마스터에 있는 것만 고를 수 있다 — IGDB 결과는 아직 우리 것이 아니다.
+
+                ⚠️ **label로 감싸 클릭 영역을 커버 높이만큼 넓힌다** (2026-08-29).
+                동그라미만 누를 수 있으면 목표가 18px이라 자주 빗나간다 —
+                `self-stretch`가 행 높이를 그대로 받고, 음수 마진으로 패딩까지 먹는다
+              */}
               {game.gameId ? (
-                <input
-                  type="checkbox"
-                  checked={selected.has(game.gameId)}
-                  onChange={(e) =>
-                    setSelected((prev) => {
-                      const next = new Set(prev);
-                      if (e.target.checked) next.add(game.gameId!);
-                      else next.delete(game.gameId!);
-                      return next;
-                    })
-                  }
-                  className="pick-circle"
-                />
+                <label className="-my-2.5 flex shrink-0 cursor-pointer items-center self-stretch py-2.5 pr-1 pl-0.5">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(game.gameId)}
+                    onChange={(e) =>
+                      setSelected((prev) => {
+                        const next = new Set(prev);
+                        if (e.target.checked) next.add(game.gameId!);
+                        else next.delete(game.gameId!);
+                        return next;
+                      })
+                    }
+                    className="pick-circle"
+                  />
+                </label>
               ) : (
                 <span className="w-[1.15rem] shrink-0" />
               )}
@@ -259,38 +286,12 @@ export default function GameMasterMaster() {
               {game.gameId == null ? (
                 <span className="shrink-0 text-xs text-white/25">마스터 등록 후 수정 가능</span>
               ) : (
-                <div className="flex shrink-0 items-center gap-3 text-xs text-white/40">
-                  <button
-                    onClick={() => setDialog({ kind: "name", game })}
-                    className="transition-colors hover:text-white"
-                  >
-                    이름
-                  </button>
-                  <button
-                    onClick={() => setDialog({ kind: "info", game })}
-                    className="transition-colors hover:text-white"
-                  >
-                    정보
-                  </button>
-                  {/*
-                    MANUAL은 원본이 없어 재동기화가 뜻이 없다 (§10-4). 버튼을 숨긴다.
-                    **백엔드의 400은 그대로 둔다** — 서버는 클라이언트를 믿지 않는다
-                  */}
-                  {game.source !== "MANUAL" && (
-                    <button
-                      onClick={() => resync(game)}
-                      className="transition-colors hover:text-white"
-                    >
-                      재동기화
-                    </button>
-                  )}
-                  <button
-                    onClick={() => setDeleting(game)}
-                    className="transition-colors hover:text-red-400"
-                  >
-                    삭제
-                  </button>
-                </div>
+                <RowActions
+                  game={game}
+                  onInfo={() => setDialog({ kind: "info", game })}
+                  onResync={() => resync(game)}
+                  onDelete={() => setDeleting(game)}
+                />
               )}
             </li>
           ))}
@@ -429,16 +430,6 @@ export default function GameMasterMaster() {
         />
       )}
 
-      {dialog?.kind === "name" && (
-        <NameDialog
-          game={dialog.game}
-          onClose={() => setDialog(null)}
-          onDone={async (message) => {
-            await reload();
-            setNotice(`이름 수정: ${message}`);
-          }}
-        />
-      )}
       {dialog?.kind === "info" && (
         <InfoDialog
           game={dialog.game}
@@ -453,6 +444,96 @@ export default function GameMasterMaster() {
   );
 }
 
+/**
+ * 행의 액션 — **좁아지면 `…` 하나로 접힌다** (2026-08-29).
+ *
+ * 버튼 셋이 가로로 붙어 있으면 노트북 폭에서 게임 이름을 밀어낸다.
+ * 접는 기준을 `lg`(1024px)로 잡은 건 **헤더의 프로필이 아이콘이 되는 폭과 같아서**다 —
+ * 화면 곳곳이 제각각 접히면 "지금 좁은 화면인가"가 안 읽힌다.
+ *
+ * 팝오버는 바깥 클릭으로 닫는다. 스크롤로는 안 닫는다 — 목록이 길어 스크롤하다
+ * 닫히면 다시 열어야 해서 성가시다
+ */
+function RowActions({
+  game,
+  onInfo,
+  onResync,
+  onDelete,
+}: {
+  game: GameRow;
+  onInfo: () => void;
+  onResync: () => void;
+  onDelete: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (!box.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+
+  /* MANUAL은 원본이 없어 재동기화가 뜻이 없다 (§10-4). **백엔드의 400은 그대로 둔다** */
+  const items = (
+    <>
+      <ActionItem onClick={onInfo}>정보</ActionItem>
+      {game.source !== "MANUAL" && <ActionItem onClick={onResync}>재동기화</ActionItem>}
+      <ActionItem onClick={onDelete} danger>
+        삭제
+      </ActionItem>
+    </>
+  );
+
+  return (
+    <div ref={box} className="relative shrink-0">
+      {/* 넓을 때 — 가로로 편다 */}
+      <div className="hidden items-center gap-3 text-xs text-white/40 lg:flex">{items}</div>
+
+      {/* 좁을 때 — 점 셋 */}
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-label="작업"
+        className="flex h-7 w-7 items-center justify-center rounded text-white/40 transition-colors hover:bg-white/10 hover:text-white lg:hidden"
+      >
+        ⋯
+      </button>
+      {open && (
+        <div
+          className="absolute right-0 z-20 mt-1 flex min-w-28 flex-col gap-1 rounded-lg border border-white/10 bg-neutral-900 p-1.5 text-xs shadow-xl lg:hidden"
+          onClick={() => setOpen(false)}
+        >
+          {items}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ActionItem({
+  onClick,
+  danger,
+  children,
+}: {
+  onClick: () => void;
+  danger?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded px-2 py-1 text-left transition-colors hover:bg-white/10 lg:px-0 lg:py-0 lg:hover:bg-transparent ${
+        danger ? "hover:text-red-400" : "hover:text-white"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 /** 마스터 목록과 IGDB 검색 결과를 한 모양으로 합친 표시용 행 */
 type GameRow = {
   gameId: number | null;
@@ -462,51 +543,6 @@ type GameRow = {
   coverImageId: string | null;
   lastSyncedAt: string | null;
 };
-
-/**
- * 마스터 게임명 수정 (FR-ADM-01).
- *
- * 정보 수정과 엔드포인트가 갈린 이유 — 이름은 담긴 항목의 `displayName`까지 전파해야 해서
- * 파급이 다르고, 실수로 통째 교체될 때의 피해도 크다
- */
-function NameDialog({
-  game,
-  onClose,
-  onDone,
-}: {
-  game: GameRow;
-  onClose: () => void;
-  onDone: (message: string) => void | Promise<void>;
-}) {
-  const [name, setName] = useState(game.name);
-
-  return (
-    <AdminFormDialog
-      title="마스터 게임명 수정"
-      onClose={onClose}
-      onSubmit={async () => {
-        const result = await api.put<{ updatedEntries: number }>(
-          `/api/games/${game.gameId}/name`,
-          { name },
-        );
-        await onDone(`${result.updatedEntries}건의 항목에 전파했습니다.`);
-      }}
-    >
-      <p className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-[11px] leading-relaxed text-white/45">
-        이름을 직접 덮어쓴 회원의 항목은 <b className="text-white/75">바뀌지 않습니다.</b> 개인
-        오버라이드가 마스터보다 우선합니다.
-      </p>
-      <Field label="Name">
-        <input
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          maxLength={300}
-          className={FIELD_INPUT}
-        />
-      </Field>
-    </AdminFormDialog>
-  );
-}
 
 /** 마스터 정보 수정 (FR-ADM-01). **전체 교체** — 비운 칸은 지워진다 */
 function InfoDialog({
@@ -522,6 +558,13 @@ function InfoDialog({
   const [publishers, setPublishers] = useState("");
   const [genres, setGenres] = useState("");
   const [releasedOn, setReleasedOn] = useState(game.releasedOn ?? "");
+  /*
+   * 이름을 여기로 합쳤다 (2026-08-29). 버튼이 둘이면 "이름을 고치려면 어느 쪽이지"가 생긴다.
+   *
+   * ⚠️ **엔드포인트는 여전히 둘이다.** 이름은 담긴 항목의 displayName까지 전파해서
+   * 파급이 다르다 — 합친 것은 화면이지 API가 아니다. 바뀐 것만 부른다
+   */
+  const [name, setName] = useState(game.name);
 
   const toList = (value: string) =>
     value
@@ -534,6 +577,15 @@ function InfoDialog({
       title="마스터 정보 수정"
       onClose={onClose}
       onSubmit={async () => {
+        let propagated = 0;
+        // 이름을 먼저 — 실패하면 정보까지 바꾸지 않는다. 반쯤 반영된 상태가 제일 나쁘다
+        if (name.trim() !== game.name) {
+          const renamed = await api.put<{ updatedEntries: number }>(
+            `/api/games/${game.gameId}/name`,
+            { name: name.trim() },
+          );
+          propagated += renamed.updatedEntries;
+        }
         const result = await api.put<{ updatedEntries: number }>(
           `/api/games/${game.gameId}`,
           {
@@ -544,11 +596,25 @@ function InfoDialog({
             listPrice: null,
           },
         );
-        await onDone(`${result.updatedEntries}건의 항목에 전파했습니다.`);
+        propagated += result.updatedEntries;
+        await onDone(`${propagated}건의 항목에 전파했습니다.`);
       }}
     >
+      <Field label="Name">
+        <input
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          maxLength={300}
+          className={FIELD_INPUT}
+        />
+      </Field>
+      <p className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-[11px] leading-relaxed text-white/45">
+        이름을 직접 덮어쓴 회원의 항목은 <b className="text-white/75">바뀌지 않습니다.</b> 개인
+        오버라이드가 마스터보다 우선합니다.
+      </p>
+
       <p className="rounded-md border border-amber-400/25 bg-amber-400/10 px-3 py-2 text-[11px] leading-relaxed text-amber-200/80">
-        <b className="text-amber-100">전체 교체입니다.</b> 비워 두신 칸은 마스터에서 지워집니다.
+        <b className="text-amber-100">아래 셋은 전체 교체입니다.</b> 비워 두신 칸은 마스터에서 지워집니다.
         현재 값을 유지하시려면 그대로 다시 입력해 주세요.
       </p>
       <Field label="Developers" hint="쉼표로 구분">
