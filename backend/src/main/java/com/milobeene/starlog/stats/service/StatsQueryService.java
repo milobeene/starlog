@@ -3,9 +3,8 @@ package com.milobeene.starlog.stats.service;
 import com.milobeene.starlog.backlog.domain.QAcquisition;
 import com.milobeene.starlog.backlog.domain.QBacklogEntry;
 import com.milobeene.starlog.backlog.domain.QBacklogEntryGenre;
-import com.milobeene.starlog.common.exception.InvalidInputException;
-import com.milobeene.starlog.stats.dto.CompletionCount;
 import com.milobeene.starlog.stats.dto.GenreDistribution;
+import com.milobeene.starlog.stats.dto.MonthlyCompletions;
 import com.milobeene.starlog.stats.dto.MonthlySpending;
 import com.milobeene.starlog.stats.dto.PlaytimeStats;
 import com.milobeene.starlog.stats.dto.SpendingStats;
@@ -105,39 +104,55 @@ public class StatsQueryService {
     }
 
     /**
-     * 기간별 완료 수 (FR-STAT-02).
+     * 월별 완료 추이 (FR-STAT-02, 2026-08-29 개편).
      *
-     * 완료의 정의는 **종료일이 있는 COMPLETED 회차**다. 항목의 상태를 쓰지 않는 이유 —
+     * 예전에는 `List<CompletionCount>`를 내려보냈고 **화면이 쓰지 않았다.**
+     * 대시보드의 지출 차트와 같은 모양으로 맞추면서 items·연합계를 더했다.
+     *
+     * 완료의 정의는 그대로 **종료일이 있는 COMPLETED 회차**다. 항목 상태를 쓰지 않는 이유 —
      * 항목 상태는 최신 회차만 반영하므로, 3회차까지 깬 게임이 1로만 세어진다.
-     * 회차 기준이면 "2026년에 몇 번 끝냈나"가 맞게 나온다
+     *
+     * ⚠️ 이름은 **`displayName`**이다 (오버라이드 반영, §6.2). 마스터 이름을 쓰면
+     * 카드에 보이는 이름과 차트의 이름이 서로 달라진다
      */
-    public List<CompletionCount> completions(Long memberId, String unit) {
-        boolean monthly = resolveMonthly(unit);
-
+    public MonthlyCompletions monthlyCompletions(Long memberId) {
         List<Object[]> rows = em.createQuery("""
-                        select extract(year from p.finishedOn), extract(month from p.finishedOn), count(p)
+                        select extract(year from p.finishedOn), extract(month from p.finishedOn),
+                               p.backlogEntry.displayName
                         from Playthrough p
                         where p.backlogEntry.member.id = :memberId
                           and p.backlogEntry.deletedAt is null
                           and p.finishedOn is not null
                           and p.status = com.milobeene.starlog.backlog.domain.PlaythroughStatus.COMPLETED
-                        group by extract(year from p.finishedOn), extract(month from p.finishedOn)
                         order by extract(year from p.finishedOn), extract(month from p.finishedOn)
                         """, Object[].class)
                 .setParameter("memberId", memberId)
                 .getResultList();
 
-        Map<String, Long> buckets = new LinkedHashMap<>();
+        Map<String, List<String>> byMonth = new LinkedHashMap<>();
+        Map<Integer, Long> byYear = new TreeMap<>();
         for (Object[] row : rows) {
             int year = ((Number) row[0]).intValue();
             int month = ((Number) row[1]).intValue();
-            String period = monthly ? "%d-%02d".formatted(year, month) : String.valueOf(year);
-            buckets.merge(period, ((Number) row[2]).longValue(), Long::sum);
+            byMonth.computeIfAbsent("%d-%02d".formatted(year, month), k -> new ArrayList<>())
+                    .add(String.valueOf(row[2]));
+            byYear.merge(year, 1L, Long::sum);
         }
 
-        return buckets.entrySet().stream()
-                .map(e -> new CompletionCount(e.getKey(), e.getValue()))
+        List<MonthlyCompletions.Bucket> months = byMonth.entrySet().stream()
+                /*
+                 * 이름을 정렬한다 — 같은 달 안의 순서가 실행마다 흔들리면
+                 * 툴팁의 목록이 새로고침할 때마다 달라 보인다
+                 */
+                .map(e -> new MonthlyCompletions.Bucket(
+                        e.getKey(), e.getValue().size(), e.getValue().stream().sorted().toList()))
                 .toList();
+
+        List<MonthlyCompletions.YearlyTotal> years = byYear.entrySet().stream()
+                .map(e -> new MonthlyCompletions.YearlyTotal(e.getKey(), e.getValue()))
+                .toList();
+
+        return new MonthlyCompletions(months, years);
     }
 
     /** 총 플레이 시간 + 게임별 순위 (FR-STAT-03) */
@@ -414,15 +429,5 @@ public class StatsQueryService {
             return ChronoUnit.MONTHS.between(from.withDayOfMonth(1), to.withDayOfMonth(1)) / 12 + 1;
         }
         return ChronoUnit.MONTHS.between(from.withDayOfMonth(1), to.withDayOfMonth(1)) + 1;
-    }
-
-    private boolean resolveMonthly(String unit) {
-        if (unit == null || unit.isBlank() || unit.equalsIgnoreCase("month")) {
-            return true;
-        }
-        if (unit.equalsIgnoreCase("year")) {
-            return false;
-        }
-        throw new InvalidInputException("지원하지 않는 단위입니다: " + unit + " (month, year)");
     }
 }

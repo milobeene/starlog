@@ -1,7 +1,7 @@
 package com.milobeene.starlog.stats.controller;
 
 import com.milobeene.starlog.common.web.LoginMember;
-import com.milobeene.starlog.stats.dto.CompletionCount;
+import com.milobeene.starlog.stats.dto.MonthlyCompletions;
 import com.milobeene.starlog.stats.dto.GenreDistribution;
 import com.milobeene.starlog.stats.dto.MonthlySpending;
 import com.milobeene.starlog.stats.dto.PlaytimeStats;
@@ -35,11 +35,13 @@ public class StatsController {
         return statsQueryService.genreDistribution(memberId);
     }
 
-    /** 기간별 완료 수 (FR-STAT-02). 회차 기준이라 3회차까지 깬 게임은 3으로 센다 */
-    @GetMapping("/completions")
-    public List<CompletionCount> completions(@LoginMember Long memberId,
-                                             @RequestParam(defaultValue = "month") String unit) {
-        return statsQueryService.completions(memberId, unit);
+    /**
+     * 월별 완료 추이 (FR-STAT-02). 대시보드 꺾은선용 — 지출 차트와 같은 모양이다.
+     * 회차 기준이라 3회차까지 깬 게임은 3으로 센다
+     */
+    @GetMapping("/completions/monthly")
+    public MonthlyCompletions monthlyCompletions(@LoginMember Long memberId) {
+        return statsQueryService.monthlyCompletions(memberId);
     }
 
     /** 총 플레이 시간 + 게임별 순위 (FR-STAT-03) */

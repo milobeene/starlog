@@ -90,7 +90,7 @@ class StatsApiTest extends ControllerTestSupport {
                 .andExpect(jsonPath("$.length()").value(0));
     }
 
-    // ── FR-STAT-02 기간별 완료
+    // ── FR-STAT-02 월별 완료 추이
 
     @Test
     public void 완료는_회차_기준이라_같은_게임을_두_번_깨면_2다() throws Exception {
@@ -101,26 +101,40 @@ class StatsApiTest extends ControllerTestSupport {
         completePlaythrough(member, entryId, "2026-03-20", "2026-03-25");
 
         //when //then
-        mockMvc.perform(get("/api/stats/completions").header("X-Member-Id", member.getId()))
-                .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].period").value("2026-03"))
-                .andExpect(jsonPath("$[0].count").value(2));
+        mockMvc.perform(get("/api/stats/completions/monthly").header("X-Member-Id", member.getId()))
+                .andExpect(jsonPath("$.months.length()").value(1))
+                .andExpect(jsonPath("$.months[0].period").value("2026-03"))
+                .andExpect(jsonPath("$.months[0].count").value(2));
     }
 
     @Test
-    public void 연별로_묶으면_월이_합쳐진다() throws Exception {
-        //given
+    public void 같은_달에_깬_게임_이름이_함께_온다() throws Exception {
+        //given — 차트의 툴팁이 "그 달에 뭘 깼나"를 보여준다
+        Member member = saveMember();
+        completePlaythrough(member, addEntry(member, saveGame("Hollow Knight")), "2026-03-01", "2026-03-10");
+        completePlaythrough(member, addEntry(member, saveGame("Celeste")), "2026-03-05", "2026-03-08");
+
+        //when //then — 이름은 정렬된다. 안 그러면 새로고침마다 순서가 흔들린다
+        mockMvc.perform(get("/api/stats/completions/monthly").header("X-Member-Id", member.getId()))
+                .andExpect(jsonPath("$.months[0].items.length()").value(2))
+                .andExpect(jsonPath("$.months[0].items[0]").value("Celeste"))
+                .andExpect(jsonPath("$.months[0].items[1]").value("Hollow Knight"));
+    }
+
+    @Test
+    public void 연합계는_그_해에_깬_횟수다() throws Exception {
+        //given — 지출은 연평균이지만 완료는 합계다. "올해 몇 개 깼나"가 자연스럽다
         Member member = saveMember();
         Long entryId = addEntry(member, saveGame("Hollow Knight"));
         completePlaythrough(member, entryId, "2026-01-01", "2026-01-10");
         completePlaythrough(member, entryId, "2026-05-01", "2026-05-10");
 
         //when //then
-        mockMvc.perform(get("/api/stats/completions").param("unit", "year")
-                        .header("X-Member-Id", member.getId()))
-                .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].period").value("2026"))
-                .andExpect(jsonPath("$[0].count").value(2));
+        mockMvc.perform(get("/api/stats/completions/monthly").header("X-Member-Id", member.getId()))
+                .andExpect(jsonPath("$.months.length()").value(2))
+                .andExpect(jsonPath("$.years.length()").value(1))
+                .andExpect(jsonPath("$.years[0].year").value(2026))
+                .andExpect(jsonPath("$.years[0].count").value(2));
     }
 
     @Test
@@ -131,16 +145,9 @@ class StatsApiTest extends ControllerTestSupport {
         startPlaythrough(member, entryId, "2026-01-01");
 
         //when //then
-        mockMvc.perform(get("/api/stats/completions").header("X-Member-Id", member.getId()))
-                .andExpect(jsonPath("$.length()").value(0));
-    }
-
-    @Test
-    public void 없는_단위는_400이다() throws Exception {
-        //when //then
-        mockMvc.perform(get("/api/stats/completions").param("unit", "week")
-                        .header("X-Member-Id", saveMember().getId()))
-                .andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/stats/completions/monthly").header("X-Member-Id", member.getId()))
+                .andExpect(jsonPath("$.months.length()").value(0))
+                .andExpect(jsonPath("$.years.length()").value(0));
     }
 
     // ── FR-STAT-03 플레이 시간
