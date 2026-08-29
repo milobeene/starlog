@@ -51,6 +51,15 @@ jobs:
         working-directory: backend
         run: ./gradlew test
 
+      # 실패했을 때 리포트를 남긴다 — 로그만으로 부족한 경우가 있다
+      - name: 테스트 리포트
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: backend/build/reports/tests/test
+          retention-days: 7
+
       - name: 정적 빌드 + bootJar
         run: ./tools/build-desktop.sh
 

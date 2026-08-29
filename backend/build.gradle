@@ -90,4 +90,18 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+
+	/*
+	 * 실패한 것을 로그에 그대로 찍는다 (2026-08-30).
+	 *
+	 * ⚠️ 기본 설정은 "몇 개 실패"만 알려주고 **이름과 이유는 HTML 리포트에만** 남긴다.
+	 * CI에서는 그 파일에 손이 안 닿아서(로그 내려받기에 인증이 필요하다) 실 PostgreSQL
+	 * 테스트가 깨졌을 때 무엇이 깨졌는지 알 방법이 없었다 — 실제로 그렇게 막혔다
+	 */
+	testLogging {
+		events "failed"
+		exceptionFormat "full"
+		showStackTraces = true
+		showCauses = true
+	}
 }
