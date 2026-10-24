@@ -138,6 +138,19 @@ export interface StarlogBridge {
       saveCount?: number;
     }>;
   };
+  /**
+   * 배경 색 캐시·프리셋 (F4). 일렉트론이 `settings.json`에 들고 있다 — 입구는 백엔드가 없어
+   * 프로필을 못 읽고, 본 앱 포트가 매번 달라 localStorage도 이어지지 않는다.
+   * 옛 preload에는 없을 수 있다 → 부르는 쪽은 `?.`로 쓴다
+   */
+  background?: {
+    /** 동기. 첫 프레임 전에 알아야 기본색이 번쩍이지 않는다 */
+    get(): { colors: string[] | null; presets: { name: string; colors: string[] }[] };
+    set(patch: {
+      colors?: string[] | null;
+      presets?: { name: string; colors: string[] }[];
+    }): void;
+  };
   pickFolder(): Promise<string | null>;
   openFolder(which: string): Promise<void>;
   /** 스크린샷 폴더처럼 백엔드가 알려준 절대 경로. 데이터 루트 밖은 일렉트론이 거부한다 */

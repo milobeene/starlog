@@ -1,11 +1,12 @@
 "use client";
 
 import DateField from "@/components/ui/DateField";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Modal from "@/components/ui/Modal";
 import { Button, Field, FIELD_INPUT } from "@/components/ui/Field";
 import { api, errorMessage } from "@/lib/api";
 import type { GameRow } from "@/components/system/gameMaster";
+import type { MasterInfo } from "@/lib/types";
 
 /** 마스터 정보 수정 (FR-ADM-01). **전체 교체** — 비운 칸은 지워진다 */
 export default function InfoDialog({
@@ -20,6 +21,28 @@ export default function InfoDialog({
   const [developers, setDevelopers] = useState("");
   const [publishers, setPublishers] = useState("");
   const [genres, setGenres] = useState("");
+  /*
+   * 현재 값 미리 채우기. 목록 행에는 이 셋이 없어서 열 때 한 번 받아온다.
+   * ⚠️ **받기 전에 저장하면 전체 교체라 셋이 비워진다** — 받는 동안 칸을 잠그고 저장을 막는다.
+   * 받기 실패(서버가 `GET /api/games/{id}`를 안 주는 등)면 예전처럼 빈 칸 + 경고로 둔다
+   */
+  const [prefill, setPrefill] = useState<"loading" | "done" | "failed">("loading");
+  useEffect(() => {
+    let alive = true;
+    api
+      .get<Pick<MasterInfo, "developers" | "publishers" | "genres">>(`/api/games/${game.gameId}`)
+      .then((info) => {
+        if (!alive) return;
+        setDevelopers(info.developers.join(", "));
+        setPublishers(info.publishers.join(", "));
+        setGenres(info.genres.join(", "));
+        setPrefill("done");
+      })
+      .catch(() => alive && setPrefill("failed"));
+    return () => {
+      alive = false;
+    };
+  }, [game.gameId]);
   const [releasedOn, setReleasedOn] = useState(game.releasedOn ?? "");
   /*
    * 이름을 여기로 합쳤다 (2026-08-29). 버튼이 둘이면 "이름을 고치려면 어느 쪽이지"가 생긴다.
@@ -39,6 +62,7 @@ export default function InfoDialog({
     <AdminFormDialog
       title="마스터 정보 수정"
       onClose={onClose}
+      blocked={prefill === "loading"}
       onSubmit={async () => {
         let propagated = 0;
         // 이름을 먼저 — 실패하면 정보까지 바꾸지 않는다. 반쯤 반영된 상태가 제일 나쁘다
@@ -76,14 +100,22 @@ export default function InfoDialog({
         오버라이드가 마스터보다 우선합니다.
       </p>
 
-      <p className="rounded-md border border-amber-400/25 bg-amber-400/10 px-3 py-2 text-[11px] leading-relaxed text-amber-200/80">
-        <b className="text-amber-100">아래 셋은 전체 교체입니다.</b> 비워 두신 칸은 마스터에서 지워집니다.
-        현재 값을 유지하시려면 그대로 다시 입력해 주세요.
-      </p>
+      {prefill === "failed" ? (
+        <p className="rounded-md border border-amber-400/25 bg-amber-400/10 px-3 py-2 text-[11px] leading-relaxed text-amber-200/80">
+          <b className="text-amber-100">현재 값을 불러오지 못했습니다.</b> 아래 셋은 전체 교체라
+          비워 두신 칸은 마스터에서 지워집니다. 유지하시려면 그대로 다시 입력해 주세요.
+        </p>
+      ) : (
+        <p className="text-[11px] leading-relaxed text-white/40">
+          아래 셋은 전체 교체입니다 — 비우면 마스터에서 지워집니다.
+        </p>
+      )}
       <Field label="Developers" hint="쉼표로 구분">
         <input
           value={developers}
           onChange={(event) => setDevelopers(event.target.value)}
+          disabled={prefill === "loading"}
+          placeholder={prefill === "loading" ? "불러오는 중…" : undefined}
           className={FIELD_INPUT}
         />
       </Field>
@@ -91,6 +123,8 @@ export default function InfoDialog({
         <input
           value={publishers}
           onChange={(event) => setPublishers(event.target.value)}
+          disabled={prefill === "loading"}
+          placeholder={prefill === "loading" ? "불러오는 중…" : undefined}
           className={FIELD_INPUT}
         />
       </Field>
@@ -98,6 +132,8 @@ export default function InfoDialog({
         <input
           value={genres}
           onChange={(event) => setGenres(event.target.value)}
+          disabled={prefill === "loading"}
+          placeholder={prefill === "loading" ? "불러오는 중…" : undefined}
           className={FIELD_INPUT}
         />
       </Field>
@@ -113,11 +149,14 @@ function AdminFormDialog({
   title,
   onClose,
   onSubmit,
+  blocked = false,
   children,
 }: {
   title: string;
   onClose: () => void;
   onSubmit: () => Promise<void>;
+  /** 저장 버튼을 잠근다 — 미리 채울 값이 아직 안 왔을 때 */
+  blocked?: boolean;
   children: React.ReactNode;
 }) {
   const [busy, setBusy] = useState(false);
@@ -133,7 +172,7 @@ function AdminFormDialog({
           <Button onClick={onClose}>취소</Button>
           <Button
             variant="primary"
-            disabled={busy}
+            disabled={busy || blocked}
             onClick={async () => {
               setBusy(true);
               setError(null);

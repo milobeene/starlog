@@ -25,6 +25,14 @@ contextBridge.exposeInMainWorld("starlog", {
     /** 바꾸기 전에 살펴본다 — 쓸 수 있는 곳인지, 이미 우리 구조가 있는지 */
     inspectDataRoot: (dir) => ipcRenderer.invoke("settings:inspectDataRoot", dir),
   },
+  /**
+   * 배경 색 캐시·프리셋 (프론트 F4). 입구가 백엔드 없이 마지막 색으로 뜨게 한다.
+   * `get`은 동기 — 첫 프레임 전에 알아야 기본색이 번쩍이지 않는다
+   */
+  background: {
+    get: () => ipcRenderer.sendSync("background:get"),
+    set: (patch) => ipcRenderer.send("background:set", patch),
+  },
   pickFolder: () => ipcRenderer.invoke("dialog:pickFolder"),
   openFolder: (which) => ipcRenderer.invoke("shell:openFolder", which),
   /** 스크린샷 폴더처럼 백엔드가 알려준 절대 경로를 연다. 데이터 루트 밖은 거부된다 */

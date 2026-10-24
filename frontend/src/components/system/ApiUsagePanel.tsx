@@ -60,6 +60,23 @@ export default function ApiUsagePanel({
          */
         if (item.provider === "IGDB" && !hasIgdbKey) return null;
         if (item.provider === "STORAGE" && !storage.configured) return null;
+        /*
+         * IGDB는 횟수를 안 보여준다 (사용자 결정 2026-10-24). 월 한도가 없어졌고 초당·동시 한도는
+         * 카운트로 가늠할 수 없다 — 숫자는 잡음이라 한도 설명만 툴팁으로 남긴다
+         */
+        if (item.provider === "IGDB" && meta) {
+          return (
+            <section key={item.provider}>
+              <h3 className="flex items-center gap-2 text-[11px] font-semibold tracking-widest text-white/50 uppercase">
+                {meta.label}
+                <InfoTip>
+                  한도 {meta.limits.join(" · ")}
+                  {meta.checkedOn !== "—" && ` (${meta.checkedOn} 기준)`}
+                </InfoTip>
+              </h3>
+            </section>
+          );
+        }
         return (
           <section key={item.provider}>
             <h3 className="text-[11px] font-semibold tracking-widest text-white/50 uppercase">
@@ -67,21 +84,8 @@ export default function ApiUsagePanel({
             </h3>
 
             <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {/*
-                **스토리지는 "최근 1분"이 뜻이 없다.** 초당 한도가 걸리는 건 IGDB고,
-                스토리지에서 궁금한 건 "얼마나 쌓였나"다 — 그 자리에 보관량을 놓는다
-              */}
-              {/*
-                "최근 1분"을 되살렸다 (2026-08-29). 뺐던 이유는 "혼자 쓰는 앱에서는 늘 0"이었는데,
-                게임 마스터 일괄 동기화가 생기면서 **짧은 시간에 몰아 부르는 경로가 실제로 생겼다** —
-                IGDB의 초당 한도에 걸리는지 볼 자리가 필요하다.
-                스토리지는 그 자리에 보관량을 놓는다 — 초당 한도가 걸리는 건 IGDB다
-              */}
-              {item.provider !== "STORAGE" && (
-                <Stat label="최근 1분" value={item.lastMinute} />
-              )}
-              {item.provider === "STORAGE" && (
-                <Stat
+              {/* 스토리지는 호출 횟수보다 "얼마나 쌓였나"가 궁금하다 — 첫 칸에 보관량 */}
+              <Stat
                   label="커버"
                   /* 개수와 용량을 한 칸에 — 따로 두면 카드가 다섯이 되어 줄이 깨진다 */
                   value={
@@ -94,7 +98,6 @@ export default function ApiUsagePanel({
                   }
                   raw
                 />
-              )}
               <Stat label="최근 1시간" value={item.lastHour} />
               <Stat label="최근 24시간" value={item.lastDay} />
               <Stat label={`최근 ${retentionDays}일`} value={item.lastMonth} />
@@ -129,6 +132,28 @@ export default function ApiUsagePanel({
         );
       })}
     </div>
+  );
+}
+
+/** 물음표에 마우스를 올리면 뜨는 말풍선. 키보드 포커스에서도 뜬다 */
+function InfoTip({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="group relative inline-flex">
+      <span
+        tabIndex={0}
+        role="img"
+        aria-label="한도 안내"
+        className="flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-white/25 text-[10px] font-medium tracking-normal text-white/50 normal-case transition-colors group-hover:border-white/60 group-hover:text-white/90 focus-visible:border-white/60 focus-visible:text-white/90 focus-visible:outline-none"
+      >
+        ?
+      </span>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute top-full left-0 z-10 mt-1.5 w-max max-w-72 rounded-md border border-white/15 bg-neutral-900/95 px-2.5 py-1.5 text-[11px] leading-relaxed font-normal tracking-normal text-white/75 normal-case opacity-0 shadow-lg transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+      >
+        {children}
+      </span>
+    </span>
   );
 }
 

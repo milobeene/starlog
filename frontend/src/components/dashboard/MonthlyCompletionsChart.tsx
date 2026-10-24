@@ -60,37 +60,40 @@ export default function MonthlyCompletionsChart({ data }: { data: MonthlyComplet
       </ChartYearSwitch>
 
       <div
-        className="w-full overflow-x-auto rounded-sm border border-white/10 bg-black/10 p-4"
+        className="w-full rounded-sm border border-white/10 bg-black/10 p-4"
         onMouseLeave={() => setHover(null)}
       >
-        <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="h-72 w-full min-w-[640px]">
-          <ChartGrid max={max} />
+        {/* 가로 스크롤은 그래프만 — 아래 툴팁 줄까지 같이 밀리면 좁은 창에서 왼쪽에 붙어 안 보인다 */}
+        <div className="overflow-x-auto">
+          <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="h-72 w-full min-w-[640px]">
+            <ChartGrid max={max} />
 
-          <polyline
-            points={counts.map((v, i) => `${xOf(i)},${yOf(v)}`).join(" ")}
-            fill="none"
-            stroke={LINE}
-            strokeWidth="1.5"
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
-          {counts.map((v, i) => (
-            <circle key={i} cx={xOf(i)} cy={yOf(v)} r={hover === i ? 4 : 2.5} fill={LINE} />
-          ))}
-
-          {hover !== null && (
-            <line
-              x1={xOf(hover)}
-              x2={xOf(hover)}
-              y1={PAD.top}
-              y2={PAD.top + PLOT_H}
-              stroke="rgba(255,255,255,0.35)"
-              strokeWidth="1"
+            <polyline
+              points={counts.map((v, i) => `${xOf(i)},${yOf(v)}`).join(" ")}
+              fill="none"
+              stroke={LINE}
+              strokeWidth="1.5"
+              strokeLinejoin="round"
+              strokeLinecap="round"
             />
-          )}
+            {counts.map((v, i) => (
+              <circle key={i} cx={xOf(i)} cy={yOf(v)} r={hover === i ? 4 : 2.5} fill={LINE} />
+            ))}
 
-          <ChartMonthAxis hover={hover} onHover={setHover} />
-        </svg>
+            {hover !== null && (
+              <line
+                x1={xOf(hover)}
+                x2={xOf(hover)}
+                y1={PAD.top}
+                y2={PAD.top + PLOT_H}
+                stroke="rgba(255,255,255,0.35)"
+                strokeWidth="1"
+              />
+            )}
+
+            <ChartMonthAxis hover={hover} onHover={setHover} />
+          </svg>
+        </div>
 
         <div className="mt-3 flex min-h-[1.5rem] items-center gap-4 border-t border-white/5 px-1 pt-3 text-xs">
           {hover === null ? (

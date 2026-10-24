@@ -3,6 +3,20 @@
 import { useEffect, useRef } from "react";
 import { buildProgram } from "@/lib/fluidShader";
 import { hexToRgb } from "@/lib/palette";
+import { isActive, subscribeActivity } from "./activity";
+
+/*
+ * 속도 보간의 시간 상수(초). 지수 감쇠라 목표에 점근한다 —
+ * 느려질 때는 천천히(1.2s: 약 3.5s 만에 5% 아래, 약 7s 만에 0.3% 아래라 멈춘 것과 같다),
+ * 다시 흐를 때는 빠르게(0.35s) 따라붙어야 손에 반응하는 느낌이 난다
+ */
+const TAU_DOWN = 1.2;
+const TAU_UP = 0.35;
+/** 이 아래면 눈에 안 보이는 속도라 완전히 세우고 루프를 쉰다 */
+const STILL_BELOW = 0.003;
+/** 이 속도 아래면 프레임을 줄인다 */
+const SLOW_BELOW = 0.25;
+const SLOW_FRAME_MS = 45;
 
 /**
  * 셰이더를 돌리는 캔버스 한 장. **전역 배경과 설정 미리보기가 이걸 공유한다.**
@@ -31,10 +45,15 @@ export default function FluidCanvas({
   const splitRef = useRef(split);
 
   // ref 쓰기를 렌더 본문이 아니라 effect에 두는 이유: 렌더는 부수효과가 없어야 한다
+  /** 멈춰 있는 루프를 깨우는 손잡이 — 아래 effect가 채운다 */
+  const wakeRef = useRef<() => void>(() => {});
+
   useEffect(() => {
     colorsRef.current = colors;
     targetRef.current = targetAppState;
     splitRef.current = split;
+    // 멈춘 상태에서 색·목표가 바뀌어도 한 프레임은 새로 그려야 한다
+    wakeRef.current();
   }, [colors, targetAppState, split]);
 
   useEffect(() => {
@@ -66,6 +85,16 @@ export default function FluidCanvas({
 
     let current = targetRef.current;
     let frame = 0;
+    /*
+     * 셰이더에 주는 시간은 벽시계가 아니라 **내가 누적한 시간**이다. 속도를 줄이면 시간이
+     * 천천히 흐르므로 무늬가 튀지 않고 그대로 느려진다 (벽시계에 곱하면 값이 점프한다).
+     * 시작값을 벽시계로 맞춰 두는 건 전역 배경과 미리보기가 비슷한 무늬로 시작하게 하려는 것
+     */
+    let shaderSeconds = performance.now() * 0.001;
+    let speed = 1;
+    let lastFrame = 0;
+    let running = false;
+    let lost = false;
 
     /*
      * **컨텍스트를 잃으면 preventDefault를 해야 복구 이벤트가 온다.**
@@ -74,17 +103,39 @@ export default function FluidCanvas({
      * **새로고침 전까지 영영 안 돌아온다**
      */
     const onLost = (event: Event) => {
-        event.preventDefault();
-        cancelAnimationFrame(frame);
+      event.preventDefault();
+      cancelAnimationFrame(frame);
+      running = false;
+      lost = true;
     };
     const onRestored = () => {
-        frame = requestAnimationFrame(render);
+      lost = false;
+      wake();
     };
     canvas.addEventListener("webglcontextlost", onLost);
     canvas.addEventListener("webglcontextrestored", onRestored);
 
     const render = (now: number) => {
-      const seconds = now * 0.001;
+      /*
+       * 느려진 동안은 20fps로 충분하다 — 움직임이 5배 이상 느려서 프레임 사이 변화가 작다.
+       * lastFrame을 안 건드리고 돌아가므로 다음에 그릴 때 dt에 건너뛴 시간이 그대로 실린다
+       */
+      if (speed < SLOW_BELOW && lastFrame !== 0 && now - lastFrame < SLOW_FRAME_MS) {
+        frame = requestAnimationFrame(render);
+        return;
+      }
+
+      // 첫 프레임(또는 쉬다 깬 첫 프레임)은 dt를 0으로 — 쉰 시간이 한꺼번에 흐르면 점프한다.
+      // 탭이 느려졌다 돌아온 경우도 0.1초에서 자른다
+      const dt = lastFrame === 0 ? 0 : Math.min((now - lastFrame) / 1000, 0.1);
+      lastFrame = now;
+
+      const active = isActive(now);
+      speed += ((active ? 1 : 0) - speed) * (1 - Math.exp(-dt / (active ? TAU_UP : TAU_DOWN)));
+      const still = !active && speed < STILL_BELOW;
+      if (still) speed = 0;
+      shaderSeconds += dt * speed;
+      const seconds = shaderSeconds;
 
       /*
        * devicePixelRatio를 곱하지 않는다 — 전체 화면 노이즈라 픽셀 수가 성능을 바로 먹는다.
@@ -99,6 +150,8 @@ export default function FluidCanvas({
       }
 
       current += (targetRef.current - current) * 0.05;
+      const settled = Math.abs(targetRef.current - current) < 0.001;
+      if (settled) current = targetRef.current;
 
       gl.useProgram(program);
       gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
@@ -117,10 +170,25 @@ export default function FluidCanvas({
       });
 
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+      // 멈췄고 라우트 전환 보간도 끝났으면 쉰다 — 마지막 프레임은 위에서 그렸다.
+      // 입력·색 변경·창 크기 변경이 wake()로 깨운다
+      if (still && settled) {
+        running = false;
+        lastFrame = 0;
+        return;
+      }
       frame = requestAnimationFrame(render);
     };
 
-    frame = requestAnimationFrame(render);
+    function wake() {
+      if (running || lost) return;
+      running = true;
+      frame = requestAnimationFrame(render);
+    }
+    wakeRef.current = wake;
+    const unsubscribe = subscribeActivity(wake);
+    wake();
 
     /*
      * **자원을 반드시 놓는다.** 캔버스가 DOM에서 빠져도 브라우저의 활성 컨텍스트 목록에는
@@ -134,7 +202,10 @@ export default function FluidCanvas({
      * 리스너를 먼저 떼야 한다: loseContext가 위 onLost를 깨운다
      */
     return () => {
+      unsubscribe();
+      wakeRef.current = () => {};
       cancelAnimationFrame(frame);
+      running = false;
       canvas.removeEventListener("webglcontextlost", onLost);
       canvas.removeEventListener("webglcontextrestored", onRestored);
       gl.deleteBuffer(positionBuffer);

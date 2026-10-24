@@ -91,58 +91,61 @@ export default function MonthlySpendingChart({ data }: { data: MonthlySpending }
         **버튼이 손에 닿기 전에 사라졌다.** 펼치기가 아예 도달 불가였다
       */}
       <div
-        className="w-full overflow-x-auto rounded-sm border border-white/10 bg-black/10 p-4"
+        className="w-full rounded-sm border border-white/10 bg-black/10 p-4"
         onMouseLeave={() => setHover(null)}
       >
-        <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="h-72 w-full min-w-[640px]">
-          {/* 축 값은 첫 통화 기준이다 — 통화마다 스케일이 갈리므로 대표 하나만 적는다 */}
-          <ChartGrid max={currencies[0] ? maxByCurrency[currencies[0]] : null} />
+        {/* 가로 스크롤은 그래프만 — 아래 툴팁 줄까지 같이 밀리면 좁은 창에서 왼쪽에 붙어 안 보인다 */}
+        <div className="overflow-x-auto">
+          <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="h-72 w-full min-w-[640px]">
+            {/* 축 값은 첫 통화 기준이다 — 통화마다 스케일이 갈리므로 대표 하나만 적는다 */}
+            <ChartGrid max={currencies[0] ? maxByCurrency[currencies[0]] : null} />
 
-          {/* 꺾은선 — 데이터 없는 달은 건너뛰고 이어 그린다 */}
-          {currencies.map((currency, index) => {
-            const points = series
-              .map((amounts, monthIndex) =>
-                amounts == null ? null : ([monthIndex, amounts[currency] ?? 0] as const),
-              )
-              .filter((point): point is readonly [number, number] => point !== null);
+            {/* 꺾은선 — 데이터 없는 달은 건너뛰고 이어 그린다 */}
+            {currencies.map((currency, index) => {
+              const points = series
+                .map((amounts, monthIndex) =>
+                  amounts == null ? null : ([monthIndex, amounts[currency] ?? 0] as const),
+                )
+                .filter((point): point is readonly [number, number] => point !== null);
 
-            return (
-              <g key={currency}>
-                <polyline
-                  points={points.map(([i, v]) => `${xOf(i)},${yOf(v, currency)}`).join(" ")}
-                  fill="none"
-                  stroke={LINE_COLORS[index % LINE_COLORS.length]}
-                  strokeWidth="1.5"
-                  strokeLinejoin="round"
-                  strokeLinecap="round"
-                />
-                {points.map(([i, v]) => (
-                  <circle
-                    key={i}
-                    cx={xOf(i)}
-                    cy={yOf(v, currency)}
-                    r={hover === i ? 4 : 2.5}
-                    fill={LINE_COLORS[index % LINE_COLORS.length]}
+              return (
+                <g key={currency}>
+                  <polyline
+                    points={points.map(([i, v]) => `${xOf(i)},${yOf(v, currency)}`).join(" ")}
+                    fill="none"
+                    stroke={LINE_COLORS[index % LINE_COLORS.length]}
+                    strokeWidth="1.5"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
                   />
-                ))}
-              </g>
-            );
-          })}
+                  {points.map(([i, v]) => (
+                    <circle
+                      key={i}
+                      cx={xOf(i)}
+                      cy={yOf(v, currency)}
+                      r={hover === i ? 4 : 2.5}
+                      fill={LINE_COLORS[index % LINE_COLORS.length]}
+                    />
+                  ))}
+                </g>
+              );
+            })}
 
-          {/* 호버 세로선 */}
-          {hover !== null && (
-            <line
-              x1={xOf(hover)}
-              x2={xOf(hover)}
-              y1={PAD.top}
-              y2={PAD.top + PLOT_H}
-              stroke="rgba(255,255,255,0.35)"
-              strokeWidth="1"
-            />
-          )}
+            {/* 호버 세로선 */}
+            {hover !== null && (
+              <line
+                x1={xOf(hover)}
+                x2={xOf(hover)}
+                y1={PAD.top}
+                y2={PAD.top + PLOT_H}
+                stroke="rgba(255,255,255,0.35)"
+                strokeWidth="1"
+              />
+            )}
 
-          <ChartMonthAxis hover={hover} onHover={setHover} />
-        </svg>
+            <ChartMonthAxis hover={hover} onHover={setHover} />
+          </svg>
+        </div>
 
         {/* 툴팁 — SVG 밖에 두면 위치 계산 없이 폭을 그대로 쓴다 */}
         <div className="mt-3 flex min-h-[1.5rem] items-center gap-4 border-t border-white/5 px-1 pt-3 text-xs">

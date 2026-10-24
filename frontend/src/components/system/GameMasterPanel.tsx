@@ -9,7 +9,7 @@ import { Button, FIELD_INPUT } from "@/components/ui/Field";
 import BulkSyncDialog from "@/components/system/BulkSyncDialog";
 import GameMasterInfoDialog from "@/components/system/GameMasterInfoDialog";
 import GameMasterList from "@/components/system/GameMasterList";
-import type { GameRow } from "@/components/system/gameMaster";
+import { applyPick, type GameRow } from "@/components/system/gameMaster";
 import { useApi } from "@/lib/useApi";
 import { api, errorMessage, qs } from "@/lib/api";
 import { putTask, updateTask } from "@/lib/tasks";
@@ -46,9 +46,11 @@ export default function GameMasterMaster() {
   const [deleting, setDeleting] = useState<GameRow | null>(null);
   /* 여러 개를 골라 한꺼번에 다루기 (2026-08-28) */
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  /** Shift 범위의 기준 — 마지막으로 일반/Ctrl 클릭한 행 */
+  const anchor = useRef<number | null>(null);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   /** 일괄 동기화 — 대상을 먼저 보여주고 승인을 받는다 (§10-2) */
-  const [syncTargets, setSyncTargets] = useState<GameMaster[] | null>(null);
+  const [syncDialog, setSyncDialog] = useState<{ scope?: "selected" } | null>(null);
   /** 중단 신호. 루프가 매 바퀴 확인한다 — 되돌릴 게 없어서 그냥 멈추면 된다 */
   const abort = useRef(false);
   const [dialog, setDialog] = useState<{ kind: "info"; game: GameRow } | null>(null);
@@ -138,13 +140,7 @@ export default function GameMasterMaster() {
         진행률은 따로 저장하지 않는다: `lastSyncedAt`이 이미 상태라 다시 물어보면 남은 것만 나온다
       */}
       <div className="flex flex-wrap items-center gap-2">
-        <Button
-          onClick={async () => {
-            setSyncTargets(await api.get<GameMaster[]>("/api/games/outdated"));
-          }}
-        >
-          일괄 동기화
-        </Button>
+        <Button onClick={() => setSyncDialog({})}>일괄 동기화</Button>
         {selected.size > 0 && (
           <>
             <span className="text-xs text-white/40">{selected.size}개 선택</span>
@@ -153,18 +149,7 @@ export default function GameMasterMaster() {
               고른 것만 돌리고 싶을 때가 있다 — 방금 고친 몇 개를 다시 받아오는 경우다.
               같은 진행 표시(bulk-sync)를 쓴다: 사용자에겐 같은 종류의 일이다
             */}
-            <Button
-              onClick={() =>
-                setSyncTargets(
-                  rows.filter(
-                    (row) =>
-                      row.gameId != null &&
-                      selected.has(row.gameId) &&
-                      row.source !== "MANUAL",
-                  ) as GameMaster[],
-                )
-              }
-            >
+            <Button onClick={() => setSyncDialog({ scope: "selected" })}>
               선택 동기화
             </Button>
             <Button variant="danger" onClick={() => setBulkDeleting(true)}>
@@ -234,21 +219,24 @@ export default function GameMasterMaster() {
           {includeExternal && !keyword ? "검색어를 입력해 주세요" : "등록된 게임이 없습니다"}
         </p>
       ) : (
-        <GameMasterList
-          rows={rows}
-          selected={selected}
-          onSelect={(gameId, checked) =>
-            setSelected((prev) => {
-              const next = new Set(prev);
-              if (checked) next.add(gameId);
-              else next.delete(gameId);
-              return next;
-            })
-          }
-          onInfo={(game) => setDialog({ kind: "info", game })}
-          onResync={resync}
-          onDelete={setDeleting}
-        />
+        <>
+          <p className="-mb-2 text-[11px] text-white/30">
+            행을 눌러 선택 · Shift로 범위 · Ctrl(⌘)로 하나씩 켜고 끄기
+          </p>
+          <GameMasterList
+            rows={rows}
+            selected={selected}
+            onPick={(gameId, mod) => {
+              const order = rows.flatMap((row) => (row.gameId != null ? [row.gameId] : []));
+              const result = applyPick(selected, order, anchor.current, gameId, mod);
+              anchor.current = result.anchor;
+              setSelected(result.next);
+            }}
+            onInfo={(game) => setDialog({ kind: "info", game })}
+            onResync={resync}
+            onDelete={setDeleting}
+          />
+        </>
       )}
 
       {/* IGDB 검색은 외부 호출이라 총 건수를 모른다 — 페이지네이션은 마스터 목록에만 붙는다 */}
@@ -260,11 +248,12 @@ export default function GameMasterMaster() {
         일괄 동기화 승인 (§10-2). 대상 목록을 먼저 보여준다 —
         "몇 개를 얼마나 오래" 돌릴지 모르고 시작하면 중간에 끊고 싶어진다
       */}
-      {syncTargets && (
+      {syncDialog && (
         <BulkSyncDialog
-          syncTargets={syncTargets}
+          selectedIds={[...selected]}
+          initialScope={syncDialog.scope}
           abort={abort}
-          onClose={() => setSyncTargets(null)}
+          onClose={() => setSyncDialog(null)}
           onDone={() => masterList.reload()}
         />
       )}

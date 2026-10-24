@@ -1,7 +1,20 @@
 "use client";
 
+import { useState } from "react";
 import FluidCanvas from "@/components/background/FluidCanvas";
-import { DEFAULT_PALETTE, PALETTES, SLOT_LABELS } from "@/lib/palette";
+import {
+  DEFAULT_PALETTE,
+  PALETTES,
+  SLOT_LABELS,
+  loadPresets,
+  shiftHue,
+  storePresets,
+  type SavedPalette,
+} from "@/lib/palette";
+
+const MAX_PRESETS = 12;
+const sameColors = (a: string[], b: string[]) =>
+  a.length === b.length && a.every((color, i) => color.toUpperCase() === b[i].toUpperCase());
 
 /**
  * 배경 색 편집기 — **고르는 즉시 위 창에 반영된다.**
@@ -14,7 +27,8 @@ import { DEFAULT_PALETTE, PALETTES, SLOT_LABELS } from "@/lib/palette";
  * 무늬가 가운데서 끊기지 않는다. 왼쪽이 입구, 오른쪽이 앱 안이고 한눈에 비교된다.
  *
  * **저장은 부모(ProfileDialog)가 한다.** 여기는 값을 들고 있지 않는다 —
- * 취소하면 아무 일도 없어야 하므로 상태의 주인이 하나여야 한다
+ * 취소하면 아무 일도 없어야 하므로 상태의 주인이 하나여야 한다.
+ * (예외: 내 프리셋 목록은 프로필이 아니라 따로 저장된다 — `lib/palette.ts`의 프리셋 저장소)
  */
 export default function PaletteEditor({
   colors,
@@ -27,6 +41,37 @@ export default function PaletteEditor({
     const next = [...colors];
     next[index] = value.toUpperCase();
     onChange(next);
+  };
+
+  /*
+   * 색조 일괄 조절. 슬라이더는 **처음 움직인 순간의 색(base)에서 몇 도 돌렸나**를 나타낸다.
+   * 색을 다른 길(개별 선택기·프리셋)로 바꾸면 emitted와 어긋나므로 값이 0으로 떨어지고 base도 새로 잡힌다
+   * — effect로 되돌리지 않고 렌더에서 파생한다
+   */
+  const [hue, setHue] = useState<{ base: string[]; shift: number; emitted: string[] } | null>(null);
+  const hueLive = hue !== null && sameColors(colors, hue.emitted);
+  const shift = hueLive ? hue.shift : 0;
+  const rotate = (degrees: number) => {
+    const base = hueLive ? hue.base : colors;
+    const emitted = shiftHue(base, degrees);
+    setHue({ base, shift: degrees, emitted });
+    onChange(emitted);
+  };
+
+  const [presets, setPresets] = useState<SavedPalette[]>(loadPresets);
+  const [naming, setNaming] = useState<string | null>(null);
+  const commitPresets = (next: SavedPalette[]) => {
+    setPresets(next);
+    storePresets(next);
+  };
+  const savePreset = () => {
+    const name = (naming ?? "").trim().slice(0, 30);
+    if (!name) return;
+    // 이름이 같으면 덮어쓴다 — 고쳐 쓴 색을 같은 이름으로 다시 저장하는 흐름
+    const rest = presets.filter((preset) => preset.name !== name);
+    if (rest.length >= MAX_PRESETS) return;
+    commitPresets([...rest, { name, colors: colors.map((color) => color.toUpperCase()) }]);
+    setNaming(null);
   };
 
   const isDefault = colors.every(
@@ -84,23 +129,41 @@ export default function PaletteEditor({
         ))}
       </div>
 
+      {/* 색조만 한꺼번에 — 채도·명도는 그대로라 분위기를 유지한 채 계열만 옮긴다 */}
+      <div className="flex items-center gap-3">
+        <span className="w-14 shrink-0 text-[11px] text-white/50">색조 이동</span>
+        <input
+          type="range"
+          min={-180}
+          max={180}
+          step={1}
+          value={shift}
+          onChange={(event) => rotate(Number(event.target.value))}
+          aria-label="다섯 색의 색조를 한꺼번에 이동"
+          className="h-2 min-w-0 flex-1 cursor-pointer appearance-none rounded-full bg-white/20
+                     [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none
+                     [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2
+                     [&::-webkit-slider-thumb]:border-white [&::-webkit-slider-thumb]:bg-neutral-900"
+        />
+        <span className="num w-12 shrink-0 text-right text-[11px] text-white/45">
+          {shift > 0 ? "+" : ""}
+          {shift}°
+        </span>
+      </div>
+
       <div className="flex flex-wrap items-center gap-2">
-        {/* 프리셋은 지금 하나뿐이다 — lib/palette.ts의 PALETTES에 줄만 추가하면 늘어난다 */}
+        {/* 기본 제공 프리셋 — lib/palette.ts의 PALETTES */}
         {PALETTES.map((preset) => (
-          <button
+          <PresetChip key={preset.name} preset={preset} onApply={() => onChange([...preset.colors])} />
+        ))}
+        {/* 내 프리셋 — 칩을 누르면 적용, ×로 삭제 */}
+        {presets.map((preset) => (
+          <PresetChip
             key={preset.name}
-            type="button"
-            onClick={() => onChange([...preset.colors])}
-            className="flex items-center gap-2 rounded-full border border-white/15 px-3 py-1.5
-                       text-xs text-white/70 transition-colors hover:border-white/40 hover:text-white"
-          >
-            <span className="flex overflow-hidden rounded-full">
-              {preset.colors.map((color) => (
-                <span key={color} className="h-3 w-3" style={{ background: color }} />
-              ))}
-            </span>
-            {preset.name}
-          </button>
+            preset={preset}
+            onApply={() => onChange([...preset.colors])}
+            onRemove={() => commitPresets(presets.filter((p) => p.name !== preset.name))}
+          />
         ))}
 
         {!isDefault && (
@@ -113,6 +176,96 @@ export default function PaletteEditor({
           </button>
         )}
       </div>
+
+      {/* 지금 색을 이름 붙여 저장 */}
+      <div className="flex flex-wrap items-center gap-2">
+        {naming === null ? (
+          <button
+            type="button"
+            onClick={() => setNaming(`프리셋 ${presets.length + 1}`)}
+            disabled={presets.length >= MAX_PRESETS}
+            className="text-xs text-white/45 underline-offset-4 transition-colors hover:text-white hover:underline disabled:pointer-events-none disabled:opacity-40"
+          >
+            지금 색을 프리셋으로 저장
+          </button>
+        ) : (
+          <>
+            <input
+              autoFocus
+              value={naming}
+              onChange={(event) => setNaming(event.target.value)}
+              onKeyDown={(event) => {
+                // 다이얼로그의 Enter(저장)·Esc(닫기)가 이름 입력까지 먹지 않게
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  savePreset();
+                } else if (event.key === "Escape") {
+                  event.stopPropagation();
+                  setNaming(null);
+                }
+              }}
+              maxLength={30}
+              placeholder="프리셋 이름"
+              className="w-40 rounded-md border border-white/15 bg-white/5 px-2.5 py-1.5 text-xs text-white outline-none focus:border-white/40"
+            />
+            <button
+              type="button"
+              onClick={savePreset}
+              className="rounded-md border border-white/20 px-3 py-1.5 text-xs text-white/80 hover:bg-white/10"
+            >
+              저장
+            </button>
+            <button
+              type="button"
+              onClick={() => setNaming(null)}
+              className="text-xs text-white/40 hover:text-white/80"
+            >
+              취소
+            </button>
+          </>
+        )}
+        {presets.some((preset) => preset.name === (naming ?? "").trim()) && (
+          <span className="text-[11px] text-amber-300/80">같은 이름이 있어 덮어씁니다</span>
+        )}
+      </div>
     </div>
+  );
+}
+
+function PresetChip({
+  preset,
+  onApply,
+  onRemove,
+}: {
+  preset: SavedPalette;
+  onApply: () => void;
+  onRemove?: () => void;
+}) {
+  return (
+    <span className="flex items-center rounded-full border border-white/15 transition-colors hover:border-white/40">
+      <button
+        type="button"
+        onClick={onApply}
+        className="flex items-center gap-2 py-1.5 pr-3 pl-3 text-xs text-white/70 transition-colors hover:text-white"
+      >
+        <span className="flex overflow-hidden rounded-full">
+          {preset.colors.map((color, index) => (
+            <span key={index} className="h-3 w-3" style={{ background: color }} />
+          ))}
+        </span>
+        {preset.name}
+      </button>
+      {onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={`${preset.name} 프리셋 삭제`}
+          className="py-1.5 pr-2.5 pl-0.5 text-xs text-white/30 transition-colors hover:text-red-300"
+        >
+          ×
+        </button>
+      )}
+    </span>
   );
 }

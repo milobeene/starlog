@@ -3,6 +3,24 @@ import { api } from "@/lib/api";
 import { putTask, updateTask } from "@/lib/tasks";
 import type { GameMaster } from "@/lib/types";
 
+/** 발사 간격. IGDB 한도(초당 4회 = 250ms)보다 느슨하게 잡았다 — 여유 50ms */
+export const SYNC_INTERVAL_MS = 300;
+/** 마지막 건이 쏜 뒤 응답을 받아 반영하기까지 */
+const SYNC_TAIL_MS = 2000;
+
+/** 예상 소요 초. 발사 간격이 고정이라 건수에 비례한다 — 응답 속도는 꼬리 한 번만 더한다 */
+export function estimateSyncSeconds(count: number): number {
+  return count === 0 ? 0 : Math.ceil(((count - 1) * SYNC_INTERVAL_MS + SYNC_TAIL_MS) / 1000);
+}
+
+/** 65 → "약 1분 5초", 12 → "약 12초" */
+export function formatSyncEstimate(seconds: number): string {
+  if (seconds < 60) return `약 ${seconds}초`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return rest === 0 ? `약 ${minutes}분` : `약 ${minutes}분 ${rest}초`;
+}
+
 /**
  * 일괄 동기화를 돌린다. 진행·결과는 알림(`tasks`)으로 낸다.
  * `abort`는 알림의 [중단]이 건드리는 신호다 — 루프가 매 건 확인한다
@@ -54,7 +72,7 @@ export async function runBulkSync(targets: GameMaster[], abort: MutableRefObject
           done += 1;
           put(done, game.name);
           resolve();
-        }, i * 300);
+        }, i * SYNC_INTERVAL_MS);
       }),
   );
   await Promise.all(flights);
