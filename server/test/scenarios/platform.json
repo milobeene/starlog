@@ -1,9 +1,5 @@
 {
  "name": "platform",
- "env": {
-  "STARLOG_PROFILE": "test",
-  "SPRING_PROFILES_INCLUDE": "test"
- },
  "steps": [
   {
    "name": "플랫폼 등록 — 정규화",
@@ -90,17 +86,6 @@
    "name": "플랫폼 등록 — 본문 없음",
    "method": "POST",
    "path": "/api/me/platforms"
-  },
-  {
-   "name": "플랫폼 등록 — 회원 없음",
-   "method": "POST",
-   "path": "/api/me/platforms",
-   "body": {
-    "name": "X"
-   },
-   "headers": {
-    "X-Member-Id": "999"
-   }
   },
   {
    "name": "플랫폼 등록 — 삭제된 이름 (되살림)",
@@ -194,17 +179,6 @@
    }
   },
   {
-   "name": "플랫폼 이름 변경 — 남의 플랫폼",
-   "method": "PUT",
-   "path": "/api/me/platforms/${pid}",
-   "body": {
-    "name": "X"
-   },
-   "headers": {
-    "X-Member-Id": "999"
-   }
-  },
-  {
    "name": "플랫폼 이름 변경 — 경로 id 형식 오류",
    "method": "PUT",
    "path": "/api/me/platforms/abc",
@@ -266,14 +240,6 @@
    "name": "플랫폼 삭제 — 없는 플랫폼",
    "method": "DELETE",
    "path": "/api/me/platforms/999999"
-  },
-  {
-   "name": "플랫폼 삭제 — 남의 플랫폼",
-   "method": "DELETE",
-   "path": "/api/me/platforms/${pid}",
-   "headers": {
-    "X-Member-Id": "999"
-   }
   },
   {
    "name": "플랫폼 삭제 — 경로 id 형식 오류",
@@ -347,17 +313,6 @@
    }
   },
   {
-   "name": "입력 방식 등록 — 회원 없음",
-   "method": "POST",
-   "path": "/api/me/input-methods",
-   "body": {
-    "name": "X"
-   },
-   "headers": {
-    "X-Member-Id": "999"
-   }
-  },
-  {
    "name": "입력 방식 등록 — 삭제된 이름 (되살림)",
    "method": "POST",
    "path": "/api/me/input-methods",
@@ -422,17 +377,6 @@
    }
   },
   {
-   "name": "입력 방식 이름 변경 — 남의 것",
-   "method": "PUT",
-   "path": "/api/me/input-methods/${imId}",
-   "body": {
-    "name": "X"
-   },
-   "headers": {
-    "X-Member-Id": "999"
-   }
-  },
-  {
    "name": "입력 방식 삭제",
    "method": "DELETE",
    "path": "/api/me/input-methods/${imId}"
@@ -446,14 +390,6 @@
    "name": "입력 방식 삭제 — 없음",
    "method": "DELETE",
    "path": "/api/me/input-methods/999999"
-  },
-  {
-   "name": "입력 방식 삭제 — 남의 것",
-   "method": "DELETE",
-   "path": "/api/me/input-methods/8",
-   "headers": {
-    "X-Member-Id": "999"
-   }
   },
   {
    "name": "입력 방식 삭제 — 경로 id 형식 오류",
@@ -569,18 +505,6 @@
    }
   },
   {
-   "name": "기기 등록 — 회원 없음",
-   "method": "POST",
-   "path": "/api/me/devices",
-   "body": {
-    "deviceType": "X",
-    "label": "Y"
-   },
-   "headers": {
-    "X-Member-Id": "999"
-   }
-  },
-  {
    "name": "기기 등록 — 깨진 JSON",
    "method": "POST",
    "path": "/api/me/devices",
@@ -661,18 +585,6 @@
    }
   },
   {
-   "name": "기기 수정 — 남의 기기",
-   "method": "PUT",
-   "path": "/api/me/devices/${dId}",
-   "body": {
-    "deviceType": "X",
-    "label": "X"
-   },
-   "headers": {
-    "X-Member-Id": "999"
-   }
-  },
-  {
    "name": "기기 수정 — 경로 id 형식 오류",
    "method": "PUT",
    "path": "/api/me/devices/abc",
@@ -704,14 +616,6 @@
    "name": "기기 삭제 — 없는 기기",
    "method": "DELETE",
    "path": "/api/me/devices/999999"
-  },
-  {
-   "name": "기기 삭제 — 남의 기기",
-   "method": "DELETE",
-   "path": "/api/me/devices/7",
-   "headers": {
-    "X-Member-Id": "999"
-   }
   },
   {
    "name": "기기 삭제 — 실데이터",
@@ -807,17 +711,6 @@
    }
   },
   {
-   "name": "에뮬레이터 등록 — 회원 없음",
-   "method": "POST",
-   "path": "/api/me/emulators",
-   "body": {
-    "name": "X"
-   },
-   "headers": {
-    "X-Member-Id": "999"
-   }
-  },
-  {
    "name": "에뮬레이터 수정",
    "method": "PUT",
    "path": "/api/me/emulators/${eId}",
@@ -869,17 +762,6 @@
    }
   },
   {
-   "name": "에뮬레이터 수정 — 남의 것",
-   "method": "PUT",
-   "path": "/api/me/emulators/${eId}",
-   "body": {
-    "name": "X"
-   },
-   "headers": {
-    "X-Member-Id": "999"
-   }
-  },
-  {
    "name": "에뮬레이터 수정 — 경로 id 형식 오류",
    "method": "PUT",
    "path": "/api/me/emulators/abc",
@@ -909,14 +791,6 @@
    "name": "에뮬레이터 삭제 — 없음",
    "method": "DELETE",
    "path": "/api/me/emulators/999999"
-  },
-  {
-   "name": "에뮬레이터 삭제 — 남의 것",
-   "method": "DELETE",
-   "path": "/api/me/emulators/3",
-   "headers": {
-    "X-Member-Id": "999"
-   }
   },
   {
    "name": "에뮬레이터 삭제 — 실데이터",
@@ -1178,18 +1052,6 @@
    "rawBody": "{"
   },
   {
-   "name": "계정 등록 — 회원 없음",
-   "method": "POST",
-   "path": "/api/me/platform-accounts",
-   "body": {
-    "platformId": 13,
-    "accountLabel": "X"
-   },
-   "headers": {
-    "X-Member-Id": "999"
-   }
-  },
-  {
    "name": "계정 삭제",
    "method": "DELETE",
    "path": "/api/me/platform-accounts/${aId2}"
@@ -1217,14 +1079,6 @@
    "name": "계정 되살리기 — 없는 계정",
    "method": "POST",
    "path": "/api/me/platform-accounts/999999/revive"
-  },
-  {
-   "name": "계정 되살리기 — 남의 계정",
-   "method": "POST",
-   "path": "/api/me/platform-accounts/${aId2}/revive",
-   "headers": {
-    "X-Member-Id": "999"
-   }
   },
   {
    "name": "계정 되살리기 — 경로 id 형식 오류",
@@ -1310,30 +1164,11 @@
    }
   },
   {
-   "name": "계정 이름 변경 — 남의 계정",
-   "method": "PUT",
-   "path": "/api/me/platform-accounts/${aId}",
-   "body": {
-    "accountLabel": "X"
-   },
-   "headers": {
-    "X-Member-Id": "999"
-   }
-  },
-  {
    "name": "계정 이름 변경 — 경로 id 형식 오류",
    "method": "PUT",
    "path": "/api/me/platform-accounts/abc",
    "body": {
     "accountLabel": "X"
-   }
-  },
-  {
-   "name": "계정 삭제 — 남의 계정",
-   "method": "DELETE",
-   "path": "/api/me/platform-accounts/${aId}",
-   "headers": {
-    "X-Member-Id": "999"
    }
   },
   {

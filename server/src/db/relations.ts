@@ -1,25 +1,5 @@
 import { relations } from "drizzle-orm/relations";
-import { member, authToken, game, gameDeveloper, gamePublisher, gameMasterGenre, gameReleasePlatform, platform, device, emulator, inputMethod, platformAccount, subscription, genre, tag, backlogEntry, backlogDeveloperOverride, backlogPublisherOverride, backlogEntryGenre, acquisition, playthrough, coverImage } from "./schema";
-
-export const authTokenRelations = relations(authToken, ({one}) => ({
-	member: one(member, {
-		fields: [authToken.memberId],
-		references: [member.id]
-	}),
-}));
-
-export const memberRelations = relations(member, ({many}) => ({
-	authTokens: many(authToken),
-	platforms: many(platform),
-	devices: many(device),
-	emulators: many(emulator),
-	inputMethods: many(inputMethod),
-	platformAccounts: many(platformAccount),
-	subscriptions: many(subscription),
-	genres: many(genre),
-	tags: many(tag),
-	backlogEntries: many(backlogEntry),
-}));
+import { game, gameDeveloper, gamePublisher, gameMasterGenre, gameReleasePlatform, platform, platformAccount, emulator, backlogEntry, backlogDeveloperOverride, backlogPublisherOverride, backlogEntryGenre, genre, acquisition, subscription, tag, playthrough, device, inputMethod, coverImage } from "./schema";
 
 export const gameDeveloperRelations = relations(gameDeveloper, ({one}) => ({
 	game: one(game, {
@@ -57,46 +37,7 @@ export const gameReleasePlatformRelations = relations(gameReleasePlatform, ({one
 	}),
 }));
 
-export const platformRelations = relations(platform, ({one, many}) => ({
-	member: one(member, {
-		fields: [platform.memberId],
-		references: [member.id]
-	}),
-	platformAccounts: many(platformAccount),
-	acquisitions: many(acquisition),
-	playthroughs: many(playthrough),
-}));
-
-export const deviceRelations = relations(device, ({one, many}) => ({
-	member: one(member, {
-		fields: [device.memberId],
-		references: [member.id]
-	}),
-	playthroughs: many(playthrough),
-}));
-
-export const emulatorRelations = relations(emulator, ({one, many}) => ({
-	member: one(member, {
-		fields: [emulator.memberId],
-		references: [member.id]
-	}),
-	platformAccounts: many(platformAccount),
-	playthroughs: many(playthrough),
-}));
-
-export const inputMethodRelations = relations(inputMethod, ({one, many}) => ({
-	member: one(member, {
-		fields: [inputMethod.memberId],
-		references: [member.id]
-	}),
-	playthroughs: many(playthrough),
-}));
-
 export const platformAccountRelations = relations(platformAccount, ({one, many}) => ({
-	member: one(member, {
-		fields: [platformAccount.memberId],
-		references: [member.id]
-	}),
 	platform: one(platform, {
 		fields: [platformAccount.platformId],
 		references: [platform.id]
@@ -109,28 +50,15 @@ export const platformAccountRelations = relations(platformAccount, ({one, many})
 	playthroughs: many(playthrough),
 }));
 
-export const subscriptionRelations = relations(subscription, ({one, many}) => ({
-	member: one(member, {
-		fields: [subscription.memberId],
-		references: [member.id]
-	}),
+export const platformRelations = relations(platform, ({many}) => ({
+	platformAccounts: many(platformAccount),
 	acquisitions: many(acquisition),
+	playthroughs: many(playthrough),
 }));
 
-export const genreRelations = relations(genre, ({one, many}) => ({
-	member: one(member, {
-		fields: [genre.memberId],
-		references: [member.id]
-	}),
-	backlogEntryGenres: many(backlogEntryGenre),
-}));
-
-export const tagRelations = relations(tag, ({one, many}) => ({
-	member: one(member, {
-		fields: [tag.memberId],
-		references: [member.id]
-	}),
-	backlogEntries: many(backlogEntry),
+export const emulatorRelations = relations(emulator, ({many}) => ({
+	platformAccounts: many(platformAccount),
+	playthroughs: many(playthrough),
 }));
 
 export const backlogDeveloperOverrideRelations = relations(backlogDeveloperOverride, ({one}) => ({
@@ -145,10 +73,6 @@ export const backlogEntryRelations = relations(backlogEntry, ({one, many}) => ({
 	backlogPublisherOverrides: many(backlogPublisherOverride),
 	backlogEntryGenres: many(backlogEntryGenre),
 	acquisitions: many(acquisition),
-	member: one(member, {
-		fields: [backlogEntry.memberId],
-		references: [member.id]
-	}),
 	game: one(game, {
 		fields: [backlogEntry.gameId],
 		references: [game.id]
@@ -186,6 +110,10 @@ export const backlogEntryGenreRelations = relations(backlogEntryGenre, ({one}) =
 	}),
 }));
 
+export const genreRelations = relations(genre, ({many}) => ({
+	backlogEntryGenres: many(backlogEntryGenre),
+}));
+
 export const acquisitionRelations = relations(acquisition, ({one}) => ({
 	backlogEntry: one(backlogEntry, {
 		fields: [acquisition.backlogEntryId],
@@ -203,6 +131,14 @@ export const acquisitionRelations = relations(acquisition, ({one}) => ({
 		fields: [acquisition.subscriptionId],
 		references: [subscription.id]
 	}),
+}));
+
+export const subscriptionRelations = relations(subscription, ({many}) => ({
+	acquisitions: many(acquisition),
+}));
+
+export const tagRelations = relations(tag, ({many}) => ({
+	backlogEntries: many(backlogEntry),
 }));
 
 export const playthroughRelations = relations(playthrough, ({one, many}) => ({
@@ -234,6 +170,14 @@ export const playthroughRelations = relations(playthrough, ({one, many}) => ({
 		fields: [playthrough.platformId],
 		references: [platform.id]
 	}),
+}));
+
+export const deviceRelations = relations(device, ({many}) => ({
+	playthroughs: many(playthrough),
+}));
+
+export const inputMethodRelations = relations(inputMethod, ({many}) => ({
+	playthroughs: many(playthrough),
 }));
 
 export const coverImageRelations = relations(coverImage, ({one}) => ({

@@ -645,28 +645,20 @@ function registerIpc() {
   });
 
   /*
-   * 배경 색 캐시 + 프리셋 (프론트 F4). **입구(`app://`)는 백엔드가 뜨기 전이라 프로필을 못 읽는다** —
+   * 배경 색 캐시 (프론트 F4). **입구(`app://`)는 백엔드가 뜨기 전이라 프로필을 못 읽는다** —
    * 본 앱이 색을 알게 될 때마다 여기 적어 두고, 입구는 첫 프레임 전에 **동기로** 읽는다.
    * 본 앱 포트가 매번 달라 렌더러의 localStorage는 실행 사이에 이어지지 않는다 → settings.json이 유일한 길.
-   * 값은 모양만 믿는다: #rrggbb 다섯 개 / {name, colors} 목록
+   * 값은 모양만 믿는다: #rrggbb 다섯 개. 프리셋은 서버 프로필로 옮겼다(V14) — 입구가 쓸 일이 없다
    */
   ipcMain.on("background:get", (event) => {
     const s = store.getSettings();
-    event.returnValue = { colors: s.backgroundColors ?? null, presets: s.backgroundPresets ?? [] };
+    event.returnValue = { colors: s.backgroundColors ?? null };
   });
 
   ipcMain.on("background:set", (_e, patch) => {
     const isHex = (c) => typeof c === "string" && /^#[0-9a-fA-F]{6}$/.test(c);
     const isFive = (v) => Array.isArray(v) && v.length === 5 && v.every(isHex);
-    const next = {};
-    if (patch && (patch.colors === null || isFive(patch.colors))) next.backgroundColors = patch.colors;
-    if (patch && Array.isArray(patch.presets)) {
-      next.backgroundPresets = patch.presets
-        .filter((p) => p && typeof p.name === "string" && isFive(p.colors))
-        .slice(0, 24)
-        .map((p) => ({ name: p.name.slice(0, 30), colors: p.colors }));
-    }
-    if (Object.keys(next).length > 0) store.patchSettings(next);
+    if (patch && (patch.colors === null || isFive(patch.colors))) store.patchSettings({ backgroundColors: patch.colors });
   });
 
   ipcMain.handle("settings:setDataRoot", (_e, dir) => {

@@ -106,7 +106,7 @@ const viaCopy: Maker = async (source, kind) => {
 };
 
 function maker(): Maker | null {
-  if (config().allowMemberOverride && process.env.STARLOG_THUMBNAILER === "copy") return viaCopy;
+  if (config().devProfile && process.env.STARLOG_THUMBNAILER === "copy") return viaCopy;
   return parentPort ? viaParent : null;
 }
 

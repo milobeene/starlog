@@ -1,57 +1,15 @@
 /**
  * DB 스키마 — **타입용이다. 원본은 `migrations/*.sql`.**
  *
- * `npm run db:pull`로 마이그레이션을 적용한 DB에서 뽑아온다. 손으로 고치지 않는다 —
- * 컬럼을 바꾸려면 SQL 마이그레이션을 추가하고 다시 뽑는다.
+ * 마이그레이션을 적용한 PGlite 폴더에서 뽑아온다 — `PULL_DB=<폴더> npx drizzle-kit pull` → `drizzle-pull/`.
+ * 손으로 고치지 않는다 — 컬럼을 바꾸려면 SQL 마이그레이션을 추가하고 다시 뽑는다
+ * (뽑은 뒤 `mode: "bigint"` 안내 주석만 걷고 이 머리말을 붙인다).
  *
  * - 시각(`timestamp`)·날짜(`date`)는 `mode: 'string'` — 원문 그대로. `Date`로 바꾸면 로컬 시간대가 끼어든다
  * - 금액(`numeric`)은 문자열로 온다 — 계산은 `common/money.ts`
  */
-import { pgTable, index, unique, check, bigint, varchar, boolean, timestamp, text, foreignKey, date, numeric, integer } from "drizzle-orm/pg-core"
+import { pgTable, unique, check, bigint, varchar, text, date, numeric, integer, timestamp, index, foreignKey, uniqueIndex, boolean } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
-
-export const member = pgTable("member", {
-	id: bigint({ mode: "number" }).primaryKey().generatedByDefaultAsIdentity({ name: "member_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 9223372036854775807, cache: 1 }),
-	email: varchar({ length: 320 }).notNull(),
-	nickname: varchar({ length: 30 }).notNull(),
-	password: varchar({ length: 100 }),
-	googleSubject: varchar("google_subject", { length: 100 }),
-	role: varchar({ length: 20 }).notNull(),
-	emailVerified: boolean("email_verified").notNull(),
-	approvedAt: timestamp("approved_at", { precision: 6, mode: 'string' }),
-	memo: text(),
-	deletedAt: timestamp("deleted_at", { precision: 6, mode: 'string' }),
-	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }),
-	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }),
-	backgroundColors: varchar("background_colors", { length: 64 }),
-}, (table) => [
-	index("idx_member_deleted_at").using("btree", table.deletedAt.asc().nullsLast().op("timestamp_ops")),
-	unique("uk_member_email").on(table.email),
-	unique("uk_member_google_subject").on(table.googleSubject),
-	check("chk_member_role", sql`(role)::text = ANY ((ARRAY['USER'::character varying, 'ADMIN'::character varying])::text[])`),
-]);
-
-export const authToken = pgTable("auth_token", {
-	id: bigint({ mode: "number" }).primaryKey().generatedByDefaultAsIdentity({ name: "auth_token_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 9223372036854775807, cache: 1 }),
-	memberId: bigint("member_id", { mode: "number" }).notNull(),
-	purpose: varchar({ length: 30 }).notNull(),
-	tokenHash: varchar("token_hash", { length: 100 }).notNull(),
-	expiresAt: timestamp("expires_at", { precision: 6, mode: 'string' }).notNull(),
-	usedAt: timestamp("used_at", { precision: 6, mode: 'string' }),
-	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }),
-	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }),
-}, (table) => [
-	index("idx_auth_token_expires_at").using("btree", table.expiresAt.asc().nullsLast().op("timestamp_ops")),
-	index("idx_auth_token_member").using("btree", table.memberId.asc().nullsLast().op("int8_ops")),
-	index("idx_auth_token_used_at").using("btree", table.usedAt.asc().nullsLast().op("timestamp_ops")),
-	foreignKey({
-			columns: [table.memberId],
-			foreignColumns: [member.id],
-			name: "fk_auth_token_member"
-		}),
-	unique("uk_auth_token_hash").on(table.tokenHash),
-	check("chk_auth_token_purpose", sql`(purpose)::text = ANY ((ARRAY['EMAIL_VERIFICATION'::character varying, 'PASSWORD_RESET'::character varying])::text[])`),
-]);
 
 export const game = pgTable("game", {
 	id: bigint({ mode: "number" }).primaryKey().generatedByDefaultAsIdentity({ name: "game_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 9223372036854775807, cache: 1 }),
@@ -95,6 +53,18 @@ export const gameDeveloper = pgTable("game_developer", {
 		}),
 ]);
 
+export const member = pgTable("member", {
+	id: bigint({ mode: "number" }).primaryKey().generatedByDefaultAsIdentity({ name: "member_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 9223372036854775807, cache: 1 }),
+	nickname: varchar({ length: 30 }).notNull(),
+	memo: text(),
+	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }),
+	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }),
+	backgroundColors: varchar("background_colors", { length: 64 }),
+	backgroundPresets: text("background_presets"),
+}, () => [
+	uniqueIndex("uk_member_single").using("btree", sql`(true)`),
+]);
+
 export const gamePublisher = pgTable("game_publisher", {
 	gameId: bigint("game_id", { mode: "number" }).notNull(),
 	publisher: varchar({ length: 200 }),
@@ -133,23 +103,16 @@ export const gameReleasePlatform = pgTable("game_release_platform", {
 
 export const platform = pgTable("platform", {
 	id: bigint({ mode: "number" }).primaryKey().generatedByDefaultAsIdentity({ name: "platform_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 9223372036854775807, cache: 1 }),
-	memberId: bigint("member_id", { mode: "number" }).notNull(),
 	name: varchar({ length: 50 }).notNull(),
 	deletedAt: timestamp("deleted_at", { precision: 6, mode: 'string' }),
 	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }),
 	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }),
 }, (table) => [
-	foreignKey({
-			columns: [table.memberId],
-			foreignColumns: [member.id],
-			name: "fk_platform_member"
-		}),
-	unique("uk_platform").on(table.memberId, table.name),
+	unique("uk_platform").on(table.name),
 ]);
 
 export const device = pgTable("device", {
 	id: bigint({ mode: "number" }).primaryKey().generatedByDefaultAsIdentity({ name: "device_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 9223372036854775807, cache: 1 }),
-	memberId: bigint("member_id", { mode: "number" }).notNull(),
 	deviceType: varchar("device_type", { length: 50 }).notNull(),
 	label: varchar({ length: 50 }).notNull(),
 	memo: text(),
@@ -157,50 +120,32 @@ export const device = pgTable("device", {
 	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }),
 	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }),
 }, (table) => [
-	foreignKey({
-			columns: [table.memberId],
-			foreignColumns: [member.id],
-			name: "fk_device_member"
-		}),
-	unique("uk_device").on(table.label, table.memberId),
+	unique("uk_device").on(table.label),
 ]);
 
 export const emulator = pgTable("emulator", {
 	id: bigint({ mode: "number" }).primaryKey().generatedByDefaultAsIdentity({ name: "emulator_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 9223372036854775807, cache: 1 }),
-	memberId: bigint("member_id", { mode: "number" }).notNull(),
 	name: varchar({ length: 50 }).notNull(),
 	memo: text(),
 	deletedAt: timestamp("deleted_at", { precision: 6, mode: 'string' }),
 	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }),
 	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }),
 }, (table) => [
-	foreignKey({
-			columns: [table.memberId],
-			foreignColumns: [member.id],
-			name: "fk_emulator_member"
-		}),
-	unique("uk_emulator").on(table.memberId, table.name),
+	unique("uk_emulator").on(table.name),
 ]);
 
 export const inputMethod = pgTable("input_method", {
 	id: bigint({ mode: "number" }).primaryKey().generatedByDefaultAsIdentity({ name: "input_method_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 9223372036854775807, cache: 1 }),
-	memberId: bigint("member_id", { mode: "number" }).notNull(),
 	name: varchar({ length: 50 }).notNull(),
 	deletedAt: timestamp("deleted_at", { precision: 6, mode: 'string' }),
 	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }),
 	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }),
 }, (table) => [
-	foreignKey({
-			columns: [table.memberId],
-			foreignColumns: [member.id],
-			name: "fk_input_method_member"
-		}),
-	unique("uk_input_method").on(table.memberId, table.name),
+	unique("uk_input_method").on(table.name),
 ]);
 
 export const platformAccount = pgTable("platform_account", {
 	id: bigint({ mode: "number" }).primaryKey().generatedByDefaultAsIdentity({ name: "platform_account_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 9223372036854775807, cache: 1 }),
-	memberId: bigint("member_id", { mode: "number" }).notNull(),
 	platformId: bigint("platform_id", { mode: "number" }),
 	accountLabel: varchar("account_label", { length: 50 }).notNull(),
 	deletedAt: timestamp("deleted_at", { precision: 6, mode: 'string' }),
@@ -211,11 +156,6 @@ export const platformAccount = pgTable("platform_account", {
 }, (table) => [
 	index("idx_platform_account_platform").using("btree", table.platformId.asc().nullsLast().op("int8_ops")),
 	foreignKey({
-			columns: [table.memberId],
-			foreignColumns: [member.id],
-			name: "fk_platform_account_member"
-		}),
-	foreignKey({
 			columns: [table.platformId],
 			foreignColumns: [platform.id],
 			name: "fk_platform_account_platform"
@@ -225,7 +165,7 @@ export const platformAccount = pgTable("platform_account", {
 			foreignColumns: [emulator.id],
 			name: "fk_platform_account_emulator"
 		}),
-	unique("uk_platform_account").on(table.accountLabel, table.memberId, table.ownerKey),
+	unique("uk_platform_account").on(table.accountLabel, table.ownerKey),
 	check("ck_platform_account_owner", sql`((platform_id IS NOT NULL) AND (emulator_id IS NULL)) OR ((platform_id IS NULL) AND (emulator_id IS NOT NULL))`),
 	check("ck_platform_account_owner_key", sql`(owner_key)::text =
 CASE
@@ -236,7 +176,6 @@ END`),
 
 export const subscription = pgTable("subscription", {
 	id: bigint({ mode: "number" }).primaryKey().generatedByDefaultAsIdentity({ name: "subscription_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 9223372036854775807, cache: 1 }),
-	memberId: bigint("member_id", { mode: "number" }).notNull(),
 	serviceName: varchar("service_name", { length: 100 }).notNull(),
 	billingCycle: varchar("billing_cycle", { length: 20 }).notNull(),
 	feeAmount: numeric("fee_amount", { precision: 19, scale:  2 }),
@@ -245,47 +184,29 @@ export const subscription = pgTable("subscription", {
 	endedOn: date("ended_on"),
 	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }),
 	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }),
-}, (table) => [
-	index("idx_subscription_member").using("btree", table.memberId.asc().nullsLast().op("int8_ops")),
-	foreignKey({
-			columns: [table.memberId],
-			foreignColumns: [member.id],
-			name: "fk_subscription_member"
-		}),
+}, () => [
 	check("chk_subscription_billing_cycle", sql`(billing_cycle)::text = ANY ((ARRAY['MONTHLY'::character varying, 'YEARLY'::character varying])::text[])`),
 ]);
 
 export const genre = pgTable("genre", {
 	id: bigint({ mode: "number" }).primaryKey().generatedByDefaultAsIdentity({ name: "genre_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 9223372036854775807, cache: 1 }),
-	memberId: bigint("member_id", { mode: "number" }).notNull(),
 	name: varchar({ length: 50 }).notNull(),
 	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }),
 	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }),
 }, (table) => [
-	foreignKey({
-			columns: [table.memberId],
-			foreignColumns: [member.id],
-			name: "fk_genre_member"
-		}),
-	unique("uk_genre_member_name").on(table.memberId, table.name),
+	unique("uk_genre_name").on(table.name),
 ]);
 
 export const tag = pgTable("tag", {
 	id: bigint({ mode: "number" }).primaryKey().generatedByDefaultAsIdentity({ name: "tag_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 9223372036854775807, cache: 1 }),
-	memberId: bigint("member_id", { mode: "number" }).notNull(),
 	name: varchar({ length: 50 }).notNull(),
 	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }),
 	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }),
 	sortOrder: integer("sort_order").notNull(),
 	color: varchar({ length: 16 }),
 }, (table) => [
-	index("idx_tag_member_order").using("btree", table.memberId.asc().nullsLast().op("int4_ops"), table.sortOrder.asc().nullsLast().op("int8_ops")),
-	foreignKey({
-			columns: [table.memberId],
-			foreignColumns: [member.id],
-			name: "fk_tag_member"
-		}),
-	unique("uk_tag_member_name").on(table.memberId, table.name),
+	index("idx_tag_sort_order").using("btree", table.sortOrder.asc().nullsLast().op("int4_ops")),
+	unique("uk_tag_name").on(table.name),
 ]);
 
 export const backlogDeveloperOverride = pgTable("backlog_developer_override", {
@@ -376,7 +297,6 @@ export const acquisition = pgTable("acquisition", {
 
 export const backlogEntry = pgTable("backlog_entry", {
 	id: bigint({ mode: "number" }).primaryKey().generatedByDefaultAsIdentity({ name: "backlog_entry_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 9223372036854775807, cache: 1 }),
-	memberId: bigint("member_id", { mode: "number" }).notNull(),
 	gameId: bigint("game_id", { mode: "number" }).notNull(),
 	status: varchar({ length: 20 }).notNull(),
 	displayName: varchar("display_name", { length: 300 }).notNull(),
@@ -396,21 +316,15 @@ export const backlogEntry = pgTable("backlog_entry", {
 	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }),
 	displayNameSortKey: varchar("display_name_sort_key", { length: 320 }),
 }, (table) => [
-	index("idx_backlog_entry_game").using("btree", table.gameId.asc().nullsLast().op("int8_ops")),
+	index("idx_backlog_display_name").using("btree", table.displayName.asc().nullsLast().op("text_ops")),
 	index("idx_backlog_entry_last_playthrough").using("btree", table.lastPlaythroughId.asc().nullsLast().op("int8_ops")),
 	index("idx_backlog_entry_sort_key").using("btree", table.displayNameSortKey.asc().nullsLast().op("text_ops")),
-	index("idx_backlog_member_display_name").using("btree", table.memberId.asc().nullsLast().op("text_ops"), table.displayName.asc().nullsLast().op("text_ops")),
-	index("idx_backlog_member_last_played").using("btree", table.memberId.asc().nullsLast().op("date_ops"), table.lastPlayedOn.desc().nullsLast().op("date_ops")),
-	index("idx_backlog_member_play_time").using("btree", table.memberId.asc().nullsLast().op("numeric_ops"), table.playTimeHours.desc().nullsLast().op("int8_ops")),
-	index("idx_backlog_member_rating").using("btree", table.memberId.asc().nullsLast().op("numeric_ops"), table.rating.desc().nullsLast().op("numeric_ops")),
-	index("idx_backlog_member_released_on").using("btree", table.memberId.asc().nullsLast().op("date_ops"), table.releasedOnResolved.desc().nullsLast().op("date_ops")),
-	index("idx_backlog_member_status").using("btree", table.memberId.asc().nullsLast().op("text_ops"), table.status.asc().nullsLast().op("text_ops")),
-	index("idx_backlog_member_tag").using("btree", table.memberId.asc().nullsLast().op("int8_ops"), table.tagId.asc().nullsLast().op("int8_ops")),
-	foreignKey({
-			columns: [table.memberId],
-			foreignColumns: [member.id],
-			name: "fk_backlog_entry_member"
-		}),
+	index("idx_backlog_last_played").using("btree", table.lastPlayedOn.desc().nullsLast().op("date_ops")),
+	index("idx_backlog_play_time").using("btree", table.playTimeHours.desc().nullsLast().op("numeric_ops")),
+	index("idx_backlog_rating").using("btree", table.rating.desc().nullsLast().op("numeric_ops")),
+	index("idx_backlog_released_on").using("btree", table.releasedOnResolved.desc().nullsLast().op("date_ops")),
+	index("idx_backlog_status").using("btree", table.status.asc().nullsLast().op("text_ops")),
+	index("idx_backlog_tag").using("btree", table.tagId.asc().nullsLast().op("int8_ops")),
 	foreignKey({
 			columns: [table.gameId],
 			foreignColumns: [game.id],
@@ -423,7 +337,7 @@ export const backlogEntry = pgTable("backlog_entry", {
 		}),
 	// fk_backlog_entry_last_playthrough → playthrough.id 는 DB에만 있다.
 	// playthrough도 backlog_entry를 참조해서 여기 적으면 타입 추론이 순환한다 (DDL은 SQL이 쥔다)
-	unique("uk_backlog_entry_member_game").on(table.gameId, table.memberId),
+	unique("uk_backlog_entry_game").on(table.gameId),
 	check("chk_backlog_entry_status", sql`(status)::text = ANY ((ARRAY['WISHLIST'::character varying, 'BACKLOG'::character varying, 'PLAYING'::character varying, 'PAUSED'::character varying, 'DROPPED'::character varying, 'COMPLETED'::character varying])::text[])`),
 ]);
 

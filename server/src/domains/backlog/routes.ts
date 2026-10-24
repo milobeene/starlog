@@ -8,7 +8,6 @@
  */
 import { Hono, type Context } from "hono";
 import { z } from "zod";
-import type { AppEnv } from "../../http/env";
 import { db } from "../../db/client";
 import { DEFAULT_MSG, elementSizeViolations, readBodyExact, violations } from "../../http/body";
 import { pathId, query } from "../../http/params";
@@ -30,12 +29,12 @@ import {
   screenshotFolderPath,
 } from "./media";
 import { firstFile, firstText, missingPart, multipartFile, multipartForm, parseLongParam, sendFile } from "../../http/files";
-import { findOwnedAlive404 } from "./shared";
+import { findAliveEntry404 } from "./shared";
 import { resolveGame } from "../game/service";
 import { translateGame } from "../system/service";
 import { addAcquisition, deleteAcquisition, updateAcquisition } from "./acquisition";
 
-export const routes = new Hono<AppEnv>();
+export const routes = new Hono();
 
 
 // ───────────── 요청 모양 ─────────────
@@ -151,56 +150,55 @@ routes.get("/api/backlog", async (c) => {
   const rawSort = q.str("sort");
   // 빈 문자열도 기본값으로 취급한다
   const sort = sortFrom(rawSort === null || rawSort === "" ? "lastPlayed" : rawSort);
-  return c.json(await db().transaction((tx) => search(tx, c.get("memberId"), condition, page, size, sort)));
+  return c.json(await db().transaction((tx) => search(tx, condition, page, size, sort)));
 });
 
-routes.get("/api/backlog/cards", async (c) => c.json(await db().transaction((tx) => findAllCards(tx, c.get("memberId")))));
+routes.get("/api/backlog/cards", async (c) => c.json(await db().transaction((tx) => findAllCards(tx))));
 
-routes.get("/api/backlog/facets", async (c) => c.json(await db().transaction((tx) => findFacets(tx, c.get("memberId")))));
+routes.get("/api/backlog/facets", async (c) => c.json(await db().transaction((tx) => findFacets(tx))));
 
-routes.get("/api/backlog/names", async (c) => c.json(await findNames(db(), c.get("memberId"))));
+routes.get("/api/backlog/names", async (c) => c.json(await findNames(db())));
 
 routes.get("/api/backlog/deleted", async (c) => {
   const q = query(c);
   const page = q.int("page", 0), size = q.int("size", 10);
-  return c.json(await db().transaction((tx) => findDeleted(tx, c.get("memberId"), page, size)));
+  return c.json(await db().transaction((tx) => findDeleted(tx, page, size)));
 });
 
 routes.get("/api/backlog/deleted/:entryId", async (c) => {
   const entryId = pathId(c, "entryId");
-  return c.json(await db().transaction((tx) => findDeletedDetail(tx, c.get("memberId"), entryId)));
+  return c.json(await db().transaction((tx) => findDeletedDetail(tx, entryId)));
 });
 
 /** 완전 삭제 — 휴지통을 거친 것만 */
 routes.delete("/api/backlog/deleted/:entryId", async (c) => {
   const entryId = pathId(c, "entryId");
-  const cover = await db().transaction((tx) => purge(tx, c.get("memberId"), entryId));
+  const cover = await db().transaction((tx) => purge(tx, entryId));
   // 커밋 뒤에 위치를 보고 지운다 (실패는 삼킨다). 예전엔 LOCAL 커버도 스토리지 쪽만 불러 로컬 파일이 고아로 남았다 (고친 버그 15)
   if (cover !== null) await removeFile(cover);
   return c.body(null, 204);
 });
 
-routes.get("/api/backlog/companies", async (c) => c.json(await db().transaction((tx) => findCompanies(tx, c.get("memberId")))));
+routes.get("/api/backlog/companies", async (c) => c.json(await db().transaction((tx) => findCompanies(tx))));
 
 /**
  * 담기. 게임 해석(IGDB 캐시 — 외부 호출과 호출 기록)이 **트랜잭션 밖에서** 먼저 돈다.
  * 외부가 죽으면 거기서 502로 끝나 백로그 쪽은 아무것도 안 쓴다 (FR-SYS-04)
  */
 routes.post("/api/backlog", async (c) => {
-  const memberId = c.get("memberId");
   const r = await readBodyExact(c, BacklogAddRequest);
   // 검증 실패 필드 이름은 `targetPresent`다 (오류 메시지에 그대로 나간다)
   violations().when(r.gameId === null && normalize(r.externalId) === null,
     "targetPresent", "gameId 또는 externalId 중 하나는 필요합니다").throwIfAny();
   const gameId = await resolveGame(db(), r.gameId, r.externalId);
-  const entryId = await db().transaction((tx) => addToBacklog(tx, memberId, gameId));
+  const entryId = await db().transaction((tx) => addToBacklog(tx, gameId));
   c.header("Location", `/api/backlog/${entryId}`);
   return c.json({ id: entryId }, 201);
 });
 
 routes.get("/api/backlog/:entryId", async (c) => {
   const entryId = pathId(c, "entryId");
-  return c.json(await db().transaction((tx) => findDetail(tx, c.get("memberId"), entryId)));
+  return c.json(await db().transaction((tx) => findDetail(tx, entryId)));
 });
 
 // ───────────── 커버 ─────────────
@@ -213,7 +211,7 @@ routes.post("/api/backlog/:entryId/cover/upload-url", async (c) => {
     .notBlank("fileName", r.fileName, "파일 이름은 필수입니다")
     .positive("sizeBytes", r.sizeBytes, "파일 크기가 올바르지 않습니다")
     .throwIfAny();
-  return c.json(await prepareCover(c.get("memberId"), entryId, r.fileName, r.sizeBytes));
+  return c.json(await prepareCover(entryId, r.fileName, r.sizeBytes));
 });
 
 /** 2단계 — EXTERNAL 확정. 같은 key로 여러 번 불러도 결과가 같아서 PUT */
@@ -221,7 +219,7 @@ routes.put("/api/backlog/:entryId/cover", async (c) => {
   const entryId = pathId(c, "entryId");
   const r = await readBodyExact(c, CoverConfirmRequest);
   violations().notBlank("storageKey", r.storageKey, "storageKey는 필수입니다").throwIfAny();
-  await confirmExternalCover(c.get("memberId"), entryId, r.storageKey);
+  await confirmExternalCover(entryId, r.storageKey);
   return c.body(null, 200);
 });
 
@@ -230,14 +228,14 @@ routes.post("/api/backlog/:entryId/cover/file", async (c) => {
   const entryId = pathId(c, "entryId");
   const file = await multipartFile(c, "file");
   if (!file) return missingPart(c);
-  await saveLocalCover(c.get("memberId"), entryId, file.name, new Uint8Array(await file.arrayBuffer()));
+  await saveLocalCover(entryId, file.name, new Uint8Array(await file.arrayBuffer()));
   return c.body(null, 200);
 });
 
 /** LOCAL 원본. `?v=`는 서버가 안 읽는다 — 교체해도 주소가 같아서 브라우저 캐시를 깨려고 붙인 값이다 */
 routes.get("/api/backlog/:entryId/cover/file", async (c) => {
   const entryId = pathId(c, "entryId");
-  const file = await readLocalCover(c.get("memberId"), entryId);
+  const file = await readLocalCover(entryId);
   return c.body(new Uint8Array(file.bytes), 200, {
     "Content-Type": file.contentType,
     "Cache-Control": "private, max-age=31536000, immutable",
@@ -247,7 +245,7 @@ routes.get("/api/backlog/:entryId/cover/file", async (c) => {
 /** 삭제 — 마스터 커버로 폴백된다 */
 routes.delete("/api/backlog/:entryId/cover", async (c) => {
   const entryId = pathId(c, "entryId");
-  await deleteCover(c.get("memberId"), entryId);
+  await deleteCover(entryId);
   return c.body(null, 204);
 });
 
@@ -258,12 +256,12 @@ routes.get("/api/screenshots", async (c) => {
   const q = query(c);
   const entryId = q.long("entryId");
   const kind = q.enumOf("kind", ["ALL", "IMAGE", "VIDEO"] as const) ?? "ALL";
-  return c.json(await listGallery(c.get("memberId"), entryId, kind));
+  return c.json(await listGallery(entryId, kind));
 });
 
 routes.get("/api/backlog/:entryId/screenshots", async (c) => {
   const entryId = pathId(c, "entryId");
-  return c.json(await listScreenshots(c.get("memberId"), entryId));
+  return c.json(await listScreenshots(entryId));
 });
 
 /** 한 장 저장. `takenAt`은 브라우저가 읽은 원본 파일의 수정시각 (쿼리와 폼 필드를 둘 다 본다) */
@@ -274,13 +272,13 @@ routes.post("/api/backlog/:entryId/screenshots", async (c) => {
   if (!file) return missingPart(c);
   const takenAtRaw = c.req.query("takenAt") ?? firstText(form, "takenAt");
   const takenAt = takenAtRaw === undefined || takenAtRaw.trim() === "" ? null : parseLongParam("takenAt", takenAtRaw);
-  return c.json(await saveScreenshot(c.get("memberId"), entryId, file.name, new Uint8Array(await file.arrayBuffer()), takenAt));
+  return c.json(await saveScreenshot(entryId, file.name, new Uint8Array(await file.arrayBuffer()), takenAt));
 });
 
 /** 탐색기로 열 경로 — `{fileName}`보다 먼저 건다 */
 routes.get("/api/backlog/:entryId/screenshots/folder", async (c) => {
   const entryId = pathId(c, "entryId");
-  return c.json({ path: await screenshotFolderPath(c.get("memberId"), entryId) });
+  return c.json({ path: await screenshotFolderPath(entryId) });
 });
 
 /**
@@ -289,34 +287,34 @@ routes.get("/api/backlog/:entryId/screenshots/folder", async (c) => {
 routes.get("/api/backlog/:entryId/screenshots/:fileName", async (c) => {
   const entryId = pathId(c, "entryId");
   const fileName = c.req.param("fileName");
-  const file = await resolveScreenshot(c.get("memberId"), entryId, fileName);
+  const file = await resolveScreenshot(entryId, fileName);
   return sendFile(c, file, mediaContentTypeOf(fileName));
 });
 
 /** 썸네일 (JPEG, 긴 변 480). 없으면 이 요청에서 만든다. 못 만들면 404 — 화면은 원본으로 */
 routes.get("/api/backlog/:entryId/screenshots/:fileName/thumb", async (c) => {
   const entryId = pathId(c, "entryId");
-  const thumb = await resolveThumb(c.get("memberId"), entryId, c.req.param("fileName"));
+  const thumb = await resolveThumb(entryId, c.req.param("fileName"));
   return sendFile(c, thumb, "image/jpeg");
 });
 
 /** 실제 파일 경로 — 일렉트론 메인이 클립보드·저장에 쓴다 (화면이 준 경로를 안 믿고 여기서 받는다) */
 routes.get("/api/backlog/:entryId/screenshots/:fileName/path", async (c) => {
   const entryId = pathId(c, "entryId");
-  return c.json({ path: await screenshotFilePath(c.get("memberId"), entryId, c.req.param("fileName")) });
+  return c.json({ path: await screenshotFilePath(entryId, c.req.param("fileName")) });
 });
 
 /** 일괄 삭제. DELETE에 본문을 싣는 건 회색지대라 POST */
 routes.post("/api/backlog/:entryId/screenshots/delete", async (c) => {
   const entryId = pathId(c, "entryId");
   const names = await readBodyExact(c, z.array(zText.nullable()));
-  return c.json({ deleted: await deleteScreenshots(c.get("memberId"), entryId, names) });
+  return c.json({ deleted: await deleteScreenshots(entryId, names) });
 });
 
-/** 소개문 번역 — 항목 경로라 소유권 검증이 따라온다. 남의 항목 번호로는 못 부른다 */
+/** 소개문 번역 — 항목 경로라 살아 있는 항목인지 확인이 따라온다 */
 routes.post("/api/backlog/:entryId/translate", async (c) => {
   const entryId = pathId(c, "entryId");
-  const gameId = await db().transaction(async (tx) => (await findOwnedAlive404(tx, c.get("memberId"), entryId)).gameId);
+  const gameId = await db().transaction(async (tx) => (await findAliveEntry404(tx, entryId)).gameId);
   return c.json(await translateGame(gameId));   // 구글 호출은 트랜잭션 밖
 });
 
@@ -325,13 +323,13 @@ routes.post("/api/backlog/:entryId/translate", async (c) => {
 /** 되살리기. 멱등하지 않아서(이미 살아 있으면 409) POST */
 routes.post("/api/backlog/:entryId/revive", async (c) => {
   const entryId = pathId(c, "entryId");
-  await db().transaction((tx) => revive(tx, c.get("memberId"), entryId));
+  await db().transaction((tx) => revive(tx, entryId));
   return c.body(null, 200);
 });
 
 routes.delete("/api/backlog/:entryId", async (c) => {
   const entryId = pathId(c, "entryId");
-  await db().transaction((tx) => softDelete(tx, c.get("memberId"), entryId));
+  await db().transaction((tx) => softDelete(tx, entryId));
   return c.body(null, 204);
 });
 
@@ -340,7 +338,7 @@ routes.put("/api/backlog/:entryId/personal-record", async (c) => {
   const r = await readBodyExact(c, PersonalRecordRequest);
   // TEXT 컬럼이라 도메인 제한이 아니라 폭주 방지 상한이다
   violations().size("memo", r.memo, 0, 5000, DEFAULT_MSG.size(0, 5000)).throwIfAny();
-  await db().transaction((tx) => updatePersonalRecord(tx, c.get("memberId"), entryId, r.rating, r.playTimeHours, r.memo));
+  await db().transaction((tx) => updatePersonalRecord(tx, entryId, r.rating, r.playTimeHours, r.memo));
   return c.body(null, 200);
 });
 
@@ -353,9 +351,9 @@ routes.put("/api/backlog/:entryId/overrides", async (c) => {
     ...elementSizeViolations("publishers", r.publishers, 200, DEFAULT_MSG.size(0, 200)),
   ];
   if (errors.length) throw new InvalidInput(errors.join(", "));
-  // 금액 변환을 소유권 확인보다 먼저 한다 — 금액 오류가 먼저 나간다
+  // 금액 변환을 항목 확인보다 먼저 한다 — 금액 오류가 먼저 나간다
   const listPrice = toMoney(r.listPrice);
-  await db().transaction((tx) => updateOverrides(tx, c.get("memberId"), entryId, {
+  await db().transaction((tx) => updateOverrides(tx, entryId, {
     name: r.name, developers: r.developers, publishers: r.publishers, releasedOn: r.releasedOn, listPrice,
   }));
   return c.body(null, 200);
@@ -365,7 +363,7 @@ routes.put("/api/backlog/:entryId/tag", async (c) => {
   const entryId = pathId(c, "entryId");
   const r = await readBodyExact(c, TagUpdateRequest);
   violations().size("name", r.name, 0, 50, DEFAULT_MSG.size(0, 50)).throwIfAny();
-  await db().transaction((tx) => changeTag(tx, c.get("memberId"), entryId, r.name));
+  await db().transaction((tx) => changeTag(tx, entryId, r.name));
   return c.body(null, 200);
 });
 
@@ -375,7 +373,7 @@ routes.put("/api/backlog/:entryId/genres", async (c) => {
   const errors = r.names === null ? [`names: ${DEFAULT_MSG.notNull}`]
     : elementSizeViolations("names", r.names, 50, DEFAULT_MSG.size(0, 50));
   if (errors.length) throw new InvalidInput(errors.join(", "));
-  await db().transaction((tx) => replaceGenres(tx, c.get("memberId"), entryId, r.names!));
+  await db().transaction((tx) => replaceGenres(tx, entryId, r.names!));
   return c.body(null, 200);
 });
 
@@ -384,7 +382,7 @@ routes.put("/api/backlog/:entryId/genres", async (c) => {
 routes.post("/api/backlog/:entryId/playthroughs", async (c) => {
   const entryId = pathId(c, "entryId");
   const r = await playthroughBody(c);
-  const id = await db().transaction((tx) => addPlaythrough(tx, c.get("memberId"), entryId, r));
+  const id = await db().transaction((tx) => addPlaythrough(tx, entryId, r));
   c.header("Location", `/api/playthroughs/${id}`);
   return c.json({ id }, 201);
 });
@@ -392,13 +390,13 @@ routes.post("/api/backlog/:entryId/playthroughs", async (c) => {
 routes.put("/api/playthroughs/:playthroughId", async (c) => {
   const playthroughId = pathId(c, "playthroughId");
   const r = await playthroughBody(c);
-  await db().transaction((tx) => updatePlaythrough(tx, c.get("memberId"), playthroughId, r));
+  await db().transaction((tx) => updatePlaythrough(tx, playthroughId, r));
   return c.body(null, 200);
 });
 
 routes.delete("/api/playthroughs/:playthroughId", async (c) => {
   const playthroughId = pathId(c, "playthroughId");
-  await db().transaction((tx) => deletePlaythrough(tx, c.get("memberId"), playthroughId));
+  await db().transaction((tx) => deletePlaythrough(tx, playthroughId));
   return c.body(null, 204);
 });
 
@@ -407,7 +405,7 @@ routes.delete("/api/playthroughs/:playthroughId", async (c) => {
 routes.post("/api/backlog/:entryId/acquisitions", async (c) => {
   const entryId = pathId(c, "entryId");
   const r = await acquisitionBody(c);
-  const id = await db().transaction((tx) => addAcquisition(tx, c.get("memberId"), entryId, r));
+  const id = await db().transaction((tx) => addAcquisition(tx, entryId, r));
   c.header("Location", `/api/acquisitions/${id}`);
   return c.json({ id }, 201);
 });
@@ -415,12 +413,12 @@ routes.post("/api/backlog/:entryId/acquisitions", async (c) => {
 routes.put("/api/acquisitions/:acquisitionId", async (c) => {
   const acquisitionId = pathId(c, "acquisitionId");
   const r = await acquisitionBody(c);
-  await db().transaction((tx) => updateAcquisition(tx, c.get("memberId"), acquisitionId, r));
+  await db().transaction((tx) => updateAcquisition(tx, acquisitionId, r));
   return c.body(null, 200);
 });
 
 routes.delete("/api/acquisitions/:acquisitionId", async (c) => {
   const acquisitionId = pathId(c, "acquisitionId");
-  await db().transaction((tx) => deleteAcquisition(tx, c.get("memberId"), acquisitionId));
+  await db().transaction((tx) => deleteAcquisition(tx, acquisitionId));
   return c.body(null, 204);
 });

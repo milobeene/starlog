@@ -2,9 +2,9 @@
  * 개발 서버 — `npm run dev`. 자바 시절 `./gradlew bootRun` 자리.
  *
  * - 8080에 뜬다 (프론트 개발 서버가 `/api`를 여기로 넘긴다 — `frontend/next.config.ts`)
- * - DB는 `server/.dev/db` (없으면 빈 DB로 시작 — 주인·기본 카탈로그가 저절로 생긴다).
+ * - DB는 `server/.dev/db` (없으면 빈 DB로 시작 — 프로필·기본 카탈로그가 저절로 생긴다).
  *   실데이터로 보고 싶으면 `npm run dev -- --fixture` → 실데이터 픽스처를 복사해서 연다
- * - `dev` 프로필이라 `X-Member-Id` 헤더를 읽는다 (계약 검사 `tools/contract-check.py`가 쓴다)
+ * - `dev` 프로필이라 CORS를 끈다 (프론트 개발 서버가 프록시로 붙는다)
  * - 코드를 고치면 다시 뜬다 (`tsx watch`)
  */
 import { spawn, spawnSync } from "child_process";

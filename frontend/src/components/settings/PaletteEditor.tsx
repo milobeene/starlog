@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import FluidCanvas from "@/components/background/FluidCanvas";
 import {
   DEFAULT_PALETTE,
@@ -28,7 +28,7 @@ const sameColors = (a: string[], b: string[]) =>
  *
  * **저장은 부모(ProfileDialog)가 한다.** 여기는 값을 들고 있지 않는다 —
  * 취소하면 아무 일도 없어야 하므로 상태의 주인이 하나여야 한다.
- * (예외: 내 프리셋 목록은 프로필이 아니라 따로 저장된다 — `lib/palette.ts`의 프리셋 저장소)
+ * (예외: 내 프리셋 목록은 누르는 즉시 프로필에 저장된다 — `lib/palette.ts`의 프리셋 저장소)
  */
 export default function PaletteEditor({
   colors,
@@ -58,11 +58,22 @@ export default function PaletteEditor({
     onChange(emitted);
   };
 
-  const [presets, setPresets] = useState<SavedPalette[]>(loadPresets);
+  // 프로필에서 받아온다 — 받기 전엔 빈 목록. 저장은 즉시(대화상자 [저장]과 따로), 실패하면 되돌린다
+  const [presets, setPresets] = useState<SavedPalette[]>([]);
+  useEffect(() => {
+    let alive = true;
+    loadPresets()
+      .then((list) => alive && setPresets(list))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
   const [naming, setNaming] = useState<string | null>(null);
   const commitPresets = (next: SavedPalette[]) => {
+    const before = presets;
     setPresets(next);
-    storePresets(next);
+    storePresets(next).catch(() => setPresets(before));
   };
   const savePreset = () => {
     const name = (naming ?? "").trim().slice(0, 30);

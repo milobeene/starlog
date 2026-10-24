@@ -20,7 +20,7 @@
  *
  * ## 픽스처 (전부 로컬 전용 — 실데이터다)
  *   real   `docs/backup-*-neon/`(Neon JSON 백업)에서 만든다 → `server/.dev/fixture`
- *   fresh  주인 + 기본 카탈로그만 → `server/.dev/fixture-fresh`  (시나리오 `"fixture": "fresh"`)
+ *   fresh  프로필 + 기본 카탈로그만 → `server/.dev/fixture-fresh`  (시나리오 `"fixture": "fresh"`)
  *   없으면 처음 돌릴 때 만든다. `HARNESS_FIXTURE`로 덮을 수 있다.
  *   ⚠️ 녹화본(`test/golden/`)도 실데이터가 들어 있어 gitignore다 — 저장소가 공개다
  */
@@ -50,7 +50,7 @@ interface Step {
 interface Scenario {
   name: string;
   steps: Step[];
-  /** 서버에 넣을 환경변수 — 예: 소유권 시험에 `{"STARLOG_PROFILE": "test"}` (`X-Member-Id`를 읽게) */
+  /** 서버에 넣을 환경변수 — 예: `{"STARLOG_PROFILE": "test", "STARLOG_THUMBNAILER": "copy"}` */
   env?: Record<string, string>;
   /** 시작 DB. 기본 `real`(실데이터) */
   fixture?: "real" | "fresh";

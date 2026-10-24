@@ -5,8 +5,7 @@
  */
 import { Hono } from "hono";
 import { z } from "zod";
-import { and, asc, eq } from "drizzle-orm";
-import type { AppEnv } from "../../http/env";
+import { asc, eq } from "drizzle-orm";
 import { db, type Tx } from "../../db/client";
 import { backlogEntry, backlogEntryGenre, genre, tag } from "../../db/schema";
 import { readBody, violations, DEFAULT_MSG } from "../../http/body";
@@ -16,7 +15,7 @@ import { normalize } from "../../common/text";
 import { nowKst } from "../../common/clock";
 import { opt, zLong, zText } from "../../common/schemas";
 
-export const routes = new Hono<AppEnv>();
+export const routes = new Hono();
 
 const NameRequest = z.object({ name: opt(zText) });
 
@@ -43,10 +42,9 @@ export const PALETTE = [
 
 // ───────────── 태그 ─────────────
 
-/** 남의 것은 없는 것처럼 답한다 (§6.7) */
-async function findOwnedTag(d: Tx, memberId: number, tagId: number) {
+async function findTag(d: Tx, tagId: number) {
   const [row] = await d.select().from(tag).where(eq(tag.id, tagId));
-  if (!row || row.memberId !== memberId) throw new NotFound(`태그를 찾을 수 없습니다. id=${tagId}`);
+  if (!row) throw new NotFound(`태그를 찾을 수 없습니다. id=${tagId}`);
   return row;
 }
 
@@ -54,15 +52,14 @@ async function findOwnedTag(d: Tx, memberId: number, tagId: number) {
 const ReorderRequest = z.object({ tagIds: z.array(zLong.nullable()).nullish().transform((v) => v ?? null) });
 
 routes.put("/api/me/tags/order", async (c) => {
-  const memberId = c.get("memberId");
   const r = await readBody(c, ReorderRequest);
   violations().notNull("tagIds", r.tagIds, DEFAULT_MSG.notNull).throwIfAny();
   const tagIds = r.tagIds!;
   await db().transaction(async (tx) => {
-    const mine = await tx.select().from(tag).where(eq(tag.memberId, memberId)).orderBy(asc(tag.sortOrder), asc(tag.name));
+    const mine = await tx.select().from(tag).orderBy(asc(tag.sortOrder), asc(tag.name));
     const byId = new Map(mine.map((t) => [t.id, t]));
 
-    // 받은 id 순서대로 0부터 다시 매긴다. 남의 태그가 섞이면 거절한다 — 소유권은 조용히 넘어가면 안 된다
+    // 받은 id 순서대로 0부터 다시 매긴다. 없는 태그가 섞이면 거절한다 — 조용히 넘어가면 순서가 어긋난다
     const target = new Map<number, number>();
     let order = 0;
     for (const id of tagIds) {
@@ -89,11 +86,10 @@ routes.put("/api/me/tags/order", async (c) => {
 const ColorRequest = z.object({ color: opt(zText) });
 
 routes.put("/api/me/tags/:tagId/color", async (c) => {
-  const memberId = c.get("memberId");
   const tagId = pathId(c, "tagId");
   const r = await readBody(c, ColorRequest);
   await db().transaction(async (tx) => {
-    const t = await findOwnedTag(tx, memberId, tagId);
+    const t = await findTag(tx, tagId);
     const color = normalize(r.color);
     if (color !== null && !(PALETTE as readonly string[]).includes(color)) {
       throw new InvalidInput(`고를 수 없는 색입니다: ${color}`);
@@ -106,16 +102,15 @@ routes.put("/api/me/tags/:tagId/color", async (c) => {
 });
 
 routes.put("/api/me/tags/:tagId", async (c) => {
-  const memberId = c.get("memberId");
   const tagId = pathId(c, "tagId");
   const r = await readBody(c, NameRequest);
   checkName(r);
   await db().transaction(async (tx) => {
-    const t = await findOwnedTag(tx, memberId, tagId);
+    const t = await findTag(tx, tagId);
     const name = normalize(r.name);
     if (name === null) throw new InvalidInput("태그 이름은 비울 수 없습니다");
     // 같은 이름이 이미 있으면 예외 — 병합하지 않는다. 중복 검사를 변경보다 먼저
-    const [other] = await tx.select({ id: tag.id }).from(tag).where(and(eq(tag.memberId, memberId), eq(tag.name, name)));
+    const [other] = await tx.select({ id: tag.id }).from(tag).where(eq(tag.name, name));
     if (other && other.id !== tagId) throw new Conflict(`이미 있는 태그 이름입니다: ${name}`);
     if (t.name !== name) {
       await tx.update(tag).set({ name, updatedAt: nowKst() }).where(eq(tag.id, tagId));
@@ -125,10 +120,9 @@ routes.put("/api/me/tags/:tagId", async (c) => {
 });
 
 routes.delete("/api/me/tags/:tagId", async (c) => {
-  const memberId = c.get("memberId");
   const tagId = pathId(c, "tagId");
   await db().transaction(async (tx) => {
-    await findOwnedTag(tx, memberId, tagId);
+    await findTag(tx, tagId);
     // FK가 backlog_entry에 직접 있으므로 붙어 있는 항목부터 뗀다. 소프트 삭제된 항목도 함께 —
     // 남겨두면 FK가 살아 있어 태그를 못 지운다. 벌크라 updatedAt을 직접 쓴다
     await tx.update(backlogEntry).set({ tagId: null, updatedAt: nowKst() }).where(eq(backlogEntry.tagId, tagId));
@@ -139,22 +133,21 @@ routes.delete("/api/me/tags/:tagId", async (c) => {
 
 // ───────────── 장르 ─────────────
 
-async function findOwnedGenre(d: Tx, memberId: number, genreId: number) {
+async function findGenre(d: Tx, genreId: number) {
   const [row] = await d.select().from(genre).where(eq(genre.id, genreId));
-  if (!row || row.memberId !== memberId) throw new NotFound(`장르를 찾을 수 없습니다. id=${genreId}`);
+  if (!row) throw new NotFound(`장르를 찾을 수 없습니다. id=${genreId}`);
   return row;
 }
 
 routes.put("/api/me/genres/:genreId", async (c) => {
-  const memberId = c.get("memberId");
   const genreId = pathId(c, "genreId");
   const r = await readBody(c, NameRequest);
   checkName(r);
   await db().transaction(async (tx) => {
-    const g = await findOwnedGenre(tx, memberId, genreId);
+    const g = await findGenre(tx, genreId);
     const name = normalize(r.name);
     if (name === null) throw new InvalidInput("장르 이름은 비울 수 없습니다");
-    const [other] = await tx.select({ id: genre.id }).from(genre).where(and(eq(genre.memberId, memberId), eq(genre.name, name)));
+    const [other] = await tx.select({ id: genre.id }).from(genre).where(eq(genre.name, name));
     if (other && other.id !== genreId) throw new Conflict(`이미 있는 장르 이름입니다: ${name}`);
     if (g.name !== name) {
       await tx.update(genre).set({ name, updatedAt: nowKst() }).where(eq(genre.id, genreId));
@@ -165,10 +158,9 @@ routes.put("/api/me/genres/:genreId", async (c) => {
 
 /** 삭제하면 그 장르를 쓰던 항목은 마스터 장르로 폴백된다 — 연결까지 함께 지운다 */
 routes.delete("/api/me/genres/:genreId", async (c) => {
-  const memberId = c.get("memberId");
   const genreId = pathId(c, "genreId");
   await db().transaction(async (tx) => {
-    await findOwnedGenre(tx, memberId, genreId);
+    await findGenre(tx, genreId);
     await tx.delete(backlogEntryGenre).where(eq(backlogEntryGenre.genreId, genreId));
     await tx.delete(genre).where(eq(genre.id, genreId));
   });

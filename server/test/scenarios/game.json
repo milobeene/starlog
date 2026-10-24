@@ -489,6 +489,46 @@
    "name": "일괄 동기화 대상 — 끝난 뒤",
    "method": "GET",
    "path": "/api/games/outdated"
+  },
+  {
+   "name": "마스터 정보 — 수동 게임 (정보 수정 뒤)",
+   "method": "GET",
+   "path": "/api/games/${manualId}"
+  },
+  {
+   "name": "마스터 정보 — 실데이터 (정보 수정 뒤)",
+   "method": "GET",
+   "path": "/api/games/2"
+  },
+  {
+   "name": "마스터 정보 — 빈 본문으로 비운 게임",
+   "method": "GET",
+   "path": "/api/games/24"
+  },
+  {
+   "name": "마스터 정보 — 없는 게임",
+   "method": "GET",
+   "path": "/api/games/999999"
+  },
+  {
+   "name": "마스터 정보 — 삭제한 게임",
+   "method": "GET",
+   "path": "/api/games/52"
+  },
+  {
+   "name": "마스터 정보 — id 형식 오류",
+   "method": "GET",
+   "path": "/api/games/abc"
+  },
+  {
+   "name": "마스터 정보 — 고정 경로는 그대로 (master)",
+   "method": "GET",
+   "path": "/api/games/master?size=1"
+  },
+  {
+   "name": "마스터 정보 — 고정 경로는 그대로 (outdated)",
+   "method": "GET",
+   "path": "/api/games/outdated"
   }
  ]
 }

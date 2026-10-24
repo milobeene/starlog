@@ -1,6 +1,6 @@
 # STARLOG 서버 (v2)
 
-일렉트론 안에서 `utilityProcess`로 도는 HTTP 서버. 화면(`frontend/`)이 부르는 `/api/*` 85개와 정적 화면 서빙.
+일렉트론 안에서 `utilityProcess`로 도는 HTTP 서버. 화면(`frontend/`)이 부르는 `/api/*` 86개와 정적 화면 서빙.
 2026-10-24 자바(Spring Boot)에서 1:1로 옮겼다 — 계획·결정·자바 버그 목록은 `docs/v2-plan.md`.
 
 ```bash
@@ -14,14 +14,14 @@ npm run bundle         # → ../desktop/server/main.mjs
 ## 기동 순서 (`src/main.ts`)
 
 잠금(세이브파일 옆 `.lock`) → DB 열기 + 진단(`src/diagnose.ts`, 실패 시 `STARLOG_DIAGNOSTIC: <코드>`) →
-마이그레이션(`migrations/V*.sql`, `flyway_schema_history` 이어 쓰기) → 미디어 폴더 → 기동 정리(30일 지난 API 기록) →
-리슨 → `STARLOG_READY port=<n>`. 종료는 SIGTERM 또는 부모의 `{type: "shutdown"}` 메시지 — PGlite를 닫고 잠금을 푼다.
+마이그레이션(`migrations/V*.sql`, `flyway_schema_history` 이어 쓰기) → 프로필(빈 DB면 한 행 + 기본 선택지) → 미디어 폴더 →
+기동 정리(30일 지난 API 기록) → 리슨 → `STARLOG_READY port=<n>`. 종료는 SIGTERM 또는 부모의 `{type: "shutdown"}` 메시지 — PGlite를 닫고 잠금을 푼다.
 
 **CORS (`src/http/cors.ts`)** — 창은 평생 `app://starlog`이고 화면 → API는 교차 출처다. `app://starlog`만 열고
 다른 출처는 403. dev·test 프로필에서는 끈다(프론트 개발 서버 프록시). ⚠️ 빼면 앱이 **배경만 남은 검은 화면**이 된다.
 
 설정은 전부 환경변수 (`src/config.ts`): `STARLOG_DB_DIR`(로컬) 또는 `STARLOG_DB_URL`·`_USER`·`_PASSWORD`·`_SCHEMA`(클라우드),
-`STARLOG_PORT`, `STARLOG_DATA_ROOT`, `STARLOG_STATIC_DIR`, `STARLOG_PROFILE`(dev·test면 `X-Member-Id`를 읽는다),
+`STARLOG_PORT`, `STARLOG_DATA_ROOT`, `STARLOG_STATIC_DIR`, `STARLOG_PROFILE`(dev·test면 CORS를 끄고 시험 장치를 연다),
 `APP_IGDB_*`, `APP_STORAGE_*`, `STARLOG_MEDIA_USE_STORAGE_*`, `TRANSLATE_API_KEY`,
 `STARLOG_THUMBNAILER=copy`(dev·test 전용 — 일렉트론 없이 썸네일 흐름을 시험할 때 원본을 복사).
 
@@ -45,7 +45,7 @@ npm run bundle         # → ../desktop/server/main.mjs
 | 금액 | `money(amount, currency)`·`scale2`·`amountJson`·`compareAmount` — **부동소수 금지** |
 | 시각 | `nowKst()`·`todayKst()` — **DB `now()` 금지** (세션 시간대가 UTC면 9시간 밀린다) |
 | 응답 | `ldt()`(timestamp → `"…T…"`)·`page()` (`src/common/json.ts`) |
-| 주인 | `c.get("memberId")` — 자바 `@LoginMember` |
+| 프로필 | `findProfile(d)` (`domains/member/profile.ts`) — `member` 테이블의 **한 행**. 주인·소유권 개념이 없다 (V14) |
 
 ## 함정 (이전하면서 실측으로 찾은 것)
 
@@ -56,7 +56,7 @@ npm run bundle         # → ../desktop/server/main.mjs
 - **BigDecimal 응답**은 `amountJson()`(숫자). 비교 장치는 숫자를 값으로 본다
 - **상태코드**: 반환형 `void` → 200 빈 본문(`c.body(null, 200)`) / `noContent()` → 204 / `created` → 201 + `Location` + `{id}`
 - **검증 순서**: `@Valid`(→ `violations()`)가 서비스 검증보다 먼저. 서비스 안에서도 자바 순서대로 던진다
-- **소유권**: 남의 행은 "없음"(404)으로. 메시지에 id가 들어가는 형식까지 같게
+- **없는 행**은 404 — 메시지에 id가 들어가는 형식까지 같게. (V14 전에는 "남의 행"도 같은 404였다 — 주인이 하나라 이제 그런 행이 없다)
 - **변경 감지**: 하이버네이트는 **값이 실제로 바뀐 엔티티만** UPDATE하고 그때만 `updatedAt`을 바꾼다.
   같은 값으로 수정하면 `updated_at`이 그대로다 → 가능하면 맞춘다 (비교 장치는 `updated_at`만 다른 건 경고로 센다)
 - **`@LastModifiedDate`/`@CreatedDate`**: insert 때 `createdAt`·`updatedAt` 둘 다 `nowKst()`
@@ -84,12 +84,13 @@ npx tsx test/harness/run.ts test/scenarios/<도메인>.json --update   # 동작�
 - 녹화본(`test/golden/`)은 **자바와 diff 0으로 확인된 결과**를 녹화해 둔 것 — 응답 + 픽스처 대비 바뀐 행 + 파일 트리
 - 픽스처는 `server/.dev/`에 실데이터 백업(`docs/backup-*-neon`)에서 자동으로 만든다
 - ⚠️ 녹화본·픽스처는 실데이터라 **gitignore** — 이 테스트는 백업이 있는 맥에서만 돈다
-- "남의 것"(소유권) 단계는 시나리오에 `"env": {"STARLOG_PROFILE": "test"}`
-- 빈 세이브에서 시작하려면 `"fixture": "fresh"` (주인 + 기본 카탈로그만)
+- 빈 세이브에서 시작하려면 `"fixture": "fresh"` (프로필 + 기본 카탈로그만)
+- 실데이터 픽스처는 **백업 시점의 버전까지** SQL을 돌려 행을 넣고, 그 뒤 버전(V14…)은 앱 러너로 올린다 —
+  새 마이그레이션이 픽스처를 만들 때마다 실데이터 위에서 시험된다. 마이그레이션을 바꾸면 `.dev/fixture*`를 지우고 다시 돌릴 것
 
 ### 시나리오 쓰는 법
 
-- **엔드포인트 전부**, 그리고 **코드의 `throw`마다 하나씩** (검증 실패·없음·남의 것·충돌)
+- **엔드포인트 전부**, 그리고 **코드의 `throw`마다 하나씩** (검증 실패·없음·충돌)
 - **프론트가 실제로 보내는 모양대로.** `frontend/src`에서 그 경로를 grep해서 파라미터·본문을 본다
 - ⚠️ **만든 행을 다 지우면 DB 비교가 증거를 못 본다.** 쓰기 동작마다 결과가 남는 단계를 둔다
   (만들기 둘 → 하나 수정 → 다른 하나 삭제 식으로)

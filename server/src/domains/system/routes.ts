@@ -5,7 +5,6 @@
  */
 import { Hono } from "hono";
 import { z } from "zod";
-import type { AppEnv } from "../../http/env";
 import { DEFAULT_MSG, readBody, violations } from "../../http/body";
 import { zText } from "../../common/schemas";
 import { InvalidInput } from "../../common/errors";
@@ -24,7 +23,7 @@ const DailyLimitRequest = z.object({ dailyChars: optStr });
 /** 앞뒤 공백 제거. null은 앞에서 검증으로 걸러진다 */
 const strip = (v: string | null): string => javaStrip(v!);
 
-export const routes = new Hono<AppEnv>();
+export const routes = new Hono();
 
 routes.get("/api/system", async (c) => c.json(await systemStatus()));
 

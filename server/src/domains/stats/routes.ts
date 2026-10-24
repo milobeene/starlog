@@ -5,7 +5,6 @@
  */
 import { Hono } from "hono";
 import { and, desc, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
-import type { AppEnv } from "../../http/env";
 import { db } from "../../db/client";
 import { rows } from "../../db/raw";
 import {
@@ -35,14 +34,13 @@ const today = () => todayKst();
 const ym = (date: string) => Number(date.slice(0, 4)) * 12 + (Number(date.slice(5, 7)) - 1);
 const ymString = (n: number) => `${String(Math.floor(n / 12)).padStart(4, "0")}-${String((n % 12) + 1).padStart(2, "0")}`;
 
-export const routes = new Hono<AppEnv>();
+export const routes = new Hono();
 
 /**
  * 장르별 분포 (FR-STAT-01). 개인 장르가 1개라도 있는 항목은 개인 것만, 하나도 없으면 마스터 것 (§6.7).
  * group by가 항목별 분기를 못 해서 두 집합을 따로 세어 합친다
  */
 routes.get("/api/stats/genres", async (c) => {
-  const memberId = c.get("memberId");
   const d = db();
 
   const personal = await d
@@ -50,7 +48,7 @@ routes.get("/api/stats/genres", async (c) => {
     .from(backlogEntryGenre)
     .innerJoin(backlogEntry, eq(backlogEntryGenre.backlogEntryId, backlogEntry.id))
     .innerJoin(genre, eq(backlogEntryGenre.genreId, genre.id))
-    .where(and(eq(backlogEntry.memberId, memberId), isNull(backlogEntry.deletedAt)))
+    .where(isNull(backlogEntry.deletedAt))
     .groupBy(genre.name);
 
   const master = await rows<{ genre: string | null; count: string | number }>(d, sql`
@@ -58,8 +56,7 @@ routes.get("/api/stats/genres", async (c) => {
     from backlog_entry b
       join game g on g.id = b.game_id
       join game_master_genre mg on mg.game_id = g.id
-    where b.member_id = ${memberId}
-      and b.deleted_at is null
+    where b.deleted_at is null
       and not exists (select 1 from backlog_entry_genre l where l.backlog_entry_id = b.id)
     group by mg.genre`);
 
@@ -79,13 +76,11 @@ routes.get("/api/stats/genres", async (c) => {
  * 이름은 `displayName`(오버라이드 반영)
  */
 routes.get("/api/stats/completions/monthly", async (c) => {
-  const memberId = c.get("memberId");
   const found = await db()
     .select({ finishedOn: playthrough.finishedOn, name: backlogEntry.displayName })
     .from(playthrough)
     .innerJoin(backlogEntry, eq(playthrough.backlogEntryId, backlogEntry.id))
     .where(and(
-      eq(backlogEntry.memberId, memberId),
       isNull(backlogEntry.deletedAt),
       isNotNull(playthrough.finishedOn),
       eq(playthrough.status, "COMPLETED"),
@@ -112,12 +107,10 @@ routes.get("/api/stats/completions/monthly", async (c) => {
 
 /** 총 플레이 시간 + 게임별 순위 (FR-STAT-03). `limit`은 1~50으로 조인다 */
 routes.get("/api/stats/playtime", async (c) => {
-  const memberId = c.get("memberId");
   const limit = Math.min(Math.max(query(c).int("limit", 10), 1), MAX_TOP);
   const d = db();
 
-  const where = and(
-    eq(backlogEntry.memberId, memberId), isNull(backlogEntry.deletedAt), isNotNull(backlogEntry.playTimeHours));
+  const where = and(isNull(backlogEntry.deletedAt), isNotNull(backlogEntry.playTimeHours));
   const [totals] = await d
     .select({ sum: sql<string | null>`sum(${backlogEntry.playTimeHours})`, count: sql<string>`count(*)` })
     .from(backlogEntry)
@@ -151,7 +144,7 @@ interface SubRow {
   serviceName: string;
 }
 
-async function subscriptionRows(memberId: number): Promise<SubRow[]> {
+async function subscriptionRows(): Promise<SubRow[]> {
   return db()
     .select({
       currency: subscription.feeCurrency,
@@ -162,7 +155,7 @@ async function subscriptionRows(memberId: number): Promise<SubRow[]> {
       serviceName: subscription.serviceName,
     })
     .from(subscription)
-    .where(and(eq(subscription.memberId, memberId), isNotNull(subscription.feeAmount))) as Promise<SubRow[]>;
+    .where(isNotNull(subscription.feeAmount)) as Promise<SubRow[]>;
 }
 
 /**
@@ -191,19 +184,18 @@ function subscriptionTotals(subs: SubRow[]) {
 
 /** 지출 2축 (FR-STAT-04). 구매와 구독을 합치지 않고, 통화도 합치지 않는다 */
 routes.get("/api/stats/spending", async (c) => {
-  const memberId = c.get("memberId");
   const d = db();
   const found = await d
     .select({ currency: acquisition.priceCurrency, sum: sql<string>`sum(${acquisition.priceAmount})` })
     .from(acquisition)
     .innerJoin(backlogEntry, eq(acquisition.backlogEntryId, backlogEntry.id))
-    .where(and(eq(backlogEntry.memberId, memberId), isNull(backlogEntry.deletedAt), isNotNull(acquisition.priceAmount)))
+    .where(and(isNull(backlogEntry.deletedAt), isNotNull(acquisition.priceAmount)))
     .groupBy(acquisition.priceCurrency);
 
   const purchases = found
     .map((r) => ({ currency: r.currency as string, total: amountJson(scale2(r.sum)) }))
     .sort((a, b) => cmp(a.currency, b.currency));
-  return c.json({ purchases, subscriptions: subscriptionTotals(await subscriptionRows(memberId)) });
+  return c.json({ purchases, subscriptions: subscriptionTotals(await subscriptionRows()) });
 });
 
 /**
@@ -211,7 +203,6 @@ routes.get("/api/stats/spending", async (c) => {
  * 이름(items)은 구독이 먼저, 그다음 게임 — 각각 이름순·중복 없음
  */
 routes.get("/api/stats/spending/monthly", async (c) => {
-  const memberId = c.get("memberId");
   const d = db();
 
   // period -> currency -> 센트
@@ -243,7 +234,6 @@ routes.get("/api/stats/spending/monthly", async (c) => {
     .from(acquisition)
     .innerJoin(backlogEntry, eq(acquisition.backlogEntryId, backlogEntry.id))
     .where(and(
-      eq(backlogEntry.memberId, memberId),
       isNull(backlogEntry.deletedAt),
       gt(acquisition.priceAmount, "0"),
       isNotNull(acquisition.acquiredOn),
@@ -257,7 +247,7 @@ routes.get("/api/stats/spending/monthly", async (c) => {
   // 구독 펼치기 — 월간은 매달, 연간은 시작 월에서 12개월 간격
   const t = today();
   const thisMonth = ym(t);
-  for (const s of await subscriptionRows(memberId)) {
+  for (const s of await subscriptionRows()) {
     if (s.startedOn > t) continue; // 아직 시작 안 한 구독은 세지 않는다 (/spending과 총액이 맞게)
     let until = s.endedOn === null ? thisMonth : ym(s.endedOn);
     if (until > thisMonth) until = thisMonth;

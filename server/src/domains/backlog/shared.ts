@@ -1,5 +1,5 @@
 /**
- * 백로그 도메인 공용 — 내 항목 찾기, 파생 상태 계산.
+ * 백로그 도메인 공용 — 항목 찾기, 파생 상태 계산.
  */
 import { asc, eq, sql } from "drizzle-orm";
 import type { Db } from "../../db/client";
@@ -18,37 +18,37 @@ export type PlaythroughRow = typeof playthrough.$inferSelect;
 
 const notFound = (entryId: number) => new NotFound(`백로그 항목을 찾을 수 없습니다. id=${entryId}`);
 
-// ───────────── 소유권 ─────────────
+// ───────────── 항목 찾기 ─────────────
 
-/** 삭제된 것 포함. 남의 것도 404 — 메시지도 같게 (NFR-S7) */
-export async function findOwnedIncludingDeleted(d: Db, memberId: number, entryId: number): Promise<EntryRow> {
+/** 삭제된 것 포함 */
+export async function findEntryIncludingDeleted(d: Db, entryId: number): Promise<EntryRow> {
   const [row] = await d.select().from(backlogEntry).where(eq(backlogEntry.id, entryId));
-  if (!row || row.memberId !== memberId) throw notFound(entryId);
+  if (!row) throw notFound(entryId);
   return row;
 }
 
-/** 살아있는 내 항목만. 수정 경로는 전부 이걸 쓴다 */
-export async function findOwned(d: Db, memberId: number, entryId: number): Promise<EntryRow> {
-  const row = await findOwnedIncludingDeleted(d, memberId, entryId);
+/** 살아있는 항목만. 수정 경로는 전부 이걸 쓴다 */
+export async function findAliveEntry(d: Db, entryId: number): Promise<EntryRow> {
+  const row = await findEntryIncludingDeleted(d, entryId);
   if (row.deletedAt !== null) throw new Conflict(`삭제된 항목입니다. id=${entryId}`);
   return row;
 }
 
 /**
- * 항목 행을 잠그고 나서 `findOwned`. 형제 회차 검증(BR-PT-02·03)을 직렬화하려는 잠금이다.
+ * 항목 행을 잠그고 나서 `findAliveEntry`. 형제 회차 검증(BR-PT-02·03)을 직렬화하려는 잠금이다.
  * PGlite는 세션이 하나라 원래 직렬이지만, 클라우드(Postgres)에서는 필요하다
  */
-export async function findOwnedForUpdate(d: Db, memberId: number, entryId: number): Promise<EntryRow> {
+export async function findAliveEntryForUpdate(d: Db, entryId: number): Promise<EntryRow> {
   const [locked] = await d.select({ id: backlogEntry.id }).from(backlogEntry)
     .where(eq(backlogEntry.id, entryId)).for("update");
   if (!locked) throw notFound(entryId);
-  return findOwned(d, memberId, entryId);
+  return findAliveEntry(d, entryId);
 }
 
-/** 상세용 — 삭제된 항목은 조건에서 걸러져 404 (findOwned의 409와 의도적으로 다르다) */
-export async function findOwnedAlive404(d: Db, memberId: number, entryId: number): Promise<EntryRow> {
+/** 상세용 — 삭제된 항목은 조건에서 걸러져 404 (findAliveEntry의 409와 의도적으로 다르다) */
+export async function findAliveEntry404(d: Db, entryId: number): Promise<EntryRow> {
   const [row] = await d.select().from(backlogEntry).where(eq(backlogEntry.id, entryId));
-  if (!row || row.deletedAt !== null || row.memberId !== memberId) throw notFound(entryId);
+  if (!row || row.deletedAt !== null) throw notFound(entryId);
   return row;
 }
 

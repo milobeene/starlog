@@ -1,10 +1,7 @@
 {
  "name": "member-fresh",
- "note": "빈 세이브(주인+기본 카탈로그) 픽스처에서 시작한다 — fixture: fresh",
- "env": {
-  "STARLOG_PROFILE": "test",
-  "SPRING_PROFILES_INCLUDE": "test"
- },
+ "note": "빈 세이브(프로필+기본 카탈로그) 픽스처에서 시작한다 — fixture: fresh",
+ "fixture": "fresh",
  "steps": [
   {
    "name": "내 정보 — 빈 세이브",
@@ -22,990 +19,448 @@
    "path": "/api/me/export"
   },
   {
-   "name": "없는 회원 — 내 정보 404",
-   "method": "GET",
-   "path": "/api/me",
-   "headers": {
-    "X-Member-Id": "999"
-   }
-  },
-  {
-   "name": "없는 회원 — 선택지는 확인 안 함 (빈 목록)",
-   "method": "GET",
-   "path": "/api/me/options",
-   "headers": {
-    "X-Member-Id": "999"
-   }
-  },
-  {
-   "name": "없는 회원 — 내보내기 404",
-   "method": "GET",
-   "path": "/api/me/export",
-   "headers": {
-    "X-Member-Id": "999"
-   }
-  },
-  {
-   "name": "없는 회원 — 가져오기 404",
-   "method": "POST",
-   "path": "/api/me/import",
-   "headers": {
-    "X-Member-Id": "999"
-   },
+   "name": "프리셋 — 저장 (이름 앞뒤 공백은 걷고 색은 대문자로)",
+   "method": "PUT",
+   "path": "/api/me/profile",
    "body": {
-    "formatVersion": 2,
-    "exportedAt": "2026-10-01T12:00:00.5",
-    "profile": {
-     "email": "other@example.com",
-     "nickname": "  Milo  ",
-     "memo": "  새 기계  ",
-     "backgroundColors": [
-      "#aabbcc",
-      "#ddeeff",
-      "#001122",
-      "#334455",
-      "#667788"
-     ]
-    },
-    "catalog": {
-     "platforms": [
-      "Steam",
-      "Nintendo",
-      "GOG",
-      "App Store",
-      "itch.io",
-      "Steam"
-     ],
-     "accounts": [
-      {
-       "label": "Beene",
-       "platform": "Steam"
-      },
-      {
-       "label": "Beene",
-       "platform": "Nintendo"
-      },
-      {
-       "label": "  메인  ",
-       "platform": "App Store"
-      }
-     ],
-     "devices": [
-      {
-       "deviceType": "Windows PC",
-       "label": "메인 PC",
-       "memo": "  "
-      },
-      {
-       "deviceType": "Nintendo Switch",
-       "label": "Nintendo Switch",
-       "memo": "독 모드"
-      }
-     ],
-     "emulators": [
-      {
-       "name": "Ryujinx",
-       "memo": null
-      },
-      {
-       "name": "  Eden  ",
-       "memo": " 포크 "
-      }
-     ],
-     "inputMethods": [
-      "KeyboardMouse",
-      "XInput",
-      "DualSense"
-     ],
-     "subscriptions": [
-      {
-       "serviceName": "Game Pass",
-       "startedOn": "2026-01-01",
-       "endedOn": null,
-       "fee": {
-        "amount": 13500.555,
-        "currency": "krw"
-       },
-       "billingCycle": "MONTHLY"
-      },
-      {
-       "serviceName": "  NSO  ",
-       "startedOn": "2025-12-23",
-       "endedOn": "2026-12-23",
-       "fee": null,
-       "billingCycle": "YEARLY"
-      },
-      {
-       "serviceName": "PS Plus",
-       "startedOn": "2025-01-01",
-       "endedOn": "2025-01-01",
-       "fee": {
-        "amount": null,
-        "currency": "KRW"
-       },
-       "billingCycle": "MONTHLY"
-      }
-     ],
-     "tags": [
-      "인생작",
-      "  보류  "
-     ],
-     "genres": [
-      "액션",
-      "RPG",
-      "안 쓰는 장르"
-     ]
-    },
-    "games": [
+    "nickname": "Scribe",
+    "memo": null,
+    "backgroundColors": "",
+    "backgroundPresets": [
      {
-      "externalId": "1942",
-      "source": "IGDB",
-      "name": "The Witcher 3",
-      "developers": [
-       "CD Projekt RED",
-       null,
-       "  "
-      ],
-      "publishers": [
-       "CD Projekt"
-      ],
-      "masterGenres": [
-       "RPG",
-       "Adventure"
-      ],
-      "releasedOn": "2015-05-19",
-      "listPrice": {
-       "amount": 39.99,
-       "currency": "usd"
-      },
-      "coverImageId": "co1wyy",
-      "bannerImageId": "ar5h",
-      "summary": "Geralt",
-      "storyline": "Ciri",
-      "igdbRating": 93.456,
-      "igdbRatingCount": 4321,
-      "releasePlatforms": [
-       "PC (Microsoft Windows)",
-       "PlayStation 4"
-      ],
-      "mainStoryHours": 51,
-      "mainExtraHours": 103,
-      "completionistHours": 172,
-      "timeToBeatSamples": 88,
-      "mediaFolder": "the-witcher-3"
-     },
-     {
-      "externalId": null,
-      "source": "MANUAL",
-      "name": "  내 게임  ",
-      "developers": [
-       "나"
-      ],
-      "publishers": [],
-      "masterGenres": [],
-      "releasedOn": "2024-02-29",
-      "listPrice": null,
-      "coverImageId": null,
-      "bannerImageId": null,
-      "summary": "직접 등록",
-      "storyline": null,
-      "igdbRating": null,
-      "igdbRatingCount": null,
-      "releasePlatforms": [],
-      "mainStoryHours": null,
-      "mainExtraHours": null,
-      "completionistHours": null,
-      "timeToBeatSamples": null,
-      "mediaFolder": "nae-geim-12"
-     },
-     {
-      "externalId": "1942",
-      "source": "IGDB",
-      "name": "The Witcher 3 (중복)",
-      "developers": [],
-      "publishers": [],
-      "masterGenres": [],
-      "releasedOn": null,
-      "listPrice": null,
-      "coverImageId": null,
-      "bannerImageId": null,
-      "summary": null,
-      "storyline": null,
-      "igdbRating": null,
-      "igdbRatingCount": null,
-      "releasePlatforms": [],
-      "mainStoryHours": null,
-      "mainExtraHours": null,
-      "completionistHours": null,
-      "timeToBeatSamples": null,
-      "mediaFolder": null
-     },
-     {
-      "externalId": "119133",
-      "source": "IGDB",
-      "name": "Elden Ring",
-      "developers": [],
-      "publishers": [],
-      "masterGenres": [],
-      "releasedOn": "2022-02-25",
-      "listPrice": null,
-      "coverImageId": null,
-      "bannerImageId": null,
-      "summary": null,
-      "storyline": null,
-      "igdbRating": null,
-      "igdbRatingCount": null,
-      "releasePlatforms": [
-       "PC (Microsoft Windows)"
-      ],
-      "mainStoryHours": null,
-      "mainExtraHours": null,
-      "completionistHours": null,
-      "timeToBeatSamples": null,
-      "mediaFolder": null
-     },
-     {
-      "externalId": null,
-      "source": "MANUAL",
-      "name": "Hades",
-      "developers": [],
-      "publishers": [],
-      "masterGenres": [],
-      "releasedOn": null,
-      "listPrice": {
-       "amount": "24.5",
-       "currency": "KRW"
-      },
-      "coverImageId": null,
-      "bannerImageId": null,
-      "summary": null,
-      "storyline": null,
-      "igdbRating": null,
-      "igdbRatingCount": null,
-      "releasePlatforms": [],
-      "mainStoryHours": null,
-      "mainExtraHours": null,
-      "completionistHours": null,
-      "timeToBeatSamples": null,
-      "mediaFolder": null
-     }
-    ],
-    "entries": [
-     {
-      "gameKey": "igdb:1942",
-      "createdAt": "2026-01-01T10:00:00.123456",
-      "deletedAt": null,
-      "nameOverride": "  위쳐 3  ",
-      "developerOverrides": [
-       "A",
-       null,
-       "  B "
-      ],
-      "publisherOverrides": [],
-      "releasedOnOverride": "2015-05-20",
-      "listPriceOverride": {
-       "amount": 10.005,
-       "currency": "KRW"
-      },
-      "rating": 92.25,
-      "playTimeHours": 123.456,
-      "memo": " 메모 ",
-      "tag": "인생작",
-      "genres": [
-       "RPG",
-       "액션"
-      ],
-      "cover": {
-       "storageKey": "covers/abc.jpg",
-       "contentType": "image/jpeg",
-       "sizeBytes": 12345,
-       "location": "EXTERNAL"
-      },
-      "playthroughs": [
-       {
-        "sequenceNo": 1,
-        "startedOn": "2020-01-01",
-        "finishedOn": "2020-03-01",
-        "status": "COMPLETED",
-        "label": " 1회차 ",
-        "device": "메인 PC",
-        "platformAccount": "Beene",
-        "platformAccountPlatform": "Steam",
-        "emulator": null,
-        "inputMethod": "KeyboardMouse"
-       },
-       {
-        "sequenceNo": 2,
-        "startedOn": "2024-01-01",
-        "finishedOn": null,
-        "status": "PLAYING",
-        "label": null,
-        "device": "Nintendo Switch",
-        "platformAccount": "Beene",
-        "platformAccountPlatform": "Nintendo",
-        "emulator": "Ryujinx",
-        "inputMethod": "DualSense"
-       }
-      ],
-      "acquisitions": [
-       {
-        "method": "PURCHASED",
-        "platform": "Steam",
-        "platformAccount": "Beene",
-        "platformAccountPlatform": "Steam",
-        "subscription": null,
-        "price": {
-         "amount": 39.99,
-         "currency": "usd"
-        },
-        "acquiredOn": "2019-12-25",
-        "label": " 정가 "
-       },
-       {
-        "method": "SUBSCRIPTION",
-        "platform": null,
-        "platformAccount": null,
-        "platformAccountPlatform": null,
-        "subscription": "Game Pass",
-        "price": null,
-        "acquiredOn": null,
-        "label": null
-       }
+      "name": "  새벽  ",
+      "colors": [
+       "#112233",
+       "#445566",
+       "#778899",
+       "#aabbcc",
+       "#ddeeff"
       ]
      },
      {
-      "gameKey": "name:  내 게임  ",
-      "createdAt": "2026-01-01T10:00:00.123456",
-      "deletedAt": "2026-08-28T15:14:26.781806",
-      "nameOverride": null,
-      "developerOverrides": [],
-      "publisherOverrides": [],
-      "releasedOnOverride": null,
-      "listPriceOverride": null,
-      "rating": null,
-      "playTimeHours": null,
-      "memo": null,
-      "tag": null,
-      "genres": [],
-      "cover": {
-       "storageKey": "없는파일.png",
-       "contentType": "image/png",
-       "sizeBytes": 10,
-       "location": "LOCAL"
-      },
-      "playthroughs": [
-       {
-        "sequenceNo": 1,
-        "startedOn": "2023-01-01",
-        "finishedOn": "2023-02-01",
-        "status": "PAUSED",
-        "label": null,
-        "device": null,
-        "platformAccount": "Beene",
-        "platformAccountPlatform": null,
-        "emulator": "Ryujinx",
-        "inputMethod": null
-       },
-       {
-        "sequenceNo": 3,
-        "startedOn": "2023-03-01",
-        "finishedOn": "2023-03-01",
-        "status": "DROPPED",
-        "label": null,
-        "device": "없는 기기",
-        "platformAccount": null,
-        "platformAccountPlatform": null,
-        "emulator": "  Eden  ",
-        "inputMethod": "없는 입력"
-       }
-      ],
-      "acquisitions": [
-       {
-        "method": "NOT_OWNED",
-        "platform": null,
-        "platformAccount": null,
-        "platformAccountPlatform": null,
-        "subscription": null,
-        "price": null,
-        "acquiredOn": null,
-        "label": null
-       }
-      ]
-     },
-     {
-      "gameKey": "igdb:119133",
-      "createdAt": "2026-01-01T10:00:00.123456",
-      "deletedAt": null,
-      "nameOverride": null,
-      "developerOverrides": [],
-      "publisherOverrides": [],
-      "releasedOnOverride": null,
-      "listPriceOverride": null,
-      "rating": null,
-      "playTimeHours": null,
-      "memo": null,
-      "tag": "  보류  ",
-      "genres": [],
-      "cover": {
-       "storageKey": "k",
-       "contentType": "image/webp",
-       "sizeBytes": 1,
-       "location": null
-      },
-      "playthroughs": [],
-      "acquisitions": []
-     },
-     {
-      "gameKey": "name:Hades",
-      "createdAt": "2026-01-01T10:00:00.123456",
-      "deletedAt": null,
-      "nameOverride": null,
-      "developerOverrides": [],
-      "publisherOverrides": [],
-      "releasedOnOverride": null,
-      "listPriceOverride": null,
-      "rating": null,
-      "playTimeHours": null,
-      "memo": null,
-      "tag": null,
-      "genres": [],
-      "cover": null,
-      "playthroughs": [
-       {
-        "sequenceNo": 1,
-        "startedOn": "2021-05-01",
-        "finishedOn": null,
-        "status": "PAUSED",
-        "label": null,
-        "device": null,
-        "platformAccount": "  메인  ",
-        "platformAccountPlatform": "App Store",
-        "emulator": null,
-        "inputMethod": null
-       },
-       {
-        "sequenceNo": 2,
-        "startedOn": "2021-01-01",
-        "finishedOn": "2021-04-30",
-        "status": "COMPLETED",
-        "label": null,
-        "device": null,
-        "platformAccount": "Beene",
-        "platformAccountPlatform": "이름 바뀐 소속",
-        "emulator": null,
-        "inputMethod": null
-       }
-      ],
-      "acquisitions": [
-       {
-        "method": "FREE",
-        "platform": "Epic Games",
-        "platformAccount": "  메인  ",
-        "platformAccountPlatform": "App Store",
-        "subscription": null,
-        "price": {
-         "amount": 0,
-         "currency": "KRW"
-        },
-        "acquiredOn": null,
-        "label": null
-       }
+      "name": "Dusk",
+      "colors": [
+       "#FFEEDD",
+       "#CCBBAA",
+       "#998877",
+       "#665544",
+       "#332211"
       ]
      }
     ]
    }
   },
   {
-   "name": "없는 회원 — 덮어쓰기 404",
-   "method": "POST",
-   "path": "/api/me/replace",
-   "headers": {
-    "X-Member-Id": "999"
-   },
+   "name": "프리셋 — 내 정보",
+   "method": "GET",
+   "path": "/api/me"
+  },
+  {
+   "name": "프리셋 — 안 보내면 그대로 (닉네임만 저장하는 화면)",
+   "method": "PUT",
+   "path": "/api/me/profile",
    "body": {
-    "formatVersion": 2,
-    "exportedAt": "2026-10-01T12:00:00.5",
-    "profile": {
-     "email": "other@example.com",
-     "nickname": "  Milo  ",
-     "memo": "  새 기계  ",
-     "backgroundColors": [
-      "#aabbcc",
-      "#ddeeff",
-      "#001122",
-      "#334455",
-      "#667788"
-     ]
-    },
-    "catalog": {
-     "platforms": [
-      "Steam",
-      "Nintendo",
-      "GOG",
-      "App Store",
-      "itch.io",
-      "Steam"
-     ],
-     "accounts": [
-      {
-       "label": "Beene",
-       "platform": "Steam"
-      },
-      {
-       "label": "Beene",
-       "platform": "Nintendo"
-      },
-      {
-       "label": "  메인  ",
-       "platform": "App Store"
-      }
-     ],
-     "devices": [
-      {
-       "deviceType": "Windows PC",
-       "label": "메인 PC",
-       "memo": "  "
-      },
-      {
-       "deviceType": "Nintendo Switch",
-       "label": "Nintendo Switch",
-       "memo": "독 모드"
-      }
-     ],
-     "emulators": [
-      {
-       "name": "Ryujinx",
-       "memo": null
-      },
-      {
-       "name": "  Eden  ",
-       "memo": " 포크 "
-      }
-     ],
-     "inputMethods": [
-      "KeyboardMouse",
-      "XInput",
-      "DualSense"
-     ],
-     "subscriptions": [
-      {
-       "serviceName": "Game Pass",
-       "startedOn": "2026-01-01",
-       "endedOn": null,
-       "fee": {
-        "amount": 13500.555,
-        "currency": "krw"
-       },
-       "billingCycle": "MONTHLY"
-      },
-      {
-       "serviceName": "  NSO  ",
-       "startedOn": "2025-12-23",
-       "endedOn": "2026-12-23",
-       "fee": null,
-       "billingCycle": "YEARLY"
-      },
-      {
-       "serviceName": "PS Plus",
-       "startedOn": "2025-01-01",
-       "endedOn": "2025-01-01",
-       "fee": {
-        "amount": null,
-        "currency": "KRW"
-       },
-       "billingCycle": "MONTHLY"
-      }
-     ],
-     "tags": [
-      "인생작",
-      "  보류  "
-     ],
-     "genres": [
-      "액션",
-      "RPG",
-      "안 쓰는 장르"
-     ]
-    },
-    "games": [
+    "nickname": "Scribe",
+    "memo": null,
+    "backgroundColors": ""
+   }
+  },
+  {
+   "name": "프리셋 — 안 보낸 뒤 내 정보",
+   "method": "GET",
+   "path": "/api/me"
+  },
+  {
+   "name": "프리셋 — null도 안 보낸 것과 같다",
+   "method": "PUT",
+   "path": "/api/me/profile",
+   "body": {
+    "nickname": "Scribe",
+    "memo": null,
+    "backgroundColors": "",
+    "backgroundPresets": null
+   }
+  },
+  {
+   "name": "프리셋 — null 뒤 내 정보",
+   "method": "GET",
+   "path": "/api/me"
+  },
+  {
+   "name": "프리셋 — 13개 (400)",
+   "method": "PUT",
+   "path": "/api/me/profile",
+   "body": {
+    "nickname": "Scribe",
+    "memo": null,
+    "backgroundColors": "",
+    "backgroundPresets": [
      {
-      "externalId": "1942",
-      "source": "IGDB",
-      "name": "The Witcher 3",
-      "developers": [
-       "CD Projekt RED",
-       null,
-       "  "
-      ],
-      "publishers": [
-       "CD Projekt"
-      ],
-      "masterGenres": [
-       "RPG",
-       "Adventure"
-      ],
-      "releasedOn": "2015-05-19",
-      "listPrice": {
-       "amount": 39.99,
-       "currency": "usd"
-      },
-      "coverImageId": "co1wyy",
-      "bannerImageId": "ar5h",
-      "summary": "Geralt",
-      "storyline": "Ciri",
-      "igdbRating": 93.456,
-      "igdbRatingCount": 4321,
-      "releasePlatforms": [
-       "PC (Microsoft Windows)",
-       "PlayStation 4"
-      ],
-      "mainStoryHours": 51,
-      "mainExtraHours": 103,
-      "completionistHours": 172,
-      "timeToBeatSamples": 88,
-      "mediaFolder": "the-witcher-3"
-     },
-     {
-      "externalId": null,
-      "source": "MANUAL",
-      "name": "  내 게임  ",
-      "developers": [
-       "나"
-      ],
-      "publishers": [],
-      "masterGenres": [],
-      "releasedOn": "2024-02-29",
-      "listPrice": null,
-      "coverImageId": null,
-      "bannerImageId": null,
-      "summary": "직접 등록",
-      "storyline": null,
-      "igdbRating": null,
-      "igdbRatingCount": null,
-      "releasePlatforms": [],
-      "mainStoryHours": null,
-      "mainExtraHours": null,
-      "completionistHours": null,
-      "timeToBeatSamples": null,
-      "mediaFolder": "nae-geim-12"
-     },
-     {
-      "externalId": "1942",
-      "source": "IGDB",
-      "name": "The Witcher 3 (중복)",
-      "developers": [],
-      "publishers": [],
-      "masterGenres": [],
-      "releasedOn": null,
-      "listPrice": null,
-      "coverImageId": null,
-      "bannerImageId": null,
-      "summary": null,
-      "storyline": null,
-      "igdbRating": null,
-      "igdbRatingCount": null,
-      "releasePlatforms": [],
-      "mainStoryHours": null,
-      "mainExtraHours": null,
-      "completionistHours": null,
-      "timeToBeatSamples": null,
-      "mediaFolder": null
-     },
-     {
-      "externalId": "119133",
-      "source": "IGDB",
-      "name": "Elden Ring",
-      "developers": [],
-      "publishers": [],
-      "masterGenres": [],
-      "releasedOn": "2022-02-25",
-      "listPrice": null,
-      "coverImageId": null,
-      "bannerImageId": null,
-      "summary": null,
-      "storyline": null,
-      "igdbRating": null,
-      "igdbRatingCount": null,
-      "releasePlatforms": [
-       "PC (Microsoft Windows)"
-      ],
-      "mainStoryHours": null,
-      "mainExtraHours": null,
-      "completionistHours": null,
-      "timeToBeatSamples": null,
-      "mediaFolder": null
-     },
-     {
-      "externalId": null,
-      "source": "MANUAL",
-      "name": "Hades",
-      "developers": [],
-      "publishers": [],
-      "masterGenres": [],
-      "releasedOn": null,
-      "listPrice": {
-       "amount": "24.5",
-       "currency": "KRW"
-      },
-      "coverImageId": null,
-      "bannerImageId": null,
-      "summary": null,
-      "storyline": null,
-      "igdbRating": null,
-      "igdbRatingCount": null,
-      "releasePlatforms": [],
-      "mainStoryHours": null,
-      "mainExtraHours": null,
-      "completionistHours": null,
-      "timeToBeatSamples": null,
-      "mediaFolder": null
-     }
-    ],
-    "entries": [
-     {
-      "gameKey": "igdb:1942",
-      "createdAt": "2026-01-01T10:00:00.123456",
-      "deletedAt": null,
-      "nameOverride": "  위쳐 3  ",
-      "developerOverrides": [
-       "A",
-       null,
-       "  B "
-      ],
-      "publisherOverrides": [],
-      "releasedOnOverride": "2015-05-20",
-      "listPriceOverride": {
-       "amount": 10.005,
-       "currency": "KRW"
-      },
-      "rating": 92.25,
-      "playTimeHours": 123.456,
-      "memo": " 메모 ",
-      "tag": "인생작",
-      "genres": [
-       "RPG",
-       "액션"
-      ],
-      "cover": {
-       "storageKey": "covers/abc.jpg",
-       "contentType": "image/jpeg",
-       "sizeBytes": 12345,
-       "location": "EXTERNAL"
-      },
-      "playthroughs": [
-       {
-        "sequenceNo": 1,
-        "startedOn": "2020-01-01",
-        "finishedOn": "2020-03-01",
-        "status": "COMPLETED",
-        "label": " 1회차 ",
-        "device": "메인 PC",
-        "platformAccount": "Beene",
-        "platformAccountPlatform": "Steam",
-        "emulator": null,
-        "inputMethod": "KeyboardMouse"
-       },
-       {
-        "sequenceNo": 2,
-        "startedOn": "2024-01-01",
-        "finishedOn": null,
-        "status": "PLAYING",
-        "label": null,
-        "device": "Nintendo Switch",
-        "platformAccount": "Beene",
-        "platformAccountPlatform": "Nintendo",
-        "emulator": "Ryujinx",
-        "inputMethod": "DualSense"
-       }
-      ],
-      "acquisitions": [
-       {
-        "method": "PURCHASED",
-        "platform": "Steam",
-        "platformAccount": "Beene",
-        "platformAccountPlatform": "Steam",
-        "subscription": null,
-        "price": {
-         "amount": 39.99,
-         "currency": "usd"
-        },
-        "acquiredOn": "2019-12-25",
-        "label": " 정가 "
-       },
-       {
-        "method": "SUBSCRIPTION",
-        "platform": null,
-        "platformAccount": null,
-        "platformAccountPlatform": null,
-        "subscription": "Game Pass",
-        "price": null,
-        "acquiredOn": null,
-        "label": null
-       }
+      "name": "p0",
+      "colors": [
+       "#112233",
+       "#445566",
+       "#778899",
+       "#aabbcc",
+       "#ddeeff"
       ]
      },
      {
-      "gameKey": "name:  내 게임  ",
-      "createdAt": "2026-01-01T10:00:00.123456",
-      "deletedAt": "2026-08-28T15:14:26.781806",
-      "nameOverride": null,
-      "developerOverrides": [],
-      "publisherOverrides": [],
-      "releasedOnOverride": null,
-      "listPriceOverride": null,
-      "rating": null,
-      "playTimeHours": null,
-      "memo": null,
-      "tag": null,
-      "genres": [],
-      "cover": {
-       "storageKey": "없는파일.png",
-       "contentType": "image/png",
-       "sizeBytes": 10,
-       "location": "LOCAL"
-      },
-      "playthroughs": [
-       {
-        "sequenceNo": 1,
-        "startedOn": "2023-01-01",
-        "finishedOn": "2023-02-01",
-        "status": "PAUSED",
-        "label": null,
-        "device": null,
-        "platformAccount": "Beene",
-        "platformAccountPlatform": null,
-        "emulator": "Ryujinx",
-        "inputMethod": null
-       },
-       {
-        "sequenceNo": 3,
-        "startedOn": "2023-03-01",
-        "finishedOn": "2023-03-01",
-        "status": "DROPPED",
-        "label": null,
-        "device": "없는 기기",
-        "platformAccount": null,
-        "platformAccountPlatform": null,
-        "emulator": "  Eden  ",
-        "inputMethod": "없는 입력"
-       }
-      ],
-      "acquisitions": [
-       {
-        "method": "NOT_OWNED",
-        "platform": null,
-        "platformAccount": null,
-        "platformAccountPlatform": null,
-        "subscription": null,
-        "price": null,
-        "acquiredOn": null,
-        "label": null
-       }
+      "name": "p1",
+      "colors": [
+       "#112233",
+       "#445566",
+       "#778899",
+       "#aabbcc",
+       "#ddeeff"
       ]
      },
      {
-      "gameKey": "igdb:119133",
-      "createdAt": "2026-01-01T10:00:00.123456",
-      "deletedAt": null,
-      "nameOverride": null,
-      "developerOverrides": [],
-      "publisherOverrides": [],
-      "releasedOnOverride": null,
-      "listPriceOverride": null,
-      "rating": null,
-      "playTimeHours": null,
-      "memo": null,
-      "tag": "  보류  ",
-      "genres": [],
-      "cover": {
-       "storageKey": "k",
-       "contentType": "image/webp",
-       "sizeBytes": 1,
-       "location": null
-      },
-      "playthroughs": [],
-      "acquisitions": []
+      "name": "p2",
+      "colors": [
+       "#112233",
+       "#445566",
+       "#778899",
+       "#aabbcc",
+       "#ddeeff"
+      ]
      },
      {
-      "gameKey": "name:Hades",
-      "createdAt": "2026-01-01T10:00:00.123456",
-      "deletedAt": null,
-      "nameOverride": null,
-      "developerOverrides": [],
-      "publisherOverrides": [],
-      "releasedOnOverride": null,
-      "listPriceOverride": null,
-      "rating": null,
-      "playTimeHours": null,
-      "memo": null,
-      "tag": null,
-      "genres": [],
-      "cover": null,
-      "playthroughs": [
-       {
-        "sequenceNo": 1,
-        "startedOn": "2021-05-01",
-        "finishedOn": null,
-        "status": "PAUSED",
-        "label": null,
-        "device": null,
-        "platformAccount": "  메인  ",
-        "platformAccountPlatform": "App Store",
-        "emulator": null,
-        "inputMethod": null
-       },
-       {
-        "sequenceNo": 2,
-        "startedOn": "2021-01-01",
-        "finishedOn": "2021-04-30",
-        "status": "COMPLETED",
-        "label": null,
-        "device": null,
-        "platformAccount": "Beene",
-        "platformAccountPlatform": "이름 바뀐 소속",
-        "emulator": null,
-        "inputMethod": null
-       }
-      ],
-      "acquisitions": [
-       {
-        "method": "FREE",
-        "platform": "Epic Games",
-        "platformAccount": "  메인  ",
-        "platformAccountPlatform": "App Store",
-        "subscription": null,
-        "price": {
-         "amount": 0,
-         "currency": "KRW"
-        },
-        "acquiredOn": null,
-        "label": null
-       }
+      "name": "p3",
+      "colors": [
+       "#112233",
+       "#445566",
+       "#778899",
+       "#aabbcc",
+       "#ddeeff"
+      ]
+     },
+     {
+      "name": "p4",
+      "colors": [
+       "#112233",
+       "#445566",
+       "#778899",
+       "#aabbcc",
+       "#ddeeff"
+      ]
+     },
+     {
+      "name": "p5",
+      "colors": [
+       "#112233",
+       "#445566",
+       "#778899",
+       "#aabbcc",
+       "#ddeeff"
+      ]
+     },
+     {
+      "name": "p6",
+      "colors": [
+       "#112233",
+       "#445566",
+       "#778899",
+       "#aabbcc",
+       "#ddeeff"
+      ]
+     },
+     {
+      "name": "p7",
+      "colors": [
+       "#112233",
+       "#445566",
+       "#778899",
+       "#aabbcc",
+       "#ddeeff"
+      ]
+     },
+     {
+      "name": "p8",
+      "colors": [
+       "#112233",
+       "#445566",
+       "#778899",
+       "#aabbcc",
+       "#ddeeff"
+      ]
+     },
+     {
+      "name": "p9",
+      "colors": [
+       "#112233",
+       "#445566",
+       "#778899",
+       "#aabbcc",
+       "#ddeeff"
+      ]
+     },
+     {
+      "name": "p10",
+      "colors": [
+       "#112233",
+       "#445566",
+       "#778899",
+       "#aabbcc",
+       "#ddeeff"
+      ]
+     },
+     {
+      "name": "p11",
+      "colors": [
+       "#112233",
+       "#445566",
+       "#778899",
+       "#aabbcc",
+       "#ddeeff"
+      ]
+     },
+     {
+      "name": "p12",
+      "colors": [
+       "#112233",
+       "#445566",
+       "#778899",
+       "#aabbcc",
+       "#ddeeff"
       ]
      }
     ]
    }
   },
   {
-   "name": "없는 회원 — 프로필 404",
+   "name": "프리셋 — 이름 공백 (400)",
    "method": "PUT",
    "path": "/api/me/profile",
-   "headers": {
-    "X-Member-Id": "999"
-   },
    "body": {
-    "nickname": "x"
+    "nickname": "Scribe",
+    "memo": null,
+    "backgroundColors": "",
+    "backgroundPresets": [
+     {
+      "name": "　 ",
+      "colors": [
+       "#112233",
+       "#445566",
+       "#778899",
+       "#aabbcc",
+       "#ddeeff"
+      ]
+     }
+    ]
    }
   },
   {
-   "name": "없는 회원 — 프로필 검증이 먼저 (400)",
+   "name": "프리셋 — 이름 31자 (400)",
    "method": "PUT",
    "path": "/api/me/profile",
-   "headers": {
-    "X-Member-Id": "999"
-   },
    "body": {
-    "nickname": " "
+    "nickname": "Scribe",
+    "memo": null,
+    "backgroundColors": "",
+    "backgroundPresets": [
+     {
+      "name": "가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가",
+      "colors": [
+       "#112233",
+       "#445566",
+       "#778899",
+       "#aabbcc",
+       "#ddeeff"
+      ]
+     }
+    ]
    }
+  },
+  {
+   "name": "프리셋 — 이름 30자는 된다",
+   "method": "PUT",
+   "path": "/api/me/profile",
+   "body": {
+    "nickname": "Scribe",
+    "memo": null,
+    "backgroundColors": "",
+    "backgroundPresets": [
+     {
+      "name": "가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가",
+      "colors": [
+       "#112233",
+       "#445566",
+       "#778899",
+       "#aabbcc",
+       "#ddeeff"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "프리셋 — 색 네 개 (400)",
+   "method": "PUT",
+   "path": "/api/me/profile",
+   "body": {
+    "nickname": "Scribe",
+    "memo": null,
+    "backgroundColors": "",
+    "backgroundPresets": [
+     {
+      "name": "a",
+      "colors": [
+       "#112233",
+       "#445566",
+       "#778899",
+       "#aabbcc"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "프리셋 — 색 형식 오류 (400)",
+   "method": "PUT",
+   "path": "/api/me/profile",
+   "body": {
+    "nickname": "Scribe",
+    "memo": null,
+    "backgroundColors": "",
+    "backgroundPresets": [
+     {
+      "name": "a",
+      "colors": [
+       "red",
+       "#445566",
+       "#778899",
+       "#aabbcc",
+       "#ddeeff"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "프리셋 — 이름 없음 (400)",
+   "method": "PUT",
+   "path": "/api/me/profile",
+   "body": {
+    "nickname": "Scribe",
+    "memo": null,
+    "backgroundColors": "",
+    "backgroundPresets": [
+     {
+      "colors": [
+       "#112233",
+       "#445566",
+       "#778899",
+       "#aabbcc",
+       "#ddeeff"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "프리셋 — 배열이 아님 (400)",
+   "method": "PUT",
+   "path": "/api/me/profile",
+   "body": {
+    "nickname": "Scribe",
+    "memo": null,
+    "backgroundColors": "",
+    "backgroundPresets": {
+     "name": "a",
+     "colors": [
+      "#112233",
+      "#445566",
+      "#778899",
+      "#aabbcc",
+      "#ddeeff"
+     ]
+    }
+   }
+  },
+  {
+   "name": "프리셋 — 원소가 null (400)",
+   "method": "PUT",
+   "path": "/api/me/profile",
+   "body": {
+    "nickname": "Scribe",
+    "memo": null,
+    "backgroundColors": "",
+    "backgroundPresets": [
+     null
+    ]
+   }
+  },
+  {
+   "name": "프리셋 — 닉네임 검증이 먼저",
+   "method": "PUT",
+   "path": "/api/me/profile",
+   "body": {
+    "nickname": " ",
+    "memo": null,
+    "backgroundColors": "",
+    "backgroundPresets": [
+     null
+    ]
+   }
+  },
+  {
+   "name": "프리셋 — 실패 뒤 그대로 (30자 하나)",
+   "method": "GET",
+   "path": "/api/me"
+  },
+  {
+   "name": "프리셋 — 다시 둘",
+   "method": "PUT",
+   "path": "/api/me/profile",
+   "body": {
+    "nickname": "Scribe",
+    "memo": null,
+    "backgroundColors": "",
+    "backgroundPresets": [
+     {
+      "name": "새벽",
+      "colors": [
+       "#112233",
+       "#445566",
+       "#778899",
+       "#aabbcc",
+       "#ddeeff"
+      ]
+     },
+     {
+      "name": "Dusk",
+      "colors": [
+       "#FFEEDD",
+       "#CCBBAA",
+       "#998877",
+       "#665544",
+       "#332211"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "프리셋 — 내보내기 (형식 4에 실린다)",
+   "method": "GET",
+   "path": "/api/me/export"
+  },
+  {
+   "name": "프리셋 — 빈 목록으로 비운다",
+   "method": "PUT",
+   "path": "/api/me/profile",
+   "body": {
+    "nickname": "Scribe",
+    "memo": null,
+    "backgroundColors": "",
+    "backgroundPresets": []
+   }
+  },
+  {
+   "name": "프리셋 — 비운 뒤 내 정보",
+   "method": "GET",
+   "path": "/api/me"
   },
   {
    "name": "가져오기 — 형식 null (원시형)",
@@ -24320,7 +23775,576 @@
    "name": "수동 게임 공백 뒤 — 내보내기",
    "method": "GET",
    "path": "/api/me/export"
+  },
+  {
+   "name": "프리셋 왕복 — 다시 저장",
+   "method": "PUT",
+   "path": "/api/me/profile",
+   "body": {
+    "nickname": "Scribe",
+    "memo": null,
+    "backgroundColors": "",
+    "backgroundPresets": [
+     {
+      "name": "새벽",
+      "colors": [
+       "#112233",
+       "#445566",
+       "#778899",
+       "#aabbcc",
+       "#ddeeff"
+      ]
+     },
+     {
+      "name": "Dusk",
+      "colors": [
+       "#FFEEDD",
+       "#CCBBAA",
+       "#998877",
+       "#665544",
+       "#332211"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "프리셋 왕복 — 내보내기",
+   "method": "GET",
+   "path": "/api/me/export",
+   "save": {
+    "pfv": "formatVersion",
+    "pexAt": "exportedAt",
+    "pprof": "profile",
+    "pcat": "catalog",
+    "pgames": "games",
+    "pentries": "entries"
+   }
+  },
+  {
+   "name": "프리셋 왕복 — 비운다",
+   "method": "PUT",
+   "path": "/api/me/profile",
+   "body": {
+    "nickname": "Scribe",
+    "memo": null,
+    "backgroundColors": "",
+    "backgroundPresets": []
+   }
+  },
+  {
+   "name": "프리셋 왕복 — 덮어쓰기 (파일의 프리셋이 돌아온다)",
+   "method": "POST",
+   "path": "/api/me/replace",
+   "body": {
+    "formatVersion": "${pfv}",
+    "exportedAt": "${pexAt}",
+    "profile": "${pprof}",
+    "catalog": "${pcat}",
+    "games": "${pgames}",
+    "entries": "${pentries}"
+   }
+  },
+  {
+   "name": "프리셋 왕복 — 내 정보",
+   "method": "GET",
+   "path": "/api/me"
+  },
+  {
+   "name": "프리셋 왕복 — 형식 3 파일은 프리셋을 안 건드린다",
+   "method": "POST",
+   "path": "/api/me/replace",
+   "body": {
+    "formatVersion": 3,
+    "exportedAt": "${pexAt}",
+    "profile": {
+     "email": "old@example.com",
+     "nickname": "Scribe",
+     "memo": null,
+     "backgroundColors": null
+    },
+    "catalog": "${pcat}",
+    "games": "${pgames}",
+    "entries": "${pentries}"
+   }
+  },
+  {
+   "name": "프리셋 왕복 — 형식 3 뒤 내 정보",
+   "method": "GET",
+   "path": "/api/me"
+  },
+  {
+   "name": "덮어쓰기 — 프로필 프리셋 형식 오류 (형식 4, 롤백)",
+   "method": "POST",
+   "path": "/api/me/replace",
+   "body": {
+    "formatVersion": 4,
+    "exportedAt": "2026-10-01T12:00:00.5",
+    "profile": {
+     "nickname": "Milo",
+     "memo": null,
+     "backgroundColors": null,
+     "backgroundPresets": [
+      {
+       "name": "x",
+       "colors": [
+        "#123"
+       ]
+      }
+     ]
+    },
+    "catalog": {
+     "platforms": [
+      "Steam",
+      "Nintendo",
+      "GOG",
+      "App Store",
+      "itch.io",
+      "Steam"
+     ],
+     "accounts": [
+      {
+       "label": "Beene",
+       "platform": "Steam"
+      },
+      {
+       "label": "Beene",
+       "platform": "Nintendo"
+      },
+      {
+       "label": "  메인  ",
+       "platform": "App Store"
+      }
+     ],
+     "devices": [
+      {
+       "deviceType": "Windows PC",
+       "label": "메인 PC",
+       "memo": "  "
+      },
+      {
+       "deviceType": "Nintendo Switch",
+       "label": "Nintendo Switch",
+       "memo": "독 모드"
+      }
+     ],
+     "emulators": [
+      {
+       "name": "Ryujinx",
+       "memo": null
+      },
+      {
+       "name": "  Eden  ",
+       "memo": " 포크 "
+      }
+     ],
+     "inputMethods": [
+      "KeyboardMouse",
+      "XInput",
+      "DualSense"
+     ],
+     "subscriptions": [
+      {
+       "serviceName": "Game Pass",
+       "startedOn": "2026-01-01",
+       "endedOn": null,
+       "fee": {
+        "amount": 13500.555,
+        "currency": "krw"
+       },
+       "billingCycle": "MONTHLY"
+      },
+      {
+       "serviceName": "  NSO  ",
+       "startedOn": "2025-12-23",
+       "endedOn": "2026-12-23",
+       "fee": null,
+       "billingCycle": "YEARLY"
+      },
+      {
+       "serviceName": "PS Plus",
+       "startedOn": "2025-01-01",
+       "endedOn": "2025-01-01",
+       "fee": {
+        "amount": null,
+        "currency": "KRW"
+       },
+       "billingCycle": "MONTHLY"
+      }
+     ],
+     "tags": [
+      "인생작",
+      "  보류  "
+     ],
+     "genres": [
+      "액션",
+      "RPG",
+      "안 쓰는 장르"
+     ]
+    },
+    "games": [
+     {
+      "externalId": "1942",
+      "source": "IGDB",
+      "name": "The Witcher 3",
+      "developers": [
+       "CD Projekt RED",
+       null,
+       "  "
+      ],
+      "publishers": [
+       "CD Projekt"
+      ],
+      "masterGenres": [
+       "RPG",
+       "Adventure"
+      ],
+      "releasedOn": "2015-05-19",
+      "listPrice": {
+       "amount": 39.99,
+       "currency": "usd"
+      },
+      "coverImageId": "co1wyy",
+      "bannerImageId": "ar5h",
+      "summary": "Geralt",
+      "storyline": "Ciri",
+      "igdbRating": 93.456,
+      "igdbRatingCount": 4321,
+      "releasePlatforms": [
+       "PC (Microsoft Windows)",
+       "PlayStation 4"
+      ],
+      "mainStoryHours": 51,
+      "mainExtraHours": 103,
+      "completionistHours": 172,
+      "timeToBeatSamples": 88,
+      "mediaFolder": "the-witcher-3"
+     },
+     {
+      "externalId": null,
+      "source": "MANUAL",
+      "name": "  내 게임  ",
+      "developers": [
+       "나"
+      ],
+      "publishers": [],
+      "masterGenres": [],
+      "releasedOn": "2024-02-29",
+      "listPrice": null,
+      "coverImageId": null,
+      "bannerImageId": null,
+      "summary": "직접 등록",
+      "storyline": null,
+      "igdbRating": null,
+      "igdbRatingCount": null,
+      "releasePlatforms": [],
+      "mainStoryHours": null,
+      "mainExtraHours": null,
+      "completionistHours": null,
+      "timeToBeatSamples": null,
+      "mediaFolder": "nae-geim-12"
+     },
+     {
+      "externalId": "1942",
+      "source": "IGDB",
+      "name": "The Witcher 3 (중복)",
+      "developers": [],
+      "publishers": [],
+      "masterGenres": [],
+      "releasedOn": null,
+      "listPrice": null,
+      "coverImageId": null,
+      "bannerImageId": null,
+      "summary": null,
+      "storyline": null,
+      "igdbRating": null,
+      "igdbRatingCount": null,
+      "releasePlatforms": [],
+      "mainStoryHours": null,
+      "mainExtraHours": null,
+      "completionistHours": null,
+      "timeToBeatSamples": null,
+      "mediaFolder": null
+     },
+     {
+      "externalId": "119133",
+      "source": "IGDB",
+      "name": "Elden Ring",
+      "developers": [],
+      "publishers": [],
+      "masterGenres": [],
+      "releasedOn": "2022-02-25",
+      "listPrice": null,
+      "coverImageId": null,
+      "bannerImageId": null,
+      "summary": null,
+      "storyline": null,
+      "igdbRating": null,
+      "igdbRatingCount": null,
+      "releasePlatforms": [
+       "PC (Microsoft Windows)"
+      ],
+      "mainStoryHours": null,
+      "mainExtraHours": null,
+      "completionistHours": null,
+      "timeToBeatSamples": null,
+      "mediaFolder": null
+     },
+     {
+      "externalId": null,
+      "source": "MANUAL",
+      "name": "Hades",
+      "developers": [],
+      "publishers": [],
+      "masterGenres": [],
+      "releasedOn": null,
+      "listPrice": {
+       "amount": "24.5",
+       "currency": "KRW"
+      },
+      "coverImageId": null,
+      "bannerImageId": null,
+      "summary": null,
+      "storyline": null,
+      "igdbRating": null,
+      "igdbRatingCount": null,
+      "releasePlatforms": [],
+      "mainStoryHours": null,
+      "mainExtraHours": null,
+      "completionistHours": null,
+      "timeToBeatSamples": null,
+      "mediaFolder": null
+     }
+    ],
+    "entries": [
+     {
+      "gameKey": "igdb:1942",
+      "createdAt": "2026-01-01T10:00:00.123456",
+      "deletedAt": null,
+      "nameOverride": "  위쳐 3  ",
+      "developerOverrides": [
+       "A",
+       null,
+       "  B "
+      ],
+      "publisherOverrides": [],
+      "releasedOnOverride": "2015-05-20",
+      "listPriceOverride": {
+       "amount": 10.005,
+       "currency": "KRW"
+      },
+      "rating": 92.25,
+      "playTimeHours": 123.456,
+      "memo": " 메모 ",
+      "tag": "인생작",
+      "genres": [
+       "RPG",
+       "액션"
+      ],
+      "cover": {
+       "storageKey": "covers/abc.jpg",
+       "contentType": "image/jpeg",
+       "sizeBytes": 12345,
+       "location": "EXTERNAL"
+      },
+      "playthroughs": [
+       {
+        "sequenceNo": 1,
+        "startedOn": "2020-01-01",
+        "finishedOn": "2020-03-01",
+        "status": "COMPLETED",
+        "label": " 1회차 ",
+        "device": "메인 PC",
+        "platformAccount": "Beene",
+        "platformAccountPlatform": "Steam",
+        "emulator": null,
+        "inputMethod": "KeyboardMouse"
+       },
+       {
+        "sequenceNo": 2,
+        "startedOn": "2024-01-01",
+        "finishedOn": null,
+        "status": "PLAYING",
+        "label": null,
+        "device": "Nintendo Switch",
+        "platformAccount": "Beene",
+        "platformAccountPlatform": "Nintendo",
+        "emulator": "Ryujinx",
+        "inputMethod": "DualSense"
+       }
+      ],
+      "acquisitions": [
+       {
+        "method": "PURCHASED",
+        "platform": "Steam",
+        "platformAccount": "Beene",
+        "platformAccountPlatform": "Steam",
+        "subscription": null,
+        "price": {
+         "amount": 39.99,
+         "currency": "usd"
+        },
+        "acquiredOn": "2019-12-25",
+        "label": " 정가 "
+       },
+       {
+        "method": "SUBSCRIPTION",
+        "platform": null,
+        "platformAccount": null,
+        "platformAccountPlatform": null,
+        "subscription": "Game Pass",
+        "price": null,
+        "acquiredOn": null,
+        "label": null
+       }
+      ]
+     },
+     {
+      "gameKey": "name:  내 게임  ",
+      "createdAt": "2026-01-01T10:00:00.123456",
+      "deletedAt": "2026-08-28T15:14:26.781806",
+      "nameOverride": null,
+      "developerOverrides": [],
+      "publisherOverrides": [],
+      "releasedOnOverride": null,
+      "listPriceOverride": null,
+      "rating": null,
+      "playTimeHours": null,
+      "memo": null,
+      "tag": null,
+      "genres": [],
+      "cover": {
+       "storageKey": "없는파일.png",
+       "contentType": "image/png",
+       "sizeBytes": 10,
+       "location": "LOCAL"
+      },
+      "playthroughs": [
+       {
+        "sequenceNo": 1,
+        "startedOn": "2023-01-01",
+        "finishedOn": "2023-02-01",
+        "status": "PAUSED",
+        "label": null,
+        "device": null,
+        "platformAccount": "Beene",
+        "platformAccountPlatform": null,
+        "emulator": "Ryujinx",
+        "inputMethod": null
+       },
+       {
+        "sequenceNo": 3,
+        "startedOn": "2023-03-01",
+        "finishedOn": "2023-03-01",
+        "status": "DROPPED",
+        "label": null,
+        "device": "없는 기기",
+        "platformAccount": null,
+        "platformAccountPlatform": null,
+        "emulator": "  Eden  ",
+        "inputMethod": "없는 입력"
+       }
+      ],
+      "acquisitions": [
+       {
+        "method": "NOT_OWNED",
+        "platform": null,
+        "platformAccount": null,
+        "platformAccountPlatform": null,
+        "subscription": null,
+        "price": null,
+        "acquiredOn": null,
+        "label": null
+       }
+      ]
+     },
+     {
+      "gameKey": "igdb:119133",
+      "createdAt": "2026-01-01T10:00:00.123456",
+      "deletedAt": null,
+      "nameOverride": null,
+      "developerOverrides": [],
+      "publisherOverrides": [],
+      "releasedOnOverride": null,
+      "listPriceOverride": null,
+      "rating": null,
+      "playTimeHours": null,
+      "memo": null,
+      "tag": "  보류  ",
+      "genres": [],
+      "cover": {
+       "storageKey": "k",
+       "contentType": "image/webp",
+       "sizeBytes": 1,
+       "location": null
+      },
+      "playthroughs": [],
+      "acquisitions": []
+     },
+     {
+      "gameKey": "name:Hades",
+      "createdAt": "2026-01-01T10:00:00.123456",
+      "deletedAt": null,
+      "nameOverride": null,
+      "developerOverrides": [],
+      "publisherOverrides": [],
+      "releasedOnOverride": null,
+      "listPriceOverride": null,
+      "rating": null,
+      "playTimeHours": null,
+      "memo": null,
+      "tag": null,
+      "genres": [],
+      "cover": null,
+      "playthroughs": [
+       {
+        "sequenceNo": 1,
+        "startedOn": "2021-05-01",
+        "finishedOn": null,
+        "status": "PAUSED",
+        "label": null,
+        "device": null,
+        "platformAccount": "  메인  ",
+        "platformAccountPlatform": "App Store",
+        "emulator": null,
+        "inputMethod": null
+       },
+       {
+        "sequenceNo": 2,
+        "startedOn": "2021-01-01",
+        "finishedOn": "2021-04-30",
+        "status": "COMPLETED",
+        "label": null,
+        "device": null,
+        "platformAccount": "Beene",
+        "platformAccountPlatform": "이름 바뀐 소속",
+        "emulator": null,
+        "inputMethod": null
+       }
+      ],
+      "acquisitions": [
+       {
+        "method": "FREE",
+        "platform": "Epic Games",
+        "platformAccount": "  메인  ",
+        "platformAccountPlatform": "App Store",
+        "subscription": null,
+        "price": {
+         "amount": 0,
+         "currency": "KRW"
+        },
+        "acquiredOn": null,
+        "label": null
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "프리셋 형식 오류 뒤 — 내 정보 (그대로)",
+   "method": "GET",
+   "path": "/api/me"
   }
- ],
- "fixture": "fresh"
+ ]
 }

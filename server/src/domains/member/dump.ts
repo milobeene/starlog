@@ -1,5 +1,5 @@
 /**
- * 회원 데이터 한 벌. 내보내기·가져오기·덮어쓰기 공용.
+ * 데이터 한 벌. 내보내기·가져오기·덮어쓰기 공용.
  *
  * **사용자가 들고 다니는 파일 형식이다.** 키 이름·순서·null·날짜 모양을 바꾸면 이미 받아 둔 백업을 못 읽는다.
  * 자격증명·파생 상태·커버 실물·id는 담지 않는다.
@@ -16,8 +16,10 @@ import { opt, zDate, zDecimal, zLong, zText } from "../../common/schemas";
  * 3 — 계정에 소속 종류가 생겼다: `accounts[]`의 `platform`·`emulator` 중 하나, 회차·취득은
  *     `platformAccountPlatform`·`platformAccountEmulator` 중 하나 (2026-10-24). 2 이하는 전부 플랫폼 계정이다.
  *     올린 이유 — 옛 앱이 이 파일을 읽으면 에뮬 계정을 플랫폼 계정으로 만들려다 엉뚱한 400이 난다
+ * 4 — 프로필에서 `email`이 빠지고 `backgroundPresets`가 들어왔다 (V14, 2026-10-24). 읽기는 1~3도 그대로 —
+ *     옛 파일의 `email`은 버리고, 프리셋이 없으면 지금 프리셋을 건드리지 않는다
  */
-export const FORMAT_VERSION = 3;
+export const FORMAT_VERSION = 4;
 
 /**
  * ISO 로컬 날짜시각 (`2026-08-28T15:14:26.781806`, 초·소수는 생략 가능).
@@ -41,7 +43,8 @@ const list = <T extends z.ZodType>(t: T) => opt(z.array(t.nullable()));
 
 const Money = opt(z.object({ amount: decimal, currency: text }));
 
-const Profile = z.object({ email: text, nickname: text, memo: text, backgroundColors: texts });
+/** `backgroundPresets`는 모양 검사를 `presetsValue`가 한다 (프로필 수정과 같은 규칙·메시지) */
+const Profile = z.object({ nickname: text, memo: text, backgroundColors: texts, backgroundPresets: z.unknown().optional() });
 
 const Catalog = z.object({
   platforms: texts,

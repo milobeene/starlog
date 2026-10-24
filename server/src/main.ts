@@ -1,7 +1,7 @@
 /**
  * 서버 진입점. 일렉트론은 `utilityProcess.fork()`로, 개발·골든 시나리오는 `node`로 띄운다.
  *
- *   잠금 → DB 열기(진단) → 마이그레이션 → 기동 작업 → 리슨 → `STARLOG_READY port=<n>`
+ *   잠금 → DB 열기(진단) → 마이그레이션 → 프로필 → 기동 작업 → 리슨 → `STARLOG_READY port=<n>`
  *
  * ⚠️ **닫을 때 반드시 `close()`를 기다린다.** PGlite는 닫혀야 데이터 폴더가 온전하다.
  * 일렉트론은 새 백엔드를 띄우기 전에 옛 것이 완전히 내려가길 `await`한다 — 그 짝이 여기다.
@@ -17,6 +17,7 @@ import { DiagnosticFailure, classify, inspectSchema } from "./diagnose";
 import { runStartupTasks } from "./startup";
 import { ensureMediaDirs } from "./common/storage";
 import { createApp } from "./app";
+import { ensureProfile } from "./domains/member/profile";
 
 type ParentPort = { on(ev: "message", fn: (e: { data: unknown }) => void): void; postMessage(m: unknown): void };
 const parentPort = (process as unknown as { parentPort?: ParentPort }).parentPort;
@@ -99,6 +100,8 @@ async function main() {
   }
   const { applied } = await migrate(opened);
   if (applied.length) console.log(`마이그레이션 적용: V${applied.join(", V")}`);
+  // 빈 DB의 첫 기동이면 프로필 한 행 + 기본 선택지. 요청보다 먼저 있어야 한다 (요청은 읽기만 한다)
+  await ensureProfile();
   /*
    * 미디어 폴더(covers/·media/)를 기동 때 만든다. 업로드 시점에 만들면
    * **권한 문제를 파일을 받은 뒤에야 안다.** 못 쓰는 곳이면 여기서 터져 기동 실패로 드러나야 한다

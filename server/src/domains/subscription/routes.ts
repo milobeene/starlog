@@ -6,10 +6,9 @@
  */
 import { Hono } from "hono";
 import { z } from "zod";
-import { and, eq } from "drizzle-orm";
-import type { AppEnv } from "../../http/env";
+import { eq } from "drizzle-orm";
 import { db, type Db } from "../../db/client";
-import { member, subscription } from "../../db/schema";
+import { subscription } from "../../db/schema";
 import { readBody, violations, DEFAULT_MSG } from "../../http/body";
 import { pathId } from "../../http/params";
 import { InvalidInput, NotFound } from "../../common/errors";
@@ -59,26 +58,23 @@ function apply(r: SubscriptionRequest) {
   };
 }
 
-/** 소유권 확인 — 남의 것도 "없음"으로 (404). 취득이 구독을 연결할 때도 쓴다 */
-export async function findOwnedSubscription(d: Db, memberId: number, subscriptionId: number) {
+/** 없으면 404. 취득이 구독을 연결할 때도 쓴다 */
+export async function findSubscription(d: Db, subscriptionId: number) {
   const [row] = await d.select().from(subscription).where(eq(subscription.id, subscriptionId));
-  if (!row || row.memberId !== memberId) throw new NotFound(`구독을 찾을 수 없습니다. id=${subscriptionId}`);
+  if (!row) throw new NotFound(`구독을 찾을 수 없습니다. id=${subscriptionId}`);
   return row;
 }
 
-export const routes = new Hono<AppEnv>();
+export const routes = new Hono();
 
 routes.post("/api/me/subscriptions", async (c) => {
-  const memberId = c.get("memberId");
   const r = await readBody(c, SubscriptionRequest);
   validate(r);
   const id = await db().transaction(async (tx) => {
-    const [m] = await tx.select({ id: member.id }).from(member).where(eq(member.id, memberId));
-    if (!m) throw new NotFound(`회원을 찾을 수 없습니다. id=${memberId}`);
     const v = apply(r);
     const now = nowKst();
     const [row] = await tx.insert(subscription)
-      .values({ memberId, ...v, createdAt: now, updatedAt: now })
+      .values({ ...v, createdAt: now, updatedAt: now })
       .returning({ id: subscription.id });
     return row!.id;
   });
@@ -87,24 +83,22 @@ routes.post("/api/me/subscriptions", async (c) => {
 });
 
 routes.put("/api/me/subscriptions/:subscriptionId", async (c) => {
-  const memberId = c.get("memberId");
   const subscriptionId = pathId(c, "subscriptionId");
   const r = await readBody(c, SubscriptionRequest);
   validate(r);
   await db().transaction(async (tx) => {
-    await findOwnedSubscription(tx, memberId, subscriptionId);
+    await findSubscription(tx, subscriptionId);
     const v = apply(r);
     await tx.update(subscription).set({ ...v, updatedAt: nowKst() })
-      .where(and(eq(subscription.id, subscriptionId), eq(subscription.memberId, memberId)));
+      .where(eq(subscription.id, subscriptionId));
   });
   return c.body(null, 200);
 });
 
 routes.delete("/api/me/subscriptions/:subscriptionId", async (c) => {
-  const memberId = c.get("memberId");
   const subscriptionId = pathId(c, "subscriptionId");
   await db().transaction(async (tx) => {
-    await findOwnedSubscription(tx, memberId, subscriptionId);
+    await findSubscription(tx, subscriptionId);
     await tx.delete(subscription).where(eq(subscription.id, subscriptionId));
   });
   return c.body(null, 204);

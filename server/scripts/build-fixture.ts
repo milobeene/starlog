@@ -1,14 +1,21 @@
 /**
  * Neon JSON 백업 → PGlite 데이터 폴더.
  *
- * 비교 테스트(자바 vs TS)와 실데이터 이전이 같은 걸 쓴다.
- * 스키마는 Flyway SQL을 그대로 돌려 만든다 — Neon과 같은 DDL이라야 데이터가 그대로 들어간다.
+ * 회귀 테스트의 실데이터 픽스처와 실데이터 이전이 같은 걸 쓴다.
+ * 스키마는 **백업을 뜬 시점의 버전까지만** SQL을 돌려 만든다 — 그때의 DDL이라야 행이 그대로 들어간다.
+ * 그 뒤 버전(V14 등)은 데이터를 넣은 **다음에** 돈다. Neon에 새 버전이 처음 닿을 때와 같은 순서라,
+ * 픽스처를 만들 때마다 새 마이그레이션이 실데이터 위에서 시험된다.
  *
  *   npx tsx scripts/build-fixture.ts <migration폴더> <백업폴더> <출력폴더> [--with-flyway-history]
+ *
+ * `--with-flyway-history`면 백업의 이력 행까지 넣고 나머지를 앱 러너(`migrate`)로 올린다.
+ * 없으면 이력 없이 나머지 SQL을 그대로 돌린다
  */
 import { PGlite } from "@electric-sql/pglite";
 import fs from "fs";
 import path from "path";
+import { openDb } from "../src/db/client";
+import { migrate } from "../src/db/migrate";
 
 const [migDir, backupDir, outDir, ...flags] = process.argv.slice(2);
 if (!migDir || !backupDir || !outDir) {
@@ -20,11 +27,18 @@ const withFlyway = flags.includes("--with-flyway-history");
 fs.rmSync(outDir, { recursive: true, force: true });
 const db = await PGlite.create(outDir);
 
-const files = fs.readdirSync(migDir).filter(f => f.endsWith(".sql"))
-  .sort((a, b) => +a.match(/^V(\d+)/)![1]! - +b.match(/^V(\d+)/)![1]!);
-for (const f of files) await db.exec(fs.readFileSync(path.join(migDir, f), "utf8"));
+const versionOf = (f: string) => +f.match(/^V(\d+)/)![1]!;
+const files = fs.readdirSync(migDir).filter(f => f.endsWith(".sql")).sort((a, b) => versionOf(a) - versionOf(b));
+// 백업의 이력이 곧 그때의 스키마 버전이다. 이력이 없는 옛 백업이면 전부
+const historyFile = path.join(backupDir, "flyway_schema_history.json");
+const backupVersion = fs.existsSync(historyFile)
+  ? Math.max(...(JSON.parse(fs.readFileSync(historyFile, "utf8")) as { version: string | null }[]).map(h => Number(h.version ?? 0)))
+  : Infinity;
+const before = files.filter(f => versionOf(f) <= backupVersion);
+const after = files.filter(f => versionOf(f) > backupVersion);
+for (const f of before) await db.exec(fs.readFileSync(path.join(migDir, f), "utf8"));
 
-// 자바(Flyway)를 붙일 때만 이력 테이블을 만든다 — 없으면 Flyway가 처음부터 다시 돌리려 한다
+// 이력을 넣을 때만 테이블을 만든다 — 테이블만 있고 행이 없으면 러너가 V1부터 다시 돌리려 한다
 if (withFlyway) {
   await db.exec(`create table "flyway_schema_history" (
     "installed_rank" integer not null primary key, "version" varchar(50), "description" varchar(200) not null,
@@ -66,6 +80,18 @@ for (const [tb, n] of Object.entries(summary)) {
   const r = await db.query<{ c: number }>(`select count(*)::int c from "${tb}"`);
   if (r.rows[0]!.c !== n) { console.error(`MISMATCH ${tb}: ${r.rows[0]!.c} != ${n}`); bad++; }
 }
-await db.close();
-if (bad) process.exit(1);
+if (bad) { await db.close(); process.exit(1); }
+
+// 백업 뒤의 버전 — 실데이터 위에서 돈다
+if (after.length && withFlyway) {
+  await db.close();
+  const o = await openDb({ kind: "pglite", dir: outDir });
+  const { applied } = await migrate(o);
+  await o.close();
+  console.log(`백업 뒤 마이그레이션: V${applied.join(", V")}`);
+} else {
+  for (const f of after) await db.transaction(async (tx) => { await tx.exec(fs.readFileSync(path.join(migDir, f), "utf8")); });
+  await db.close();
+  if (after.length) console.log(`백업 뒤 마이그레이션: ${after.join(", ")}`);
+}
 console.log(`fixture ok → ${outDir} (${Object.keys(summary).length - skip.size} tables, ${idents.rows.length} sequences)`);

@@ -1,7 +1,7 @@
 /**
  * 마스터 게임 — 조회·담기·검색·목록·수정·재동기화·삭제.
  *
- * 다른 도메인이 쓰는 것: `resolveGame`(담기), `findGame`·`requireGame`, `searchGamesByName`(가져오기),
+ * 다른 도메인이 쓰는 것: `resolveGame`(담기), `findGame`·`requireGame`, `masterInfo`(상세), `searchGamesByName`(가져오기),
  * `findIgdbGameId`, `findGameByMediaFolder`·`uniqueMediaSlug`(스크린샷 폴더), `gameCollections`.
  *
  * ## 컬렉션 4종 (`game_developer`·`game_publisher`·`game_master_genre`·`game_release_platform`)
@@ -17,9 +17,9 @@ import {
 } from "../../db/schema";
 import { InvalidInput, NotFound, isIntegrityViolation } from "../../common/errors";
 import { normalize, normalizeAll, slug, sortKey } from "../../common/text";
-import { compareAmount, type Money } from "../../common/money";
+import { amountJson, compareAmount, type Money } from "../../common/money";
 import { nowKst } from "../../common/clock";
-import { ldt, page, type Page } from "../../common/json";
+import { ldt, moneyJson, page, type Page } from "../../common/json";
 import { igdbFindById, igdbSearch, type CatalogGameDetail } from "./igdb";
 
 export type GameRow = typeof game.$inferSelect;
@@ -108,6 +108,38 @@ export async function gameCollections(d: Db, gameIds: number[]): Promise<Map<num
   for (const r of await d.select().from(gameMasterGenre).where(inArray(gameMasterGenre.gameId, gameIds))) push(r.gameId, "masterGenres", r.genre);
   for (const r of await d.select().from(gameReleasePlatform).where(inArray(gameReleasePlatform.gameId, gameIds))) push(r.gameId, "releasePlatforms", r.platformName);
   return out;
+}
+
+/**
+ * 마스터 정보 한 벌 (`MasterInfo`) — 백로그 상세의 `master`와 마스터 정보 수정 팝업(`GET /api/games/{id}`)이
+ * 같은 모양을 쓴다. 한 곳에서 만들어야 둘이 어긋나지 않는다
+ */
+export async function masterInfo(d: Db, gameId: number) {
+  const g = await requireGame(d, gameId);
+  const c = (await gameCollections(d, [g.id])).get(g.id)!;
+  return {
+    gameId: g.id,
+    name: g.name,
+    developers: c.developers,
+    publishers: c.publishers,
+    releasedOn: g.releasedOn,
+    listPrice: moneyJson(g.listPriceAmount, g.listPriceCurrency),
+    genres: c.masterGenres,
+    source: g.source,
+    coverImageId: g.coverImageId,
+    bannerImageId: g.bannerImageId,
+    summary: g.summary,
+    summaryKo: g.summaryKo,
+    storyline: g.storyline,
+    storylineKo: g.storylineKo,
+    igdbRating: amountJson(g.igdbRating),
+    igdbRatingCount: g.igdbRatingCount,
+    releasePlatforms: c.releasePlatforms,
+    mainStoryHours: g.mainStoryHours,
+    mainExtraHours: g.mainExtraHours,
+    completionistHours: g.completionistHours,
+    timeToBeatSamples: g.timeToBeatSamples,
+  };
 }
 
 // ───────────── 쓰기 조각 ─────────────

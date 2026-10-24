@@ -1,6 +1,6 @@
 /**
  * 내 선택지 5종 (FR-PLT-01~04).
- * 플랫폼·플랫폼 계정·기기·에뮬레이터·입력 방식. 전부 회원 소유이고 **물리 삭제가 없다**
+ * 플랫폼·플랫폼 계정·기기·에뮬레이터·입력 방식. **물리 삭제가 없다**
  * (회차·취득이 참조하므로 deletedAt만 찍는다 — §7.4).
  *
  * 조회 쪽(`findOne`·`findSelectable`)은 다른 도메인도 쓰므로 `service.ts`에 있다.
@@ -8,12 +8,11 @@
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { and, eq, isNull } from "drizzle-orm";
-import type { AppEnv } from "../../http/env";
-import { db, type Db } from "../../db/client";
-import { device, emulator, inputMethod, member, platform, platformAccount } from "../../db/schema";
+import { db } from "../../db/client";
+import { device, emulator, inputMethod, platform, platformAccount } from "../../db/schema";
 import { readBody, violations, DEFAULT_MSG } from "../../http/body";
 import { pathId } from "../../http/params";
-import { Conflict, InvalidInput, NotFound, Revivable } from "../../common/errors";
+import { Conflict, InvalidInput, Revivable } from "../../common/errors";
 import { normalize, require as requireText } from "../../common/text";
 import { nowKst } from "../../common/clock";
 import { opt, zLong, zText } from "../../common/schemas";
@@ -22,7 +21,7 @@ import {
   findPlatformRow, platformFindAlive, emulatorFindOne, requireAlive,
 } from "./service";
 
-export const routes = new Hono<AppEnv>();
+export const routes = new Hono();
 
 // ───────────── 공통 ─────────────
 
@@ -53,12 +52,6 @@ function checkName(field: string, v: string | null) {
     .size(field, v, 0, 50, DEFAULT_MSG.size(0, 50));
 }
 
-async function requireMember(d: Db, memberId: number) {
-  const [m] = await d.select({ id: member.id }).from(member).where(eq(member.id, memberId));
-  if (!m) throw new NotFound(`회원을 찾을 수 없습니다. id=${memberId}`);
-  return m;
-}
-
 function createdJson(c: Context, base: string, id: number) {
   c.header("Location", `${base}/${id}`);
   return c.json({ id }, 201);
@@ -67,23 +60,21 @@ function createdJson(c: Context, base: string, id: number) {
 // ───────────── 플랫폼 ─────────────
 
 routes.post("/api/me/platforms", async (c) => {
-  const memberId = c.get("memberId");
   const r = await readBody(c, CatalogNameRequest);
   checkName("name", r.name).throwIfAny();
   const id = await db().transaction(async (tx) => {
-    await requireMember(tx, memberId);
     const name = requireText(r.name, "플랫폼 이름은 비울 수 없습니다");
     const [found] = await tx.select().from(platform)
-      .where(and(eq(platform.memberId, memberId), eq(platform.name, name)));
+      .where(eq(platform.name, name));
     if (found) {
       if (found.deletedAt === null) throw new Conflict(`이미 있는 플랫폼입니다: ${name}`);
-      // 지웠던 이름을 다시 넣으면 되살린다 — 유니크가 (member, name)이라 삭제된 행도 자리를 차지한다
+      // 지웠던 이름을 다시 넣으면 되살린다 — 유니크가 이름에 걸려 있어 삭제된 행도 자리를 차지한다
       await tx.update(platform).set({ deletedAt: null, updatedAt: nowKst() }).where(eq(platform.id, found.id));
       return found.id;
     }
     const now = nowKst();
     const [row] = await tx.insert(platform)
-      .values({ memberId, name, deletedAt: null, createdAt: now, updatedAt: now })
+      .values({ name, deletedAt: null, createdAt: now, updatedAt: now })
       .returning({ id: platform.id });
     return row!.id;
   });
@@ -91,17 +82,16 @@ routes.post("/api/me/platforms", async (c) => {
 });
 
 routes.put("/api/me/platforms/:platformId", async (c) => {
-  const memberId = c.get("memberId");
   const platformId = pathId(c, "platformId");
   const r = await readBody(c, CatalogNameRequest);
   checkName("name", r.name).throwIfAny();
   await db().transaction(async (tx) => {
-    const p = requireAlive(await findPlatformRow(tx, platformId), memberId,
+    const p = requireAlive(await findPlatformRow(tx, platformId),
       `${NOT_FOUND.platform}. id=${platformId}`, (x) => x.name);
     const name = requireText(r.name, "플랫폼 이름은 비울 수 없습니다");
     // 중복 검사를 변경보다 먼저
     const [other] = await tx.select({ id: platform.id }).from(platform)
-      .where(and(eq(platform.memberId, memberId), eq(platform.name, name)));
+      .where(eq(platform.name, name));
     if (other && other.id !== platformId) throw new Conflict(`이미 있는 플랫폼입니다: ${name}`);
     if (p.name !== name) {
       await tx.update(platform).set({ name, updatedAt: nowKst() }).where(eq(platform.id, platformId));
@@ -111,10 +101,9 @@ routes.put("/api/me/platforms/:platformId", async (c) => {
 });
 
 routes.delete("/api/me/platforms/:platformId", async (c) => {
-  const memberId = c.get("memberId");
   const platformId = pathId(c, "platformId");
   await db().transaction(async (tx) => {
-    requireAlive(await findPlatformRow(tx, platformId), memberId,
+    requireAlive(await findPlatformRow(tx, platformId),
       `${NOT_FOUND.platform}. id=${platformId}`, (x) => x.name);
     const now = nowKst();
     // 딸린 계정도 함께 닫는다 — 플랫폼만 지우면 주인 없는 계정이 선택지에 남는다
@@ -128,14 +117,12 @@ routes.delete("/api/me/platforms/:platformId", async (c) => {
 // ───────────── 입력 방식 ─────────────
 
 routes.post("/api/me/input-methods", async (c) => {
-  const memberId = c.get("memberId");
   const r = await readBody(c, CatalogNameRequest);
   checkName("name", r.name).throwIfAny();
   const id = await db().transaction(async (tx) => {
-    await requireMember(tx, memberId);
     const name = requireText(r.name, "입력 방식 이름은 비울 수 없습니다");
     const [found] = await tx.select().from(inputMethod)
-      .where(and(eq(inputMethod.memberId, memberId), eq(inputMethod.name, name)));
+      .where(eq(inputMethod.name, name));
     if (found) {
       if (found.deletedAt === null) throw new Conflict(`이미 있는 입력 방식입니다: ${name}`);
       await tx.update(inputMethod).set({ deletedAt: null, updatedAt: nowKst() }).where(eq(inputMethod.id, found.id));
@@ -143,7 +130,7 @@ routes.post("/api/me/input-methods", async (c) => {
     }
     const now = nowKst();
     const [row] = await tx.insert(inputMethod)
-      .values({ memberId, name, deletedAt: null, createdAt: now, updatedAt: now })
+      .values({ name, deletedAt: null, createdAt: now, updatedAt: now })
       .returning({ id: inputMethod.id });
     return row!.id;
   });
@@ -151,16 +138,15 @@ routes.post("/api/me/input-methods", async (c) => {
 });
 
 routes.put("/api/me/input-methods/:inputMethodId", async (c) => {
-  const memberId = c.get("memberId");
   const inputMethodId = pathId(c, "inputMethodId");
   const r = await readBody(c, CatalogNameRequest);
   checkName("name", r.name).throwIfAny();
   await db().transaction(async (tx) => {
-    const m = requireAlive(await findInputMethodRow(tx, inputMethodId), memberId,
+    const m = requireAlive(await findInputMethodRow(tx, inputMethodId),
       `${NOT_FOUND.inputMethod}. id=${inputMethodId}`, (x) => x.name);
     const name = requireText(r.name, "입력 방식 이름은 비울 수 없습니다");
     const [other] = await tx.select({ id: inputMethod.id }).from(inputMethod)
-      .where(and(eq(inputMethod.memberId, memberId), eq(inputMethod.name, name)));
+      .where(eq(inputMethod.name, name));
     if (other && other.id !== inputMethodId) throw new Conflict(`이미 있는 입력 방식입니다: ${name}`);
     if (m.name !== name) {
       await tx.update(inputMethod).set({ name, updatedAt: nowKst() }).where(eq(inputMethod.id, inputMethodId));
@@ -170,10 +156,9 @@ routes.put("/api/me/input-methods/:inputMethodId", async (c) => {
 });
 
 routes.delete("/api/me/input-methods/:inputMethodId", async (c) => {
-  const memberId = c.get("memberId");
   const inputMethodId = pathId(c, "inputMethodId");
   await db().transaction(async (tx) => {
-    requireAlive(await findInputMethodRow(tx, inputMethodId), memberId,
+    requireAlive(await findInputMethodRow(tx, inputMethodId),
       `${NOT_FOUND.inputMethod}. id=${inputMethodId}`, (x) => x.name);
     const now = nowKst();
     await tx.update(inputMethod).set({ deletedAt: now, updatedAt: now }).where(eq(inputMethod.id, inputMethodId));
@@ -202,14 +187,12 @@ function applyDevice(r: z.output<typeof DeviceRequest>) {
 }
 
 routes.post("/api/me/devices", async (c) => {
-  const memberId = c.get("memberId");
   const r = await readBody(c, DeviceRequest);
   checkDevice(r).throwIfAny();
   const id = await db().transaction(async (tx) => {
-    await requireMember(tx, memberId);
     const label = requireText(r.label, "기기 라벨은 비울 수 없습니다");
     const [found] = await tx.select().from(device)
-      .where(and(eq(device.memberId, memberId), eq(device.label, label)));
+      .where(eq(device.label, label));
     if (found) {
       if (found.deletedAt === null) throw new Conflict(`이미 있는 기기입니다: ${label}`);
       // 지웠던 라벨을 다시 넣으면 되살리고 유형·메모를 새 값으로 덮는다
@@ -220,7 +203,7 @@ routes.post("/api/me/devices", async (c) => {
     const v = applyDevice(r);
     const now = nowKst();
     const [row] = await tx.insert(device)
-      .values({ memberId, ...v, deletedAt: null, createdAt: now, updatedAt: now })
+      .values({ ...v, deletedAt: null, createdAt: now, updatedAt: now })
       .returning({ id: device.id });
     return row!.id;
   });
@@ -228,17 +211,16 @@ routes.post("/api/me/devices", async (c) => {
 });
 
 routes.put("/api/me/devices/:deviceId", async (c) => {
-  const memberId = c.get("memberId");
   const deviceId = pathId(c, "deviceId");
   const r = await readBody(c, DeviceRequest);
   checkDevice(r).throwIfAny();
   await db().transaction(async (tx) => {
-    const cur = requireAlive(await findDeviceRow(tx, deviceId), memberId,
+    const cur = requireAlive(await findDeviceRow(tx, deviceId),
       `${NOT_FOUND.device}. id=${deviceId}`, (x) => x.label);
     const label = requireText(r.label, "기기 라벨은 비울 수 없습니다");
     // 중복 검사를 변경보다 먼저 — 라벨에 유니크 제약이 걸려 있다
     const [other] = await tx.select({ id: device.id }).from(device)
-      .where(and(eq(device.memberId, memberId), eq(device.label, label)));
+      .where(eq(device.label, label));
     if (other && other.id !== deviceId) throw new Conflict(`이미 있는 기기입니다: ${label}`);
     const v = applyDevice(r);
     if (cur.deviceType !== v.deviceType || cur.label !== v.label || cur.memo !== v.memo) {
@@ -249,10 +231,9 @@ routes.put("/api/me/devices/:deviceId", async (c) => {
 });
 
 routes.delete("/api/me/devices/:deviceId", async (c) => {
-  const memberId = c.get("memberId");
   const deviceId = pathId(c, "deviceId");
   await db().transaction(async (tx) => {
-    requireAlive(await findDeviceRow(tx, deviceId), memberId,
+    requireAlive(await findDeviceRow(tx, deviceId),
       `${NOT_FOUND.device}. id=${deviceId}`, (x) => x.label);
     const now = nowKst();
     await tx.update(device).set({ deletedAt: now, updatedAt: now }).where(eq(device.id, deviceId));
@@ -270,15 +251,13 @@ function checkEmulator(r: z.output<typeof EmulatorRequest>) {
 }
 
 routes.post("/api/me/emulators", async (c) => {
-  const memberId = c.get("memberId");
   const r = await readBody(c, EmulatorRequest);
   checkEmulator(r).throwIfAny();
   const id = await db().transaction(async (tx) => {
-    await requireMember(tx, memberId);
     const name = requireText(r.name, "에뮬레이터 이름은 비울 수 없습니다");
     const memo = normalize(r.memo);
     const [found] = await tx.select().from(emulator)
-      .where(and(eq(emulator.memberId, memberId), eq(emulator.name, name)));
+      .where(eq(emulator.name, name));
     if (found) {
       if (found.deletedAt === null) throw new Conflict(`이미 있는 에뮬레이터입니다: ${name}`);
       await tx.update(emulator).set({ name, memo, deletedAt: null, updatedAt: nowKst() }).where(eq(emulator.id, found.id));
@@ -286,7 +265,7 @@ routes.post("/api/me/emulators", async (c) => {
     }
     const now = nowKst();
     const [row] = await tx.insert(emulator)
-      .values({ memberId, name, memo, deletedAt: null, createdAt: now, updatedAt: now })
+      .values({ name, memo, deletedAt: null, createdAt: now, updatedAt: now })
       .returning({ id: emulator.id });
     return row!.id;
   });
@@ -294,16 +273,15 @@ routes.post("/api/me/emulators", async (c) => {
 });
 
 routes.put("/api/me/emulators/:emulatorId", async (c) => {
-  const memberId = c.get("memberId");
   const emulatorId = pathId(c, "emulatorId");
   const r = await readBody(c, EmulatorRequest);
   checkEmulator(r).throwIfAny();
   await db().transaction(async (tx) => {
-    const cur = requireAlive(await findEmulatorRow(tx, emulatorId), memberId,
+    const cur = requireAlive(await findEmulatorRow(tx, emulatorId),
       `${NOT_FOUND.emulator}. id=${emulatorId}`, (x) => x.name);
     const name = requireText(r.name, "에뮬레이터 이름은 비울 수 없습니다");
     const [other] = await tx.select({ id: emulator.id }).from(emulator)
-      .where(and(eq(emulator.memberId, memberId), eq(emulator.name, name)));
+      .where(eq(emulator.name, name));
     if (other && other.id !== emulatorId) throw new Conflict(`이미 있는 에뮬레이터입니다: ${name}`);
     const memo = normalize(r.memo);
     if (cur.name !== name || cur.memo !== memo) {
@@ -314,10 +292,9 @@ routes.put("/api/me/emulators/:emulatorId", async (c) => {
 });
 
 routes.delete("/api/me/emulators/:emulatorId", async (c) => {
-  const memberId = c.get("memberId");
   const emulatorId = pathId(c, "emulatorId");
   await db().transaction(async (tx) => {
-    requireAlive(await findEmulatorRow(tx, emulatorId), memberId,
+    requireAlive(await findEmulatorRow(tx, emulatorId),
       `${NOT_FOUND.emulator}. id=${emulatorId}`, (x) => x.name);
     const now = nowKst();
     // 플랫폼 삭제와 같게 딸린 계정도 닫는다 — 남겨두면 내보낸 세이브가 가져오기에서 깨진다
@@ -336,23 +313,20 @@ const ownerKeyOf = (platformId: number | null, emulatorId: number | null) =>
   platformId !== null ? `P${platformId}` : `E${emulatorId}`;
 
 routes.post("/api/me/platform-accounts", async (c) => {
-  const memberId = c.get("memberId");
   const r = await readBody(c, PlatformAccountCreateRequest);
   checkName("accountLabel", r.accountLabel).throwIfAny();
   const id = await db().transaction(async (tx) => {
-    await requireMember(tx, memberId);
     if ((r.platformId === null) === (r.emulatorId === null)) {
       throw new InvalidInput("플랫폼이나 에뮬레이터 중 하나만 골라 주세요");
     }
-    const p = r.platformId === null ? null : await platformFindAlive(tx, memberId, r.platformId);
+    const p = r.platformId === null ? null : await platformFindAlive(tx, r.platformId);
     // ⚠️ 에뮬레이터는 삭제된 것도 받는다 — 삭제된 에뮬레이터에도 계정이 생긴다 (알려진 버그 6, `docs/v2-plan.md`)
-    const e = r.emulatorId === null ? null : await emulatorFindOne(tx, memberId, r.emulatorId);
+    const e = r.emulatorId === null ? null : await emulatorFindOne(tx, r.emulatorId);
 
     const label = requireText(r.accountLabel, "계정 라벨은 비울 수 없습니다");
     const ownerKey = ownerKeyOf(p?.id ?? null, e?.id ?? null);
 
     const [found] = await tx.select().from(platformAccount).where(and(
-      eq(platformAccount.memberId, memberId),
       eq(platformAccount.ownerKey, ownerKey),
       eq(platformAccount.accountLabel, label)));
     if (found) {
@@ -367,7 +341,7 @@ routes.post("/api/me/platform-accounts", async (c) => {
     const now = nowKst();
     const [row] = await tx.insert(platformAccount)
       .values({
-        memberId, platformId: p?.id ?? null, emulatorId: e?.id ?? null, ownerKey,
+        platformId: p?.id ?? null, emulatorId: e?.id ?? null, ownerKey,
         accountLabel: label, deletedAt: null, createdAt: now, updatedAt: now,
       })
       .returning({ id: platformAccount.id });
@@ -377,16 +351,14 @@ routes.post("/api/me/platform-accounts", async (c) => {
 });
 
 routes.put("/api/me/platform-accounts/:accountId", async (c) => {
-  const memberId = c.get("memberId");
   const accountId = pathId(c, "accountId");
   const r = await readBody(c, PlatformAccountRenameRequest);
   checkName("accountLabel", r.accountLabel).throwIfAny();
   await db().transaction(async (tx) => {
-    const a = requireAlive(await findAccountRow(tx, accountId), memberId,
+    const a = requireAlive(await findAccountRow(tx, accountId),
       `${NOT_FOUND.account}. id=${accountId}`, (x) => x.accountLabel);
     const label = requireText(r.accountLabel, "계정 라벨은 비울 수 없습니다");
     const [other] = await tx.select({ id: platformAccount.id }).from(platformAccount).where(and(
-      eq(platformAccount.memberId, memberId),
       eq(platformAccount.ownerKey, a.ownerKey),
       eq(platformAccount.accountLabel, label)));
     if (other && other.id !== accountId) throw new Conflict(`이미 있는 계정 라벨입니다: ${label}`);
@@ -399,10 +371,9 @@ routes.put("/api/me/platform-accounts/:accountId", async (c) => {
 });
 
 routes.delete("/api/me/platform-accounts/:accountId", async (c) => {
-  const memberId = c.get("memberId");
   const accountId = pathId(c, "accountId");
   await db().transaction(async (tx) => {
-    requireAlive(await findAccountRow(tx, accountId), memberId,
+    requireAlive(await findAccountRow(tx, accountId),
       `${NOT_FOUND.account}. id=${accountId}`, (x) => x.accountLabel);
     const now = nowKst();
     await tx.update(platformAccount).set({ deletedAt: now, updatedAt: now }).where(eq(platformAccount.id, accountId));
@@ -411,10 +382,9 @@ routes.delete("/api/me/platform-accounts/:accountId", async (c) => {
 });
 
 routes.post("/api/me/platform-accounts/:accountId/revive", async (c) => {
-  const memberId = c.get("memberId");
   const accountId = pathId(c, "accountId");
   await db().transaction(async (tx) => {
-    const a = await accountFindOne(tx, memberId, accountId);
+    const a = await accountFindOne(tx, accountId);
     if (a.deletedAt === null) throw new Conflict(`삭제되지 않았습니다: ${a.accountLabel}`);
     // ⚠️ 부모 플랫폼이 삭제돼 있어도 되살린다 (알려진 버그 5, `docs/v2-plan.md`)
     await tx.update(platformAccount).set({ deletedAt: null, updatedAt: nowKst() })

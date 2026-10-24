@@ -87,46 +87,6 @@
    "path": "/api/stats/playtime?limit=2147483648"
   },
   {
-   "name": "없는 회원 — 장르 분포",
-   "method": "GET",
-   "path": "/api/stats/genres",
-   "headers": {
-    "X-Member-Id": "99999"
-   }
-  },
-  {
-   "name": "없는 회원 — 월별 완료",
-   "method": "GET",
-   "path": "/api/stats/completions/monthly",
-   "headers": {
-    "X-Member-Id": "99999"
-   }
-  },
-  {
-   "name": "없는 회원 — 플레이 시간",
-   "method": "GET",
-   "path": "/api/stats/playtime",
-   "headers": {
-    "X-Member-Id": "99999"
-   }
-  },
-  {
-   "name": "없는 회원 — 지출",
-   "method": "GET",
-   "path": "/api/stats/spending",
-   "headers": {
-    "X-Member-Id": "99999"
-   }
-  },
-  {
-   "name": "없는 회원 — 월별 지출",
-   "method": "GET",
-   "path": "/api/stats/spending/monthly",
-   "headers": {
-    "X-Member-Id": "99999"
-   }
-  },
-  {
    "name": "월간 KRW 종료 있음",
    "method": "POST",
    "path": "/api/me/subscriptions",

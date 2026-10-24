@@ -1,10 +1,5 @@
 {
  "name": "tag",
- "note": "X-Member-Id로 남의 회원인 척하려면 dev·test 프로필이 필요하다 — 하네스는 desktop으로 띄우므로 양쪽에 test를 얹는다",
- "env": {
-  "STARLOG_PROFILE": "test",
-  "SPRING_PROFILES_INCLUDE": "test"
- },
  "steps": [
   {
    "name": "태그 이름 변경 — 정규화",
@@ -106,17 +101,6 @@
    "path": "/api/me/tags/999999",
    "body": {
     "name": "X"
-   }
-  },
-  {
-   "name": "태그 이름 변경 — 남의 태그",
-   "method": "PUT",
-   "path": "/api/me/tags/3",
-   "body": {
-    "name": "X"
-   },
-   "headers": {
-    "X-Member-Id": "999"
    }
   },
   {
@@ -222,17 +206,6 @@
    "path": "/api/me/tags/7/color",
    "body": {
     "color": null
-   }
-  },
-  {
-   "name": "태그 색 — 남의 태그",
-   "method": "PUT",
-   "path": "/api/me/tags/3/color",
-   "body": {
-    "color": "sky"
-   },
-   "headers": {
-    "X-Member-Id": "999"
    }
   },
   {
@@ -381,30 +354,6 @@
    }
   },
   {
-   "name": "순서 — 남의 회원이 내 태그를 섞음",
-   "method": "PUT",
-   "path": "/api/me/tags/order",
-   "body": {
-    "tagIds": [
-     4
-    ]
-   },
-   "headers": {
-    "X-Member-Id": "999"
-   }
-  },
-  {
-   "name": "순서 — 남의 회원 빈 목록 (태그 없음)",
-   "method": "PUT",
-   "path": "/api/me/tags/order",
-   "body": {
-    "tagIds": []
-   },
-   "headers": {
-    "X-Member-Id": "999"
-   }
-  },
-  {
    "name": "순서 — 깨진 JSON",
    "method": "PUT",
    "path": "/api/me/tags/order",
@@ -459,14 +408,6 @@
    "name": "태그 삭제 — 없는 태그",
    "method": "DELETE",
    "path": "/api/me/tags/999999"
-  },
-  {
-   "name": "태그 삭제 — 남의 태그",
-   "method": "DELETE",
-   "path": "/api/me/tags/3",
-   "headers": {
-    "X-Member-Id": "999"
-   }
   },
   {
    "name": "태그 삭제 — 경로 id 형식 오류",
@@ -554,17 +495,6 @@
    }
   },
   {
-   "name": "장르 이름 변경 — 남의 장르",
-   "method": "PUT",
-   "path": "/api/me/genres/39",
-   "body": {
-    "name": "X"
-   },
-   "headers": {
-    "X-Member-Id": "999"
-   }
-  },
-  {
    "name": "장르 이름 변경 — 경로 id 형식 오류",
    "method": "PUT",
    "path": "/api/me/genres/abc",
@@ -605,14 +535,6 @@
    "name": "장르 삭제 — 없는 장르",
    "method": "DELETE",
    "path": "/api/me/genres/999999"
-  },
-  {
-   "name": "장르 삭제 — 남의 장르",
-   "method": "DELETE",
-   "path": "/api/me/genres/39",
-   "headers": {
-    "X-Member-Id": "999"
-   }
   },
   {
    "name": "장르 삭제 — 경로 id 형식 오류",

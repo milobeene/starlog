@@ -211,11 +211,19 @@
    }
   },
   {
-   "name": "커버 확정 — 남의 경로",
+   "name": "커버 확정 — 다른 항목의 경로",
    "method": "PUT",
    "path": "/api/backlog/81/cover",
    "body": {
-    "storageKey": "covers/1/82/x.png"
+    "storageKey": "covers/entry-82/x.png"
+   }
+  },
+  {
+   "name": "커버 확정 — V14 전 경로 모양 (covers/<회원>/<항목>/)",
+   "method": "PUT",
+   "path": "/api/backlog/81/cover",
+   "body": {
+    "storageKey": "covers/1/81/x.png"
    }
   },
   {
@@ -223,7 +231,7 @@
    "method": "PUT",
    "path": "/api/backlog/81/cover",
    "body": {
-    "storageKey": "  covers/1/81/x.png "
+    "storageKey": "  covers/entry-81/x.png "
    }
   },
   {
@@ -231,7 +239,7 @@
    "method": "PUT",
    "path": "/api/backlog/999999/cover",
    "body": {
-    "storageKey": "covers/1/999999/x.png"
+    "storageKey": "covers/entry-999999/x.png"
    }
   },
   {

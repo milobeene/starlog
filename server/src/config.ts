@@ -17,8 +17,8 @@ export interface Config {
   dataRoot: string | null;
   /** 정적 프론트(`out/`) 폴더. 없으면 API만 연다 */
   staticDir: string | null;
-  /** dev·test에서만 `X-Member-Id` 헤더를 읽는다 (테스트 장치, 인증 아님) */
-  allowMemberOverride: boolean;
+  /** dev·test 프로필 — 일렉트론 없이 시험하는 장치(썸네일 복사 등)를 연다 */
+  devProfile: boolean;
   /**
    * 데스크탑 CORS를 거는가 — dev·test가 아니면 건다.
    * 개발 중엔 프론트 개발 서버가 프록시로 붙어서 출처가 `localhost:3000`이다 — 걸면 막힌다
@@ -53,7 +53,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       : { kind: "pglite", dir: dbDir! },
     dataRoot: blank(env.STARLOG_DATA_ROOT),
     staticDir: blank(env.STARLOG_STATIC_DIR),
-    allowMemberOverride: ["dev", "test"].includes(env.STARLOG_PROFILE ?? ""),
+    devProfile: ["dev", "test"].includes(env.STARLOG_PROFILE ?? ""),
     desktopCors: !["dev", "test"].includes(env.STARLOG_PROFILE ?? ""),
     igdb: { clientId: blank(env.APP_IGDB_CLIENT_ID), clientSecret: blank(env.APP_IGDB_CLIENT_SECRET) },
     storage: {

@@ -9,8 +9,8 @@ import { InvalidInput, NotFound } from "../../common/errors";
 import { nowKst } from "../../common/clock";
 import { money } from "../../common/money";
 import { normalize } from "../../common/text";
-import { findOwnedSubscription } from "../subscription/routes";
-import { deriveState, findOwned, playthroughsOf, saveEntryIfChanged, type EntryRow } from "./shared";
+import { findSubscription } from "../subscription/routes";
+import { deriveState, findAliveEntry, playthroughsOf, saveEntryIfChanged, type EntryRow } from "./shared";
 import { belongsTo, findAccount, findPlatform } from "./refs";
 import { saveIfChanged } from "../../db/changes";
 
@@ -41,14 +41,14 @@ function apply(cmd: AcquisitionCommand) {
   };
 }
 
-/** 남의 것은 못 붙인다. 취득에는 에뮬이 없어서 계정은 플랫폼 쪽만 본다 */
-async function resolveReferences(d: Db, ownerId: number, cmd: AcquisitionCommand) {
-  const plat = cmd.platformId === null ? null : await findPlatform(d, ownerId, cmd.platformId);
-  const account = cmd.platformAccountId === null ? null : await findAccount(d, ownerId, cmd.platformAccountId);
+/** 없는 번호면 404. 취득에는 에뮬이 없어서 계정은 플랫폼 쪽만 본다 */
+async function resolveReferences(d: Db, cmd: AcquisitionCommand) {
+  const plat = cmd.platformId === null ? null : await findPlatform(d, cmd.platformId);
+  const account = cmd.platformAccountId === null ? null : await findAccount(d, cmd.platformAccountId);
   if (account !== null && plat !== null && !belongsTo(account, plat.id, null)) {
     throw new InvalidInput("계정이 고른 플랫폼의 것이 아닙니다");
   }
-  const sub = cmd.subscriptionId === null ? null : await findOwnedSubscription(d, ownerId, cmd.subscriptionId);
+  const sub = cmd.subscriptionId === null ? null : await findSubscription(d, cmd.subscriptionId);
   return { platformId: plat?.id ?? null, platformAccountId: account?.id ?? null, subscriptionId: sub?.id ?? null };
 }
 
@@ -56,10 +56,10 @@ async function syncEntry(d: Db, entry: EntryRow, hasAcquisition: boolean) {
   await saveEntryIfChanged(d, entry, deriveState(await playthroughsOf(d, entry.id), hasAcquisition));
 }
 
-export async function addAcquisition(d: Db, memberId: number, entryId: number, cmd: AcquisitionCommand): Promise<number> {
-  const entry = await findOwned(d, memberId, entryId);
+export async function addAcquisition(d: Db, entryId: number, cmd: AcquisitionCommand): Promise<number> {
+  const entry = await findAliveEntry(d, entryId);
   const v = apply(cmd);
-  const refs = await resolveReferences(d, entry.memberId, cmd);
+  const refs = await resolveReferences(d, cmd);
   const now = nowKst();
   const [row] = await d.insert(acquisition)
     .values({ backlogEntryId: entryId, ...v, ...refs, createdAt: now, updatedAt: now })
@@ -68,24 +68,24 @@ export async function addAcquisition(d: Db, memberId: number, entryId: number, c
   return row!.id;
 }
 
-async function findOwnedAcquisition(d: Db, memberId: number, acquisitionId: number) {
+async function findAcquisition(d: Db, acquisitionId: number) {
   const [a] = await d.select().from(acquisition).where(eq(acquisition.id, acquisitionId));
   if (!a) throw new NotFound(`취득 기록을 찾을 수 없습니다. id=${acquisitionId}`);
-  const entry = await findOwned(d, memberId, a.backlogEntryId);
+  const entry = await findAliveEntry(d, a.backlogEntryId);
   return { a, entry };
 }
 
-export async function updateAcquisition(d: Db, memberId: number, acquisitionId: number, cmd: AcquisitionCommand) {
-  const { a, entry } = await findOwnedAcquisition(d, memberId, acquisitionId);
+export async function updateAcquisition(d: Db, acquisitionId: number, cmd: AcquisitionCommand) {
+  const { a, entry } = await findAcquisition(d, acquisitionId);
   const v = apply(cmd);
-  const refs = await resolveReferences(d, entry.memberId, cmd);
+  const refs = await resolveReferences(d, cmd);
   await saveIfChanged(d, a, { ...v, ...refs }, (patch) => d.update(acquisition).set(patch).where(eq(acquisition.id, a.id)));
   // 취득이 남아 있는 건 그대로라 상태는 회차 쪽만 다시 본다 (드리프트가 있으면 여기서 맞춰진다)
   await syncEntry(d, entry, true);
 }
 
-export async function deleteAcquisition(d: Db, memberId: number, acquisitionId: number) {
-  const { a, entry } = await findOwnedAcquisition(d, memberId, acquisitionId);
+export async function deleteAcquisition(d: Db, acquisitionId: number) {
+  const { a, entry } = await findAcquisition(d, acquisitionId);
   const remaining = (await d.select({ id: acquisition.id }).from(acquisition).where(eq(acquisition.backlogEntryId, entry.id)))
     .filter((x) => x.id !== a.id).length;
   await syncEntry(d, entry, remaining > 0);

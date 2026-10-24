@@ -1,5 +1,5 @@
 /**
- * 회원 데이터 내보내기. 파일 형식은 `dump.ts`.
+ * 데이터 내보내기. 파일 형식은 `dump.ts`.
  *
  * 항목마다 회차·취득·장르를 따로 읽는다 (하루 한 번 도는 백업이라 정확함이 속도보다 먼저).
  * 특히 **장르 연결은 `where backlog_entry_id = ?`, 정렬 없음 모양**으로 읽는다 —
@@ -20,7 +20,8 @@ import {
 } from "../platform/service";
 import { gameCollections, type GameRow } from "../game/service";
 import { FORMAT_VERSION } from "./dump";
-import { colorsOf, findMember, subscriptionsOf, type MemberRow } from "./query";
+import { colorsOf, presetsOf, subscriptionsOf } from "./query";
+import { findProfile, type ProfileRow } from "./profile";
 
 /** IGDB id가 있으면 그것, 없으면(수동 등록) 이름. 새 DB에서 항목이 게임을 찾는 열쇠다 */
 export const gameKeyOf = (g: Pick<GameRow, "externalId" | "name">) =>
@@ -38,13 +39,12 @@ function nowLdt(): string {
 /** `starlog-backup-20261024.json` */
 export const backupFileName = (today: string) => `starlog-backup-${today.replaceAll("-", "")}.json`;
 
-export async function exportData(d: Db, memberId: number) {
-  const m = await findMember(d, memberId);
+export async function exportData(d: Db) {
+  const m = await findProfile(d);
 
   // 삭제된 항목까지 — 백업은 휴지통까지 재현해야 한다
   const entries = await d.select({ e: backlogEntry, g: game }).from(backlogEntry)
     .innerJoin(game, eq(game.id, backlogEntry.gameId))
-    .where(eq(backlogEntry.memberId, memberId))
     .orderBy(asc(backlogEntry.id));
 
   // 여러 항목이 같은 게임을 가리킬 수는 없지만(uk) 순서를 지키며 중복을 걷는다
@@ -91,29 +91,32 @@ export async function exportData(d: Db, memberId: number) {
     formatVersion: FORMAT_VERSION,
     exportedAt: nowLdt(),
     profile: profile(m),
-    catalog: await catalog(d, memberId, [...usedTags].sort(), [...usedGenres].sort()),
+    catalog: await catalog(d, [...usedTags].sort(), [...usedGenres].sort()),
     games: [...games.values()],
     entries: exported,
   };
 }
 
-/** 자격증명은 담지 않는다 — 이 파일은 동기화 폴더에 놓일 물건이다 */
-function profile(m: MemberRow) {
-  return { email: m.email, nickname: m.nickname, memo: m.memo, backgroundColors: colorsOf(m.backgroundColors) };
+/** 형식 4부터 이메일이 없다(V14 — 로그인 칸이 사라졌다) */
+function profile(m: ProfileRow) {
+  return {
+    nickname: m.nickname, memo: m.memo,
+    backgroundColors: colorsOf(m.backgroundColors), backgroundPresets: presetsOf(m.backgroundPresets),
+  };
 }
 
 /** 선택지 다섯 종 + 구독 + 쓰인 태그·장르. **계정이 플랫폼을 참조하므로 플랫폼이 먼저다** */
-async function catalog(d: Db, memberId: number, tags: string[], genres: string[]) {
+async function catalog(d: Db, tags: string[], genres: string[]) {
   return {
-    platforms: (await platformFindSelectable(d, memberId)).map((p) => p.name),
+    platforms: (await platformFindSelectable(d)).map((p) => p.name),
     // 소속은 둘 중 하나만 찬다 (형식 3). 에뮬 소속 계정 때문에 내보내기가 500이던 것(버그 1)을 여기서 고쳤다
-    accounts: (await accountFindSelectable(d, memberId)).map((a) => ({
+    accounts: (await accountFindSelectable(d)).map((a) => ({
       label: a.accountLabel, platform: a.platform?.name ?? null, emulator: a.emulator?.name ?? null,
     })),
-    devices: (await deviceFindSelectable(d, memberId)).map((x) => ({ deviceType: x.deviceType, label: x.label, memo: x.memo })),
-    emulators: (await emulatorFindSelectable(d, memberId)).map((e) => ({ name: e.name, memo: e.memo })),
-    inputMethods: (await inputMethodFindSelectable(d, memberId)).map((i) => i.name),
-    subscriptions: (await subscriptionsOf(d, memberId)).map((s) => ({
+    devices: (await deviceFindSelectable(d)).map((x) => ({ deviceType: x.deviceType, label: x.label, memo: x.memo })),
+    emulators: (await emulatorFindSelectable(d)).map((e) => ({ name: e.name, memo: e.memo })),
+    inputMethods: (await inputMethodFindSelectable(d)).map((i) => i.name),
+    subscriptions: (await subscriptionsOf(d)).map((s) => ({
       serviceName: s.serviceName,
       startedOn: s.startedOn,
       endedOn: s.endedOn,

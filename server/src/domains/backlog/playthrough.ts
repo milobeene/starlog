@@ -7,7 +7,7 @@ import { playthrough } from "../../db/schema";
 import { Conflict, InvalidInput, NotFound } from "../../common/errors";
 import { nowKst } from "../../common/clock";
 import { normalize } from "../../common/text";
-import { acquisitionCount, deriveState, findOwnedForUpdate, playthroughsOf, saveEntryIfChanged, type EntryRow, type PlaythroughRow, type PlaythroughStatus } from "./shared";
+import { acquisitionCount, deriveState, findAliveEntryForUpdate, playthroughsOf, saveEntryIfChanged, type EntryRow, type PlaythroughRow, type PlaythroughStatus } from "./shared";
 import { belongsTo, findAccount, findDevice, findEmulator, findInputMethod, findPlatform } from "./refs";
 import { saveIfChanged } from "../../db/changes";
 
@@ -60,15 +60,15 @@ function validateAgainstSiblings(target: Span, siblings: Span[]) {
 }
 
 /**
- * 참조 조회 — 넷 다 남의 것을 못 붙인다. 조회 순서가 곧 오류 우선순위다 (기기 → 플랫폼 → 계정 → 에뮬 → 입력).
+ * 참조 조회 — 없는 번호면 404. 조회 순서가 곧 오류 우선순위다 (기기 → 플랫폼 → 계정 → 에뮬 → 입력).
  * 플랫폼과 에뮬이 둘 다 오면 **에뮬을 버린다** (예외 아님 — 옛 데이터를 고치는 중간 상태라서)
  */
-async function resolveReferences(d: Db, ownerId: number, cmd: PlaythroughCommand) {
-  const dev = cmd.deviceId === null ? null : await findDevice(d, ownerId, cmd.deviceId);
-  const plat = cmd.platformId === null ? null : await findPlatform(d, ownerId, cmd.platformId);
-  const account = cmd.platformAccountId === null ? null : await findAccount(d, ownerId, cmd.platformAccountId);
-  const emu = cmd.emulatorId === null ? null : await findEmulator(d, ownerId, cmd.emulatorId);
-  const input = cmd.inputMethodId === null ? null : await findInputMethod(d, ownerId, cmd.inputMethodId);
+async function resolveReferences(d: Db, cmd: PlaythroughCommand) {
+  const dev = cmd.deviceId === null ? null : await findDevice(d, cmd.deviceId);
+  const plat = cmd.platformId === null ? null : await findPlatform(d, cmd.platformId);
+  const account = cmd.platformAccountId === null ? null : await findAccount(d, cmd.platformAccountId);
+  const emu = cmd.emulatorId === null ? null : await findEmulator(d, cmd.emulatorId);
+  const input = cmd.inputMethodId === null ? null : await findInputMethod(d, cmd.inputMethodId);
 
   const effective = plat !== null ? null : emu;
   // 소속을 아예 안 골랐으면 통과 — V11 이전에는 계정만 있는 회차가 정상이었다
@@ -91,14 +91,14 @@ async function syncEntry(d: Db, entry: EntryRow, pts: PlaythroughRow[]) {
 }
 
 /** 번호는 최대값 + 1 — 구멍은 메우지 않는다. 최신 판정은 날짜가 한다 */
-export async function addPlaythrough(d: Db, memberId: number, entryId: number, cmd: PlaythroughCommand): Promise<number> {
-  const entry = await findOwnedForUpdate(d, memberId, entryId);
+export async function addPlaythrough(d: Db, entryId: number, cmd: PlaythroughCommand): Promise<number> {
+  const entry = await findAliveEntryForUpdate(d, entryId);
   const siblings = await playthroughsOf(d, entryId);
   const sequenceNo = siblings.reduce((m, p) => Math.max(m, p.sequenceNo), 0) + 1;
 
   const v = apply(cmd);
   validateAgainstSiblings({ id: null, sequenceNo, ...v }, siblings);
-  const refs = await resolveReferences(d, entry.memberId, cmd);
+  const refs = await resolveReferences(d, cmd);
 
   const now = nowKst();
   const [row] = await d.insert(playthrough)
@@ -108,20 +108,20 @@ export async function addPlaythrough(d: Db, memberId: number, entryId: number, c
   return row!.id;
 }
 
-async function findOwnedPlaythrough(d: Db, memberId: number, playthroughId: number) {
+async function findPlaythrough(d: Db, playthroughId: number) {
   const [pt] = await d.select().from(playthrough).where(eq(playthrough.id, playthroughId));
   if (!pt) throw new NotFound(`회차를 찾을 수 없습니다. id=${playthroughId}`);
-  // 부모의 소유권을 본다. 수정도 형제 검증을 타므로 add와 같은 잠금
-  const entry = await findOwnedForUpdate(d, memberId, pt.backlogEntryId);
+  // 부모가 살아 있어야 한다. 수정도 형제 검증을 타므로 add와 같은 잠금
+  const entry = await findAliveEntryForUpdate(d, pt.backlogEntryId);
   return { pt, entry };
 }
 
-export async function updatePlaythrough(d: Db, memberId: number, playthroughId: number, cmd: PlaythroughCommand) {
-  const { pt, entry } = await findOwnedPlaythrough(d, memberId, playthroughId);
+export async function updatePlaythrough(d: Db, playthroughId: number, cmd: PlaythroughCommand) {
+  const { pt, entry } = await findPlaythrough(d, playthroughId);
   const v = apply(cmd);
   const siblings = await playthroughsOf(d, entry.id);
   validateAgainstSiblings({ id: pt.id, sequenceNo: pt.sequenceNo, ...v }, siblings);
-  const refs = await resolveReferences(d, entry.memberId, cmd);
+  const refs = await resolveReferences(d, cmd);
 
   const after = { ...v, ...refs };
   await saveIfChanged(d, pt, after, (patch) => d.update(playthrough).set(patch).where(eq(playthrough.id, pt.id)));
@@ -129,8 +129,8 @@ export async function updatePlaythrough(d: Db, memberId: number, playthroughId: 
 }
 
 /** 물리 삭제. 항목이 이 회차를 가리키고 있을 수 있어 **항목부터** 고친다 (참조를 먼저 끊어야 FK에 안 걸린다) */
-export async function deletePlaythrough(d: Db, memberId: number, playthroughId: number) {
-  const { pt, entry } = await findOwnedPlaythrough(d, memberId, playthroughId);
+export async function deletePlaythrough(d: Db, playthroughId: number) {
+  const { pt, entry } = await findPlaythrough(d, playthroughId);
   const rest = (await playthroughsOf(d, entry.id)).filter((s) => s.id !== pt.id);
   await syncEntry(d, entry, rest);
   await d.delete(playthrough).where(eq(playthrough.id, pt.id));

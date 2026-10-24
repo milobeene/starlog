@@ -13,7 +13,8 @@ import { amountJson } from "../../common/money";
 import { normalize } from "../../common/text";
 import { coverPublicUrl } from "./media";
 import type { BacklogStatus } from "./shared";
-import { findOwnedAlive404, findOwnedIncludingDeleted, type EntryRow } from "./shared";
+import { findAliveEntry404, findEntryIncludingDeleted, type EntryRow } from "./shared";
+import { masterInfo } from "../game/service";
 
 const MAX_SIZE = 100;
 export const normalizeSize = (size: number) => Math.min(Math.max(size, 1), MAX_SIZE);
@@ -86,8 +87,8 @@ function containsIc(column: SQL, keyword: string): SQL {
 }
 
 /** 필터는 join이 아니라 exists — 행이 안 늘어나 count가 맞는다 */
-function predicates(memberId: number, c: SearchCondition): SQL {
-  const w: SQL[] = [sql`b.member_id = ${memberId}`, sql`b.deleted_at is null`];
+function predicates(c: SearchCondition): SQL {
+  const w: SQL[] = [sql`b.deleted_at is null`];
 
   // 표시 이름(한글 오버라이드일 수 있다) **또는 마스터 이름**(IGDB 원제) — `mario`로 `슈퍼 마리오`를 찾는다
   if (c.keyword !== null) {
@@ -150,16 +151,16 @@ function predicates(memberId: number, c: SearchCondition): SQL {
 
 // ───────────── 카드 ─────────────
 
-const ENTRY_COLUMNS = sql`b.id, b.member_id as "memberId", b.game_id as "gameId", b.status, b.display_name as "displayName",
+const ENTRY_COLUMNS = sql`b.id, b.game_id as "gameId", b.status, b.display_name as "displayName",
   b.name_override as "nameOverride", b.released_on_override as "releasedOnOverride", b.released_on_resolved as "releasedOnResolved",
   b.list_price_override_amount as "listPriceOverrideAmount", b.list_price_override_currency as "listPriceOverrideCurrency",
   b.rating, b.play_time_hours as "playTimeHours", b.last_played_on as "lastPlayedOn", b.last_playthrough_id as "lastPlaythroughId",
   b.tag_id as "tagId", b.memo, b.deleted_at as "deletedAt", b.created_at as "createdAt", b.updated_at as "updatedAt",
   b.display_name_sort_key as "displayNameSortKey"`;
 
-export async function search(d: Db, memberId: number, c: SearchCondition, page: number, size: number, sort: BacklogSort) {
+export async function search(d: Db, c: SearchCondition, page: number, size: number, sort: BacklogSort) {
   const p = normalizePage(page), s = normalizeSize(size);
-  const where = predicates(memberId, c);
+  const where = predicates(c);
   const entries = await rows<EntryRow>(d, sql`select ${ENTRY_COLUMNS} from backlog_entry b
     join game gm on gm.id = b.game_id
     where ${where} order by ${orderBy(sort)} limit ${s} offset ${p * s}`);
@@ -168,10 +169,10 @@ export async function search(d: Db, memberId: number, c: SearchCondition, page: 
 }
 
 /** 전량 — 사이드바·폴더. 정렬은 이름순 하나 */
-export async function findAllCards(d: Db, memberId: number) {
+export async function findAllCards(d: Db) {
   const entries = await rows<EntryRow>(d, sql`select ${ENTRY_COLUMNS} from backlog_entry b
     join game gm on gm.id = b.game_id
-    where b.member_id = ${memberId} and b.deleted_at is null order by ${orderBy("name")}`);
+    where b.deleted_at is null order by ${orderBy("name")}`);
   return toCards(d, entries);
 }
 
@@ -269,22 +270,22 @@ async function toCards(d: Db, entries: EntryRow[]) {
 
 // ───────────── 파셋 ─────────────
 
-export async function findFacets(d: Db, memberId: number) {
+export async function findFacets(d: Db) {
   const tags = await rows(d, sql`select t.id, t.name, count(b.id)::int as count, t.color
       from backlog_entry b join tag t on t.id = b.tag_id
-     where b.member_id = ${memberId} and b.deleted_at is null and b.tag_id is not null
+     where b.deleted_at is null and b.tag_id is not null
      group by t.id, t.name, t.sort_order, t.color
      order by t.sort_order asc, t.name asc`);
   // 개인 장르 기준 — 마스터 폴백은 세지 않는다
   const genres = await rows(d, sql`select g.id, g.name, count(distinct l.backlog_entry_id)::int as count
       from backlog_entry_genre l join genre g on g.id = l.genre_id join backlog_entry b on b.id = l.backlog_entry_id
-     where g.member_id = ${memberId} and b.deleted_at is null
+     where b.deleted_at is null
      group by g.id, g.name order by g.name asc`);
   const statuses = await rows(d, sql`select b.status, count(b.id)::int as count from backlog_entry b
-     where b.member_id = ${memberId} and b.deleted_at is null group by b.status order by b.status asc`);
+     where b.deleted_at is null group by b.status order by b.status asc`);
   const devices = await rows(d, sql`select dv.id, dv.label as name, count(distinct p.backlog_entry_id)::int as count
       from playthrough p join backlog_entry b on b.id = p.backlog_entry_id join device dv on dv.id = p.device_id
-     where b.member_id = ${memberId} and b.deleted_at is null and p.device_id is not null
+     where b.deleted_at is null and p.device_id is not null
      group by dv.id, dv.label order by dv.label asc`);
   // 이름에 소속을 붙인다 — `(Steam) Beene`. 에뮬 소속 계정이 빠지지 않게 명시 left join
   const platformAccounts = await rows(d, sql`select pa.id, '(' || coalesce(pl.name, em.name) || ') ' || pa.account_label as name,
@@ -292,7 +293,7 @@ export async function findFacets(d: Db, memberId: number) {
       from acquisition a join platform_account pa on pa.id = a.platform_account_id
       left join platform pl on pl.id = pa.platform_id left join emulator em on em.id = pa.emulator_id
       join backlog_entry b on b.id = a.backlog_entry_id
-     where b.member_id = ${memberId} and b.deleted_at is null and pa.deleted_at is null
+     where b.deleted_at is null and pa.deleted_at is null
      group by pa.id, pa.account_label, pl.name, em.name
      order by coalesce(pl.name, em.name) asc, pa.account_label asc, pa.id asc`);
   return { tags, genres, statuses, devices, platformAccounts };
@@ -300,26 +301,26 @@ export async function findFacets(d: Db, memberId: number) {
 
 // ───────────── 사이드바·휴지통·사전 ─────────────
 
-export function findNames(d: Db, memberId: number) {
+export function findNames(d: Db) {
   return rows<{ entryId: number; displayName: string }>(d, sql`select b.id as "entryId", b.display_name as "displayName"
-      from backlog_entry b where b.member_id = ${memberId} and b.deleted_at is null
+      from backlog_entry b where b.deleted_at is null
      order by lower(b.display_name) asc, b.id asc`);
 }
 
-export async function findDeleted(d: Db, memberId: number, page: number, size: number) {
+export async function findDeleted(d: Db, page: number, size: number) {
   const p = normalizePage(page), s = normalizeSize(size);
   const list = await rows<{ entryId: number; displayName: string; deletedAt: string }>(d, sql`select b.id as "entryId",
          b.display_name as "displayName", b.deleted_at as "deletedAt"
-      from backlog_entry b where b.member_id = ${memberId} and b.deleted_at is not null
+      from backlog_entry b where b.deleted_at is not null
      order by b.deleted_at desc, b.id desc limit ${s} offset ${p * s}`);
   const total = (await one<{ n: number }>(d, sql`select count(b.id)::int as n from backlog_entry b
-     where b.member_id = ${memberId} and b.deleted_at is not null`))!.n;
+     where b.deleted_at is not null`))!.n;
   return pageOf(list.map((x) => ({ ...x, deletedAt: ldt(x.deletedAt) })), p, s, total);
 }
 
 /** 미리보기 — **삭제된 것만** 의미가 있다. 살아 있으면 409 */
-export async function findDeletedDetail(d: Db, memberId: number, entryId: number) {
-  const e = await findOwnedIncludingDeleted(d, memberId, entryId);
+export async function findDeletedDetail(d: Db, entryId: number) {
+  const e = await findEntryIncludingDeleted(d, entryId);
   if (e.deletedAt === null) throw new Conflict(`삭제되지 않은 항목입니다. id=${entryId}`);
   const game = (await one<{ coverImageId: string | null }>(d, sql`select cover_image_id as "coverImageId" from game where id = ${e.gameId}`))!;
   const mine = (await personalGenres(d, [e.id])).get(e.id) ?? [];
@@ -346,9 +347,9 @@ export async function findDeletedDetail(d: Db, memberId: number, entryId: number
  * 개발사·유통사 사전. 표시값 기준이라 두 방 — 오버라이드가 있으면 그것만, 비면 마스터.
  * 정렬은 `caseInsensitive`(안정 정렬), 중복 제거는 대소문자까지 같은 것만
  */
-export async function findCompanies(d: Db, memberId: number) {
+export async function findCompanies(d: Db) {
   const q = (s: SQL) => rows<{ v: string }>(d, s).then((r) => r.map((x) => x.v));
-  const alive = sql`b.member_id = ${memberId} and b.deleted_at is null`;
+  const alive = sql`b.deleted_at is null`;
   const devOverrides = await q(sql`select distinct o.developer as v from backlog_entry b
       join backlog_developer_override o on o.backlog_entry_id = b.id where ${alive}`);
   const pubOverrides = await q(sql`select distinct o.publisher as v from backlog_entry b
@@ -387,14 +388,9 @@ const lower = (c: number) => { const s = String.fromCharCode(c).toLowerCase(); r
 
 // ───────────── 상세 ─────────────
 
-export async function findDetail(d: Db, memberId: number, entryId: number) {
-  const e = await findOwnedAlive404(d, memberId, entryId);
-  const g = (await one<Record<string, unknown> & { id: number }>(d, sql`select id, name, source, released_on as "releasedOn",
-      cover_image_id as "coverImageId", banner_image_id as "bannerImageId", summary, summary_ko as "summaryKo",
-      storyline, storyline_ko as "storylineKo", igdb_rating as "igdbRating", igdb_rating_count as "igdbRatingCount",
-      main_story_hours as "mainStoryHours", main_extra_hours as "mainExtraHours", completionist_hours as "completionistHours",
-      time_to_beat_samples as "timeToBeatSamples", list_price_amount as "listPriceAmount", list_price_currency as "listPriceCurrency"
-      from game where id = ${e.gameId}`))!;
+export async function findDetail(d: Db, entryId: number) {
+  const e = await findAliveEntry404(d, entryId);
+  const master = await masterInfo(d, e.gameId);
   const tagName = e.tagId === null ? null
     : (await one<{ name: string }>(d, sql`select name from tag where id = ${e.tagId}`))?.name ?? null;
 
@@ -402,19 +398,13 @@ export async function findDetail(d: Db, memberId: number, entryId: number) {
       storage_key as "storageKey", location from cover_image where backlog_entry_id = ${entryId}`);
   const coverUrl = cover ? coverPublicUrl(cover) : null;
 
-  const developers = (await gameValues(d, "game_developer", "developer", [g.id])).get(g.id) ?? [];
-  const publishers = (await gameValues(d, "game_publisher", "publisher", [g.id])).get(g.id) ?? [];
-  const masterGenres = (await gameValues(d, "game_master_genre", "genre", [g.id])).get(g.id) ?? [];
-  const releasePlatforms = (await gameValues(d, "game_release_platform", "platform_name", [g.id])).get(g.id) ?? [];
   const devOverrides = (await rows<{ v: string }>(d, sql`select developer as v from backlog_developer_override
       where backlog_entry_id = ${e.id}`)).map((x) => x.v);
   const pubOverrides = (await rows<{ v: string }>(d, sql`select publisher as v from backlog_publisher_override
       where backlog_entry_id = ${e.id}`)).map((x) => x.v);
   const personal = (await personalGenres(d, [e.id])).get(e.id) ?? [];
 
-  const masterPrice = moneyJson(g.listPriceAmount as string | null, g.listPriceCurrency as string | null);
   const overridePrice = moneyJson(e.listPriceOverrideAmount, e.listPriceOverrideCurrency);
-  const masterCover = g.coverImageId as string | null;
 
   const playthroughs = await rows<Record<string, unknown>>(d, sql`select p.id as "playthroughId", p.sequence_no as "sequenceNo",
       p.started_on as "startedOn", p.finished_on as "finishedOn", p.status, p.label,
@@ -447,38 +437,16 @@ export async function findDetail(d: Db, memberId: number, entryId: number) {
     createdAt: ldt(e.createdAt),
     resolved: {
       name: e.displayName,
-      developers: devOverrides.length ? devOverrides : developers,
-      publishers: pubOverrides.length ? pubOverrides : publishers,
-      releasedOn: e.releasedOnOverride ?? (g.releasedOn as string | null),
-      listPrice: overridePrice ?? masterPrice,
-      genres: personal.length ? personal : masterGenres,
+      developers: devOverrides.length ? devOverrides : master.developers,
+      publishers: pubOverrides.length ? pubOverrides : master.publishers,
+      releasedOn: e.releasedOnOverride ?? master.releasedOn,
+      listPrice: overridePrice ?? master.listPrice,
+      genres: personal.length ? personal : master.genres,
       cover: coverUrl !== null ? { source: "PERSONAL", url: coverUrl, imageId: null }
-        : masterCover !== null ? { source: "MASTER", url: null, imageId: masterCover }
+        : master.coverImageId !== null ? { source: "MASTER", url: null, imageId: master.coverImageId }
           : { source: "NONE", url: null, imageId: null },
     },
-    master: {
-      gameId: g.id,
-      name: g.name,
-      developers,
-      publishers,
-      releasedOn: g.releasedOn,
-      listPrice: masterPrice,
-      genres: masterGenres,
-      source: g.source,
-      coverImageId: g.coverImageId,
-      bannerImageId: g.bannerImageId,
-      summary: g.summary,
-      summaryKo: g.summaryKo,
-      storyline: g.storyline,
-      storylineKo: g.storylineKo,
-      igdbRating: amountJson(g.igdbRating as string | null),
-      igdbRatingCount: g.igdbRatingCount,
-      releasePlatforms,
-      mainStoryHours: g.mainStoryHours,
-      mainExtraHours: g.mainExtraHours,
-      completionistHours: g.completionistHours,
-      timeToBeatSamples: g.timeToBeatSamples,
-    },
+    master,
     overrides: {
       name: e.nameOverride,
       developers: devOverrides,

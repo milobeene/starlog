@@ -237,6 +237,8 @@ export interface Profile {
    * 읽을 때는 `lib/palette.ts`의 paletteOf()만 쓴다
    */
   backgroundColors: string[] | null;
+  /** 내 배경 프리셋 (최대 12개, 이름 1~30자 + 색 5개). 없으면 빈 배열. 읽고 쓰는 건 `lib/palette.ts`만 */
+  backgroundPresets: { name: string; colors: string[] }[];
 }
 
 /** 마스터에서 고르는 게 아니라 유형·라벨을 직접 적는다. memo는 마크다운 */
@@ -473,6 +475,8 @@ export interface MemberExport {
     nickname: string | null;
     memo: string | null;
     backgroundColors: string[] | null;
+    /** 형식 4부터 */
+    backgroundPresets: { name: string; colors: string[] }[];
   };
   catalog: {
     platforms: string[];

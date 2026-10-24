@@ -1,19 +1,18 @@
 /**
  * 마스터 게임 (`/api/games`).
  *
- * 회원 식별이 없는 유일한 구역이다 — 마스터는 공용 데이터라 내 것/남의 것이 없다.
  * `/api/admin`이 사라지며 이름·정보 수정·재동기화·삭제가 여기로 합쳐졌다 (1인 앱이라 인가가 없다).
  */
 import { Hono } from "hono";
 import { z } from "zod";
-import type { AppEnv } from "../../http/env";
 import { readBody, violations } from "../../http/body";
 import { pathId, query } from "../../http/params";
 import { money, type Money } from "../../common/money";
 import { opt, zDate, zMoney, zText } from "../../common/schemas";
 import { isJavaBlank } from "../../common/text";
+import { db } from "../../db/client";
 import {
-  deleteGame, masterPage, outdatedGames, registerManual, resyncGame, searchGames, syncMasterInfo, updateGameName,
+  deleteGame, masterInfo, masterPage, outdatedGames, registerManual, resyncGame, searchGames, syncMasterInfo, updateGameName,
 } from "./service";
 
 const zStrList = opt(z.array(zText.nullable()));
@@ -50,7 +49,7 @@ function validateName(name: string | null) {
     .throwIfAny();
 }
 
-export const routes = new Hono<AppEnv>();
+export const routes = new Hono();
 
 /** 검색 — 로컬 수동 등록 + IGDB. 빈 검색어는 IGDB를 안 부른다 */
 routes.get("/api/games", async (c) => {
@@ -70,6 +69,15 @@ routes.get("/api/games/master", async (c) => {
 
 /** 일괄 동기화 대상. 먼저 목록을 주고 승인을 받는다 — 화면이 한 건씩 `/resync`를 부른다 */
 routes.get("/api/games/outdated", async (c) => c.json(await outdatedGames()));
+
+/**
+ * 마스터 정보 한 벌 — 정보 수정 팝업이 지금 값(개발사·유통사·장르)을 미리 채운다.
+ * 고정 경로(`/master`·`/outdated`) 뒤에 건다 — 앞에 걸면 `master`가 `:gameId`로 읽혀 400이 난다
+ */
+routes.get("/api/games/:gameId", async (c) => {
+  const gameId = pathId(c, "gameId");
+  return c.json(await masterInfo(db(), gameId));
+});
 
 /** 수동 등록 (FR-GAME-04). IGDB 키가 없어도 앱이 쓸모 있게 하는 길 */
 routes.post("/api/games", async (c) => {

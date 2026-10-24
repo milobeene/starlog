@@ -1,5 +1,5 @@
 /**
- * 회원 데이터 가져오기·덮어쓰기. 파일 형식은 `dump.ts`.
+ * 데이터 가져오기·덮어쓰기. 파일 형식은 `dump.ts`.
  *
  * ## 순서가 전부다
  * `마스터 게임 → 플랫폼 → 플랫폼 계정 → 기기·에뮬 → 에뮬 계정 → 입력방식 → 구독 → 태그·장르 → (프로필) → 항목 →
@@ -12,7 +12,7 @@
  *
  * 값 컬렉션(개발사·유통사·장르·출시 기종, 항목의 오버라이드)은 id가 없어 INSERT 순서가 상관없다.
  */
-import { and, eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import type { Db } from "../../db/client";
 import {
   acquisition, backlogDeveloperOverride, backlogEntry, backlogEntryGenre, backlogPublisherOverride, coverImage,
@@ -30,7 +30,8 @@ import type { PlatformAccountRow, PlatformRow } from "../platform/service";
 import { ACQUISITION_METHODS, PLAYTHROUGH_STATUSES, deriveState } from "../backlog/shared";
 import { belongsTo } from "../backlog/refs";
 import { FORMAT_VERSION, npe, valueOf, type DumpCatalog, type DumpCover, type DumpEntry, type DumpGame, type DumpMoney, type DumpProfile, type MemberDump } from "./dump";
-import { findMember, profileValues, saveProfile, type MemberRow } from "./query";
+import { presetsValue, profileValues, saveProfile } from "./query";
+import { findProfile, type ProfileRow } from "./profile";
 
 export interface ImportResult { games: number; entries: number; playthroughs: number; acquisitions: number }
 
@@ -60,25 +61,25 @@ const javaJoin = (values: (string | null)[]) => values.map((v) => (v === null ? 
 // ───────────── 가져오기 ─────────────
 
 /**
- * **빈 회원에만 넣는다** — 병합은 409. "같은 항목인가"를 판정할 방법이 없어서다.
+ * **빈 기록에만 넣는다** — 병합은 409. "같은 항목인가"를 판정할 방법이 없어서다.
  * `d`는 트랜잭션이어야 한다 (덮어쓰기는 지운 직후 같은 트랜잭션에서 부른다)
  */
-export async function importInto(d: Db, memberId: number, data: MemberDump): Promise<ImportResult> {
+export async function importInto(d: Db, data: MemberDump): Promise<ImportResult> {
   if (data.entries === null) throw new InvalidInput("가져올 데이터가 비어 있습니다");
-  // 옛 형식(1·2)도 읽는다 — 칸이 는 것뿐이고, 없는 칸은 null(= 플랫폼 계정)로 읽힌다. 위쪽(미래 파일)만 막는다
+  // 옛 형식(1~3)도 읽는다 — 없는 칸은 null(계정이면 플랫폼 계정, 프리셋이면 그대로 둠)로 읽힌다. 위쪽(미래 파일)만 막는다
   const version = data.formatVersion;
   if (version < 1 || version > FORMAT_VERSION) {
     throw new InvalidInput(`지원하지 않는 백업 형식입니다. 이 버전은 ${FORMAT_VERSION}까지 읽습니다 (파일은 ${version})`);
   }
 
-  const m = await findMember(d, memberId);
+  const m = await findProfile(d);
 
   // 삭제된 것까지 센다 — 안 보이는 항목이 남아 있으면 같은 게임이 두 벌이 되어 유니크에 걸린다
-  const [existing] = await d.select({ id: backlogEntry.id }).from(backlogEntry).where(eq(backlogEntry.memberId, memberId)).limit(1);
+  const [existing] = await d.select({ id: backlogEntry.id }).from(backlogEntry).limit(1);
   if (existing) throw new Conflict("이미 데이터가 있는 계정입니다. 빈 계정에만 가져올 수 있습니다");
 
   const games = await importGames(d, data.games);
-  const catalog = await importCatalog(d, m, data.catalog);
+  const catalog = await importCatalog(d, data.catalog);
   await importProfile(d, m, data.profile);
 
   let playthroughs = 0;
@@ -87,7 +88,7 @@ export async function importInto(d: Db, memberId: number, data: MemberDump): Pro
     if (item === null) npe("entry");
     const g = games.get(item.gameKey as string);
     if (!g) throw new InvalidInput(`항목이 가리키는 게임이 백업에 없습니다: ${item.gameKey}`);
-    await importEntry(d, m, g, item, catalog);
+    await importEntry(d, g, item, catalog);
     playthroughs += item.playthroughs?.length ?? 0;
     acquisitions += item.acquisitions?.length ?? 0;
   }
@@ -98,7 +99,7 @@ export async function importInto(d: Db, memberId: number, data: MemberDump): Pro
 
 // ───────────── 마스터 게임 ─────────────
 
-/** 이미 있으면 그대로 쓴다 — 마스터는 공용 데이터라 다른 회원이 담은 행을 그대로 가리키는 게 맞다 */
+/** 이미 있으면 그대로 쓴다 — 마스터는 항목과 따로 사는 데이터라 덮어쓰기에서도 안 지운다 */
 async function importGames(d: Db, exported: (DumpGame | null)[] | null): Promise<Map<string, GameRow>> {
   const byKey = new Map<string, GameRow>();
   for (const item of exported ?? []) {
@@ -194,23 +195,23 @@ interface Catalog {
 const accountKey = (kind: "P" | "E", ownerName: string | null, label: string | null) => `${kind}\u0000${ownerName}\u0000${label}`;
 
 /**
- * ⚠️ **기본 카탈로그 시드(`seedDefaultCatalog`)와 짝이 맞아야 한다.** 주인 계정은 기본 플랫폼·입력방식을
+ * ⚠️ **기본 카탈로그 시드(`seedDefaultCatalog`)와 짝이 맞아야 한다.** 프로필은 기본 플랫폼·입력방식을
  * 늘 갖고 시작하므로 그 둘만 "있으면 재사용"이다 (삭제된 행이어도 그대로 쓴다 — 유니크가 삭제된 행도 본다).
- * 나머지는 빈 계정에 없으니 무조건 만든다
+ * 나머지는 빈 기록에 없으니 무조건 만든다
  */
-async function importCatalog(d: Db, m: MemberRow, data: DumpCatalog | null): Promise<Catalog> {
+async function importCatalog(d: Db, data: DumpCatalog | null): Promise<Catalog> {
   const c: Catalog = {
     platforms: new Map(), accounts: new Map(), accountsByOwner: new Map(), devices: new Map(),
     emulators: new Map(), inputMethods: new Map(), subscriptions: new Map(), tags: new Map(), genres: new Map(),
   };
   if (data === null) return c;
   const now = nowKst();
-  const stamp = () => ({ memberId: m.id, createdAt: now, updatedAt: now });
+  const stamp = () => ({ createdAt: now, updatedAt: now });
 
   for (const name of data.platforms ?? []) {
     // 이름이 null이면 조회 없이 만들러 가서 `require`에서 400이 난다
     const [found] = name === null ? [] : await d.select().from(platform)
-      .where(and(eq(platform.memberId, m.id), eq(platform.name, name)));
+      .where(eq(platform.name, name));
     c.platforms.set(name, found ?? (await d.insert(platform)
       .values({ ...stamp(), name: require(name, "플랫폼 이름은 비울 수 없습니다") }).returning())[0]!);
   }
@@ -263,7 +264,7 @@ async function importCatalog(d: Db, m: MemberRow, data: DumpCatalog | null): Pro
   // 입력방식도 기본 시드와 부딪힌다 (Keyboard & Mouse 등) — 플랫폼과 같은 규칙
   for (const name of data.inputMethods ?? []) {
     const [found] = name === null ? [] : await d.select().from(inputMethod)
-      .where(and(eq(inputMethod.memberId, m.id), eq(inputMethod.name, name)));
+      .where(eq(inputMethod.name, name));
     c.inputMethods.set(name, found ?? (await d.insert(inputMethod)
       .values({ ...stamp(), name: require(name, "입력 방식 이름은 비울 수 없습니다") }).returning())[0]!);
   }
@@ -299,11 +300,13 @@ async function importCatalog(d: Db, m: MemberRow, data: DumpCatalog | null): Pro
   return c;
 }
 
-/** 이메일은 안 건드린다 — 로그인 아이디라 백업이 덮어쓸 값이 아니다 */
-async function importProfile(d: Db, m: MemberRow, p: DumpProfile | null) {
+/** 옛 파일(형식 3 이하)의 이메일은 버린다. 프리셋은 파일에 있을 때만 갈아 넣는다 (프로필 수정과 같은 규칙) */
+async function importProfile(d: Db, m: ProfileRow, p: DumpProfile | null) {
   if (p === null) return;
   const colors = p.backgroundColors === null ? null : javaJoin(p.backgroundColors);
-  await saveProfile(d, m, profileValues(p.nickname, p.memo, colors));
+  const v = profileValues(p.nickname, p.memo, colors);
+  const presets = p.backgroundPresets;
+  await saveProfile(d, m, presets === undefined || presets === null ? v : { ...v, backgroundPresets: presetsValue(presets) });
 }
 
 // ───────────── 항목 ─────────────
@@ -352,11 +355,11 @@ function accountOf(c: Catalog, label: string | null, platformName: string | null
   return exact ?? c.accounts.get(label) ?? null;
 }
 
-async function importEntry(d: Db, m: MemberRow, g: GameRow, item: DumpEntry, c: Catalog) {
+async function importEntry(d: Db, g: GameRow, item: DumpEntry, c: Catalog) {
   const now = nowKst();
   // 담는 순간은 위시리스트, 표시값은 마스터에서
   const [e] = await d.insert(backlogEntry).values({
-    memberId: m.id, gameId: g.id, status: "WISHLIST",
+    gameId: g.id, status: "WISHLIST",
     displayName: g.name, displayNameSortKey: sortKey(g.name), releasedOnResolved: g.releasedOn,
     createdAt: now, updatedAt: now,
   }).returning({ id: backlogEntry.id });
@@ -485,38 +488,37 @@ async function attachCover(d: Db, entryId: number, cover: DumpCover, now: string
 /**
  * 지우고 붓는다. **한 트랜잭션이다** — 중간에 실패하면 옛 데이터가 그대로 남는다.
  * 되돌릴 수 없어서 부르는 쪽(일렉트론)이 직전에 로컬 세이브파일로 뽑아둔다.
- * 마스터 게임은 안 지운다 — 회원 소유가 아니라 공용이다
+ * 마스터 게임은 안 지운다 — 항목이 없어도 남는 데이터다(게임 마스터 화면)
  */
-export async function replace(d: Db, memberId: number, data: MemberDump): Promise<ImportResult> {
-  await wipe(d, memberId);
-  // 같은 트랜잭션이라 "빈 계정인가" 검사가 방금 지운 결과를 본다
-  return importInto(d, memberId, data);
+export async function replace(d: Db, data: MemberDump): Promise<ImportResult> {
+  await wipe(d);
+  // 같은 트랜잭션이라 "빈 기록인가" 검사가 방금 지운 결과를 본다
+  return importInto(d, data);
 }
 
-/** 자식 → 부모 순서. 순서 근거는 V1의 FK다 */
-async function wipe(d: Db, memberId: number) {
+/** 자식 → 부모 순서. 순서 근거는 V1의 FK다. 프로필 행은 남긴다 (가져오기가 값을 덮는다) */
+async function wipe(d: Db) {
   // 순환 참조(항목 ↔ 회차의 lastPlaythrough)를 먼저 끊는다. 벌크라 updatedAt을 직접 쓴다
-  await d.update(backlogEntry).set({ lastPlaythroughId: null, updatedAt: nowKst() }).where(eq(backlogEntry.memberId, memberId));
+  await d.update(backlogEntry).set({ lastPlaythroughId: null, updatedAt: nowKst() });
 
-  const mine = d.select({ id: backlogEntry.id }).from(backlogEntry).where(eq(backlogEntry.memberId, memberId));
-  await d.delete(backlogEntryGenre).where(inArray(backlogEntryGenre.backlogEntryId, mine));
-  await d.delete(coverImage).where(inArray(coverImage.backlogEntryId, mine));
-  await d.delete(acquisition).where(inArray(acquisition.backlogEntryId, mine));
-  await d.delete(playthrough).where(inArray(playthrough.backlogEntryId, mine));
+  await d.delete(backlogEntryGenre);
+  await d.delete(coverImage);
+  await d.delete(acquisition);
+  await d.delete(playthrough);
   // 개발사·유통사 오버라이드 테이블도 항목을 가리키는 FK라 항목보다 먼저
-  await d.delete(backlogDeveloperOverride).where(inArray(backlogDeveloperOverride.backlogEntryId, mine));
-  await d.delete(backlogPublisherOverride).where(inArray(backlogPublisherOverride.backlogEntryId, mine));
-  const entries = await d.delete(backlogEntry).where(eq(backlogEntry.memberId, memberId)).returning({ id: backlogEntry.id });
+  await d.delete(backlogDeveloperOverride);
+  await d.delete(backlogPublisherOverride);
+  const entries = await d.delete(backlogEntry).returning({ id: backlogEntry.id });
 
   // 항목을 지운 뒤에야 지울 수 있는 것들. 삭제된(소프트) 행까지 전부
-  await d.delete(platformAccount).where(eq(platformAccount.memberId, memberId));
-  await d.delete(platform).where(eq(platform.memberId, memberId));
-  await d.delete(device).where(eq(device.memberId, memberId));
-  await d.delete(emulator).where(eq(emulator.memberId, memberId));
-  await d.delete(inputMethod).where(eq(inputMethod.memberId, memberId));
-  await d.delete(subscription).where(eq(subscription.memberId, memberId));
-  await d.delete(genre).where(eq(genre.memberId, memberId));
-  await d.delete(tag).where(eq(tag.memberId, memberId));
+  await d.delete(platformAccount);
+  await d.delete(platform);
+  await d.delete(device);
+  await d.delete(emulator);
+  await d.delete(inputMethod);
+  await d.delete(subscription);
+  await d.delete(genre);
+  await d.delete(tag);
 
-  console.log(`덮어쓰기 전 정리 — 지운 항목 ${entries.length}건. memberId=${memberId}`);
+  console.log(`덮어쓰기 전 정리 — 지운 항목 ${entries.length}건`);
 }

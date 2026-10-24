@@ -26,7 +26,7 @@ contextBridge.exposeInMainWorld("starlog", {
     inspectDataRoot: (dir) => ipcRenderer.invoke("settings:inspectDataRoot", dir),
   },
   /**
-   * 배경 색 캐시·프리셋 (프론트 F4). 입구가 백엔드 없이 마지막 색으로 뜨게 한다.
+   * 배경 색 캐시 (프론트 F4). 입구가 백엔드 없이 마지막 색으로 뜨게 한다 (프리셋은 서버 프로필에 있다).
    * `get`은 동기 — 첫 프레임 전에 알아야 기본색이 번쩍이지 않는다
    */
   background: {

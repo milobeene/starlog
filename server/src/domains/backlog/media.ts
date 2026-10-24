@@ -23,7 +23,7 @@ import {
 } from "../../common/storage/thumbs";
 import { recordApiCall } from "../system/service";
 import { assignMediaFolder, mediaSlugGiven, uniqueMediaSlug } from "../game/service";
-import { findOwned, findOwnedAlive404 } from "./shared";
+import { findAliveEntry, findAliveEntry404 } from "./shared";
 import { saveIfChanged } from "../../db/changes";
 
 const MB = (n: number) => Math.floor(n / 1024 / 1024);
@@ -113,7 +113,12 @@ export function coverPublicUrl(cover: { entryId: number; storageKey: string; loc
   return fileStorage().publicUrl(cover.storageKey);
 }
 
-const keyPrefix = (memberId: number, entryId: number) => `covers/${memberId}/${entryId}/`;
+/**
+ * 항목별 업로드 경로. V14 전에는 `covers/<회원>/<항목>/`이었다 — 이미 올라간 키는 커버 행이 통째로 들고 있어
+ * 그대로 읽힌다. 새 모양에 `entry-`를 붙인 이유: `covers/<항목>/`로 두면 항목 1의 접두사가
+ * 옛 키 `covers/1/…` 전부와 겹쳐 남의 옛 커버를 붙일 수 있다
+ */
+const keyPrefix = (entryId: number) => `covers/entry-${entryId}/`;
 
 /**
  * 확장자 — **검증과 같은 문자열(strip한 이름)에서** 뽑는다. 원문을 쓰면 `"cover.png "`에서
@@ -124,22 +129,22 @@ const coverExtension = (fileName: string) => { const n = normalize(fileName)!; r
 interface Replaced { storageKey: string; location: CoverLocation }
 
 /** 0단계 — 어디에 어떻게 올릴지. EXTERNAL이면 허가증까지 함께 준다 */
-export async function prepareCover(memberId: number, entryId: number, fileName: string | null, sizeBytes: number) {
-  await db().transaction((tx) => findOwned(tx, memberId, entryId));
+export async function prepareCover(entryId: number, fileName: string | null, sizeBytes: number) {
+  await db().transaction((tx) => findAliveEntry(tx, entryId));
   const contentType = coverContentType(fileName, sizeBytes);
   if (coverTarget() === "LOCAL") {
     return { mode: "LOCAL", uploadUrl: null, storageKey: null, contentType, expiresInSeconds: null };
   }
-  const storageKey = keyPrefix(memberId, entryId) + crypto.randomUUID() + "." + coverExtension(fileName!);
+  const storageKey = keyPrefix(entryId) + crypto.randomUUID() + "." + coverExtension(fileName!);
   const upload = await fileStorage().presignUpload(storageKey, contentType, sizeBytes, STORAGE_LIMITS.uploadUrlTtlSeconds);
   return { mode: "EXTERNAL", uploadUrl: upload.uploadUrl, storageKey: upload.storageKey, contentType, expiresInSeconds: upload.expiresInSeconds };
 }
 
 /** 커버 행 붙이기 — 있으면 행을 갈아끼우지 않고 값만 바꾼다 (유니크 제약 아래 DELETE+INSERT 순서 함정) */
-async function attach(memberId: number, entryId: number, storageKey: string, contentType: string,
+async function attach(entryId: number, storageKey: string, contentType: string,
                       sizeBytes: number, location: CoverLocation): Promise<Replaced | null> {
   return db().transaction(async (tx) => {
-    await findOwned(tx, memberId, entryId);
+    await findAliveEntry(tx, entryId);
     const [existing] = await tx.select().from(coverImage).where(eq(coverImage.backlogEntryId, entryId));
     if (existing) {
       await saveIfChanged(tx, existing, { storageKey, contentType, sizeBytes, location },
@@ -160,12 +165,12 @@ export async function removeFile(target: Replaced) {
 }
 
 /** EXTERNAL 확정. 클라이언트의 "올렸어요"를 안 믿고 HEAD와 매직 넘버로 실물을 본다 */
-export async function confirmExternalCover(memberId: number, entryId: number, rawKey: string | null) {
-  await db().transaction((tx) => findOwned(tx, memberId, entryId));
+export async function confirmExternalCover(entryId: number, rawKey: string | null) {
+  await db().transaction((tx) => findAliveEntry(tx, entryId));
   const storageKey = normalize(rawKey);
   if (storageKey === null) throw new InvalidInput("storageKey는 필수입니다");
-  // 남의 key(다른 경로)를 자기 항목 커버로 붙이는 것을 막는다
-  if (!storageKey.startsWith(keyPrefix(memberId, entryId))) throw new InvalidInput("이 항목의 업로드 경로가 아닙니다");
+  // 다른 항목의 key를 이 항목 커버로 붙이는 것을 막는다
+  if (!storageKey.startsWith(keyPrefix(entryId))) throw new InvalidInput("이 항목의 업로드 경로가 아닙니다");
 
   const stored = await fileStorage().head(storageKey);    // 미설정이면 여기서 502 — 기록 전에 던진다
   await recordApiCall("STORAGE", "head", stored !== null);
@@ -176,24 +181,24 @@ export async function confirmExternalCover(memberId: number, entryId: number, ra
   const contentType = coverContentType(storageKey, stored.sizeBytes);
   validateStoredCover(stored.sizeBytes, head, contentType);
 
-  const previous = await attach(memberId, entryId, storageKey, contentType, stored.sizeBytes, "EXTERNAL");
+  const previous = await attach(entryId, storageKey, contentType, stored.sizeBytes, "EXTERNAL");
   // PUT 재시도로 같은 key가 다시 오면 방금 붙인 객체를 지우게 된다 — 같은 key는 건너뛴다
   if (previous && !(previous.location === "EXTERNAL" && previous.storageKey === storageKey)) await removeFile(previous);
 }
 
 /** LOCAL 저장 — 바이트가 백엔드를 지나간다 (왕복 셋 → 하나) */
-export async function saveLocalCover(memberId: number, entryId: number, fileName: string | null, bytes: Uint8Array) {
-  await db().transaction((tx) => findOwned(tx, memberId, entryId));
+export async function saveLocalCover(entryId: number, fileName: string | null, bytes: Uint8Array) {
+  await db().transaction((tx) => findAliveEntry(tx, entryId));
   const contentType = coverContentType(fileName, bytes.length);
   validateStoredCover(bytes.length, bytes.subarray(0, MAGIC_LENGTH), contentType);
   const stored = localSave(coversDir(), bytes, coverExtension(fileName!));
-  const previous = await attach(memberId, entryId, stored, contentType, bytes.length, "LOCAL");
+  const previous = await attach(entryId, stored, contentType, bytes.length, "LOCAL");
   if (previous) await removeFile(previous);
 }
 
-export async function readLocalCover(memberId: number, entryId: number) {
+export async function readLocalCover(entryId: number) {
   const cover = await db().transaction(async (tx): Promise<CoverRow | undefined> => {
-    await findOwned(tx, memberId, entryId);
+    await findAliveEntry(tx, entryId);
     const [row] = await tx.select().from(coverImage).where(eq(coverImage.backlogEntryId, entryId));
     return row;
   });
@@ -202,9 +207,9 @@ export async function readLocalCover(memberId: number, entryId: number) {
 }
 
 /** 삭제 — 행을 지우고(커밋) 파일을 지운다. 최악이 고아 파일이다 (K-4) */
-export async function deleteCover(memberId: number, entryId: number) {
+export async function deleteCover(entryId: number) {
   const target = await db().transaction(async (tx): Promise<Replaced | null> => {
-    await findOwned(tx, memberId, entryId);
+    await findAliveEntry(tx, entryId);
     const [cover] = await tx.select().from(coverImage).where(eq(coverImage.backlogEntryId, entryId));
     if (!cover) return null;
     await tx.delete(coverImage).where(eq(coverImage.id, cover.id));
@@ -222,8 +227,8 @@ export async function deleteCover(memberId: number, entryId: number) {
  * @param create  없으면 이름을 정할지. 목록·읽기는 안 정한다
  * @param persist 칸에 적은 값을 저장할지. 목록·읽기는 저장하지 않는다 (읽기 요청이 DB를 바꾸지 않게)
  */
-async function folderOf(d: Db, memberId: number, entryId: number, create: boolean, persist: boolean): Promise<string | null> {
-  const entry = await findOwnedAlive404(d, memberId, entryId);
+async function folderOf(d: Db, entryId: number, create: boolean, persist: boolean): Promise<string | null> {
+  const entry = await findAliveEntry404(d, entryId);
   const [g] = await d.select({ id: game.id, name: game.name, mediaFolder: game.mediaFolder }).from(game).where(eq(game.id, entry.gameId));
   if (g!.mediaFolder !== null) return mediaFolder(g!.mediaFolder);
 
@@ -289,8 +294,8 @@ function describe(entryId: number, folder: string, name: string, st: fs.BigIntSt
   };
 }
 
-export async function listScreenshots(memberId: number, entryId: number) {
-  const folder = await db().transaction((tx) => folderOf(tx, memberId, entryId, false, false));
+export async function listScreenshots(entryId: number) {
+  const folder = await db().transaction((tx) => folderOf(tx, entryId, false, false));
   if (folder === null) return [];
   const names = localList(folder);
   pruneOrphans(folder, new Set(names));
@@ -312,16 +317,16 @@ function nextName(folder: string, extension: string): string {
 }
 
 /**
- * 한 장 저장 (영상도 같은 문). **검증이 소유권보다 먼저다** — 기존 오류 우선순위 유지.
+ * 한 장 저장 (영상도 같은 문). **검증이 항목 확인보다 먼저다** — 기존 오류 우선순위 유지.
  * @param takenAtMillis 원본의 수정시각. 파일에 심어야 "찍은 순서"로 정렬된다
  */
-export async function saveScreenshot(memberId: number, entryId: number, fileName: string | null,
+export async function saveScreenshot(entryId: number, fileName: string | null,
                                      bytes: Uint8Array, takenAtMillis: number | null) {
   const contentType = mediaContentType(fileName, bytes.length);
   if (!magicMatches(bytes.subarray(0, MAGIC_LENGTH), contentType)) throw new InvalidInput("파일 내용이 형식과 맞지 않습니다");
 
   const saved = await db().transaction(async (tx) => {
-    const folder = (await folderOf(tx, memberId, entryId, true, true))!;
+    const folder = (await folderOf(tx, entryId, true, true))!;
     // 원문에서 마지막 점 뒤 (검증은 strip한 이름이었다)
     const raw = fileName!;
     const extension = normalize(raw.slice(raw.lastIndexOf(".") + 1))?.toLowerCase() ?? "";
@@ -346,12 +351,12 @@ export async function saveScreenshot(memberId: number, entryId: number, fileName
 }
 
 /** 원본 경로 — 바이트가 아니라 경로를 준다 (영상 200MB, Range 재생) */
-export async function resolveScreenshot(memberId: number, entryId: number, fileName: string): Promise<string> {
-  return (await locate(memberId, entryId, fileName)).file;
+export async function resolveScreenshot(entryId: number, fileName: string): Promise<string> {
+  return (await locate(entryId, fileName)).file;
 }
 
-async function locate(memberId: number, entryId: number, fileName: string) {
-  const folder = await db().transaction((tx) => folderOf(tx, memberId, entryId, false, false));
+async function locate(entryId: number, fileName: string) {
+  const folder = await db().transaction((tx) => folderOf(tx, entryId, false, false));
   // 썸네일 폴더 안은 스크린샷이 아니다 — 없는 것과 같게
   if (folder === null || pointsIntoThumbs(fileName) || !localExists(folder, fileName)) {
     throw new InvalidInput(`스크린샷이 없습니다: ${fileName}`);
@@ -363,8 +368,8 @@ async function locate(memberId: number, entryId: number, fileName: string) {
  * 썸네일 경로. 없으면 **이 요청에서** 만든다 (줄 서서, 한 장만). 못 만들면 404 — 화면은 원본으로 물러난다.
  * 원본이 없으면 원본 조회와 같은 400
  */
-export async function resolveThumb(memberId: number, entryId: number, fileName: string): Promise<string> {
-  const { file } = await locate(memberId, entryId, fileName);
+export async function resolveThumb(entryId: number, fileName: string): Promise<string> {
+  const { file } = await locate(entryId, fileName);
   const kind = mediaKindOf(fileName);
   const thumb = kind === null ? null : await ensureThumb(file, kind === "IMAGE" ? "image" : "video");
   if (thumb === null) throw new NotFound(`썸네일이 없습니다: ${fileName}`);
@@ -375,10 +380,10 @@ export async function resolveThumb(memberId: number, entryId: number, fileName: 
  * 여러 장. **실제로 지운 개수**를 센다 — 사람이 폴더를 직접 만지므로 요청 수와 다를 수 있다.
  * 목록에 null이 있으면 아무것도 안 지우고 400 (고친 버그 18, `docs/v2-plan.md`)
  */
-export async function deleteScreenshots(memberId: number, entryId: number, fileNames: (string | null)[]) {
+export async function deleteScreenshots(entryId: number, fileNames: (string | null)[]) {
   if (fileNames.some((n) => n === null)) throw new InvalidInput("파일 이름은 필수입니다");
   return db().transaction(async (tx) => {
-    const folder = await folderOf(tx, memberId, entryId, false, true);
+    const folder = await folderOf(tx, entryId, false, true);
     if (folder === null) return 0;
     let deleted = 0;
     for (const name of fileNames) {
@@ -392,8 +397,8 @@ export async function deleteScreenshots(memberId: number, entryId: number, fileN
 }
 
 /** 탐색기로 열 경로. **여기서 폴더를 만든다** — 열어보려는 이유가 대개 직접 넣으려는 것이다 */
-export async function screenshotFolderPath(memberId: number, entryId: number): Promise<string> {
-  const folder = await db().transaction((tx) => folderOf(tx, memberId, entryId, true, true));
+export async function screenshotFolderPath(entryId: number): Promise<string> {
+  const folder = await db().transaction((tx) => folderOf(tx, entryId, true, true));
   try {
     fs.mkdirSync(folder!, { recursive: true });
   } catch (e) {
@@ -403,8 +408,8 @@ export async function screenshotFolderPath(memberId: number, entryId: number): P
 }
 
 /** 일렉트론이 클립보드·저장에 쓸 실제 경로. 경로는 서버가 정한다 — 화면이 준 경로를 믿지 않으려고 */
-export async function screenshotFilePath(memberId: number, entryId: number, fileName: string): Promise<string> {
-  return path.resolve((await locate(memberId, entryId, fileName)).file);
+export async function screenshotFilePath(entryId: number, fileName: string): Promise<string> {
+  return path.resolve((await locate(entryId, fileName)).file);
 }
 
 // ───────────── 갤러리 (게임 전체) ─────────────
@@ -417,12 +422,12 @@ interface Owned { entryId: number; gameId: number; name: string; mediaFolder: st
  * 내 살아 있는 항목마다 폴더 하나. `folderOf`와 같은 규칙인데 **한 번의 조회로** —
  * 칸이 빈 게임은 이름으로 찾아보되 저장하지 않는다 (읽기 요청이 DB를 바꾸지 않게)
  */
-async function ownedFolders(memberId: number) {
+async function entryFolders() {
   const { owned, owners } = await db().transaction(async (tx) => ({
     owned: await rows<Owned>(tx, sql`select b.id as "entryId", g.id as "gameId", g.name, g.media_folder as "mediaFolder",
         b.display_name as "displayName"
       from backlog_entry b join game g on g.id = b.game_id
-      where b.member_id = ${memberId} and b.deleted_at is null
+      where b.deleted_at is null
       order by b.display_name_sort_key, b.id`),
     owners: await rows<{ id: number; mediaFolder: string }>(tx,
       sql`select id, media_folder as "mediaFolder" from game where media_folder is not null`),
@@ -447,11 +452,11 @@ async function ownedFolders(memberId: number) {
  * 파일을 열지 않는다 (stat만). 수천 장이어도 폴더 수 × readdir + 파일 수 × stat 두 번이다.
  * `games`는 거르기 전 전체 — 위쪽 고르기 목록이 지금 필터와 상관없이 같은 게임을 보여야 한다
  */
-export async function listGallery(memberId: number, entryId: number | null, kind: GalleryKind) {
-  if (entryId !== null) await db().transaction((tx) => findOwnedAlive404(tx, memberId, entryId));
+export async function listGallery(entryId: number | null, kind: GalleryKind) {
+  if (entryId !== null) await db().transaction((tx) => findAliveEntry404(tx, entryId));
   const games: { entryId: number; gameName: string; imageCount: number; videoCount: number }[] = [];
   const items: (ReturnType<typeof describe> & { entryId: number; gameName: string; kind: MediaKind; mtimeNs: bigint })[] = [];
-  for (const { entry, folder } of await ownedFolders(memberId)) {
+  for (const { entry, folder } of await entryFolders()) {
     const names = localList(folder);
     pruneOrphans(folder, new Set(names));
     let images = 0, videos = 0;

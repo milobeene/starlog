@@ -6,7 +6,9 @@
  * (docs/web-only-inventory.md §5 규칙 4).
  */
 
+import { api } from "@/lib/api";
 import { getBridge } from "@/lib/desktop";
+import type { MeResponse } from "@/lib/types";
 
 /** 한강 노을 (2026-08-26). 셰이더 주석에 후보 팔레트 여섯 벌의 기록이 남아 있다 */
 export const DEFAULT_PALETTE = [
@@ -106,40 +108,25 @@ export function rememberPalette(colors: string[] | null): void {
 }
 
 /*
- * ⚠️ 프리셋 저장소 — 임시다. **프로필(서버)에 필드가 없어서** 일렉트론 settings.json에 둔다
- * (브라우저 개발에선 localStorage). 세이브파일이 달라도 프리셋은 공유되고 내보내기에도 안 실린다.
- * 서버에 `backgroundPresets`가 생기면 이 두 함수만 갈아끼우면 된다
+ * 프리셋 저장소 — 프로필(`GET /api/me`의 `backgroundPresets`)이다. 세이브파일·클라우드를 따라다니고 내보내기에도 실린다.
+ * 저장은 프로필 수정(PUT)에 얹는데, 그 경로는 닉네임·메모·색을 **통째로** 갈아 넣는다 —
+ * 그래서 지금 **저장된** 값을 받아 그대로 돌려준다. 편집 중인 색은 아직 저장 전이라 싣지 않는다
  */
-const PRESET_KEY = "starlog.palettePresets";
-
-export function loadPresets(): SavedPalette[] {
-  const bridge = getBridge()?.background;
-  let raw: unknown;
-  if (bridge) raw = bridge.get().presets;
-  else {
-    try {
-      raw = JSON.parse(localStorage.getItem(PRESET_KEY) ?? "[]");
-    } catch {
-      raw = [];
-    }
-  }
-  return Array.isArray(raw)
-    ? raw.filter(
-        (p): p is SavedPalette => !!p && typeof p.name === "string" && isFive((p as SavedPalette).colors),
-      )
-    : [];
+export async function loadPresets(): Promise<SavedPalette[]> {
+  const { profile } = await api.get<MeResponse>("/api/me");
+  return (profile.backgroundPresets ?? []).filter(
+    (p): p is SavedPalette => !!p && typeof p.name === "string" && isFive(p.colors),
+  );
 }
 
-export function storePresets(presets: SavedPalette[]): void {
-  const bridge = getBridge()?.background;
-  if (bridge) bridge.set({ presets });
-  else {
-    try {
-      localStorage.setItem(PRESET_KEY, JSON.stringify(presets));
-    } catch {
-      /* 저장 못 해도 이번 화면에선 쓸 수 있다 */
-    }
-  }
+export async function storePresets(presets: SavedPalette[]): Promise<void> {
+  const { profile } = await api.get<MeResponse>("/api/me");
+  await api.put("/api/me/profile", {
+    nickname: profile.nickname,
+    memo: profile.memo,
+    backgroundColors: (profile.backgroundColors ?? []).join(","),
+    backgroundPresets: presets,
+  });
 }
 
 /** 서버에 보낼 형태. 기본값과 같으면 **null로 보내 "안 고름"으로 되돌린다** */

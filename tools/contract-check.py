@@ -9,11 +9,10 @@
 Jackson 직렬화·중첩·@JsonInclude까지 그대로 드러나기 때문이다.
 
 사용법:
-    1) 백엔드를 dev 프로필로 띄운다 (X-Member-Id 헤더 인증이 필요하다)
-    2) python3 tools/contract-check.py
+    1) 백엔드를 실데이터로 띄운다 (cd server && npm run dev -- --fixture)
+    2) python3 tools/contract-check.py [포트]
 
 새 엔드포인트를 만들면 아래 ENDPOINTS에 한 줄 추가한다.
-관리자 경로는 ADMIN 계정이 없으면 403이라 건너뛴다 — 그건 DTO를 눈으로 대조할 것
 """
 import json, re, subprocess, sys, pathlib
 
@@ -31,14 +30,15 @@ ENDPOINTS = [
     ("/api/backlog/facets",        "FacetsResponse",   ""),
     ("/api/backlog/names",         "BacklogName",      "[]"),
     ("/api/backlog/companies",     "CompanyDictionary",""),
-    ("/api/backlog/2",             "BacklogDetail",    ""),
-    ("/api/backlog/2",             "ResolvedInfo",     "resolved"),
-    ("/api/backlog/2",             "CoverInfo",        "resolved.cover"),
-    ("/api/backlog/2",             "MasterInfo",       "master"),
-    ("/api/backlog/2",             "OverrideInfo",     "overrides"),
-    ("/api/backlog/2",             "PersonalRecord",   "personalRecord"),
-    ("/api/backlog/2",             "Playthrough",      "playthroughs[]"),
-    ("/api/backlog/2",             "Acquisition",      "acquisitions[]"),
+    ("/api/backlog/{entry}",             "BacklogDetail",    ""),
+    ("/api/backlog/{entry}",             "ResolvedInfo",     "resolved"),
+    ("/api/backlog/{entry}",             "CoverInfo",        "resolved.cover"),
+    ("/api/backlog/{entry}",             "MasterInfo",       "master"),
+    ("/api/games/{game}",          "MasterInfo",       ""),
+    ("/api/backlog/{entry}",             "OverrideInfo",     "overrides"),
+    ("/api/backlog/{entry}",             "PersonalRecord",   "personalRecord"),
+    ("/api/backlog/{entry}",             "Playthrough",      "playthroughs[]"),
+    ("/api/backlog/{entry}",             "Acquisition",      "acquisitions[]"),
     ("/api/games?q=celeste",       "GameSearchResult", "[]"),
     ("/api/stats/genres",          "GenreDistribution","[]"),
     ("/api/stats/playtime",        "PlaytimeStats",    ""),
@@ -53,7 +53,7 @@ ENDPOINTS = [
     ("/api/games/master?size=1",   "PageResponse",     ""),
     ("/api/games/master?size=1",   "GameMaster",       "items[]"),
     # v1.0 6·7단계 — 로컬 저장 경로. 커버는 위치에 따라 응답 모양이 갈린다
-    ("/api/backlog/2/screenshots", "ScreenshotResponse", "[]"),
+    ("/api/backlog/{entry}/screenshots", "ScreenshotResponse", "[]"),
 ]
 
 def parse_interfaces(text):
@@ -79,7 +79,7 @@ def parse_interfaces(text):
 
 def fetch(path):
     raw = subprocess.run(
-        ["curl", "-s", f"{BASE}{path}", "-H", "X-Member-Id: 1"],
+        ["curl", "-s", f"{BASE}{path}"],
         capture_output=True, text=True).stdout
     try: return json.loads(raw)
     except Exception: return None
@@ -97,9 +97,16 @@ def dig(data, path):
     return data
 
 ifaces = parse_interfaces(TYPES.read_text())
+
+# 상세 대조용 id — 번호를 박아 두면 그 항목이 없는 DB에서 조용히 "건너뜀"이 된다. 첫 카드에서 고른다
+_first = (fetch("/api/backlog?size=1") or {}).get("items") or [{}]
+_entry = _first[0].get("entryId")
+_detail = fetch(f"/api/backlog/{_entry}") if _entry is not None else None
+IDS = {"entry": _entry, "game": ((_detail or {}).get("master") or {}).get("gameId")}
 problems, checked, skipped = [], 0, []
 
 for path, iface, sub in ENDPOINTS:
+    path = path.format(**IDS)
     if iface not in ifaces:
         problems.append((iface, path, "타입 없음", f"types.ts에 {iface} 인터페이스가 없다"))
         continue

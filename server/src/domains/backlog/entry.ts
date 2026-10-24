@@ -1,33 +1,31 @@
 /**
  * 항목 쓰기. 항목에 붙는 태그·장르는 tag 도메인(`changeTag`·`replaceGenres`)이 맡는다.
  */
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import type { Db } from "../../db/client";
 import {
   acquisition, backlogDeveloperOverride, backlogEntry, backlogEntryGenre, backlogPublisherOverride,
-  coverImage, game, member, playthrough,
+  coverImage, game, playthrough,
 } from "../../db/schema";
 import { Conflict, InvalidInput, NotFound, Revivable } from "../../common/errors";
 import { nowKst } from "../../common/clock";
 import type { CoverLocation } from "../../common/storage";
 import { bigDecimalText, compareDecimal, money, setScale, type Money } from "../../common/money";
 import { normalize, normalizeAll, sortKey } from "../../common/text";
-import { acquisitionCount, deriveState, findOwned, findOwnedIncludingDeleted, playthroughsOf, saveEntryIfChanged } from "./shared";
+import { acquisitionCount, deriveState, findAliveEntry, findEntryIncludingDeleted, playthroughsOf, saveEntryIfChanged } from "./shared";
 
 // ───────────── 담기 (FR-BL-01) ─────────────
 
 /**
- * 게임을 내 백로그에 담는다. 게임 해석(`resolveGame`)은 부르는 쪽이 **트랜잭션 밖에서** 먼저 끝낸다.
+ * 게임을 백로그에 담는다. 게임 해석(`resolveGame`)은 부르는 쪽이 **트랜잭션 밖에서** 먼저 끝낸다.
  * §7.4 3분기 — 삭제된 항목이 있으면 되살리기 제안(409 REVIVABLE), 살아 있으면 409, 없으면 새로
  */
-export async function addToBacklog(d: Db, memberId: number, gameId: number): Promise<number> {
-  const [m] = await d.select({ id: member.id }).from(member).where(eq(member.id, memberId));
-  if (!m) throw new NotFound(`회원을 찾을 수 없습니다. id=${memberId}`);
+export async function addToBacklog(d: Db, gameId: number): Promise<number> {
   const [g] = await d.select({ name: game.name, releasedOn: game.releasedOn }).from(game).where(eq(game.id, gameId));
   if (!g) throw new NotFound(`게임을 찾을 수 없습니다. id=${gameId}`);
 
   const [existing] = await d.select({ id: backlogEntry.id, deletedAt: backlogEntry.deletedAt }).from(backlogEntry)
-    .where(and(eq(backlogEntry.memberId, memberId), eq(backlogEntry.gameId, gameId)));
+    .where(eq(backlogEntry.gameId, gameId));
   if (existing) {
     if (existing.deletedAt !== null) {
       throw new Revivable(`삭제된 항목이 있습니다. 복원하시겠습니까? id=${existing.id}`, existing.id, `/api/backlog/${existing.id}/revive`);
@@ -38,7 +36,7 @@ export async function addToBacklog(d: Db, memberId: number, gameId: number): Pro
   // 담을 때 취득 정보가 없으니 WISHLIST. 표시값은 마스터에서 (오버라이드가 아직 없다)
   const now = nowKst();
   const [row] = await d.insert(backlogEntry).values({
-    memberId, gameId, status: "WISHLIST",
+    gameId, status: "WISHLIST",
     displayName: g.name, displayNameSortKey: sortKey(g.name), releasedOnResolved: g.releasedOn,
     createdAt: now, updatedAt: now,
   }).returning({ id: backlogEntry.id });
@@ -66,9 +64,9 @@ function validatePlayTimeHours(v: string | null): string | null {
   return scaled;
 }
 
-export async function updatePersonalRecord(d: Db, memberId: number, entryId: number,
+export async function updatePersonalRecord(d: Db, entryId: number,
                                            rating: string | null, playTimeHours: string | null, memo: string | null) {
-  const e = await findOwned(d, memberId, entryId);
+  const e = await findAliveEntry(d, entryId);
   await saveEntryIfChanged(d, e, {
     rating: normalizeRating(rating),
     playTimeHours: validatePlayTimeHours(playTimeHours),
@@ -86,14 +84,14 @@ export interface OverrideCommand {
   listPrice: Money | null;
 }
 
-/** 금액이 없으면 통째로 없는 것. 라우트에서 요청을 읽는 시점에 만들어지므로 소유권 검사보다 먼저 터진다 */
+/** 금액이 없으면 통째로 없는 것. 라우트에서 요청을 읽는 시점에 만들어지므로 항목 확인보다 먼저 터진다 */
 export function toMoney(r: { amount?: string | number | null; currency?: string | null } | null | undefined): Money | null {
   if (r === null || r === undefined || r.amount === null || r.amount === undefined) return null;
   return money(r.amount, r.currency);
 }
 
-export async function updateOverrides(d: Db, memberId: number, entryId: number, cmd: OverrideCommand) {
-  const e = await findOwned(d, memberId, entryId);
+export async function updateOverrides(d: Db, entryId: number, cmd: OverrideCommand) {
+  const e = await findAliveEntry(d, entryId);
   const [g] = await d.select({ name: game.name, releasedOn: game.releasedOn }).from(game).where(eq(game.id, e.gameId));
 
   const nameOverride = normalize(cmd.name);
@@ -130,14 +128,14 @@ async function replaceValues(d: Db, entryId: number, kind: "developer" | "publis
 // ───────────── 삭제·되살리기·완전 삭제 (§7.4) ─────────────
 
 /** 소프트 삭제. 회차·취득은 부모가 숨겨지면 같이 숨으므로 건드리지 않는다 */
-export async function softDelete(d: Db, memberId: number, entryId: number) {
-  const e = await findOwned(d, memberId, entryId);
+export async function softDelete(d: Db, entryId: number) {
+  const e = await findAliveEntry(d, entryId);
   await saveEntryIfChanged(d, e, { deletedAt: nowKst() });
 }
 
 /** 백지로 밀지 않는다 — deletedAt만 지우고, 드리프트에 대비해 파생 상태를 다시 계산한다 */
-export async function revive(d: Db, memberId: number, entryId: number) {
-  const e = await findOwnedIncludingDeleted(d, memberId, entryId);
+export async function revive(d: Db, entryId: number) {
+  const e = await findEntryIncludingDeleted(d, entryId);
   if (e.deletedAt === null) throw new Conflict(`삭제되지 않은 항목입니다. id=${e.id}`);
   const derived = deriveState(await playthroughsOf(d, e.id), (await acquisitionCount(d, e.id)) > 0);
   await saveEntryIfChanged(d, e, { deletedAt: null, ...derived });
@@ -151,8 +149,8 @@ export async function revive(d: Db, memberId: number, entryId: number) {
  *
  * @return 커밋 뒤에 지울 커버 파일 — key와 위치 (없으면 null)
  */
-export async function purge(d: Db, memberId: number, entryId: number): Promise<{ storageKey: string; location: CoverLocation } | null> {
-  const e = await findOwnedIncludingDeleted(d, memberId, entryId);
+export async function purge(d: Db, entryId: number): Promise<{ storageKey: string; location: CoverLocation } | null> {
+  const e = await findEntryIncludingDeleted(d, entryId);
   if (e.deletedAt === null) throw new Conflict(`삭제된 항목만 완전히 지울 수 있습니다. id=${entryId}`);
 
   const [cover] = await d.select({ storageKey: coverImage.storageKey, location: coverImage.location })

@@ -9,8 +9,6 @@ import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { HTTPException } from "hono/http-exception";
 import { AppError, ConstraintViolation, FileTooLarge, isIntegrityViolation } from "./common/errors";
-import type { AppEnv } from "./http/env";
-import { ownerMiddleware } from "./http/owner";
 import { desktopCors } from "./http/cors";
 import { serveStatic } from "./http/static";
 import { routes as tag } from "./domains/tag/routes";
@@ -31,7 +29,7 @@ function springError(c: Context, status: 404 | 500, error: string) {
 }
 
 export function createApp(opts: { staticDir: string | null }) {
-  const app = new Hono<AppEnv>();
+  const app = new Hono();
 
   app.onError((err, c) => {
     if (err instanceof AppError) {
@@ -50,10 +48,9 @@ export function createApp(opts: { staticDir: string | null }) {
     return springError(c, 500, "Internal Server Error");
   });
 
-  // CORS가 맨 앞 — 남의 출처면 본문도 주인도 보지 않고 거절한다
+  // CORS가 맨 앞 — 남의 출처면 본문을 보지 않고 거절한다
   app.use("/api/*", desktopCors);
   app.use("/api/*", bodyLimit({ maxSize: MAX_REQUEST_BYTES, onError: () => { throw new FileTooLarge(); } }));
-  app.use("/api/*", ownerMiddleware);
 
   for (const r of [tag, subscription, platform, game, stats, system, backlog, member]) app.route("/", r);
 

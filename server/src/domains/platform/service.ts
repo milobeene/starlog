@@ -4,7 +4,7 @@
  *
  * 첫 인자가 `Db`라 트랜잭션(tx)도 그대로 넘길 수 있다.
  */
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { asc, eq, isNull, sql } from "drizzle-orm";
 import type { Db } from "../../db/client";
 import { device, emulator, inputMethod, platform, platformAccount } from "../../db/schema";
 import { Conflict, NotFound } from "../../common/errors";
@@ -23,22 +23,19 @@ export const NOT_FOUND = {
   inputMethod: "입력 방식을 찾을 수 없습니다",
 } as const;
 
-type Owned = { memberId: number; deletedAt: string | null };
+type SoftDeleted = { deletedAt: string | null };
 
-/**
- * 삭제된 것도 돌려준다. 과거 기록에 붙은 항목을 읽을 때 필요하다.
- * "없음"과 "남의 것"을 같은 404로 뭉갠다 (NFR-S7)
- */
-export function requireOwned<T extends Owned>(row: T | undefined, memberId: number, message: string): T {
-  if (!row || row.memberId !== memberId) throw new NotFound(message);
+/** 삭제된 것도 돌려준다. 과거 기록에 붙은 항목을 읽을 때 필요하다 */
+export function requireFound<T>(row: T | undefined, message: string): T {
+  if (!row) throw new NotFound(message);
   return row;
 }
 
 /** 수정·삭제 대상. 이미 지운 것을 또 만지려는 요청을 끊는다 */
-export function requireAlive<T extends Owned>(
-  row: T | undefined, memberId: number, message: string, displayName: (r: T) => string,
+export function requireAlive<T extends SoftDeleted>(
+  row: T | undefined, message: string, displayName: (r: T) => string,
 ): T {
-  const r = requireOwned(row, memberId, message);
+  const r = requireFound(row, message);
   if (r.deletedAt !== null) throw new Conflict(`이미 삭제되었습니다: ${displayName(r)}`);
   return r;
 }
@@ -51,19 +48,19 @@ export async function findPlatformRow(d: Db, id: number) {
 }
 
 /** 취득에 붙일 때. 삭제된 것도 돌려준다 */
-export async function platformFindOne(d: Db, memberId: number, platformId: number): Promise<PlatformRow> {
-  return requireOwned(await findPlatformRow(d, platformId), memberId, `${NOT_FOUND.platform}. id=${platformId}`);
+export async function platformFindOne(d: Db, platformId: number): Promise<PlatformRow> {
+  return requireFound(await findPlatformRow(d, platformId), `${NOT_FOUND.platform}. id=${platformId}`);
 }
 
 /** 계정을 붙일 때 쓴다. 삭제된 플랫폼에는 새 계정을 못 만든다 */
-export async function platformFindAlive(d: Db, memberId: number, platformId: number): Promise<PlatformRow> {
-  return requireAlive(await findPlatformRow(d, platformId), memberId,
+export async function platformFindAlive(d: Db, platformId: number): Promise<PlatformRow> {
+  return requireAlive(await findPlatformRow(d, platformId),
     `${NOT_FOUND.platform}. id=${platformId}`, (r) => r.name);
 }
 
-export async function platformFindSelectable(d: Db, memberId: number): Promise<PlatformRow[]> {
+export async function platformFindSelectable(d: Db): Promise<PlatformRow[]> {
   return d.select().from(platform)
-    .where(and(eq(platform.memberId, memberId), isNull(platform.deletedAt)))
+    .where(isNull(platform.deletedAt))
     .orderBy(asc(platform.name));
 }
 
@@ -75,8 +72,8 @@ export async function findAccountRow(d: Db, id: number) {
 }
 
 /** 삭제된 것 포함. 과거 기록에 붙은 계정을 보여줄 때 쓴다 */
-export async function accountFindOne(d: Db, memberId: number, accountId: number): Promise<PlatformAccountRow> {
-  return requireOwned(await findAccountRow(d, accountId), memberId, `${NOT_FOUND.account}. id=${accountId}`);
+export async function accountFindOne(d: Db, accountId: number): Promise<PlatformAccountRow> {
+  return requireFound(await findAccountRow(d, accountId), `${NOT_FOUND.account}. id=${accountId}`);
 }
 
 export type SelectableAccount = PlatformAccountRow & {
@@ -88,12 +85,12 @@ export type SelectableAccount = PlatformAccountRow & {
  * 회차·취득 입력 시 고를 수 있는 계정. 삭제된 건 빠진다.
  * 소속(플랫폼 또는 에뮬) 이름 → 라벨 → id 순으로 정렬한다
  */
-export async function accountFindSelectable(d: Db, memberId: number): Promise<SelectableAccount[]> {
+export async function accountFindSelectable(d: Db): Promise<SelectableAccount[]> {
   const rows = await d.select({ a: platformAccount, p: platform, e: emulator })
     .from(platformAccount)
     .leftJoin(platform, eq(platformAccount.platformId, platform.id))
     .leftJoin(emulator, eq(platformAccount.emulatorId, emulator.id))
-    .where(and(eq(platformAccount.memberId, memberId), isNull(platformAccount.deletedAt)))
+    .where(isNull(platformAccount.deletedAt))
     .orderBy(sql`coalesce(${platform.name}, ${emulator.name}) asc`, asc(platformAccount.accountLabel), asc(platformAccount.id));
   return rows.map((r) => ({ ...r.a, platform: r.p, emulator: r.e }));
 }
@@ -106,13 +103,13 @@ export async function findDeviceRow(d: Db, id: number) {
 }
 
 /** 삭제된 기기도 돌려준다 — 그 기기로 했던 과거 회차를 수정할 수 있어야 한다 */
-export async function deviceFindOne(d: Db, memberId: number, deviceId: number): Promise<DeviceRow> {
-  return requireOwned(await findDeviceRow(d, deviceId), memberId, `${NOT_FOUND.device}. id=${deviceId}`);
+export async function deviceFindOne(d: Db, deviceId: number): Promise<DeviceRow> {
+  return requireFound(await findDeviceRow(d, deviceId), `${NOT_FOUND.device}. id=${deviceId}`);
 }
 
-export async function deviceFindSelectable(d: Db, memberId: number): Promise<DeviceRow[]> {
+export async function deviceFindSelectable(d: Db): Promise<DeviceRow[]> {
   return d.select().from(device)
-    .where(and(eq(device.memberId, memberId), isNull(device.deletedAt)))
+    .where(isNull(device.deletedAt))
     .orderBy(asc(device.label));
 }
 
@@ -128,13 +125,13 @@ export async function findEmulatorRow(d: Db, id: number) {
 }
 
 /** 삭제된 것도 돌려준다 */
-export async function emulatorFindOne(d: Db, memberId: number, emulatorId: number): Promise<EmulatorRow> {
-  return requireOwned(await findEmulatorRow(d, emulatorId), memberId, `${NOT_FOUND.emulator}. id=${emulatorId}`);
+export async function emulatorFindOne(d: Db, emulatorId: number): Promise<EmulatorRow> {
+  return requireFound(await findEmulatorRow(d, emulatorId), `${NOT_FOUND.emulator}. id=${emulatorId}`);
 }
 
-export async function emulatorFindSelectable(d: Db, memberId: number): Promise<EmulatorRow[]> {
+export async function emulatorFindSelectable(d: Db): Promise<EmulatorRow[]> {
   return d.select().from(emulator)
-    .where(and(eq(emulator.memberId, memberId), isNull(emulator.deletedAt)))
+    .where(isNull(emulator.deletedAt))
     .orderBy(asc(emulator.name));
 }
 
@@ -146,13 +143,13 @@ export async function findInputMethodRow(d: Db, id: number) {
 }
 
 /** 삭제된 것도 돌려준다 */
-export async function inputMethodFindOne(d: Db, memberId: number, inputMethodId: number): Promise<InputMethodRow> {
-  return requireOwned(await findInputMethodRow(d, inputMethodId), memberId,
+export async function inputMethodFindOne(d: Db, inputMethodId: number): Promise<InputMethodRow> {
+  return requireFound(await findInputMethodRow(d, inputMethodId),
     `${NOT_FOUND.inputMethod}. id=${inputMethodId}`);
 }
 
-export async function inputMethodFindSelectable(d: Db, memberId: number): Promise<InputMethodRow[]> {
+export async function inputMethodFindSelectable(d: Db): Promise<InputMethodRow[]> {
   return d.select().from(inputMethod)
-    .where(and(eq(inputMethod.memberId, memberId), isNull(inputMethod.deletedAt)))
+    .where(isNull(inputMethod.deletedAt))
     .orderBy(asc(inputMethod.name));
 }
