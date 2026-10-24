@@ -68,6 +68,7 @@ export type SetFilter = <K extends keyof Filters>(key: K, value: Filters[K]) => 
 
 /** `ptRunsOn`은 토글이라 "걸린 것"으로 안 센다 — 기본값이 platform이다 */
 export function hasAnyFilter(filters: Filters): boolean {
-  const { status, ptRunsOn: _ignored, ...rest } = filters;
-  return status.length > 0 || Object.values(rest).some(Boolean);
+  return Object.entries(filters).some(([key, value]) =>
+    key === "ptRunsOn" ? false : Array.isArray(value) ? value.length > 0 : Boolean(value),
+  );
 }

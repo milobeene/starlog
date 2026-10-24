@@ -9,7 +9,10 @@ export type ComboOption = { value: string; label: string; count?: number };
  * 입력 + 자동완성 목록. 사전(태그·장르·개발사…)이 있는 자리는 전부 이걸로 쓴다.
  *
  * 두 모드가 있다 —
- *   freeText: 사전에 없는 값도 그대로 쓴다 (개발사 검색). 입력한 글자가 곧 값이다
+ *   freeText: 사전에 없는 값도 그대로 쓴다 (개발사 검색). 입력한 글자가 곧 값이다.
+ *             타이핑하는 글자로 **부분 일치** 필터링하고, 첫 항목이 강조된다.
+ *             **목록에서 고르는 건 입력칸을 채울 뿐이다** — 적용은 입력칸에서 Enter(`onEnter`)로 한다.
+ *             그래서 Enter가 두 일을 한다: 강조 항목이 입력과 다르면 채우고, 같으면 적용
  *   선택 전용: 목록에 있는 것만 값이 된다 (기기·플랫폼). 표시는 이름, 값은 id다
  *
  * 화살표·Enter·Esc를 직접 처리하는 이유 — datalist는 스타일을 못 입히고
@@ -24,6 +27,7 @@ export default function Combobox({
   onChange,
   placeholder,
   freeText = false,
+  onEnter,
   className = "",
 }: {
   options: ComboOption[];
@@ -31,12 +35,18 @@ export default function Combobox({
   onChange: (value: string) => void;
   placeholder?: string;
   freeText?: boolean;
+  /** freeText에서 입력칸이 이미 원하는 값일 때 Enter — "적용" 신호. 없으면 Enter는 채우기만 한다 */
+  onEnter?: (value: string) => void;
   className?: string;
 }) {
   const listId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
   const [open, setOpen] = useState(false);
-  const [cursor, setCursor] = useState(0);
+  // 강조 항목. -1은 없음 — freeText에서 아무것도 안 쳤을 땐 Enter가 엉뚱한 첫 항목을 채우면 안 된다
+  const [cursor, setCursor] = useState(freeText ? -1 : 0);
+  // IME 조합 중인지. 조합 중 값을 프로그램이 바꾸면 마지막 음절이 빈 입력칸에 되살아난다
+  const composingRef = useRef(false);
   const [rect, setRect] = useState<{ left: number; top: number; width: number } | null>(null);
 
   /** 표시 문자열 — 선택 전용 모드에서는 value가 id라 라벨로 되돌려야 한다 */
@@ -55,10 +65,22 @@ export default function Combobox({
 
   const matches = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    // 이미 고른 값과 같은 글자면 목록을 안 좁힌다 — 다시 열었을 때 전체가 보여야 한다
-    if (!needle || needle === labelOf(value).toLowerCase()) return options;
-    return options.filter((option) => option.label.toLowerCase().includes(needle));
-  }, [options, query, value]);
+    if (!needle) return options;
+    // 선택 전용만: 이미 고른 값과 같은 글자면 안 좁힌다 — 다시 열었을 때 전체가 보여야 한다.
+    // freeText는 타이핑이 곧 value라 needle이 늘 value와 같다 → 이 가드를 타면 필터가 영영 안 된다
+    if (!freeText && needle === labelOf(value).toLowerCase()) return options;
+    const hits = options.filter((option) => option.label.toLowerCase().includes(needle));
+    if (!freeText) return hits;
+    // 완전 일치 → 앞부분 일치 → 중간 일치 순. 같은 등급 안에서는 사전 순서 그대로 (sort는 안정)
+    const rank = (label: string) => {
+      const text = label.toLowerCase();
+      return text === needle ? 0 : text.startsWith(needle) ? 1 : 2;
+    };
+    return hits.sort((a, b) => rank(a.label) - rank(b.label));
+  }, [options, query, value, freeText]);
+
+  // 필터가 줄어 cursor가 끝을 넘었을 때를 대비해 쓰는 쪽은 항상 이 값을 본다
+  const active = matches.length ? Math.min(cursor, matches.length - 1) : -1;
 
   /**
    * 입력칸 좌표를 재서 목록을 그 아래 붙인다.
@@ -85,6 +107,12 @@ export default function Combobox({
     };
   }, [open]);
 
+  // ↑↓로 목록 밖으로 나간 항목을 보이는 데로 끌어온다 (끝에서 멈추므로 어긋날 일은 없다)
+  useEffect(() => {
+    if (!open) return;
+    listRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: "nearest" });
+  }, [open, active]);
+
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: MouseEvent) => {
@@ -101,24 +129,56 @@ export default function Combobox({
   }, [open, value, options]);
 
   const commit = (option: ComboOption) => {
+    // 조합 중에 값을 덮으면 IME가 마지막 음절을 다시 써넣는다 — blur가 조합을 먼저 확정시킨다.
+    // (blur → compositionend → onChange가 먼저 돌고, 아래 값이 그걸 이긴다)
+    const input = rootRef.current?.querySelector("input");
+    const wasComposing = composingRef.current;
+    if (wasComposing) input?.blur();
     onChange(option.value);
     setQuery(option.label);
     setOpen(false);
+    if (wasComposing) input?.focus();
   };
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    // 한글 조합 중 Enter·화살표는 IME의 것이다. 크롬은 조합을 끝내는 Enter에 keydown을
+    // 두 번 보낸다(isComposing:true 한 번, 진짜 Enter 한 번) — 앞의 것만 걸러야 한 번만 돈다
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       if (!open) {
         setOpen(true);
+        setCursor(Math.max(active, 0));
         return;
       }
-      const delta = event.key === "ArrowDown" ? 1 : -1;
-      setCursor((prev) => (prev + delta + matches.length) % Math.max(matches.length, 1));
+      // 끝에서 멈춘다 — 순환하면 마지막에서 ↓ 한 번에 첫 항목으로 튄다
+      setCursor(
+        event.key === "ArrowDown"
+          ? Math.min(active + 1, matches.length - 1)
+          : Math.max(active - 1, 0),
+      );
     } else if (event.key === "Enter") {
-      if (open && matches[cursor]) {
+      const picked = open && active >= 0 ? matches[active] : undefined;
+
+      if (!freeText) {
+        if (picked) {
+          event.preventDefault();
+          commit(picked);
+        }
+        return;
+      }
+
+      // 강조 항목이 입력과 다르면 채운다 (적용 아님). 같은 글자면 이미 채워진 것 → 아래서 적용
+      if (picked && picked.label !== query) {
         event.preventDefault();
-        commit(matches[cursor]);
+        commit(picked);
+        return;
+      }
+      setOpen(false);
+      if (onEnter) {
+        event.preventDefault();
+        onEnter(query);
       }
     } else if (event.key === "Escape") {
       setOpen(false);
@@ -136,9 +196,16 @@ export default function Combobox({
         autoComplete="off"
         value={query}
         placeholder={placeholder}
+        onCompositionStart={() => {
+          composingRef.current = true;
+        }}
+        onCompositionEnd={() => {
+          composingRef.current = false;
+        }}
         onChange={(event) => {
           setQuery(event.target.value);
-          setCursor(0);
+          // freeText는 글자가 있을 때만 첫 항목을 강조한다
+          setCursor(freeText && !event.target.value.trim() ? -1 : 0);
           setOpen(true);
           // 자유 입력은 타이핑이 곧 값이다. 선택 전용은 골라야 값이 바뀐다
           if (freeText) onChange(event.target.value);
@@ -175,6 +242,7 @@ export default function Combobox({
           id={listId}
           role="listbox"
           data-combobox-list
+          ref={listRef}
           className="menu-panel fixed z-[200] max-h-64 overflow-y-auto"
           style={{ left: rect.left, top: rect.top, width: rect.width }}
         >
@@ -184,13 +252,14 @@ export default function Combobox({
                 type="button"
                 role="option"
                 aria-selected={option.value === value}
+                data-active={index === active}
                 onMouseEnter={() => setCursor(index)}
                 // onClick보다 먼저 도는 onMouseDown을 쓴다 — blur가 목록을 닫아버리기 전에 잡아야 한다
                 onMouseDown={(event) => {
                   event.preventDefault();
                   commit(option);
                 }}
-                className={`menu-item ${index === cursor ? "menu-item-active" : ""}`}
+                className={`menu-item ${index === active ? "menu-item-active" : ""}`}
               >
                 <span className="truncate">{option.label}</span>
                 {option.count != null && (

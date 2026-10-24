@@ -1,6 +1,6 @@
 "use client";
 
-import Unit from "@/components/ui/Unit";
+import PlayTime from "@/components/ui/PlayTime";
 import Chip from "@/components/ui/Chip";
 import StarIcon from "@/components/ui/StarIcon";
 import SectionIcon from "@/components/ui/SectionIcon";
@@ -143,14 +143,7 @@ export function TagCard({
   );
 }
 
-/** 시간 값 — null이면 대시 */
-/** 시간 표시. **단위 `h`는 본문 폰트로 뺀다** — 모노에서는 숫자보다 커 보인다 */
+/** 시간 표시 — 플레이 시간과 같은 `N시간 M분` 규칙. null이면 대시 */
 function hours(value: number | null) {
-  if (value == null) return "—";
-  return (
-    <>
-      {value}
-      <Unit>h</Unit>
-    </>
-  );
+  return <PlayTime hours={value} />;
 }

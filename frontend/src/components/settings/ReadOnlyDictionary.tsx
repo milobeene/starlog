@@ -1,12 +1,7 @@
 "use client";
 
-import { useState } from "react";
-
 /** id가 없어 고칠 수 없는 사전 — 무엇이 쌓였는지만 보여준다 */
 export default function ReadOnlyDictionary({ label, names }: { label: string; names: string[] }) {
-  const [open, setOpen] = useState(false);
-  const collapsible = names.length > 12;
-
   return (
     <div>
       <div className="mb-2 flex items-center gap-2">
@@ -14,7 +9,6 @@ export default function ReadOnlyDictionary({ label, names }: { label: string; na
           {label}
         </span>
         <span className="num text-[10px] text-white/25">{names.length}</span>
-
       </div>
 
       {names.length === 0 ? (

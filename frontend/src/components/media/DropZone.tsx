@@ -21,6 +21,12 @@ import { useEffect, useRef, useState } from "react";
  *
  * `dragenter`/`dragleave`는 **자식 요소를 지날 때마다 번갈아 뜬다.** 그냥 boolean으로 두면
  * 안쪽을 지나는 동안 테두리가 깜빡인다. 깊이를 세서 0이 될 때만 끈다
+ *
+ * ## 거른 파일은 알린다
+ *
+ * 이미지·영상이 아닌 파일은 서버까지 안 가고 여기서 걸린다. 말없이 버리면 "드롭이 안 된다"로
+ * 보이므로 서버가 같은 경우에 내는 문구(`backlog/media.ts`)를 그대로 쓴다.
+ * 붙여넣기는 거르지 않고 서버로 보내서 서버가 직접 낸다
  */
 export default function DropZone({
   onFiles,
@@ -39,6 +45,7 @@ export default function DropZone({
   children?: React.ReactNode;
 }) {
   const [over, setOver] = useState(false);
+  const [rejected, setRejected] = useState<string | null>(null);
   const depth = useRef(0);
   const input = useRef<HTMLInputElement>(null);
   const zone = useRef<HTMLDivElement>(null);
@@ -55,6 +62,7 @@ export default function DropZone({
       const files = Array.from(e.clipboardData?.files ?? []);
       if (files.length === 0) return;
       e.preventDefault();
+      setRejected(null);
       onFiles(multiple ? files : files.slice(0, 1));
     };
 
@@ -63,9 +71,22 @@ export default function DropZone({
   }, [onFiles, multiple, disabled]);
 
   const accept = (list: FileList | null) => {
-    const files = Array.from(list ?? []).filter(
+    const all = Array.from(list ?? []);
+    const files = all.filter(
       (f) => f.type.startsWith("image/") || (video && f.type.startsWith("video/")),
     );
+    const skipped = all.filter((f) => !files.includes(f));
+
+    // 서버 문구와 같은 글자 — 확장자가 없으면 파일 이름을 대신 보인다
+    const kinds = [...new Set(skipped.map((f) => extensionOf(f.name)))].join(", ");
+    setRejected(
+      skipped.length === 0
+        ? null
+        : `지원하지 않는 형식입니다: ${kinds} (${
+            video ? "jpg · png · webp · mp4 · mov · webm" : "jpg, png, webp만 가능"
+          })`,
+    );
+
     if (files.length > 0) onFiles(multiple ? files : files.slice(0, 1));
   };
 
@@ -130,8 +151,20 @@ export default function DropZone({
           </p>
         </>
       )}
+
+      {rejected && (
+        <p role="alert" className="text-xs text-red-400">
+          {rejected}
+        </p>
+      )}
     </div>
   );
+}
+
+/** `a.b.pdf` → `pdf`. 점이 없으면 이름 전체 */
+function extensionOf(name: string): string {
+  const dot = name.lastIndexOf(".");
+  return dot < 0 || dot === name.length - 1 ? name : name.slice(dot + 1).toLowerCase();
 }
 
 function UploadIcon() {

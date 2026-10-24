@@ -20,8 +20,12 @@
    */
   --font-sans: var(--font-switzer), var(--font-pretendard), sans-serif;
 
-  /* 숫자 전용. 폭이 균일해 표에서 자릿수가 맞고, 0에 사선이 있어 O와 안 헷갈린다 */
-  --font-num: var(--font-jetbrains), ui-monospace, monospace;
+  /*
+   * 숫자 전용. 폭이 균일해 표에서 자릿수가 맞고, 0에 사선이 있어 O와 안 헷갈린다.
+   * ⚠️ **Pretendard를 `monospace`보다 앞에 둔다** — JetBrains Mono엔 한글이 없어서
+   * 그 뒤가 시스템 고정폭이면 `1회차`의 '회차'가 그 폰트로 떨어진다
+   */
+  --font-num: var(--font-jetbrains), var(--font-pretendard), ui-monospace, monospace;
 
   /*
    * 풀사이즈 모니터 (2026-08-28).
@@ -160,9 +164,9 @@
    * 숫자와 무게·높이가 따로 논다. 실제로 시스템 → 사용량에서 '장'이 그렇게 보였다.
    *
    * 폰트 폴백은 **글자 하나 단위로** 일어나므로 숫자는 그대로 모노다 —
-   * 한글만 Pretendard로 내려간다. 쓰는 쪽에서 아무것도 안 고쳐도 전 화면에 적용된다
+   * 한글만 Pretendard로 내려간다. 스택은 `--font-num`에 있다
    */
-  font-family: var(--font-num), var(--font-pretendard), sans-serif;
+  font-family: var(--font-num);
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
 }

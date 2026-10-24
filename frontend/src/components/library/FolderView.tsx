@@ -128,7 +128,11 @@ export default function FolderView({
     if (!open) return [];
     const q = (keyword ?? "").trim().toLowerCase();
     const picked = q
-      ? open.cards.filter((card) => card.displayName.toLowerCase().includes(q))
+      ? open.cards.filter(
+          (card) =>
+            card.displayName.toLowerCase().includes(q) ||
+            (card.masterName?.toLowerCase().includes(q) ?? false),
+        )
       : [...open.cards];
     if (sort === "rating") {
       picked.sort((a, b) => (b.rating ?? -1) - (a.rating ?? -1));

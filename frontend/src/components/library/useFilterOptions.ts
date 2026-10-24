@@ -91,12 +91,6 @@ export function useFilterOptions({
     [],
   );
 
-  /** 통화는 실제로 쓰인 것만 — 지출 차트가 주는 목록과 같은 출처다 */
-  const currencyOptions = useMemo<ComboOption[]>(
-    () => ["KRW", "USD", "JPY", "EUR"].map((c) => ({ value: c, label: c })),
-    [],
-  );
-
   return {
     developerOptions,
     genreOptions,

@@ -1,7 +1,7 @@
 "use client";
 
 import StarIcon from "@/components/ui/StarIcon";
-import { formatHours } from "@/lib/format";
+import PlayTime from "@/components/ui/PlayTime";
 import { formatRating } from "@/lib/labels";
 import type { BacklogDetail } from "@/lib/types";
 
@@ -13,14 +13,12 @@ import type { BacklogDetail } from "@/lib/types";
  */
 export default function SummaryStats({ data }: { data: BacklogDetail }) {
   const { resolved, personalRecord } = data;
-  const totalPlaytime = formatHours(personalRecord.playTimeHours);
 
   return (
     <div className="mb-10 grid grid-cols-2 border-t-line border-b-line py-6 md:grid-cols-4 [&>*]:border-white/15 [&>*:nth-child(2n)]:border-l [&>*:nth-child(n+3)]:border-t md:[&>*]:border-l md:[&>*:first-child]:border-l-0 md:[&>*:nth-child(n+3)]:border-t-0">
       <Stat
         label="Total Playtime"
-        value={totalPlaytime ?? "—"}
-        unit={totalPlaytime == null ? undefined : "h"}
+        value={<PlayTime hours={personalRecord.playTimeHours} unitClassName="text-[0.6em] text-white/60" />}
       />
       <Stat label="Playthroughs" value={data.playthroughs.length} />
       <Stat
@@ -41,7 +39,7 @@ export default function SummaryStats({ data }: { data: BacklogDetail }) {
   );
 }
 
-function Stat({ label, value, unit }: { label: string; value: React.ReactNode; unit?: string }) {
+function Stat({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     /*
      * 폰에서는 칸이 반으로 줄어 날짜(2016-02-26)가 세 줄로 깨진다 — 글자와 좌우 여백을 줄인다.
@@ -53,7 +51,6 @@ function Stat({ label, value, unit }: { label: string; value: React.ReactNode; u
       <div className="mb-1 text-[10px] tracking-wider text-white/40 uppercase sm:text-xs">{label}</div>
       <div className="num text-lg font-normal sm:text-2xl">
         {value}
-        {unit && <span className="ml-0.5 text-sm text-white/60 sm:text-lg">{unit}</span>}
       </div>
     </div>
   );

@@ -29,7 +29,9 @@ export default function ChipInput({
       setDraft("");
       return;
     }
-    onChange([...values, name]);
+    // 사전에 있는 이름이면 사전의 대소문자를 따른다 ("fps"를 쳐도 사전의 "FPS"로 붙는다)
+    const canonical = dictionary.find((item) => item.toLowerCase() === name.toLowerCase());
+    onChange([...values, canonical ?? name]);
     setDraft("");
   };
 
@@ -56,11 +58,11 @@ export default function ChipInput({
           <Combobox
             options={options}
             value={draft}
-            onChange={(value) => {
-              // 목록에서 고르면 바로 추가, 타이핑은 draft로만 쌓인다
-              if (options.some((option) => option.value === value)) add(value);
-              else setDraft(value);
-            }}
+            // 타이핑도 목록에서 고르는 것도 draft를 채울 뿐이다.
+            // 칩이 되는 건 입력칸에서 Enter 또는 [추가]뿐 — 사전 이름을 끝까지 쳤다고
+            // 자동으로 붙이면 "서바이벌"을 치다 "서바이벌 호러"를 못 만든다
+            onChange={setDraft}
+            onEnter={add}
             placeholder={placeholder}
             freeText
             className={FIELD_INPUT}

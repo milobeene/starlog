@@ -1,14 +1,19 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { closeTask, useTasks, type Task } from "@/lib/tasks";
+
+/** 끝난 알림이 스스로 닫히기까지 (ms) */
+const AUTO_CLOSE_MS = 5000;
 
 /**
  * 오래 걸리는 일의 진행·결과 (2026-08-28).
  *
  * ## 화면 중앙 하단에서 올라온다
  *
- * 헤더·사이드바를 안 가리는 자리다. **스스로 안 사라진다** — 다른 화면을 보는 사이에
- * 결과가 없어지면 애초에 이걸 만든 이유가 없어진다. 닫기 버튼으로만 닫힌다.
+ * 헤더·사이드바를 안 가리는 자리다. **진행 중에는 안 사라지고, 끝나면 5초 뒤 닫힌다**
+ * (2026-10-24 사용자 결정 — 처음엔 닫기 버튼으로만 닫게 했는데 결과가 계속 쌓였다).
+ * 마우스를 올려두면 타이머가 멈춘다 — 결과를 읽는 중에 사라지면 안 된다.
  *
  * ## 앱 껍데기에 붙는다
  *
@@ -30,9 +35,19 @@ export default function TaskToasts() {
 function Toast({ task }: { task: Task }) {
   const done = Boolean(task.result);
   const ok = task.result?.ok;
+  const [hovered, setHovered] = useState(false);
+
+  // 끝난 순간부터 센다. 호버를 벗어나면 처음부터 다시 5초 (읽던 걸 끝까지 읽게)
+  useEffect(() => {
+    if (!done || hovered) return;
+    const timer = setTimeout(() => closeTask(task.id), AUTO_CLOSE_MS);
+    return () => clearTimeout(timer);
+  }, [done, hovered, task.id]);
 
   return (
     <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       /*
        * 아래에서 올라온다. `animate-*`를 쓰지 않고 인라인으로 둔 이유 —
        * 이 연출은 여기 하나뿐이라 전역 유틸을 만들 값을 못 한다

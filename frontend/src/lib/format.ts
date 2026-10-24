@@ -1,13 +1,29 @@
 /**
- * 플레이 시간 표시 (V4에서 소수점 두 자리가 됐다).
+ * 플레이 시간 표시 — **저장·계산은 소수 시간(`10.75`), 화면은 `10시간 45분`** (사용자 규칙, 2026-10-24).
  *
- * 백엔드는 `numeric(7,2)`라 `133.00`을 내려보내는데, JSON을 파싱하면 JS 숫자가 되면서
- * 뒤의 0이 저절로 사라진다(`133.00` → `133`). 그래서 여기서 할 일은 자리수 절삭이 아니라
- * **천 단위 구분과 소수점 상한**뿐이다 — 부동소수점 덧셈이 만든 `133.30000000000001`을 막는다
+ * 변환은 여기 한 곳이다. 분은 **정수로 반올림**하고 60분이 되면 시간으로 올린다
+ * (`1.999` → `2시간`, `0.995` → `1시간`). 시간·분을 따로 반올림하면 `1시간 60분`이 나온다 —
+ * 전체를 분으로 바꿔 한 번만 반올림하고 나눈다.
+ *
+ * ⚠️ 백엔드는 `numeric(7,2)`라 `133.00`을 내려보내는데 JSON을 파싱하면 JS 숫자가 되어
+ * 뒤의 0이 사라진다. 부동소수점 덧셈이 만든 `133.30000000000001`도 여기서 분으로 흡수된다
  */
-export function formatHours(hours: number | null | undefined): string | null {
-  if (hours == null) return null;
-  return hours.toLocaleString(undefined, { maximumFractionDigits: 2 });
+export function playTimeParts(hours: number | null | undefined): { hours: number; minutes: number } | null {
+  if (hours == null || !Number.isFinite(hours)) return null;
+  const total = Math.max(0, Math.round(hours * 60));
+  return { hours: Math.floor(total / 60), minutes: total % 60 };
+}
+
+/**
+ * 문자열 표시 — `10시간 45분` · `10시간`(분이 0) · `45분`(1시간 미만) · `0분`.
+ * 시간은 천 단위 구분을 쓴다(`2,241시간 22분`). null이면 null — 대시를 어떻게 보일지는 부르는 쪽 몫
+ */
+export function formatPlayTime(hours: number | null | undefined): string | null {
+  const parts = playTimeParts(hours);
+  if (!parts) return null;
+  const h = parts.hours.toLocaleString("ko-KR");
+  if (parts.hours === 0) return `${parts.minutes}분`;
+  return parts.minutes === 0 ? `${h}시간` : `${h}시간 ${parts.minutes}분`;
 }
 
 /** 입력 두 칸("지금까지" + "이번에")을 합칠 때 쓴다. 0.1 + 0.2 = 0.30000000000000004 방지 */

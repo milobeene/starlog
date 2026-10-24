@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import ConnectionDialog from "@/components/entry/ConnectionDialog";
 import { api } from "@/lib/api";
 import { getBridge, type ConnectionProfile, type SessionInfo } from "@/lib/desktop";

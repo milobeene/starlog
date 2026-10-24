@@ -71,6 +71,8 @@ export interface BacklogCard {
   coverImageId: string | null;
   /** 그룹핑 키. 카드에 뿌리는 값이 아니라 사이드바·폴더 뷰가 묶는 데 쓴다 */
   tag: string | null;
+  /** IGDB 원제(영문). 한글 이름만 아는 사람이 영문으로도 찾도록 검색에 쓴다. 마스터가 없으면 null */
+  masterName: string | null;
 }
 
 /* ── 상세 (GET /api/backlog/{entryId}) ────────────────────── */
@@ -467,7 +469,8 @@ export interface MemberExport {
   };
   catalog: {
     platforms: string[];
-    accounts: { label: string; platform: string }[];
+    /** 소속은 둘 중 하나만 채워진다 (형식 3부터 — 에뮬레이터 계정이 있다) */
+    accounts: { label: string; platform: string | null; emulator: string | null }[];
     devices: { deviceType: string; label: string; memo: string | null }[];
     emulators: { name: string; memo: string | null }[];
     inputMethods: string[];
