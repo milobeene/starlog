@@ -65,7 +65,7 @@
 ## 설치
 
 [Releases](https://github.com/milobeene/starlog/releases)에서 받습니다.
-**자바를 따로 설치할 필요는 없습니다** — 런타임이 앱에 들어 있습니다.
+따로 설치할 것은 없습니다.
 
 | 플랫폼 | 파일 |
 |---|---|
@@ -114,16 +114,14 @@ xattr -dr com.apple.quarantine /Applications/STARLOG.app
 ## 빌드
 
 ```bash
-./tools/build-jre.sh        # 번들 JRE (Temurin 21)
-./tools/build-desktop.sh    # 프론트 정적 빌드 → 백엔드 jar
+./tools/build-desktop.sh    # 프론트 정적 빌드 + 서버 번들
 cd desktop && npm install && npm start
 ```
 
 배포물은 `npx electron-builder --mac` 또는 `--win`으로 만듭니다.
-JRE가 OS별이라 크로스 빌드는 되지 않습니다 — 각 OS에서 빌드하거나
-[GitHub Actions](.github/workflows/release.yml)에 맡깁니다.
+[GitHub Actions](.github/workflows/release.yml)가 두 OS를 한 번에 만듭니다.
 
-Spring Boot 4.1 · Java 21 · H2 / PostgreSQL · Next.js 16 · Electron
+TypeScript · Hono · Drizzle · PGlite / PostgreSQL · Next.js 16 · Electron
 
 ## 라이선스
 

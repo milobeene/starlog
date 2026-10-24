@@ -27,6 +27,7 @@ files:
   - tarball.js
   - web/**/*
   - server/main.mjs
+  - server/THIRD_PARTY_LICENSES.txt
   - package.json
 
 # ⚠️ **asar 밖으로 꺼낸다** (v2). 서버는 `utilityProcess.fork`로 띄우는 실제 파일이어야 하고,

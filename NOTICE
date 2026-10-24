@@ -3,13 +3,17 @@ Copyright (c) 2026 milobeene
 
 이 프로그램은 아래 소프트웨어를 함께 배포합니다.
 
-Eclipse Temurin (OpenJDK 21)
-  Eclipse Adoptium — https://adoptium.net/
-  GPLv2 with Classpath Exception
-  고지 파일은 배포물 안 runtime/legal/ 에 있습니다.
-
 Electron
   OpenJS Foundation — https://www.electronjs.org/
   MIT
+
+PGlite (WASM으로 빌드한 PostgreSQL)
+  ElectricSQL — https://pglite.dev/
+  Apache-2.0 (PGlite) · PostgreSQL License (PostgreSQL)
+  고지 파일은 배포물 안 node_modules/@electric-sql/pglite/ 에 있습니다.
+
+서버 번들에 포함된 라이브러리 — Hono, Drizzle ORM, node-postgres, Zod, aws4fetch 외
+  MIT · Apache-2.0 · ISC
+  전문은 배포물 안 server/THIRD_PARTY_LICENSES.txt 에 있습니다.
 
 게임 정보는 IGDB.com에서 가져옵니다 (Twitch Developer Services Agreement).

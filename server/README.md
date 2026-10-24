@@ -1,30 +1,25 @@
-# 자바 → TS 이전 지침 (P2)
+# STARLOG 서버 (v2)
 
-계획 전체는 `docs/v2-plan.md`. 이 문서는 **도메인 하나를 옮기는 사람**을 위한 것이다.
+일렉트론 안에서 `utilityProcess`로 도는 HTTP 서버. 화면(`frontend/`)이 부르는 `/api/*` 85개와 정적 화면 서빙.
+2026-10-24 자바(Spring Boot)에서 1:1로 옮겼다 — 계획·결정·자바 버그 목록은 `docs/v2-plan.md`.
 
-## 목표
+```bash
+npm run dev            # 8080 개발 서버 (server/.dev/db). --fixture면 실데이터 복사본
+npm run typecheck      # 마이그레이션 코드 생성 + tsc
+npm test               # 단위 (vitest)
+npm run test:golden    # 녹화본 회귀 — 시나리오 전부
+npm run bundle         # → ../desktop/server/main.mjs
+```
 
-자바 패키지 하나를 `server/src/domains/<도메인>/`으로 **1:1** 옮긴다.
-**완료 조건은 비교 장치 diff 0** — 응답(상태·헤더·본문)과 DB 전 테이블, 데이터 폴더 파일까지.
+## 기동 순서 (`src/main.ts`)
 
-- **동작을 바꾸지 않는다.** 자바가 정답지다. 버그처럼 보여도 그대로 옮기고 보고서에 적는다
-  (예: 세이브 추출 NPE는 TS에서도 같은 자리에서 500이 나야 한다)
-- 메시지 문구까지 같게. 화면이 그대로 띄운다
+잠금(세이브파일 옆 `.lock`) → DB 열기 + 진단(`src/diagnose.ts`, 실패 시 `STARLOG_DIAGNOSTIC: <코드>`) →
+마이그레이션(`migrations/V*.sql`, `flyway_schema_history` 이어 쓰기) → 미디어 폴더 → 기동 정리(30일 지난 API 기록) →
+리슨 → `STARLOG_READY port=<n>`. 종료는 SIGTERM 또는 부모의 `{type: "shutdown"}` 메시지 — PGlite를 닫고 잠금을 푼다.
 
-## 본보기
-
-`src/domains/subscription/routes.ts` + `test/scenarios/subscription.json`. **먼저 읽을 것.**
-
-## 소유와 규칙 (여러 명이 같은 체크아웃에서 동시에 일한다)
-
-- **자기 도메인 폴더만 고친다.** `src/db`, `src/common`, `src/http`, `src/app.ts`, `src/main.ts`,
-  다른 도메인 폴더는 **건드리지 않는다.** 필요한 게 있으면 자기 폴더에 로컬 헬퍼로 쓰고 보고서에 적는다
-- **다른 도메인 모듈을 import하지 않는다** (지시받은 경우 제외). 옮기는 중인 파일을 import하면
-  없는 export 때문에 **서버 기동이 깨져서 다른 사람의 비교 장치까지 멈춘다.** 남의 테이블은 schema로 직접 조회
-- `src/app.ts`는 이미 모든 도메인의 `routes`를 붙여 뒀다. 자기 `routes.ts`의 `routes`에만 건다
-- 타입 검사는 자기 파일만 본다: `npx tsc --noEmit -p . 2>&1 | grep 'src/domains/<도메인>'`
-- 비교 장치가 남의 파일 때문에 기동 실패하면 잠시 기다렸다 다시. 남의 파일을 고치지 말 것
-- **커밋하지 않는다.** git 명령은 읽기만
+설정은 전부 환경변수 (`src/config.ts`): `STARLOG_DB_DIR`(로컬) 또는 `STARLOG_DB_URL`·`_USER`·`_PASSWORD`·`_SCHEMA`(클라우드),
+`STARLOG_PORT`, `STARLOG_DATA_ROOT`, `STARLOG_STATIC_DIR`, `STARLOG_PROFILE`(dev·test면 `X-Member-Id`를 읽는다),
+`APP_IGDB_*`, `APP_STORAGE_*`, `STARLOG_MEDIA_USE_STORAGE_*`, `TRANSLATE_API_KEY`.
 
 ## 쓰는 것
 
@@ -44,7 +39,9 @@
 | 응답 | `ldt()`(timestamp → `"…T…"`)·`page()` (`src/common/json.ts`) |
 | 주인 | `c.get("memberId")` — 자바 `@LoginMember` |
 
-## 자바 → TS 옮길 때 함정
+## 함정 (이전하면서 실측으로 찾은 것)
+
+자바(Jackson·하이버네이트·스프링)와 같은 동작을 내려고 맞춘 것들이다. 고칠 때 깨지 않게.
 
 - **null 필드도 키를 낸다.** 응답 객체에 `undefined` 금지 — 키가 사라진다. 자바 record의 필드 순서·이름 그대로
 - **enum은 이름 문자열.** `LocalDate`는 DB 문자열 그대로, `LocalDateTime`은 `ldt()`
@@ -67,49 +64,27 @@
 - **위반 메시지가 둘 이상이면 자바 순서가 실행마다 바뀐다** → 시나리오는 위반 하나씩
 - **N+1 걱정은 덜어도 된다** (로컬 DB). 단 목록 응답이 수백 건이면 묶어서 조회
 
-## 비교 장치
+## 회귀 테스트 — 시나리오와 녹화본
 
 ```bash
-cd server
-npx tsx test/harness/run.ts test/scenarios/<도메인>.json            # 전체
+npx tsx test/harness/run.ts test/scenarios/<도메인>.json            # 녹화본과 대조
 npx tsx test/harness/run.ts test/scenarios/<도메인>.json --only 수정  # 이름에 '수정'이 든 단계만
+npx tsx test/harness/run.ts test/scenarios/<도메인>.json --update   # 동작을 일부러 바꾼 뒤 다시 녹화
 ```
 
-- 실데이터 픽스처(25테이블, 게임 145개) 위에서 자바(정답지)와 TS를 동시에 띄운다. 한 번에 30~40초
-- 시나리오 형식은 `test/harness/run.ts` 맨 위. `save`로 응답 값을 변수에 담아 `${변수}`로 쓴다
-- 외부 자격증명은 없다 → 양쪽 다 "미설정" 경로를 탄다
-- **"남의 것"(소유권) 단계**는 `X-Member-Id` 헤더를 쓰는데 자바 `desktop` 프로필은 이 헤더를 무시한다.
-  시나리오에 `"env": {"STARLOG_PROFILE": "test", "SPRING_PROFILES_INCLUDE": "test"}`를 단다.
-  ⚠️ 그러면 자바의 `StartupCleanup`(`@Profile("!test")`)이 안 돈다 — 30일 지난 `api_call_log`가 생기는 시나리오에선 DB가 갈린다
-- ⚠️ **`pkill -f src/main.ts` 금지** — 같은 시각에 다른 사람이 돌리는 비교 장치의 서버까지 죽는다.
-  직접 띄운 서버는 pid를 잡아 두고 그것만 끈다. 공용 픽스처(`fx-base`)는 **직접 열지 말고 복사해서** 연다
-
-### 녹화본 (골든) — 자바가 사라진 뒤의 회귀 테스트
-
-```bash
-npx tsx test/harness/run.ts test/scenarios/<도메인>.json --record         # 비교가 통과하면 자바 결과를 녹화
-npx tsx test/harness/run.ts test/scenarios/<도메인>.json --golden         # 자바 없이 TS만 — 몇 초
-npx tsx test/harness/run.ts test/scenarios/<도메인>.json --golden-update  # 의도한 동작 변경 뒤, TS 결과로 다시 녹화
-```
-
-- 녹화본은 `test/golden/` — **gitignore다.** 실데이터(게임 목록·메모·가격)가 들어 있고 저장소가 공개다.
-  픽스처도 로컬 전용이라 어차피 이 테스트는 이 맥에서만 돈다
-- 응답 + **픽스처 대비 바뀐 행만** 담는다
-- 외부를 실제로 부르는 시나리오(`game-igdb`, `backlog-external`)는 녹화하지 않는다 — 바깥 데이터가 바뀌면 흔들린다
+- 시나리오(`test/scenarios/`)는 요청 목록이다. 형식은 `test/harness/run.ts` 맨 위
+- 녹화본(`test/golden/`)은 **자바와 diff 0으로 확인된 결과**를 녹화해 둔 것 — 응답 + 픽스처 대비 바뀐 행 + 파일 트리
+- 픽스처는 `server/.dev/`에 실데이터 백업(`docs/backup-*-neon`)에서 자동으로 만든다
+- ⚠️ 녹화본·픽스처는 실데이터라 **gitignore** — 이 테스트는 백업이 있는 맥에서만 돈다
+- "남의 것"(소유권) 단계는 시나리오에 `"env": {"STARLOG_PROFILE": "test"}`
+- 빈 세이브에서 시작하려면 `"fixture": "fresh"` (주인 + 기본 카탈로그만)
 
 ### 시나리오 쓰는 법
 
-- **엔드포인트 전부**, 그리고 **자바 코드의 `throw`마다 하나씩** (검증 실패·없음·남의 것·충돌)
+- **엔드포인트 전부**, 그리고 **코드의 `throw`마다 하나씩** (검증 실패·없음·남의 것·충돌)
 - **프론트가 실제로 보내는 모양대로.** `frontend/src`에서 그 경로를 grep해서 파라미터·본문을 본다
 - ⚠️ **만든 행을 다 지우면 DB 비교가 증거를 못 본다.** 쓰기 동작마다 결과가 남는 단계를 둔다
   (만들기 둘 → 하나 수정 → 다른 하나 삭제 식으로)
 - 실데이터를 고치는 단계도 넣는다 (기존 id를 픽스처에서 찾아서) — 실데이터가 가장 까다롭다
+- ⚠️ **시나리오에 실데이터(게임명·메모·실명)를 적지 않는다** — 시나리오는 커밋되고 저장소가 공개다
 - `ignore`는 최후 수단. 쓰면 `note`에 이유를
-
-## 보고서 (끝날 때 이 형식으로)
-
-1. 옮긴 엔드포인트 목록과 비교 결과 (단계 수 / 실패 0 / DB 같음)
-2. 자바에서 발견한 버그 — **고치지 않고** 그대로 옮긴 것
-3. 맞추지 못한 차이와 이유 (있으면)
-4. 자기 폴더에 따로 둔 헬퍼 중 공용으로 올릴 만한 것
-5. 다른 도메인이 쓸 것으로 export한 함수
