@@ -11,6 +11,8 @@ import { uploadScreenshot } from "@/lib/upload";
 import { backendUrl } from "@/lib/apiBase";
 import { getBridge } from "@/lib/desktop";
 import MediaViewer from "./MediaViewer";
+import MediaThumb, { PlayBadge } from "@/components/media/MediaThumb";
+import ScreenshotGallery from "@/components/media/ScreenshotGallery";
 
 /**
  * 게임별 스크린샷 (v1.0 7단계, architecture §10-1).
@@ -33,6 +35,8 @@ type Shot = {
   contentType: string;
   /** 원본을 찍은 시각. 이게 있어야 "넣은 순서"가 아니라 "찍은 순서"로 볼 수 있다 */
   takenAt: string | null;
+  /** 저화질 썸네일. 없으면 원본으로 폴백한다 (MediaThumb) */
+  thumbUrl: string | null;
 };
 
 export default function ScreenshotSection({ entryId }: { entryId: number }) {
@@ -44,6 +48,8 @@ export default function ScreenshotSection({ entryId }: { entryId: number }) {
   const list = useApi<Shot[]>(`/api/backlog/${entryId}/screenshots`);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [viewing, setViewing] = useState<number | null>(null);
+  /** 전체 화면 갤러리 — 이 게임으로 걸러서 연다 (F5) */
+  const [galleryOpen, setGalleryOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -137,6 +143,15 @@ export default function ScreenshotSection({ entryId }: { entryId: number }) {
               폴더 열기
             </button>
           )}
+          {shots && shots.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setGalleryOpen(true)}
+              className="-mx-2 rounded-md px-2 py-2 text-[11px] font-normal text-white/50 transition-colors hover:bg-white/5 hover:text-white"
+            >
+              전체 화면
+            </button>
+          )}
           {/*
             펼치기가 **제목 줄로 올라왔다** (v1.1.3). 내용 아래에 있으면 스크린샷이
             수십 장일 때 버튼이 화면 밖으로 밀려 손이 안 닿는다
@@ -168,33 +183,21 @@ export default function ScreenshotSection({ entryId }: { entryId: number }) {
                   picked ? "border-white/70" : "border-white/10 hover:border-white/30"
                 }`}
               >
-                {shot.contentType?.startsWith("video/") ? (
-                  /*
-                    영상은 목록에서 재생하지 않는다 — 넉 장만 있어도 화면이 시끄럽다.
-                    `preload="metadata"`면 첫 프레임만 받아 와서 썸네일처럼 쓸 수 있다
-                  */
-                  <video
-                    src={shot.url}
-                    preload="metadata"
-                    onClick={() => setViewing(index)}
-                    className="h-full w-full cursor-zoom-in object-cover"
-                  />
-                ) : (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={shot.url}
+                {/* 목록은 썸네일, 크게 보기(MediaViewer)는 원본이다. 영상은 목록에서 재생하지 않는다 */}
+                <button
+                  type="button"
+                  onClick={() => setViewing(index)}
+                  aria-label={`${shot.fileName} 크게 보기`}
+                  className="block h-full w-full cursor-zoom-in"
+                >
+                  <MediaThumb
+                    thumbUrl={shot.thumbUrl}
+                    url={shot.url}
+                    isVideo={Boolean(shot.contentType?.startsWith("video/"))}
                     alt={shot.fileName}
-                    onClick={() => setViewing(index)}
-                    className="h-full w-full cursor-zoom-in object-cover"
                   />
-                )}
-                {shot.contentType?.startsWith("video/") && (
-                  <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white/90">
-                      ▶
-                    </span>
-                  </span>
-                )}
+                </button>
+                {shot.contentType?.startsWith("video/") && <PlayBadge />}
                 {/*
                   체크는 늘 보이지 않는다 — 넉 장만 있어도 화면이 체크박스로 뒤덮인다.
                   고른 것은 계속 보이고, 나머지는 마우스를 올렸을 때만
@@ -233,6 +236,13 @@ export default function ScreenshotSection({ entryId }: { entryId: number }) {
           index={viewing}
           onIndex={setViewing}
           onClose={() => setViewing(null)}
+        />
+      )}
+
+      {galleryOpen && (
+        <ScreenshotGallery
+          initialEntryId={entryId}
+          onClose={() => setGalleryOpen(false)}
         />
       )}
     </section>

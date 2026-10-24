@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { closeTask, useTasks, type Task } from "@/lib/tasks";
 
 /** 끝난 알림이 스스로 닫히기까지 (ms) */
@@ -23,12 +24,17 @@ export default function TaskToasts() {
   const tasks = useTasks();
   if (tasks.length === 0) return null;
 
-  return (
+  /*
+   * body로 포털한다 (F5). 앱 본문은 루트에서 `z-10` 쌓임 맥락 하나에 통째로 들어 있어서,
+   * 안에 두면 z-150이어도 body에 포털된 전체 화면 갤러리(z-90) 아래로 깔린다
+   */
+  return createPortal(
     <div className="pointer-events-none fixed inset-x-0 bottom-6 z-[150] flex flex-col items-center gap-2 px-6">
       {tasks.map((task) => (
         <Toast key={task.id} task={task} />
       ))}
-    </div>
+    </div>,
+    document.body,
   );
 }
 

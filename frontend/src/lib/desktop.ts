@@ -123,6 +123,12 @@ export interface SessionInfo {
   alive: boolean;
 }
 
+/** 스크린샷·영상 한 개 — 파일명은 게임 폴더 안에서만 유일하다 */
+export interface MediaTarget {
+  entryId: number;
+  fileName: string;
+}
+
 export interface StarlogBridge {
   settings: {
     get(): Promise<{ dataRoot: string; dirs: Record<string, string>; lastMode: LaunchMode | null }>;
@@ -150,6 +156,25 @@ export interface StarlogBridge {
       colors?: string[] | null;
       presets?: { name: string; colors: string[] }[];
     }): void;
+  };
+  /**
+   * 스크린샷 공유 (F5). 옛 preload에는 없을 수 있다 → 부르는 쪽은 `?.`로 쓴다.
+   * 한 번에 한 파일씩만 복사된다 — 클립보드가 한 칸이다
+   */
+  media?: {
+    copy(target: MediaTarget): Promise<
+      { ok: true; as: "image" | "file" } | { ok: false; reason: "NOT_FOUND" | "UNSUPPORTED" }
+    >;
+    /** 호출할 때마다 폴더를 묻는다. 취소하면 `canceled: true` */
+    saveTo(targets: MediaTarget[]): Promise<
+      | { canceled: true }
+      | {
+          canceled: false;
+          folder: string;
+          saved: MediaTarget[];
+          failed: (MediaTarget & { reason: string })[];
+        }
+    >;
   };
   pickFolder(): Promise<string | null>;
   openFolder(which: string): Promise<void>;

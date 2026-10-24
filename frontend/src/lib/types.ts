@@ -499,6 +499,30 @@ export interface ScreenshotResponse {
   fileName: string;
   url: string;
   sizeBytes: number;
+  /** 저화질 썸네일. 일렉트론 밖(개발 서버)이거나 아직 안 만들어졌으면 null — 원본 `url`로 폴백한다 */
+  thumbUrl: string | null;
+}
+
+/** GET /api/screenshots — 전 게임 미디어 모아보기 (갤러리). `items`는 최신순 */
+export type MediaKind = "IMAGE" | "VIDEO";
+
+export interface GalleryItem {
+  entryId: number;
+  gameName: string;
+  fileName: string;
+  kind: MediaKind;
+  contentType: string;
+  sizeBytes: number;
+  /** UTC ISO */
+  takenAt: string | null;
+  url: string;
+  thumbUrl: string | null;
+}
+
+export interface GalleryResponse {
+  /** 필터와 무관한 전체 목록(파일 있는 게임만, 이름순) — 드롭다운용 */
+  games: { entryId: number; gameName: string; imageCount: number; videoCount: number }[];
+  items: GalleryItem[];
 }
 
 /* ── 시스템 (GET /api/system) ──────────────────────────────── */
