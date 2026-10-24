@@ -11,6 +11,7 @@ import { HTTPException } from "hono/http-exception";
 import { AppError, ConstraintViolation, FileTooLarge, isIntegrityViolation } from "./common/errors";
 import type { AppEnv } from "./http/env";
 import { ownerMiddleware } from "./http/owner";
+import { desktopCors } from "./http/cors";
 import { serveStatic } from "./http/static";
 import { routes as tag } from "./domains/tag/routes";
 import { routes as subscription } from "./domains/subscription/routes";
@@ -49,6 +50,8 @@ export function createApp(opts: { staticDir: string | null }) {
     return springError(c, 500, "Internal Server Error");
   });
 
+  // CORS가 맨 앞 — 남의 출처면 본문도 주인도 보지 않고 거절한다
+  app.use("/api/*", desktopCors);
   app.use("/api/*", bodyLimit({ maxSize: MAX_REQUEST_BYTES, onError: () => { throw new FileTooLarge(); } }));
   app.use("/api/*", ownerMiddleware);
 

@@ -17,6 +17,9 @@ npm run bundle         # → ../desktop/server/main.mjs
 마이그레이션(`migrations/V*.sql`, `flyway_schema_history` 이어 쓰기) → 미디어 폴더 → 기동 정리(30일 지난 API 기록) →
 리슨 → `STARLOG_READY port=<n>`. 종료는 SIGTERM 또는 부모의 `{type: "shutdown"}` 메시지 — PGlite를 닫고 잠금을 푼다.
 
+**CORS (`src/http/cors.ts`)** — 창은 평생 `app://starlog`이고 화면 → API는 교차 출처다. `app://starlog`만 열고
+다른 출처는 403. dev·test 프로필에서는 끈다(프론트 개발 서버 프록시). ⚠️ 빼면 앱이 **배경만 남은 검은 화면**이 된다.
+
 설정은 전부 환경변수 (`src/config.ts`): `STARLOG_DB_DIR`(로컬) 또는 `STARLOG_DB_URL`·`_USER`·`_PASSWORD`·`_SCHEMA`(클라우드),
 `STARLOG_PORT`, `STARLOG_DATA_ROOT`, `STARLOG_STATIC_DIR`, `STARLOG_PROFILE`(dev·test면 `X-Member-Id`를 읽는다),
 `APP_IGDB_*`, `APP_STORAGE_*`, `STARLOG_MEDIA_USE_STORAGE_*`, `TRANSLATE_API_KEY`.

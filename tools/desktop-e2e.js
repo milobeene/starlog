@@ -7,6 +7,8 @@
  * - 앱 데이터 경로를 임시 폴더로 바꾼다 → **실제 설정·연결·세이브파일을 건드리지 않는다**
  * - `BrowserWindow`를 `show: false`로 바꿔 끼운다 (`require("electron")`을 가로채서)
  * - 화면이 쓰는 `window.starlog` 브리지를 그대로 불러 입구 → 기동 → 본 앱 → 백업 → 되살리기 → 종료를 밟는다
+ * - ⚠️ **본 앱도 `app://starlog`에서 연다** — 실제 앱이 그렇다(창은 평생 `app://` 한 장, API만
+ *   `http://127.0.0.1:포트`로 → CORS). 처음엔 창을 http로 옮겨 열어서 **CORS가 빠진 걸 못 잡았다** (2026-10-24)
  *
  * 클라우드 모드는 시험하지 않는다 — 실제 Neon에 붙기 때문이다.
  */
@@ -87,19 +89,23 @@ realElectron.app.whenReady().then(async () => {
     const opts = await api(port, "GET", "/api/me/options");
     check("기본 카탈로그 심김", (opts.json?.platforms?.length ?? 0) >= 7, `플랫폼 ${opts.json?.platforms?.length}개`);
 
-    await goto(`http://127.0.0.1:${port}/dashboard`);
+    await goto("app://starlog/dashboard");
     const dash = await js("document.body.innerText");
-    check("대시보드 렌더", dash.length > 50, `${dash.length}자`);
+    check("대시보드 렌더 (app:// → API는 교차 출처)", /TOTAL GAMES/i.test(dash) && /\b0\b|\b1\b/.test(dash), `${dash.length}자`);
+
+    // 다른 출처(아무 웹페이지)에서 API를 부르면 막혀야 한다 — 자바 DesktopCorsConfig와 같게
+    const foreign = await fetch(`http://127.0.0.1:${port}/api/me`, { headers: { Origin: "https://evil.example" } });
+    check("남의 출처 요청은 403", foreign.status === 403, String(foreign.status));
 
     const game = await api(port, "POST", "/api/games", { name: "E2E 테스트 게임" });
     const entry = await api(port, "POST", "/api/backlog", { gameId: game.json?.id });
     check("게임 담기", entry.status === 201, `game=${game.status} entry=${entry.status}`);
 
-    await goto(`http://127.0.0.1:${port}/library`);
+    await goto("app://starlog/library");
     const lib = await js("document.body.innerText");
     check("라이브러리에 담은 게임이 보인다", lib.includes("E2E 테스트 게임"));
 
-    await goto(`http://127.0.0.1:${port}/library/detail?entry=${entry.json?.id}`);
+    await goto(`app://starlog/library/detail?entry=${entry.json?.id}`);
     check("상세 화면", (await js("document.body.innerText")).includes("E2E 테스트 게임"));
 
     // ── 입구로 → 백업 (백엔드를 내리고 묶는다) ──

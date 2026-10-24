@@ -19,6 +19,11 @@ export interface Config {
   staticDir: string | null;
   /** dev·test에서만 `X-Member-Id` 헤더를 읽는다 (자바 `MemberIdOverride`) */
   allowMemberOverride: boolean;
+  /**
+   * 데스크탑 CORS를 거는가 — dev·test가 아니면 건다 (자바 `DesktopCorsConfig`는 `desktop` 프로필 전용이었다).
+   * 개발 중엔 프론트 개발 서버가 프록시로 붙어서 출처가 `localhost:3000`이다 — 걸면 막힌다
+   */
+  desktopCors: boolean;
   /** 부팅 기본값. 앱 안(`app_setting`)에서 넣은 값이 있으면 그게 이긴다 */
   igdb: { clientId: string | null; clientSecret: string | null };
   storage: {
@@ -49,6 +54,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     dataRoot: blank(env.STARLOG_DATA_ROOT),
     staticDir: blank(env.STARLOG_STATIC_DIR),
     allowMemberOverride: ["dev", "test"].includes(env.STARLOG_PROFILE ?? ""),
+    desktopCors: !["dev", "test"].includes(env.STARLOG_PROFILE ?? ""),
     igdb: { clientId: blank(env.APP_IGDB_CLIENT_ID), clientSecret: blank(env.APP_IGDB_CLIENT_SECRET) },
     storage: {
       endpoint: blank(env.APP_STORAGE_ENDPOINT),
