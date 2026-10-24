@@ -6,26 +6,23 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../../http/env";
-import { readBody } from "../../http/body";
+import { DEFAULT_MSG, readBody, violations } from "../../http/body";
 import { zText } from "../../common/schemas";
 import { InvalidInput } from "../../common/errors";
 import { fileStorage } from "../../common/storage";
-import { allSettings, GUARD_MONTHLY_CHARS, grouped, igdbCredentials, parseJavaLong, putSetting, SETTING, systemStatus, translateApiKey, translationUsage } from "./service";
+import { allSettings, GUARD_MONTHLY_CHARS, grouped, igdbCredentials, parseJavaLong, putSettings, SETTING, systemStatus, translateApiKey, translationUsage } from "./service";
 import { testIgdb, testTranslate } from "./testers";
 import { javaStrip } from "../../common/text";
 
 const optStr = zText.nullish().transform((v) => v ?? null);
 
-/** ⚠️ 필수 검증이 없다 — null이면 아래 `strip()`에서 500 (알려진 버그 7, `docs/v2-plan.md`) */
+/** 저장 요청은 `@NotNull` 검증을 탄다 (`violations`). 테스트 요청은 빈 값도 받아 안내 문구로 답한다 */
 const IgdbRequest = z.object({ clientId: optStr, clientSecret: optStr });
 const TranslateKeyRequest = z.object({ apiKey: optStr });
 const DailyLimitRequest = z.object({ dailyChars: optStr });
 
-/** 앞뒤 공백 제거. null이면 평범한 예외(→ 500, 전역 핸들러가 모르는 예외) */
-function strip(v: string | null): string {
-  if (v === null) throw new TypeError("Cannot invoke \"String.strip()\" because value is null");
-  return javaStrip(v);
-}
+/** 앞뒤 공백 제거. null은 앞에서 검증으로 걸러진다 */
+const strip = (v: string | null): string => javaStrip(v!);
 
 export const routes = new Hono<AppEnv>();
 
@@ -52,11 +49,17 @@ routes.get("/api/system/settings", async (c) => {
   });
 });
 
-/** ⚠️ 하나씩 따로 커밋된다 — 시크릿이 null이면 ID는 이미 저장된 뒤 500이다 (알려진 버그 7, `docs/v2-plan.md`) */
+/**
+ * 둘을 **한 트랜잭션으로** 저장한다 — 따로 커밋하면 ID만 바뀐 채 남을 수 있다.
+ * null은 저장 전에 400 (고친 버그 7, `docs/v2-plan.md`)
+ */
 routes.put("/api/system/settings/igdb", async (c) => {
   const r = await readBody(c, IgdbRequest);
-  await putSetting(SETTING.IGDB_CLIENT_ID, strip(r.clientId));
-  await putSetting(SETTING.IGDB_CLIENT_SECRET, strip(r.clientSecret));
+  violations()
+    .notNull("clientId", r.clientId, DEFAULT_MSG.notNull)
+    .notNull("clientSecret", r.clientSecret, DEFAULT_MSG.notNull)
+    .throwIfAny();
+  await putSettings({ [SETTING.IGDB_CLIENT_ID]: strip(r.clientId), [SETTING.IGDB_CLIENT_SECRET]: strip(r.clientSecret) });
   return c.body(null, 200);
 });
 
@@ -65,7 +68,7 @@ routes.put("/api/system/settings/translate/daily-limit", async (c) => {
   const r = await readBody(c, DailyLimitRequest);
   const raw = r.dailyChars === null ? "" : strip(r.dailyChars);
   if (raw === "") {
-    await putSetting(SETTING.TRANSLATE_DAILY_CHARS, "");
+    await putSettings({ [SETTING.TRANSLATE_DAILY_CHARS]: "" });
     return c.body(null, 200);
   }
   const value = parseJavaLong(raw);
@@ -73,14 +76,15 @@ routes.put("/api/system/settings/translate/daily-limit", async (c) => {
   // 음수면 게이지가 뒤집히고, 월 한도보다 큰 하루 한도는 하루에 다 쓸 수 있다는 뜻이 되어 앞뒤가 안 맞는다
   if (value <= 0) throw new InvalidInput("하루 할당량은 0보다 커야 합니다");
   if (value > GUARD_MONTHLY_CHARS) throw new InvalidInput(`하루 할당량은 월 한도(${grouped(GUARD_MONTHLY_CHARS)}자)를 넘을 수 없습니다`);
-  await putSetting(SETTING.TRANSLATE_DAILY_CHARS, String(value));
+  await putSettings({ [SETTING.TRANSLATE_DAILY_CHARS]: String(value) });
   return c.body(null, 200);
 });
 
 /** 번역 키 저장. 테스트 버튼 대신 아래 `languages` 확인을 쓴다 (번역은 시험도 돈이다) */
 routes.put("/api/system/settings/translate", async (c) => {
   const r = await readBody(c, TranslateKeyRequest);
-  await putSetting(SETTING.TRANSLATE_API_KEY, strip(r.apiKey));
+  violations().notNull("apiKey", r.apiKey, DEFAULT_MSG.notNull).throwIfAny();
+  await putSettings({ [SETTING.TRANSLATE_API_KEY]: strip(r.apiKey) });
   return c.body(null, 200);
 });
 

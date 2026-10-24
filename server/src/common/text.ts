@@ -85,3 +85,12 @@ export function slug(name: string | null | undefined): string {
   if (s === "") return "untitled";
   return s.length > 80 ? s.slice(0, 80) : s;
 }
+
+/**
+ * 주격 조사 — 받침이 있으면 `이`, 없으면 `가` (`구독이`·`태그가`).
+ * 한글 음절이 아니면 받침을 알 수 없어 `가`
+ */
+export function subjectParticle(word: string): "이" | "가" {
+  const c = word.charCodeAt(word.length - 1);
+  return c >= 0xac00 && c <= 0xd7a3 && (c - 0xac00) % 28 !== 0 ? "이" : "가";
+}

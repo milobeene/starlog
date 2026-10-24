@@ -88,16 +88,18 @@ export async function translateApiKey(d: Db = db()): Promise<string | null> {
 }
 
 /**
- * 넣거나 바꾼다. **값이 실제로 바뀔 때만** UPDATE한다 (`updated_at`이 그대로 남는다)
+ * 넣거나 바꾼다 — 여럿이면 **한 트랜잭션으로**(넣은 순서대로). **값이 실제로 바뀔 때만** UPDATE한다 (`updated_at`이 그대로 남는다)
  */
-export async function putSetting(key: string, value: string): Promise<void> {
+export async function putSettings(values: Record<string, string>): Promise<void> {
   await db().transaction(async (tx) => {
-    const [row] = await tx.select().from(appSetting).where(eq(appSetting.settingKey, key));
-    const now = nowKst();
-    if (!row) {
-      await tx.insert(appSetting).values({ settingKey: key, settingValue: value, createdAt: now, updatedAt: now });
-    } else if (row.settingValue !== value) {
-      await tx.update(appSetting).set({ settingValue: value, updatedAt: now }).where(eq(appSetting.settingKey, key));
+    for (const [key, value] of Object.entries(values)) {
+      const [row] = await tx.select().from(appSetting).where(eq(appSetting.settingKey, key));
+      const now = nowKst();
+      if (!row) {
+        await tx.insert(appSetting).values({ settingKey: key, settingValue: value, createdAt: now, updatedAt: now });
+      } else if (row.settingValue !== value) {
+        await tx.update(appSetting).set({ settingValue: value, updatedAt: now }).where(eq(appSetting.settingKey, key));
+      }
     }
   });
 }
@@ -219,7 +221,7 @@ export async function recordTranslation(chars: number, success: boolean): Promis
 
 const TRANSLATE_URL = "https://translation.googleapis.com/language/translate/v2";
 
-/** 4xx 응답 — 이것만 502로 접는다 */
+/** 4xx 응답 — 상태별로 문구를 가른다 (나머지 실패는 한 문구) */
 class Http4xx extends Error {
   constructor(readonly status: number) { super(`HTTP ${status}`); }
 }
@@ -228,7 +230,7 @@ class Http4xx extends Error {
  * Google Cloud Translation v2. `q`를 **여러 개** 보내고 같은 순서로 받는다 — 이어 붙였다면
  * 구분자를 번역기가 옮겨버려 경계가 어긋난다. `format=text`가 없으면 `&#39;`가 그대로 보인다.
  *
- * ⚠️ 4xx만 502로 접는다. 5xx·연결 실패·응답 해석 실패는 안 잡혀 **500**이다 (알려진 버그 8, `docs/v2-plan.md`)
+ * 실패는 전부 502로 접는다 — 4xx는 상태별 문구, 5xx·연결 실패·응답 해석 실패는 한 문구 (고친 버그 8, `docs/v2-plan.md`)
  */
 export async function toKorean(apiKey: string, texts: string[]): Promise<string[]> {
   const body = new URLSearchParams();
@@ -253,7 +255,8 @@ export async function toKorean(apiKey: string, texts: string[]): Promise<string[
         429: "구글의 할당량을 넘었습니다. 콘솔에서 하루 한도를 확인해 주세요" } as Record<number, string>)[e.status]
         ?? `구글이 ${e.status}로 응답했습니다`);
     }
-    throw e;
+    console.warn("번역 실패 — 서버 오류·연결 실패·응답 해석 실패", e);
+    throw new ExternalApi("TRANSLATE", e instanceof Error ? e.message : String(e));
   }
   const translations = found?.data?.translations ?? [];
   // ⚠️ 개수가 맞아야 한다. 순서로 짝을 짓는데 하나라도 빠지면 스토리라인이 소개문 자리에 들어간다
@@ -350,11 +353,11 @@ async function databaseSize(d: Db): Promise<number | null> {
 
 /**
  * **내 테이블만** — `pg_database_size`는 시스템 카탈로그 7MB가 섞여 게임을 넣어도 안 움직였다.
- * ⚠️ `public` 스키마로 고정돼 있다. 스키마를 지정한 클라우드(결정 60)에선 0이 나온다 (알려진 버그 10, `docs/v2-plan.md`)
+ * 스키마는 연결된 것(`current_schema()`)으로 — 스키마를 지정한 클라우드(결정 60)는 `public`이 아니다 (고친 버그 10)
  */
 async function myTablesSize(d: Db): Promise<number | null> {
   try {
-    const r = await one<{ v: string | number }>(d, sql`select coalesce(sum(pg_total_relation_size(c.oid)), 0) as v from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public'`);
+    const r = await one<{ v: string | number }>(d, sql`select coalesce(sum(pg_total_relation_size(c.oid)), 0) as v from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = current_schema()`);
     return Number(r!.v);
   } catch {
     return databaseSize(d);

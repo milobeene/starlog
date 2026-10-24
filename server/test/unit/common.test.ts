@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { scale2, money, compareAmount } from "../../src/common/money";
-import { normalize, slug, sortKey } from "../../src/common/text";
+import { normalize, slug, sortKey, subjectParticle } from "../../src/common/text";
 import { nowKst, todayKst } from "../../src/common/clock";
 import { InvalidInput } from "../../src/common/errors";
 
@@ -52,6 +52,12 @@ describe("문자열 — 자바 TextValues·Slugs·SortKeys", () => {
     expect(sortKey("나인 솔즈")).toBe("2|나인 솔즈");
     expect(sortKey("ペルソナ")).toBe("3|ペルソナ");
     expect(sortKey("   ")).toBeNull();
+  });
+  it("주격 조사 — 받침 있으면 이, 없으면 가", () => {
+    expect(subjectParticle("구독")).toBe("이");
+    expect(subjectParticle("태그")).toBe("가");
+    expect(subjectParticle("장르")).toBe("가");
+    expect(subjectParticle("Steam")).toBe("가");
   });
 });
 

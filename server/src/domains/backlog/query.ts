@@ -89,7 +89,11 @@ function containsIc(column: SQL, keyword: string): SQL {
 function predicates(memberId: number, c: SearchCondition): SQL {
   const w: SQL[] = [sql`b.member_id = ${memberId}`, sql`b.deleted_at is null`];
 
-  if (c.keyword !== null) w.push(containsIc(sql`b.display_name`, c.keyword));
+  // 표시 이름(한글 오버라이드일 수 있다) **또는 마스터 이름**(IGDB 원제) — `mario`로 `슈퍼 마리오`를 찾는다
+  if (c.keyword !== null) {
+    w.push(sql`(${containsIc(sql`b.display_name`, c.keyword)}
+               or exists (select 1 from game mg where mg.id = b.game_id and ${containsIc(sql`mg.name`, c.keyword)}))`);
+  }
   if (c.statuses.length) w.push(sql`b.status in ${c.statuses}`);
   if (c.tagId !== null) w.push(sql`b.tag_id = ${c.tagId}`);
   if (c.genreId !== null) {
@@ -222,7 +226,7 @@ async function toCards(d: Db, entries: EntryRow[]) {
   const entryIds = entries.map((e) => e.id);
   const gameIds = ids(entries.map((e) => e.gameId));
   const games = new Map((gameIds.length
-    ? await rows<{ id: number; coverImageId: string | null }>(d, sql`select id, cover_image_id as "coverImageId" from game where id in ${gameIds}`)
+    ? await rows<{ id: number; name: string; coverImageId: string | null }>(d, sql`select id, name, cover_image_id as "coverImageId" from game where id in ${gameIds}`)
     : []).map((g) => [g.id, g]));
   const tagIds = ids(entries.map((e) => e.tagId));
   const tags = new Map((tagIds.length
@@ -254,6 +258,8 @@ async function toCards(d: Db, entries: EntryRow[]) {
       },
       coverImageId: games.get(e.gameId)?.coverImageId ?? null,
       tag: e.tagId === null ? null : tags.get(e.tagId) ?? null,
+      // 마스터 이름(IGDB 원제) — 화면이 전량 목록을 손에서 거를 때 원제로도 찾게 (서버 검색 `q`와 같은 규칙)
+      masterName: games.get(e.gameId)?.name ?? null,
     };
   });
 }

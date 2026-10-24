@@ -339,11 +339,9 @@ class S3Storage implements FileStoragePort {
     } catch (e) {
       // HEAD 404 = 업로드가 실제로 안 일어났다. 장애가 아니라 정상 분기다
       if (e instanceof S3Status && e.status === 404) return null;
-      if (e instanceof S3Status) {
-        console.error(`스토리지 조회 실패 — key=${storageKey}`, e);
-        throw new ExternalApi("FILE_STORAGE", "업로드된 파일을 확인하지 못했습니다");
-      }
-      throw e;   // ⚠️ 연결 실패는 502로 안 접고 그대로 올린다 → 500 (알려진 버그 9, `docs/v2-plan.md`)
+      // 연결 실패·타임아웃도 502 — 스토리지 장애는 우리 오류(500)가 아니다 (고친 버그 9, `docs/v2-plan.md`)
+      console.error(`스토리지 조회 실패 — key=${storageKey}`, e);
+      throw new ExternalApi("FILE_STORAGE", "업로드된 파일을 확인하지 못했습니다");
     }
   }
 
@@ -354,11 +352,8 @@ class S3Storage implements FileStoragePort {
       res = await this.send("GET", storageKey, { range: `bytes=0-${length - 1}` });
     } catch (e) {
       if (e instanceof S3Status && e.errorCode === "NoSuchKey") return new Uint8Array(0);
-      if (e instanceof S3Status) {
-        console.error(`스토리지 부분 읽기 실패 — key=${storageKey}`, e);
-        throw new ExternalApi("FILE_STORAGE", "업로드된 파일을 확인하지 못했습니다");
-      }
-      throw e;   // 연결 실패 → 500 (알려진 버그 9, `docs/v2-plan.md`)
+      console.error(`스토리지 부분 읽기 실패 — key=${storageKey}`, e);   // 연결 실패도 502 (고친 버그 9)
+      throw new ExternalApi("FILE_STORAGE", "업로드된 파일을 확인하지 못했습니다");
     }
     try {
       return new Uint8Array(await res.arrayBuffer()).slice(0, length);

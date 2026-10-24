@@ -16,10 +16,10 @@ import { nowKst } from "../../common/clock";
 import { ldt, moneyJson } from "../../common/json";
 import {
   accountFindSelectable, deviceFindSelectable, emulatorFindSelectable, inputMethodFindSelectable,
-  platformFindSelectable, type SelectableAccount,
+  platformFindSelectable,
 } from "../platform/service";
 import { gameCollections, type GameRow } from "../game/service";
-import { FORMAT_VERSION, npe } from "./dump";
+import { FORMAT_VERSION } from "./dump";
 import { colorsOf, findMember, subscriptionsOf, type MemberRow } from "./query";
 
 /** IGDB id가 있으면 그것, 없으면(수동 등록) 이름. 새 DB에서 항목이 게임을 찾는 열쇠다 */
@@ -102,19 +102,14 @@ function profile(m: MemberRow) {
   return { email: m.email, nickname: m.nickname, memo: m.memo, backgroundColors: colorsOf(m.backgroundColors) };
 }
 
-/**
- * ⚠️ **알려진 버그 1 (`docs/v2-plan.md`) — 일부러 그대로 둔다.** 계정의 소속을 플랫폼으로만 읽어서
- * **에뮬레이터 소속 계정(platform = null)이 하나라도 있으면 NPE → 500**이다.
- * 형식 2의 `accounts[]`(label, platform)에는 소속 종류 칸도 없다 (가져오기는 늘 플랫폼 계정으로 만든다).
- * 고칠 때는 이 함수를 `ownerName(a.platform, a.emulator)`로 바꾸면 된다 (+ 형식에 소속 종류를 더할지 결정)
- */
-const platformNameOf = (a: SelectableAccount): string => (a.platform === null ? npe("account.platform") : a.platform.name);
-
 /** 선택지 다섯 종 + 구독 + 쓰인 태그·장르. **계정이 플랫폼을 참조하므로 플랫폼이 먼저다** */
 async function catalog(d: Db, memberId: number, tags: string[], genres: string[]) {
   return {
     platforms: (await platformFindSelectable(d, memberId)).map((p) => p.name),
-    accounts: (await accountFindSelectable(d, memberId)).map((a) => ({ label: a.accountLabel, platform: platformNameOf(a) })),
+    // 소속은 둘 중 하나만 찬다 (형식 3). 에뮬 소속 계정 때문에 내보내기가 500이던 것(버그 1)을 여기서 고쳤다
+    accounts: (await accountFindSelectable(d, memberId)).map((a) => ({
+      label: a.accountLabel, platform: a.platform?.name ?? null, emulator: a.emulator?.name ?? null,
+    })),
     devices: (await deviceFindSelectable(d, memberId)).map((x) => ({ deviceType: x.deviceType, label: x.label, memo: x.memo })),
     emulators: (await emulatorFindSelectable(d, memberId)).map((e) => ({ name: e.name, memo: e.memo })),
     inputMethods: (await inputMethodFindSelectable(d, memberId)).map((i) => i.name),
@@ -173,8 +168,14 @@ async function cover(d: Db, entryId: number) {
 const accountPlatform = alias(platform, "account_platform");
 const accountEmulator = alias(emulator, "account_emulator");
 
-/** 계정의 소속 이름 — 라벨만으로는 계정을 못 집기 때문에 함께 적는다 (형식 2). 플랫폼이거나 에뮬이거나 하나다 */
-const ownerName = (p: { name: string } | null, e: { name: string } | null) => p?.name ?? e?.name ?? null;
+/**
+ * 계정의 소속 — 라벨만으로는 계정을 못 집어서 함께 적는다 (형식 2). **종류별로 칸이 따로다** (형식 3) —
+ * 이름만 적으면 같은 이름의 플랫폼과 에뮬레이터를 못 가른다
+ */
+const accountOwner = (account: string | null, p: { name: string } | null, e: { name: string } | null) => ({
+  platformAccountPlatform: account === null ? null : p?.name ?? null,
+  platformAccountEmulator: account === null ? null : e?.name ?? null,
+});
 
 async function playthroughs(d: Db, entryId: number) {
   const rows = await d.select({
@@ -197,13 +198,13 @@ async function playthroughs(d: Db, entryId: number) {
     label: r.p.label,
     device: r.device,
     platformAccount: r.account,
-    platformAccountPlatform: r.account === null ? null : ownerName(r.ap, r.ae),
+    ...accountOwner(r.account, r.ap, r.ae),
     emulator: r.emulator,
     inputMethod: r.input,
   }));
 }
 
-/** `platform`은 **취득 자체의** 플랫폼이고, `platformAccountPlatform`은 **계정의** 소속이다 */
+/** `platform`은 **취득 자체의** 플랫폼이고, `platformAccountPlatform`·`…Emulator`는 **계정의** 소속이다 */
 async function acquisitions(d: Db, entryId: number) {
   const rows = await d.select({
     a: acquisition, platform: platform.name, account: platformAccount.accountLabel,
@@ -220,7 +221,7 @@ async function acquisitions(d: Db, entryId: number) {
     method: r.a.method,
     platform: r.platform,
     platformAccount: r.account,
-    platformAccountPlatform: r.account === null ? null : ownerName(r.ap, r.ae),
+    ...accountOwner(r.account, r.ap, r.ae),
     subscription: r.subscription,
     price: moneyJson(r.a.priceAmount, r.a.priceCurrency),
     acquiredOn: r.a.acquiredOn,

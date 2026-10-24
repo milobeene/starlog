@@ -220,28 +220,36 @@ async function saveCatalogGame(d: Db, detail: CatalogGameDetail): Promise<number
  * 저장만 짧은 트랜잭션으로 열고, 담기 트랜잭션은 이게 끝난 **뒤에** 연다.
  * (IGDB 호출 기록 `recordApiCall`이 `db()`로 따로 쓰므로, 트랜잭션 안에서 부르면 PGlite에서 교착한다)
  *
- * 유니크 충돌(동시에 같은 새 게임을 담음)이면 상대가 넣은 행을 그대로 쓴다. 다시 찾아도 없으면 원래 예외(→ 409).
- * ⚠️ 캐시는 정규화한 externalId로 찾고 저장은 IGDB가 돌려준 id로 한다 — 둘이 다르면(공백 등) 캐시를 못 찾고
- * 두 번째부터 409 (알려진 버그 12, `docs/v2-plan.md`)
+ * 캐시는 **IGDB가 쓰는 모양**(`canonicalExternalId` — `040477`·`+40477`도 `40477`)으로 찾고, 상세를 받은 뒤엔
+ * IGDB가 돌려준 id로 한 번 더 찾는다 — 저장은 그 id로 하므로, 찾는 열쇠가 달랐던 예전엔 이미 담긴 게임을
+ * 다시 담으려다 409가 났다 (고친 버그 12, `docs/v2-plan.md`).
+ * 유니크 충돌(동시에 같은 새 게임을 담음)이면 상대가 넣은 행을 그대로 쓴다. 다시 찾아도 없으면 원래 예외(→ 409)
  */
 export async function resolveGame(d: Db, gameId: number | null, externalId: string | null): Promise<number> {
   if (gameId !== null) return gameId;
   const normalized = normalize(externalId);
   if (normalized === null) throw new InvalidInput("gameId 또는 externalId 중 하나는 필요합니다");
 
-  const cached = await findIgdbGameId(d, normalized);
+  const cached = await findIgdbGameId(d, canonicalExternalId(normalized));
   if (cached !== null) return cached;
 
   const detail = await igdbFindById(normalized);
+  const saved = await findIgdbGameId(d, detail.externalId);
+  if (saved !== null) return saved;
   try {
     return await saveCatalogGame(d, detail);
   } catch (e) {
     if (!isIntegrityViolation(e)) throw e;
-    console.log(`동시 캐시 저장 충돌 — 이미 저장된 마스터를 재사용합니다. externalId=${normalized}`);
-    const again = await findIgdbGameId(d, normalized);
+    console.log(`동시 캐시 저장 충돌 — 이미 저장된 마스터를 재사용합니다. externalId=${detail.externalId}`);
+    const again = await findIgdbGameId(d, detail.externalId);
     if (again === null) throw e;
     return again;
   }
+}
+
+/** 정수면 IGDB가 돌려주는 모양(앞의 0·`+` 없음)으로. 정수가 아니면 그대로 — 상세 조회가 404로 끊는다 */
+export function canonicalExternalId(id: string): string {
+  return /^[+-]?\d+$/.test(id) ? BigInt(id).toString() : id;
 }
 
 // ───────────── 검색 ─────────────
@@ -398,6 +406,16 @@ export async function syncMasterInfo(gameId: number, info: MasterInfo): Promise<
 export interface GameResyncResult { nameChanged: boolean; renamedEntries: number; reorderedEntries: number }
 
 /**
+ * 재동기화의 새 이름. **정규화한 뒤 비교한다** — 저장하는 값과 같은 모양으로 봐야 한다.
+ * 원문으로 비교하던 때는 IGDB 이름 끝에 공백이 있으면 매번 "바뀜" + 전파였다 (고친 버그 11, `docs/v2-plan.md`).
+ * IGDB가 이름을 안 주거나 공백뿐이면 지금 이름을 지킨다
+ */
+export function resyncedName(remote: string | null, current: string): { nameChanged: boolean; name: string } {
+  const fresh = normalize(remote);
+  return fresh !== null && fresh !== current ? { nameChanged: true, name: fresh } : { nameChanged: false, name: current };
+}
+
+/**
  * 외부 DB 재동기화 (FR-GAME-05).
  * IGDB 호출은 트랜잭션 밖에서(호출 기록이 따로 커밋되므로 안에서 부르면 PGlite 교착), 반영은 안에서. **정가는 안 건드린다** (IGDB는 가격을 안 준다).
  * 개인 오버라이드는 항목 쪽에 있어 자동으로 보존된다
@@ -412,9 +430,7 @@ export async function resyncGame(gameId: number): Promise<GameResyncResult> {
   return db().transaction(async (tx) => {
     const cur = await requireGame(tx, gameId);
     const now = nowKst();
-    // ⚠️ 원문 이름으로 비교하고 정규화한 이름을 넣는다 — 끝에 공백이 있으면 매번 "바뀜" (알려진 버그 11, `docs/v2-plan.md`)
-    const nameChanged = detail.name !== null && detail.name !== cur.name;
-    const name = nameChanged ? normalizedName(detail.name) : cur.name;
+    const { nameChanged, name } = resyncedName(detail.name, cur.name);
     await syncCatalogCollections(tx, gameId, detail, false);
     await updateGameIfChanged(tx, cur, { ...(nameChanged ? { name } : {}), ...catalogScalars(cur, detail, now) }, now);
     const renamedEntries = nameChanged ? await propagateName(tx, gameId, name, now) : 0;

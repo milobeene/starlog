@@ -11,8 +11,13 @@
 import { z } from "zod";
 import { opt, zDate, zDecimal, zLong, zText } from "../../common/schemas";
 
-/** 2 — 회차·취득이 계정을 `라벨 + 소속`으로 가리킨다 (v1.1.3) */
-export const FORMAT_VERSION = 2;
+/**
+ * 2 — 회차·취득이 계정을 `라벨 + 소속`으로 가리킨다 (v1.1.3).
+ * 3 — 계정에 소속 종류가 생겼다: `accounts[]`의 `platform`·`emulator` 중 하나, 회차·취득은
+ *     `platformAccountPlatform`·`platformAccountEmulator` 중 하나 (2026-10-24). 2 이하는 전부 플랫폼 계정이다.
+ *     올린 이유 — 옛 앱이 이 파일을 읽으면 에뮬 계정을 플랫폼 계정으로 만들려다 엉뚱한 400이 난다
+ */
+export const FORMAT_VERSION = 3;
 
 /**
  * ISO 로컬 날짜시각 (`2026-08-28T15:14:26.781806`, 초·소수는 생략 가능).
@@ -40,7 +45,8 @@ const Profile = z.object({ email: text, nickname: text, memo: text, backgroundCo
 
 const Catalog = z.object({
   platforms: texts,
-  accounts: list(z.object({ label: text, platform: text })),
+  /** 형식 2 이하엔 `emulator`가 없다 → null → 플랫폼 계정 */
+  accounts: list(z.object({ label: text, platform: text, emulator: text })),
   devices: list(z.object({ deviceType: text, label: text, memo: text })),
   emulators: list(z.object({ name: text, memo: text })),
   inputMethods: texts,
@@ -71,11 +77,12 @@ const Cover = z.object({ storageKey: text, contentType: text, sizeBytes: primiti
 
 const Playthrough = z.object({
   sequenceNo: primitive, startedOn: opt(zDate), finishedOn: opt(zDate), status: text, label: text,
-  device: text, platformAccount: text, platformAccountPlatform: text, emulator: text, inputMethod: text,
+  device: text, platformAccount: text, platformAccountPlatform: text, platformAccountEmulator: text,
+  emulator: text, inputMethod: text,
 });
 
 const Acquisition = z.object({
-  method: text, platform: text, platformAccount: text, platformAccountPlatform: text,
+  method: text, platform: text, platformAccount: text, platformAccountPlatform: text, platformAccountEmulator: text,
   subscription: text, price: Money, acquiredOn: opt(zDate), label: text,
 });
 

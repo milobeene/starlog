@@ -20689,7 +20689,7 @@
    }
   },
   {
-   "name": "가져오기 — 취득 구독이 사전에 없음 (\"구독가\")",
+   "name": "가져오기 — 취득 구독이 사전에 없음 (\"구독이\" — 고친 버그 21)",
    "method": "POST",
    "path": "/api/me/import",
    "body": {
@@ -24040,6 +24040,284 @@
   },
   {
    "name": "최종 — 내보내기",
+   "method": "GET",
+   "path": "/api/me/export"
+  },
+  {
+   "name": "형식 3 — 계정 소속이 둘 다 (400)",
+   "method": "POST",
+   "path": "/api/me/replace",
+   "body": {
+    "formatVersion": 3,
+    "catalog": {
+     "platforms": [
+      "같은이름",
+      "Steam"
+     ],
+     "accounts": [
+      {
+       "label": "X",
+       "platform": "같은이름",
+       "emulator": "같은이름"
+      }
+     ],
+     "emulators": [
+      {
+       "name": "같은이름",
+       "memo": null
+      }
+     ]
+    },
+    "games": [
+     {
+      "externalId": null,
+      "source": "MANUAL",
+      "name": "형식3 게임"
+     }
+    ],
+    "entries": [
+     {
+      "gameKey": "name:형식3 게임",
+      "playthroughs": [],
+      "acquisitions": []
+     }
+    ]
+   },
+   "note": "고친 버그 1 — 형식 3의 계정은 플랫폼·에뮬 중 하나만"
+  },
+  {
+   "name": "형식 3 — 계정이 없는 에뮬을 가리킴 (400)",
+   "method": "POST",
+   "path": "/api/me/replace",
+   "body": {
+    "formatVersion": 3,
+    "catalog": {
+     "platforms": [
+      "같은이름",
+      "Steam"
+     ],
+     "accounts": [
+      {
+       "label": "X",
+       "platform": null,
+       "emulator": "없는 에뮬"
+      }
+     ],
+     "emulators": [
+      {
+       "name": "같은이름",
+       "memo": null
+      }
+     ]
+    },
+    "games": [
+     {
+      "externalId": null,
+      "source": "MANUAL",
+      "name": "형식3 게임"
+     }
+    ],
+    "entries": [
+     {
+      "gameKey": "name:형식3 게임",
+      "playthroughs": [],
+      "acquisitions": []
+     }
+    ]
+   }
+  },
+  {
+   "name": "형식 3 — 에뮬 계정 회차가 다른 에뮬을 고름 (400)",
+   "method": "POST",
+   "path": "/api/me/replace",
+   "body": {
+    "formatVersion": 3,
+    "catalog": {
+     "platforms": [
+      "같은이름",
+      "Steam"
+     ],
+     "accounts": [
+      {
+       "label": "같은라벨",
+       "platform": "같은이름",
+       "emulator": null
+      },
+      {
+       "label": "같은라벨",
+       "platform": null,
+       "emulator": "같은이름"
+      }
+     ],
+     "emulators": [
+      {
+       "name": "같은이름",
+       "memo": null
+      },
+      {
+       "name": "다른 에뮬",
+       "memo": null
+      }
+     ]
+    },
+    "games": [
+     {
+      "externalId": null,
+      "source": "MANUAL",
+      "name": "형식3 게임"
+     }
+    ],
+    "entries": [
+     {
+      "gameKey": "name:형식3 게임",
+      "playthroughs": [
+       {
+        "sequenceNo": 1,
+        "startedOn": "2001-01-01",
+        "finishedOn": "2001-01-02",
+        "status": "COMPLETED",
+        "platformAccount": "같은라벨",
+        "platformAccountPlatform": null,
+        "platformAccountEmulator": "같은이름",
+        "emulator": "다른 에뮬"
+       }
+      ],
+      "acquisitions": []
+     }
+    ]
+   }
+  },
+  {
+   "name": "형식 3 — 같은 이름 플랫폼·에뮬에 같은 라벨 계정 (소속 종류로 갈린다)",
+   "method": "POST",
+   "path": "/api/me/replace",
+   "body": {
+    "formatVersion": 3,
+    "catalog": {
+     "platforms": [
+      "같은이름",
+      "Steam"
+     ],
+     "accounts": [
+      {
+       "label": "같은라벨",
+       "platform": "같은이름",
+       "emulator": null
+      },
+      {
+       "label": "같은라벨",
+       "platform": null,
+       "emulator": "같은이름"
+      }
+     ],
+     "emulators": [
+      {
+       "name": "같은이름",
+       "memo": null
+      }
+     ]
+    },
+    "games": [
+     {
+      "externalId": null,
+      "source": "MANUAL",
+      "name": "형식3 게임"
+     }
+    ],
+    "entries": [
+     {
+      "gameKey": "name:형식3 게임",
+      "playthroughs": [
+       {
+        "sequenceNo": 1,
+        "startedOn": "2001-01-01",
+        "finishedOn": "2001-01-02",
+        "status": "COMPLETED",
+        "platformAccount": "같은라벨",
+        "platformAccountPlatform": null,
+        "platformAccountEmulator": "같은이름",
+        "emulator": "같은이름"
+       },
+       {
+        "sequenceNo": 2,
+        "startedOn": "2001-02-01",
+        "finishedOn": "2001-02-02",
+        "status": "COMPLETED",
+        "platformAccount": "같은라벨",
+        "platformAccountPlatform": "같은이름",
+        "platformAccountEmulator": null
+       }
+      ],
+      "acquisitions": [
+       {
+        "method": "PURCHASED",
+        "platform": "같은이름",
+        "platformAccount": "같은라벨",
+        "platformAccountPlatform": "같은이름",
+        "platformAccountEmulator": null
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "형식 3 뒤 — 선택지",
+   "method": "GET",
+   "path": "/api/me/options"
+  },
+  {
+   "name": "형식 3 뒤 — 내보내기 (왕복)",
+   "method": "GET",
+   "path": "/api/me/export"
+  },
+  {
+   "name": "수동 게임 이름 앞뒤 공백 — 있는 게임을 쓴다 (고친 버그 20)",
+   "method": "POST",
+   "path": "/api/me/replace",
+   "body": {
+    "formatVersion": 3,
+    "catalog": {
+     "platforms": [
+      "같은이름",
+      "Steam"
+     ],
+     "accounts": [
+      {
+       "label": "같은라벨",
+       "platform": "같은이름",
+       "emulator": null
+      },
+      {
+       "label": "같은라벨",
+       "platform": null,
+       "emulator": "같은이름"
+      }
+     ],
+     "emulators": [
+      {
+       "name": "같은이름",
+       "memo": null
+      }
+     ]
+    },
+    "games": [
+     {
+      "externalId": null,
+      "source": "MANUAL",
+      "name": "  형식3 게임  "
+     }
+    ],
+    "entries": [
+     {
+      "gameKey": "name:  형식3 게임  "
+     }
+    ]
+   },
+   "note": "게임 행이 새로 생기지 않아야 한다 (DB 비교의 game 추가분이 하나)"
+  },
+  {
+   "name": "수동 게임 공백 뒤 — 내보내기",
    "method": "GET",
    "path": "/api/me/export"
   }

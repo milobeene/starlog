@@ -131,7 +131,7 @@
    "path": "/api/system/settings"
   },
   {
-   "name": "IGDB 키 저장 — 시크릿 없음 (ID만 저장된 뒤 500)",
+   "name": "IGDB 키 저장 — 시크릿 없음 (400, 아무것도 저장 안 함 — 고친 버그 7)",
    "method": "PUT",
    "path": "/api/system/settings/igdb",
    "body": {
@@ -139,12 +139,12 @@
    }
   },
   {
-   "name": "설정 — ID만 바뀜",
+   "name": "설정 — 그대로 (ID만 저장되지 않았다)",
    "method": "GET",
    "path": "/api/system/settings"
   },
   {
-   "name": "IGDB 키 저장 — 둘 다 없음 (500, 저장 없음)",
+   "name": "IGDB 키 저장 — 둘 다 없음 (400)",
    "method": "PUT",
    "path": "/api/system/settings/igdb",
    "body": {}
@@ -185,7 +185,7 @@
    "path": "/api/system/settings"
   },
   {
-   "name": "번역 키 저장 — 없음 (500)",
+   "name": "번역 키 저장 — 없음 (400)",
    "method": "PUT",
    "path": "/api/system/settings/translate",
    "body": {}

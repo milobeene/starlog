@@ -140,8 +140,8 @@ async function attach(memberId: number, entryId: number, storageKey: string, con
   });
 }
 
-/** 옛 파일 지우기 — **DB 커밋 뒤에.** 반대로 하면 DB엔 있는데 파일이 없는 최악이 나온다 */
-async function removeFile(target: Replaced) {
+/** 옛 파일 지우기 — **DB 커밋 뒤에.** 반대로 하면 DB엔 있는데 파일이 없는 최악이 나온다. 위치를 보고 갈라 지운다 */
+export async function removeFile(target: Replaced) {
   if (target.location === "LOCAL") { localDelete(coversDir(), target.storageKey); return; }
   await fileStorage().delete(target.storageKey);
   await recordApiCall("STORAGE", "delete", true);
@@ -315,17 +315,17 @@ export async function resolveScreenshot(memberId: number, entryId: number, fileN
   return localResolve(folder, fileName);
 }
 
-/** 여러 장. **실제로 지운 개수**를 센다 — 사람이 폴더를 직접 만지므로 요청 수와 다를 수 있다 */
+/**
+ * 여러 장. **실제로 지운 개수**를 센다 — 사람이 폴더를 직접 만지므로 요청 수와 다를 수 있다.
+ * 목록에 null이 있으면 아무것도 안 지우고 400 (고친 버그 18, `docs/v2-plan.md`)
+ */
 export async function deleteScreenshots(memberId: number, entryId: number, fileNames: (string | null)[]) {
+  if (fileNames.some((n) => n === null)) throw new InvalidInput("파일 이름은 필수입니다");
   return db().transaction(async (tx) => {
     const folder = await folderOf(tx, memberId, entryId, false, true);
     if (folder === null) return 0;
     let deleted = 0;
-    for (const name of fileNames) {
-      // null 이름은 걸러내지 않고 500으로 둔다 (알려진 버그 18, `docs/v2-plan.md`)
-      if (name === null) throw new Error("fileName is null");
-      if (localDelete(folder, name)) deleted++;
-    }
+    for (const name of fileNames) if (localDelete(folder, name!)) deleted++;
     return deleted;
   });
 }

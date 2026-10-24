@@ -49,6 +49,15 @@
    }
   },
   {
+   "name": "담기 — 캐시된 externalId 앞에 0 (같은 게임으로 찾는다 — 고친 버그 12)",
+   "method": "POST",
+   "path": "/api/backlog",
+   "body": {
+    "externalId": "040477"
+   },
+   "note": "예전엔 캐시를 못 찾고 IGDB로 갔다(여기선 미설정 502, 실제론 저장에서 409)"
+  },
+  {
    "name": "담기 — 둘 다 없음",
    "method": "POST",
    "path": "/api/backlog",
@@ -570,7 +579,7 @@
    }
   },
   {
-   "name": "스크린샷 — Range 넘침",
+   "name": "스크린샷 — Range 넘침 (416, 본문 없음 — 고친 버그 17)",
    "method": "GET",
    "path": "/api/backlog/81/screenshots/002.mp4",
    "headers": {
@@ -631,6 +640,15 @@
      "001.jpg"
     ]
    }
+  },
+  {
+   "name": "스크린샷 삭제 — 목록에 null (400, 아무것도 안 지움 — 고친 버그 18)",
+   "method": "POST",
+   "path": "/api/backlog/81/screenshots/delete",
+   "body": [
+    "001.jpg",
+    null
+   ]
   },
   {
    "name": "스크린샷 — 지운 뒤 번호 (최대 + 1)",
@@ -768,6 +786,27 @@
    "name": "번역 — 삭제된 항목",
    "method": "POST",
    "path": "/api/backlog/86/translate"
+  },
+  {
+   "name": "완전 삭제 — LOCAL 커버 올리기",
+   "method": "POST",
+   "path": "/api/backlog/${twinEntryB}/cover/file",
+   "multipart": {
+    "file": {
+     "file": "backlog-media/cover.png"
+    }
+   },
+   "note": "고친 버그 15 — 완전 삭제가 LOCAL 커버 파일까지 지운다. 끝난 뒤 covers/가 비어 있어야 한다(파일 트리 비교)"
+  },
+  {
+   "name": "완전 삭제 — 휴지통으로",
+   "method": "DELETE",
+   "path": "/api/backlog/${twinEntryB}"
+  },
+  {
+   "name": "완전 삭제 — LOCAL 커버 파일도 지움",
+   "method": "DELETE",
+   "path": "/api/backlog/deleted/${twinEntryB}"
   }
  ]
 }

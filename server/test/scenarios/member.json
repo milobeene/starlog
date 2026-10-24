@@ -12,7 +12,7 @@
    "path": "/api/me/options"
   },
   {
-   "name": "내보내기 — 에뮬 계정이 있으면 NPE 500 (자바 버그 그대로)",
+   "name": "내보내기 — 에뮬 계정 포함 (형식 3 — 고친 버그 1)",
    "method": "GET",
    "path": "/api/me/export",
    "note": "MemberExportService.catalog()의 a.getPlatform().getName() — Eden/Ryujinx 프로필 계정"
@@ -27,11 +27,11 @@
    }
   },
   {
-   "name": "가져오기 — 형식 3 (미래 파일)",
+   "name": "가져오기 — 형식 4 (미래 파일)",
    "method": "POST",
    "path": "/api/me/import",
    "body": {
-    "formatVersion": 3,
+    "formatVersion": 4,
     "entries": []
    }
   },
@@ -123,11 +123,11 @@
    }
   },
   {
-   "name": "덮어쓰기 — 형식 3 (지우고 나서 터짐 → 롤백)",
+   "name": "덮어쓰기 — 형식 4 (지우고 나서 터짐 → 롤백)",
    "method": "POST",
    "path": "/api/me/replace",
    "body": {
-    "formatVersion": 3,
+    "formatVersion": 4,
     "entries": []
    }
   },
@@ -381,6 +381,226 @@
    "name": "목록 — 덮어쓴 뒤 파생 상태",
    "method": "GET",
    "path": "/api/backlog/cards"
+  },
+  {
+   "name": "에뮬 왕복 — 플랫폼 '같은이름'",
+   "method": "POST",
+   "path": "/api/me/platforms",
+   "body": {
+    "name": "같은이름"
+   },
+   "save": {
+    "dupP": "id"
+   },
+   "note": "고친 버그 1 — 클라우드 → 내보내기 → 빈 세이브 → 가져오기. 같은 이름의 플랫폼·에뮬에 같은 라벨 계정을 하나씩 두어 소속 종류로만 갈리게 한다"
+  },
+  {
+   "name": "에뮬 왕복 — 에뮬 '같은이름'",
+   "method": "POST",
+   "path": "/api/me/emulators",
+   "body": {
+    "name": "같은이름",
+    "memo": "테스트"
+   },
+   "save": {
+    "dupE": "id"
+   }
+  },
+  {
+   "name": "에뮬 왕복 — 플랫폼 계정",
+   "method": "POST",
+   "path": "/api/me/platform-accounts",
+   "body": {
+    "platformId": "${dupP}",
+    "accountLabel": "같은라벨"
+   },
+   "save": {
+    "accP": "id"
+   }
+  },
+  {
+   "name": "에뮬 왕복 — 에뮬 계정",
+   "method": "POST",
+   "path": "/api/me/platform-accounts",
+   "body": {
+    "emulatorId": "${dupE}",
+    "accountLabel": "같은라벨"
+   },
+   "save": {
+    "accE": "id"
+   }
+  },
+  {
+   "name": "에뮬 왕복 — 항목 고르기",
+   "method": "GET",
+   "path": "/api/backlog/cards",
+   "save": {
+    "rtEntry": "0.entryId"
+   }
+  },
+  {
+   "name": "에뮬 왕복 — 에뮬 계정 회차",
+   "method": "POST",
+   "path": "/api/backlog/${rtEntry}/playthroughs",
+   "body": {
+    "startedOn": "2001-01-01",
+    "finishedOn": "2001-01-02",
+    "status": "COMPLETED",
+    "emulatorId": "${dupE}",
+    "platformAccountId": "${accE}",
+    "label": "에뮬 회차"
+   }
+  },
+  {
+   "name": "에뮬 왕복 — 플랫폼 계정 취득",
+   "method": "POST",
+   "path": "/api/backlog/${rtEntry}/acquisitions",
+   "body": {
+    "method": "PURCHASED",
+    "platformId": "${dupP}",
+    "platformAccountId": "${accP}",
+    "price": {
+     "amount": 1000,
+     "currency": "KRW"
+    },
+    "acquiredOn": "2001-01-01",
+    "label": "플랫폼 취득"
+   }
+  },
+  {
+   "name": "에뮬 왕복 — 회차만 있는 계정 (소속 안 고름)",
+   "method": "POST",
+   "path": "/api/backlog/${rtEntry}/playthroughs",
+   "body": {
+    "startedOn": "2001-02-01",
+    "finishedOn": "2001-02-02",
+    "status": "COMPLETED",
+    "platformAccountId": "${accE}",
+    "label": "계정만"
+   }
+  },
+  {
+   "name": "에뮬 왕복 — 내보내기 (형식 3)",
+   "method": "GET",
+   "path": "/api/me/export",
+   "save": {
+    "rt_fv": "formatVersion",
+    "rt_exAt": "exportedAt",
+    "rt_prof": "profile",
+    "rt_cat": "catalog",
+    "rt_games": "games",
+    "rt_entries": "entries"
+   }
+  },
+  {
+   "name": "에뮬 왕복 — 빈 세이브로 (전부 지움)",
+   "method": "POST",
+   "path": "/api/me/replace",
+   "body": {
+    "formatVersion": 3,
+    "entries": []
+   }
+  },
+  {
+   "name": "에뮬 왕복 — 빈 세이브 확인",
+   "method": "GET",
+   "path": "/api/me/options"
+  },
+  {
+   "name": "에뮬 왕복 — 가져오기",
+   "method": "POST",
+   "path": "/api/me/import",
+   "body": {
+    "formatVersion": "${rt_fv}",
+    "exportedAt": "${rt_exAt}",
+    "profile": "${rt_prof}",
+    "catalog": "${rt_cat}",
+    "games": "${rt_games}",
+    "entries": "${rt_entries}"
+   }
+  },
+  {
+   "name": "에뮬 왕복 — 가져온 뒤 선택지 (에뮬 계정이 에뮬 밑에)",
+   "method": "GET",
+   "path": "/api/me/options"
+  },
+  {
+   "name": "에뮬 왕복 — 가져온 뒤 항목 고르기",
+   "method": "GET",
+   "path": "/api/backlog/cards",
+   "save": {
+    "rtEntry2": "0.entryId"
+   }
+  },
+  {
+   "name": "에뮬 왕복 — 가져온 뒤 상세 (회차·취득의 계정)",
+   "method": "GET",
+   "path": "/api/backlog/${rtEntry2}"
+  },
+  {
+   "name": "에뮬 왕복 — 다시 내보내기 (처음 것과 같아야 한다)",
+   "method": "GET",
+   "path": "/api/me/export"
+  },
+  {
+   "name": "에뮬 왕복 — 형식 2 파일은 그대로 (소속 종류 칸 없음 → 플랫폼 계정)",
+   "method": "POST",
+   "path": "/api/me/replace",
+   "body": {
+    "formatVersion": 2,
+    "catalog": {
+     "platforms": [
+      "P2"
+     ],
+     "accounts": [
+      {
+       "label": "L",
+       "platform": "P2"
+      }
+     ],
+     "emulators": [
+      {
+       "name": "P2",
+       "memo": null
+      }
+     ]
+    },
+    "games": [
+     {
+      "externalId": null,
+      "source": "MANUAL",
+      "name": "형식2 게임"
+     }
+    ],
+    "entries": [
+     {
+      "gameKey": "name:형식2 게임",
+      "playthroughs": [
+       {
+        "sequenceNo": 1,
+        "startedOn": "2001-01-01",
+        "finishedOn": "2001-01-02",
+        "status": "COMPLETED",
+        "platformAccount": "L",
+        "platformAccountPlatform": "P2"
+       }
+      ],
+      "acquisitions": [
+       {
+        "method": "PURCHASED",
+        "platform": "P2",
+        "platformAccount": "L",
+        "platformAccountPlatform": "P2"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "에뮬 왕복 — 형식 2 뒤 내보내기",
+   "method": "GET",
+   "path": "/api/me/export"
   }
  ]
 }

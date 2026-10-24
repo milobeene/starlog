@@ -2001,6 +2001,52 @@
    "name": "상세 237 — 끝",
    "method": "GET",
    "path": "/api/backlog/237"
+  },
+  {
+   "name": "목록 — 영문 원제 검색 (마스터 이름)",
+   "method": "GET",
+   "path": "/api/backlog?q=mario&size=50",
+   "note": "표시 이름이 한글이어도 IGDB 원제로 찾는다"
+  },
+  {
+   "name": "목록 — 영문 원제 검색 대소문자·일부",
+   "method": "GET",
+   "path": "/api/backlog?q=ZELDA&size=50"
+  },
+  {
+   "name": "소속 종류 — 에뮬 하나",
+   "method": "POST",
+   "path": "/api/me/emulators",
+   "body": {
+    "name": "충돌 시험 A"
+   },
+   "save": {
+    "emuA": "id"
+   }
+  },
+  {
+   "name": "소속 종류 — 에뮬 둘",
+   "method": "POST",
+   "path": "/api/me/emulators",
+   "body": {
+    "name": "충돌 시험 B"
+   },
+   "save": {
+    "emuB": "id"
+   }
+  },
+  {
+   "name": "소속 종류 — 플랫폼 9의 계정 7 + 에뮬 9 (400 — 고친 버그 14)",
+   "method": "POST",
+   "path": "/api/backlog/130/playthroughs",
+   "body": {
+    "startedOn": "1990-01-01",
+    "finishedOn": "1990-01-02",
+    "status": "COMPLETED",
+    "emulatorId": "${emuB}",
+    "platformAccountId": 7
+   },
+   "note": "에뮬 B의 id가 9여야 의미가 있다(녹화본에서 확인) — 예전엔 숫자만 비교해 통과했다"
   }
  ]
 }

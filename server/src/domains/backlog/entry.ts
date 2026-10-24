@@ -9,6 +9,7 @@ import {
 } from "../../db/schema";
 import { Conflict, InvalidInput, NotFound, Revivable } from "../../common/errors";
 import { nowKst } from "../../common/clock";
+import type { CoverLocation } from "../../common/storage";
 import { bigDecimalText, compareDecimal, money, setScale, type Money } from "../../common/money";
 import { normalize, normalizeAll, sortKey } from "../../common/text";
 import { acquisitionCount, deriveState, findOwned, findOwnedIncludingDeleted, playthroughsOf, saveEntryIfChanged } from "./shared";
@@ -148,13 +149,14 @@ export async function revive(d: Db, memberId: number, entryId: number) {
  * 순서가 전부다. 항목 ↔ 회차가 서로를 참조해서(lastPlaythrough) **항목의 참조를 먼저 끊어야**
  * 회차를 지울 수 있다. 개발사·유통사 오버라이드는 항목보다 먼저 지운다.
  *
- * @return 커밋 뒤에 스토리지에서 지울 커버 key (없으면 null)
+ * @return 커밋 뒤에 지울 커버 파일 — key와 위치 (없으면 null)
  */
-export async function purge(d: Db, memberId: number, entryId: number): Promise<string | null> {
+export async function purge(d: Db, memberId: number, entryId: number): Promise<{ storageKey: string; location: CoverLocation } | null> {
   const e = await findOwnedIncludingDeleted(d, memberId, entryId);
   if (e.deletedAt === null) throw new Conflict(`삭제된 항목만 완전히 지울 수 있습니다. id=${entryId}`);
 
-  const [cover] = await d.select({ key: coverImage.storageKey }).from(coverImage).where(eq(coverImage.backlogEntryId, entryId));
+  const [cover] = await d.select({ storageKey: coverImage.storageKey, location: coverImage.location })
+    .from(coverImage).where(eq(coverImage.backlogEntryId, entryId));
 
   await saveEntryIfChanged(d, e, { lastPlaythroughId: null });
   await d.delete(backlogEntryGenre).where(eq(backlogEntryGenre.backlogEntryId, entryId));
@@ -164,5 +166,5 @@ export async function purge(d: Db, memberId: number, entryId: number): Promise<s
   await d.delete(backlogDeveloperOverride).where(eq(backlogDeveloperOverride.backlogEntryId, entryId));
   await d.delete(backlogPublisherOverride).where(eq(backlogPublisherOverride.backlogEntryId, entryId));
   await d.delete(backlogEntry).where(eq(backlogEntry.id, entryId));
-  return cover?.key ?? null;
+  return cover ? { storageKey: cover.storageKey, location: cover.location as CoverLocation } : null;
 }

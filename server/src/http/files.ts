@@ -61,10 +61,8 @@ export function sendFile(c: Context, file: string, contentType: string) {
   }
   const parsed = parseRange(range, size);
   if (parsed === null) {
-    // 416인데도 본문에 **파일 전체**를 싣는다 (스프링이 그랬다)
-    headers["Content-Range"] = `bytes */${size}`;
-    headers["Content-Length"] = String(size);
-    return c.body(stream(file, 0, size - 1), 416, headers);
+    // 본문 없이 전체 크기만 알린다. 예전엔 파일 전체를 실어 보냈다 (고친 버그 17, `docs/v2-plan.md`)
+    return c.body(null, 416, { "Accept-Ranges": "bytes", "Content-Range": `bytes */${size}` });
   }
   const [start, end] = parsed;
   headers["Content-Range"] = `bytes ${start}-${end}/${size}`;

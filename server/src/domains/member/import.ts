@@ -2,8 +2,9 @@
  * 회원 데이터 가져오기·덮어쓰기. 파일 형식은 `dump.ts`.
  *
  * ## 순서가 전부다
- * `마스터 게임 → 플랫폼 → 계정 → 기기·에뮬·입력방식 → 구독 → 태그·장르 → (프로필) → 항목 →
- * 회차·취득·커버 → 파생 상태 재계산`. 계정이 플랫폼을, 회차가 기기·계정을 참조한다.
+ * `마스터 게임 → 플랫폼 → 플랫폼 계정 → 기기·에뮬 → 에뮬 계정 → 입력방식 → 구독 → 태그·장르 → (프로필) → 항목 →
+ * 회차·취득·커버 → 파생 상태 재계산`. 계정이 플랫폼·에뮬을, 회차가 기기·계정을 참조한다.
+ * 에뮬 계정(형식 3)만 에뮬 뒤로 미룬다 — 플랫폼 계정은 옛 파일과 같은 자리에서 만들어야 시퀀스·오류 순서가 같다
  *
  * ⚠️ **INSERT와 검증의 순서를 바꾸지 않는다.** 중간에 검증이 터지면 롤백되지만 **시퀀스는 안 돌아간다** —
  * 같은 자리에서 터져야 뒤에 만드는 행의 id가 기존 동작과 같다. 그래서 "INSERT 먼저, 검증은 그다음"인
@@ -21,12 +22,13 @@ import {
 import { Conflict, InvalidInput } from "../../common/errors";
 import { nowKst } from "../../common/clock";
 import { bigDecimalText, compareDecimal, money, setScale, type Money } from "../../common/money";
-import { normalize, normalizeAll, require, sortKey } from "../../common/text";
+import { normalize, normalizeAll, require, sortKey, subjectParticle } from "../../common/text";
 import { ldtToDb } from "../../common/json";
 import { coversDir, localExists } from "../../common/storage";
 import { findIgdbGame, searchGamesByName, type GameRow } from "../game/service";
 import type { PlatformAccountRow, PlatformRow } from "../platform/service";
 import { ACQUISITION_METHODS, PLAYTHROUGH_STATUSES, deriveState } from "../backlog/shared";
+import { belongsTo } from "../backlog/refs";
 import { FORMAT_VERSION, npe, valueOf, type DumpCatalog, type DumpCover, type DumpEntry, type DumpGame, type DumpMoney, type DumpProfile, type MemberDump } from "./dump";
 import { findMember, profileValues, saveProfile, type MemberRow } from "./query";
 
@@ -63,7 +65,7 @@ const javaJoin = (values: (string | null)[]) => values.map((v) => (v === null ? 
  */
 export async function importInto(d: Db, memberId: number, data: MemberDump): Promise<ImportResult> {
   if (data.entries === null) throw new InvalidInput("가져올 데이터가 비어 있습니다");
-  // 옛 형식(1)도 읽는다 — 칸이 하나 는 것뿐이다. 위쪽(미래 파일)만 막는다
+  // 옛 형식(1·2)도 읽는다 — 칸이 는 것뿐이고, 없는 칸은 null(= 플랫폼 계정)로 읽힌다. 위쪽(미래 파일)만 막는다
   const version = data.formatVersion;
   if (version < 1 || version > FORMAT_VERSION) {
     throw new InvalidInput(`지원하지 않는 백업 형식입니다. 이 버전은 ${FORMAT_VERSION}까지 읽습니다 (파일은 ${version})`);
@@ -110,13 +112,15 @@ async function importGames(d: Db, exported: (DumpGame | null)[] | null): Promise
 /**
  * IGDB 게임은 `externalId`로, 수동 등록은 이름으로. 이름 조회는 부분 일치 검색(20건)을 재활용하고
  * **결과를 정확 일치로 거른다** — 21번째 너머에 있으면 못 찾는다 (기존 동작 그대로).
- * 이름은 정규화 전 원문으로 비교한다 — 앞뒤 공백이 있는 덤프는 가져올 때마다 같은 게임이 새로 생긴다
- * (알려진 버그 20, `docs/v2-plan.md`. 실제 export는 정규화돼 있어 밟지 않는다)
+ * 이름은 **저장할 때와 같이 정규화한 뒤** 비교한다 — 원문으로 비교하면 앞뒤 공백이 있는 덤프에서
+ * 가져올 때마다 같은 게임이 새로 생겼다 (고친 버그 20, `docs/v2-plan.md`). 비면 못 찾고 `createGame`에서 400
  */
 async function findExisting(d: Db, item: DumpGame): Promise<GameRow | undefined> {
   if (item.externalId !== null) return findIgdbGame(d, item.externalId);
-  return (await searchGamesByName(d, item.name as string, 20))
-    .find((g) => g.source === "MANUAL" && equalsIgnoreCase(g.name, item.name));
+  const name = normalize(item.name);
+  if (name === null) return undefined;
+  return (await searchGamesByName(d, name, 20))
+    .find((g) => g.source === "MANUAL" && equalsIgnoreCase(g.name, name));
 }
 
 /**
@@ -173,7 +177,7 @@ interface Catalog {
   platforms: Map<string | null, PlatformRow>;
   /** 라벨 → 계정. **겹칠 수 있다** — 옛 파일(형식 1) 폴백 전용 */
   accounts: Map<string | null, PlatformAccountRow>;
-  /** `소속\0라벨` → 계정. 형식 2부터 이쪽으로 찾는다 */
+  /** `종류\0소속\0라벨` → 계정. 형식 2부터 이쪽으로 찾는다 */
   accountsByOwner: Map<string, PlatformAccountRow>;
   devices: Map<string | null, Row<typeof device>>;
   emulators: Map<string | null, Row<typeof emulator>>;
@@ -183,8 +187,11 @@ interface Catalog {
   genres: Map<string | null, Row<typeof genre>>;
 }
 
-/** `\0`으로 잇는다 — 라벨이나 소속 이름에 절대 안 들어가는 문자라 경계가 안 섞인다 */
-const accountKey = (ownerName: string | null, label: string | null) => `${ownerName}\u0000${label}`;
+/**
+ * `\0`으로 잇는다 — 라벨이나 소속 이름에 절대 안 들어가는 문자라 경계가 안 섞인다.
+ * 종류(`P`/`E`)를 앞에 붙인다 — 같은 이름의 플랫폼과 에뮬레이터가 있을 수 있다
+ */
+const accountKey = (kind: "P" | "E", ownerName: string | null, label: string | null) => `${kind}\u0000${ownerName}\u0000${label}`;
 
 /**
  * ⚠️ **기본 카탈로그 시드(`seedDefaultCatalog`)와 짝이 맞아야 한다.** 주인 계정은 기본 플랫폼·입력방식을
@@ -208,17 +215,23 @@ async function importCatalog(d: Db, m: MemberRow, data: DumpCatalog | null): Pro
       .values({ ...stamp(), name: require(name, "플랫폼 이름은 비울 수 없습니다") }).returning())[0]!);
   }
 
+  // 에뮬 소속 계정은 에뮬을 만든 뒤에 (형식 3). `emulator`가 없으면(형식 2 이하) 예전처럼 플랫폼 계정이다
+  const emulatorAccounts: NonNullable<DumpCatalog["accounts"]>[number][] = [];
   for (const item of data.accounts ?? []) {
     if (item === null) npe("account");
+    if (item.emulator !== null) {
+      if (item.platform !== null) throw new InvalidInput(`계정의 소속은 플랫폼과 에뮬레이터 중 하나여야 합니다: ${item.label}`);
+      emulatorAccounts.push(item);
+      continue;
+    }
     const p = c.platforms.get(item.platform);
     if (!p) throw new InvalidInput(`계정이 가리키는 플랫폼이 백업에 없습니다: ${item.platform}`);
-    // 형식 2의 계정에는 소속 종류가 없다 — 늘 플랫폼 계정으로 만든다 (`export.ts` `platformNameOf`와 짝인 한계)
     const [a] = await d.insert(platformAccount).values({
       ...stamp(), platformId: p.id, emulatorId: null,
       accountLabel: require(item.label, "계정 라벨은 비울 수 없습니다"), ownerKey: `P${p.id}`,
     }).returning();
     c.accounts.set(item.label, a!);
-    c.accountsByOwner.set(accountKey(p.name, item.label), a!);
+    c.accountsByOwner.set(accountKey("P", p.name, item.label), a!);
   }
 
   for (const item of data.devices ?? []) {
@@ -234,6 +247,17 @@ async function importCatalog(d: Db, m: MemberRow, data: DumpCatalog | null): Pro
     const name = require(item.name, "에뮬레이터 이름은 비울 수 없습니다");
     const [row] = await d.insert(emulator).values({ ...stamp(), name, memo: normalize(item.memo) }).returning();
     c.emulators.set(item.name, row!);
+  }
+
+  for (const item of emulatorAccounts) {
+    const e = c.emulators.get(item!.emulator);
+    if (!e) throw new InvalidInput(`계정이 가리키는 에뮬레이터가 백업에 없습니다: ${item!.emulator}`);
+    const [a] = await d.insert(platformAccount).values({
+      ...stamp(), platformId: null, emulatorId: e.id,
+      accountLabel: require(item!.label, "계정 라벨은 비울 수 없습니다"), ownerKey: `E${e.id}`,
+    }).returning();
+    c.accounts.set(item!.label, a!);
+    c.accountsByOwner.set(accountKey("E", e.name, item!.label), a!);
   }
 
   // 입력방식도 기본 시드와 부딪힌다 (Keyboard & Mouse 등) — 플랫폼과 같은 규칙
@@ -307,33 +331,25 @@ function validatePlayTimeHours(v: string | null): string | null {
 const optional = <T>(byName: Map<string | null, T>, name: string | null): T | null =>
   (name === null ? null : byName.get(name) ?? null);
 
-/**
- * 없으면 터진다 — 항목이 이름을 적어 놓았는데 사전에 없으면 백업이 깨진 것이다.
- * 메시지의 조사가 어색한 건("구독가") 알려진 버그 21 (`docs/v2-plan.md`) — UI에 그대로 보이므로 문자열을 안 고친다
- */
+/** 없으면 터진다 — 항목이 이름을 적어 놓았는데 사전에 없으면 백업이 깨진 것이다 */
 function required<T>(byName: Map<string | null, T>, name: string | null, what: string): T {
   const found = byName.get(name);
-  if (found === undefined) throw new InvalidInput(`${what}가 백업의 사전에 없습니다: ${name}`);
+  if (found === undefined) throw new InvalidInput(`${what}${subjectParticle(what)} 백업의 사전에 없습니다: ${name}`);
   return found;
 }
 
 /**
- * 계정을 **소속까지 보고** 찾는다 (형식 2). 라벨만으로는 `Beene(Steam)`과 `Beene(Nintendo)`가 뭉개진다.
+ * 계정을 **소속까지 보고** 찾는다 (형식 2, 종류는 형식 3). 라벨만으로는 `Beene(Steam)`과 `Beene(Nintendo)`가 뭉개진다.
+ * 형식 2의 `platformAccountPlatform`은 플랫폼 계정만 가리킨다 (그때 사전엔 플랫폼 계정뿐이었다).
  * 소속이 없거나(형식 1) 소속으로 못 찾으면 라벨로 한 번 더 — 여기서 null을 주면 계정이 조용히 사라진다.
  * 형식 1 파일에서 같은 라벨 계정이 소속마다 있으면 라벨 폴백에서 마지막 것이 붙어 400이 난다 (알려진 버그 19, `docs/v2-plan.md`)
  */
-function accountOf(c: Catalog, label: string | null, ownerName: string | null): PlatformAccountRow | null {
+function accountOf(c: Catalog, label: string | null, platformName: string | null, emulatorName: string | null): PlatformAccountRow | null {
   if (label === null) return null;
-  if (ownerName !== null) {
-    const exact = c.accountsByOwner.get(accountKey(ownerName, label));
-    if (exact) return exact;
-  }
-  return c.accounts.get(label) ?? null;
-}
-
-/** 소속 id를 물어본 id와 숫자로만 비교한다 — 플랫폼 3과 에뮬레이터 3을 같다고 본다 (알려진 버그 14, `docs/v2-plan.md`) */
-function belongsTo(a: PlatformAccountRow, platformId: number | null, emulatorId: number | null) {
-  return (a.platformId ?? a.emulatorId) === (platformId ?? emulatorId ?? null);
+  const owner = emulatorName !== null ? accountKey("E", emulatorName, label)
+    : platformName !== null ? accountKey("P", platformName, label) : null;
+  const exact = owner === null ? undefined : c.accountsByOwner.get(owner);
+  return exact ?? c.accounts.get(label) ?? null;
 }
 
 async function importEntry(d: Db, m: MemberRow, g: GameRow, item: DumpEntry, c: Catalog) {
@@ -380,7 +396,7 @@ async function importEntry(d: Db, m: MemberRow, g: GameRow, item: DumpEntry, c: 
      * 형식에 회차의 플랫폼이 없다 — **계정에서 역산한다** (V11 백필과 같은 규칙).
      * 플랫폼이 있으면 에뮬은 버린다
      */
-    const account = accountOf(c, pt.platformAccount, pt.platformAccountPlatform);
+    const account = accountOf(c, pt.platformAccount, pt.platformAccountPlatform, pt.platformAccountEmulator);
     const platformId = account?.platformId ?? null;
     const emu = platformId !== null ? null : optional(c.emulators, pt.emulator);
     if (account !== null && (platformId !== null || emu !== null) && !belongsTo(account, platformId, emu?.id ?? null)) {
@@ -405,7 +421,7 @@ async function importEntry(d: Db, m: MemberRow, g: GameRow, item: DumpEntry, c: 
     const method = valueOf(ACQUISITION_METHODS, ac.method, "AcquisitionMethod");
     const price = toOptionalMoney(ac.price);
     const p = optional(c.platforms, ac.platform);
-    const account = accountOf(c, ac.platformAccount, ac.platformAccountPlatform);
+    const account = accountOf(c, ac.platformAccount, ac.platformAccountPlatform, ac.platformAccountEmulator);
     if (account !== null && p !== null && !belongsTo(account, p.id, null)) {
       throw new InvalidInput("계정이 고른 플랫폼의 것이 아닙니다");
     }

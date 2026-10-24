@@ -26,13 +26,12 @@ import { addPlaythrough, deletePlaythrough, updatePlaythrough } from "./playthro
 import { addToBacklog } from "./entry";
 import {
   confirmExternalCover, deleteCover, deleteScreenshots, listScreenshots, mediaContentTypeOf, prepareCover, readLocalCover,
-  resolveScreenshot, saveLocalCover, saveScreenshot, screenshotFolderPath,
+  removeFile, resolveScreenshot, saveLocalCover, saveScreenshot, screenshotFolderPath,
 } from "./media";
 import { firstFile, firstText, missingPart, multipartFile, multipartForm, parseLongParam, sendFile } from "../../http/files";
 import { findOwnedAlive404 } from "./shared";
 import { resolveGame } from "../game/service";
 import { translateGame } from "../system/service";
-import { fileStorage } from "../../common/storage";
 import { addAcquisition, deleteAcquisition, updateAcquisition } from "./acquisition";
 
 export const routes = new Hono<AppEnv>();
@@ -174,10 +173,9 @@ routes.get("/api/backlog/deleted/:entryId", async (c) => {
 /** 완전 삭제 — 휴지통을 거친 것만 */
 routes.delete("/api/backlog/deleted/:entryId", async (c) => {
   const entryId = pathId(c, "entryId");
-  const coverKey = await db().transaction((tx) => purge(tx, c.get("memberId"), entryId));
-  // 커밋 뒤에 스토리지에서 지운다 (실패는 삼킨다). ⚠️ 알려진 버그 15(`docs/v2-plan.md`)를 그대로 둔다 — LOCAL 커버여도 스토리지 쪽을 부르고
-  // 호출 기록도 안 남긴다. 로컬 파일은 고아로 남는다
-  if (coverKey !== null) await fileStorage().delete(coverKey);
+  const cover = await db().transaction((tx) => purge(tx, c.get("memberId"), entryId));
+  // 커밋 뒤에 위치를 보고 지운다 (실패는 삼킨다). 예전엔 LOCAL 커버도 스토리지 쪽만 불러 로컬 파일이 고아로 남았다 (고친 버그 15)
+  if (cover !== null) await removeFile(cover);
   return c.body(null, 204);
 });
 

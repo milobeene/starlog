@@ -83,20 +83,27 @@ export async function restCall(url: string, init: RequestInit, timeoutMs: number
 
 // ───────────── 토큰 ─────────────
 
-interface CachedToken { value: string; expiresAt: number }
-/** ⚠️ 자격증명별 캐시가 아니다 — 키를 바꿔도 401을 받기 전까지 옛 토큰을 쓴다 (알려진 버그 13, `docs/v2-plan.md`) */
+interface CachedToken { value: string; expiresAt: number; owner: string }
+/**
+ * **받은 자격증명과 함께** 둔다 — 앱에서 키를 바꾸면 옛 토큰을 버리고 새로 받는다.
+ * 예전엔 키를 바꿔도 401을 받기 전까지 옛 키의 토큰을 썼다 (고친 버그 13, `docs/v2-plan.md`)
+ */
 let cached: CachedToken | null = null;
 /** 동시에 만료를 발견해도 발급은 한 번 */
 let issuing: Promise<string> | null = null;
 
-const usable = (t: CachedToken | null, now = Date.now()) => t !== null && now < t.expiresAt - IGDB.tokenRenewMarginMs;
+/** `\0`은 키에 못 들어가는 문자라 경계가 안 섞인다 */
+const ownerOf = (c: IgdbCredentials) => `${c.clientId}\u0000${c.clientSecret}`;
+
+const usable = (t: CachedToken | null, owner: string, now = Date.now()) =>
+  t !== null && t.owner === owner && now < t.expiresAt - IGDB.tokenRenewMarginMs;
 
 /** 지금 유효한 자격증명. DB가 먼저, 없으면 부팅 설정 — 앱에서 바꾸면 재시작 없이 먹는다 */
 export const credentials = (): Promise<IgdbCredentials> => igdbCredentials();
 
 /** 유효한 토큰. 없거나 만료가 임박하면 새로 받는다 */
 export async function token(): Promise<string> {
-  if (usable(cached)) return cached!.value;
+  if (usable(cached, ownerOf(await credentials()))) return cached!.value;
   return issue();
 }
 
@@ -110,8 +117,8 @@ export async function forceRefresh(): Promise<string> {
 function issue(): Promise<string> {
   // 줄을 선 사이 다른 요청이 이미 받아뒀을 수 있다
   const run = async (): Promise<string> => {
-    if (usable(cached)) return cached!.value;
     const c = await credentials();
+    if (usable(cached, ownerOf(c))) return cached!.value;
     if (!igdbCredentialsPresent(c)) {
       throw new ExternalApi("GAME_CATALOG", "IGDB 자격증명이 없습니다 (app.igdb.client-id / client-secret)");
     }
@@ -127,7 +134,7 @@ function issue(): Promise<string> {
       throw new ExternalApi("GAME_CATALOG", "Twitch 토큰 응답이 비어 있습니다");
     }
     const expiresIn = Number(r.expires_in ?? 0);
-    cached = { value: String(r.access_token), expiresAt: Date.now() + expiresIn * 1000 };
+    cached = { value: String(r.access_token), expiresAt: Date.now() + expiresIn * 1000, owner: ownerOf(c) };
     console.log(`IGDB 토큰 발급 완료 — ${Math.floor(expiresIn / 86400)}일 뒤 만료`);
     return cached.value;
   };
