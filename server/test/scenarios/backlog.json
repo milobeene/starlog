@@ -1,0 +1,2006 @@
+{
+ "name": "backlog",
+ "steps": [
+  {
+   "name": "목록 — 기본",
+   "method": "GET",
+   "path": "/api/backlog"
+  },
+  {
+   "name": "목록 — 2페이지",
+   "method": "GET",
+   "path": "/api/backlog?page=1&size=20"
+  },
+  {
+   "name": "목록 — 마지막 페이지 너머",
+   "method": "GET",
+   "path": "/api/backlog?page=50&size=20"
+  },
+  {
+   "name": "목록 — size 상한(100)",
+   "method": "GET",
+   "path": "/api/backlog?size=500"
+  },
+  {
+   "name": "목록 — size 0·page 음수",
+   "method": "GET",
+   "path": "/api/backlog?size=0&page=-3"
+  },
+  {
+   "name": "목록 — 라이브러리 화면 모양(빈 파라미터)",
+   "method": "GET",
+   "path": "/api/backlog?q=&status=&page=0&size=24&sort="
+  },
+  {
+   "name": "목록 — 정렬 rating",
+   "method": "GET",
+   "path": "/api/backlog?sort=rating&size=30"
+  },
+  {
+   "name": "목록 — 정렬 releasedOn",
+   "method": "GET",
+   "path": "/api/backlog?sort=releasedOn&size=30"
+  },
+  {
+   "name": "목록 — 정렬 name",
+   "method": "GET",
+   "path": "/api/backlog?sort=name&size=30"
+  },
+  {
+   "name": "목록 — 정렬 playtime",
+   "method": "GET",
+   "path": "/api/backlog?sort=playtime&size=30"
+  },
+  {
+   "name": "목록 — 정렬 LAST_PLAYED",
+   "method": "GET",
+   "path": "/api/backlog?sort=LAST_PLAYED&size=30"
+  },
+  {
+   "name": "목록 — 정렬 released_on",
+   "method": "GET",
+   "path": "/api/backlog?sort=released_on&size=30"
+  },
+  {
+   "name": "목록 — 정렬 Name",
+   "method": "GET",
+   "path": "/api/backlog?sort=Name&size=30"
+  },
+  {
+   "name": "목록 — 대시보드 최다 플레이",
+   "method": "GET",
+   "path": "/api/backlog?sort=playtime&size=10"
+  },
+  {
+   "name": "목록 — 대시보드 평점",
+   "method": "GET",
+   "path": "/api/backlog?sort=rating&size=10"
+  },
+  {
+   "name": "목록 — 없는 정렬",
+   "method": "GET",
+   "path": "/api/backlog?sort=bogus"
+  },
+  {
+   "name": "목록 — 진행 중 (대시보드)",
+   "method": "GET",
+   "path": "/api/backlog?status=PLAYING&size=5"
+  },
+  {
+   "name": "목록 — 상태 여럿 (반복)",
+   "method": "GET",
+   "path": "/api/backlog?status=PAUSED&status=DROPPED&size=50"
+  },
+  {
+   "name": "목록 — 상태 여럿 (콤마)",
+   "method": "GET",
+   "path": "/api/backlog?status=WISHLIST,BACKLOG&size=100&sort=name"
+  },
+  {
+   "name": "목록 — 없는 상태",
+   "method": "GET",
+   "path": "/api/backlog?status=BOGUS"
+  },
+  {
+   "name": "목록 — 검색 한글",
+   "method": "GET",
+   "path": "/api/backlog?q=마리오&size=50"
+  },
+  {
+   "name": "목록 — 검색 대소문자",
+   "method": "GET",
+   "path": "/api/backlog?q=SPIDER"
+  },
+  {
+   "name": "목록 — 검색 앞뒤 공백",
+   "method": "GET",
+   "path": "/api/backlog?q=%20%20zelda%20"
+  },
+  {
+   "name": "목록 — 검색 밑줄 이스케이프",
+   "method": "GET",
+   "path": "/api/backlog?q=_"
+  },
+  {
+   "name": "목록 — 검색 퍼센트 이스케이프",
+   "method": "GET",
+   "path": "/api/backlog?q=%25"
+  },
+  {
+   "name": "목록 — 태그",
+   "method": "GET",
+   "path": "/api/backlog?tagId=10&size=100"
+  },
+  {
+   "name": "목록 — 개인 장르 id",
+   "method": "GET",
+   "path": "/api/backlog?genreId=63&size=100"
+  },
+  {
+   "name": "목록 — 장르 이름 (개인)",
+   "method": "GET",
+   "path": "/api/backlog?genreName=액션&size=100"
+  },
+  {
+   "name": "목록 — 장르 이름 (마스터 폴백, 소문자)",
+   "method": "GET",
+   "path": "/api/backlog?genreName=adventure&size=100"
+  },
+  {
+   "name": "목록 — 개발사 (마스터)",
+   "method": "GET",
+   "path": "/api/backlog?developer=nintendo&size=100"
+  },
+  {
+   "name": "목록 — 출시 연도",
+   "method": "GET",
+   "path": "/api/backlog?releaseYear=2022&sort=releasedOn"
+  },
+  {
+   "name": "목록 — 회차 기기",
+   "method": "GET",
+   "path": "/api/backlog?ptDeviceId=9&size=100"
+  },
+  {
+   "name": "목록 — 회차 플랫폼",
+   "method": "GET",
+   "path": "/api/backlog?ptPlatformId=13&size=100"
+  },
+  {
+   "name": "목록 — 회차 에뮬",
+   "method": "GET",
+   "path": "/api/backlog?ptEmulatorId=3&size=100"
+  },
+  {
+   "name": "목록 — 회차 계정",
+   "method": "GET",
+   "path": "/api/backlog?ptAccountId=6&size=100"
+  },
+  {
+   "name": "목록 — 회차 기간",
+   "method": "GET",
+   "path": "/api/backlog?ptFrom=2026-01-01&ptTo=2026-06-30&size=100"
+  },
+  {
+   "name": "목록 — 회차 기간 시작만 (진행 중 포함)",
+   "method": "GET",
+   "path": "/api/backlog?ptFrom=2026-10-01&size=100"
+  },
+  {
+   "name": "목록 — 회차 조합 (같은 회차)",
+   "method": "GET",
+   "path": "/api/backlog?ptDeviceId=9&ptFrom=2026-01-01&ptTo=2026-12-31&size=100"
+  },
+  {
+   "name": "목록 — 취득 방식",
+   "method": "GET",
+   "path": "/api/backlog?acqMethod=FREE&size=100"
+  },
+  {
+   "name": "목록 — 취득 방식 NOT_OWNED",
+   "method": "GET",
+   "path": "/api/backlog?acqMethod=NOT_OWNED&size=100&sort=name"
+  },
+  {
+   "name": "목록 — 통화만",
+   "method": "GET",
+   "path": "/api/backlog?acqCurrency=KRW&size=100"
+  },
+  {
+   "name": "목록 — 가격 범위",
+   "method": "GET",
+   "path": "/api/backlog?acqCurrency=KRW&acqMinPrice=10000&acqMaxPrice=30000&size=100"
+  },
+  {
+   "name": "목록 — 가격 소수",
+   "method": "GET",
+   "path": "/api/backlog?acqCurrency=KRW&acqMinPrice=9600.00&acqMaxPrice=9600.004&size=100"
+  },
+  {
+   "name": "목록 — 통화 다름",
+   "method": "GET",
+   "path": "/api/backlog?acqCurrency=USD&acqMinPrice=1"
+  },
+  {
+   "name": "목록 — 취득 플랫폼·계정",
+   "method": "GET",
+   "path": "/api/backlog?acqPlatformId=13&acqAccountId=5&size=100"
+  },
+  {
+   "name": "목록 — 취득 기간",
+   "method": "GET",
+   "path": "/api/backlog?acqFrom=2025-12-01&acqTo=2025-12-31&size=100"
+  },
+  {
+   "name": "목록 — 축 섞기",
+   "method": "GET",
+   "path": "/api/backlog?status=COMPLETED&tagId=10&ptPlatformId=11&acqMethod=PURCHASED&sort=rating&size=100"
+  },
+  {
+   "name": "목록 — 검색+장르+정렬 이름",
+   "method": "GET",
+   "path": "/api/backlog?q=포켓몬&genreName=RPG&sort=name"
+  },
+  {
+   "name": "목록 — tagId 형식 오류",
+   "method": "GET",
+   "path": "/api/backlog?tagId=abc"
+  },
+  {
+   "name": "목록 — 날짜 형식 오류",
+   "method": "GET",
+   "path": "/api/backlog?ptFrom=2026-02-30"
+  },
+  {
+   "name": "목록 — 가격 형식 오류",
+   "method": "GET",
+   "path": "/api/backlog?acqMinPrice=abc"
+  },
+  {
+   "name": "목록 — 없는 취득 방식",
+   "method": "GET",
+   "path": "/api/backlog?acqMethod=STOLEN"
+  },
+  {
+   "name": "목록 — page 형식 오류",
+   "method": "GET",
+   "path": "/api/backlog?page=abc"
+  },
+  {
+   "name": "목록 — 출시 연도 형식 오류",
+   "method": "GET",
+   "path": "/api/backlog?releaseYear=1.5"
+  },
+  {
+   "name": "전량 카드",
+   "method": "GET",
+   "path": "/api/backlog/cards"
+  },
+  {
+   "name": "파셋",
+   "method": "GET",
+   "path": "/api/backlog/facets"
+  },
+  {
+   "name": "이름 목록",
+   "method": "GET",
+   "path": "/api/backlog/names"
+  },
+  {
+   "name": "휴지통 — 비었음",
+   "method": "GET",
+   "path": "/api/backlog/deleted"
+  },
+  {
+   "name": "회사 사전",
+   "method": "GET",
+   "path": "/api/backlog/companies"
+  },
+  {
+   "name": "상세 81",
+   "method": "GET",
+   "path": "/api/backlog/81"
+  },
+  {
+   "name": "상세 88",
+   "method": "GET",
+   "path": "/api/backlog/88"
+  },
+  {
+   "name": "상세 113",
+   "method": "GET",
+   "path": "/api/backlog/113"
+  },
+  {
+   "name": "상세 118",
+   "method": "GET",
+   "path": "/api/backlog/118"
+  },
+  {
+   "name": "상세 131",
+   "method": "GET",
+   "path": "/api/backlog/131"
+  },
+  {
+   "name": "상세 196",
+   "method": "GET",
+   "path": "/api/backlog/196"
+  },
+  {
+   "name": "상세 203",
+   "method": "GET",
+   "path": "/api/backlog/203"
+  },
+  {
+   "name": "상세 216",
+   "method": "GET",
+   "path": "/api/backlog/216"
+  },
+  {
+   "name": "상세 — 없음",
+   "method": "GET",
+   "path": "/api/backlog/999999"
+  },
+  {
+   "name": "상세 — id 형식 오류",
+   "method": "GET",
+   "path": "/api/backlog/abc"
+  },
+  {
+   "name": "삭제 미리보기 — 살아 있는 항목",
+   "method": "GET",
+   "path": "/api/backlog/deleted/81"
+  },
+  {
+   "name": "삭제 미리보기 — 없음",
+   "method": "GET",
+   "path": "/api/backlog/deleted/999999"
+  },
+  {
+   "name": "개인 기록 — 반올림",
+   "method": "PUT",
+   "path": "/api/backlog/81/personal-record",
+   "body": {
+    "rating": 85.55,
+    "playTimeHours": 12.345,
+    "memo": "  좋았다  "
+   }
+  },
+  {
+   "name": "개인 기록 — 같은 값 (변경 없음)",
+   "method": "PUT",
+   "path": "/api/backlog/81/personal-record",
+   "body": {
+    "rating": 85.6,
+    "playTimeHours": "12.35",
+    "memo": "좋았다"
+   }
+  },
+  {
+   "name": "개인 기록 — 실데이터 비우기",
+   "method": "PUT",
+   "path": "/api/backlog/83/personal-record",
+   "body": {
+    "rating": null,
+    "playTimeHours": null,
+    "memo": "   "
+   }
+  },
+  {
+   "name": "개인 기록 — -0.04는 0.0",
+   "method": "PUT",
+   "path": "/api/backlog/84/personal-record",
+   "body": {
+    "rating": -0.04,
+    "playTimeHours": 0
+   }
+  },
+  {
+   "name": "개인 기록 — 평점 150.0",
+   "method": "PUT",
+   "path": "/api/backlog/81/personal-record",
+   "body": {
+    "rating": 150.0
+   }
+  },
+  {
+   "name": "개인 기록 — 평점 100.05",
+   "method": "PUT",
+   "path": "/api/backlog/81/personal-record",
+   "body": {
+    "rating": 100.05
+   }
+  },
+  {
+   "name": "개인 기록 — 시간 음수",
+   "method": "PUT",
+   "path": "/api/backlog/81/personal-record",
+   "body": {
+    "playTimeHours": -1
+   }
+  },
+  {
+   "name": "개인 기록 — 시간 상한 초과",
+   "method": "PUT",
+   "path": "/api/backlog/81/personal-record",
+   "body": {
+    "playTimeHours": 100000
+   }
+  },
+  {
+   "name": "개인 기록 — 메모 5001자",
+   "method": "PUT",
+   "path": "/api/backlog/81/personal-record",
+   "body": {
+    "memo": "가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가"
+   }
+  },
+  {
+   "name": "개인 기록 — 평점 문자열 숫자",
+   "method": "PUT",
+   "path": "/api/backlog/87/personal-record",
+   "body": {
+    "rating": " 77.25 "
+   }
+  },
+  {
+   "name": "개인 기록 — 평점 깨진 값",
+   "method": "PUT",
+   "path": "/api/backlog/81/personal-record",
+   "body": {
+    "rating": "abc"
+   }
+  },
+  {
+   "name": "개인 기록 — 없는 항목",
+   "method": "PUT",
+   "path": "/api/backlog/999999/personal-record",
+   "body": {
+    "rating": 1
+   }
+  },
+  {
+   "name": "개인 기록 — 깨진 JSON",
+   "method": "PUT",
+   "path": "/api/backlog/81/personal-record",
+   "rawBody": "{"
+  },
+  {
+   "name": "개인 기록 — 빈 본문",
+   "method": "PUT",
+   "path": "/api/backlog/81/personal-record",
+   "rawBody": ""
+  },
+  {
+   "name": "오버라이드 — 전부",
+   "method": "PUT",
+   "path": "/api/backlog/82/overrides",
+   "body": {
+    "name": "  위쳐 3 GOTY  ",
+    "developers": [
+     "  CD PROJEKT RED ",
+     null,
+     "",
+     "Saber"
+    ],
+    "publishers": [
+     "CD PROJEKT"
+    ],
+    "releasedOn": "2016-08-30",
+    "listPrice": {
+     "amount": 44000.555,
+     "currency": "krw"
+    }
+   }
+  },
+  {
+   "name": "오버라이드 — 같은 값",
+   "method": "PUT",
+   "path": "/api/backlog/82/overrides",
+   "body": {
+    "name": "위쳐 3 GOTY",
+    "developers": [
+     "CD PROJEKT RED",
+     "Saber"
+    ],
+    "publishers": [
+     "CD PROJEKT"
+    ],
+    "releasedOn": "2016-08-30",
+    "listPrice": {
+     "amount": "44000.56",
+     "currency": "KRW"
+    }
+   }
+  },
+  {
+   "name": "오버라이드 — 화면 모양 (가격 null)",
+   "method": "PUT",
+   "path": "/api/backlog/87/overrides",
+   "body": {
+    "name": null,
+    "developers": [
+     "Quantic Dream"
+    ],
+    "publishers": [],
+    "releasedOn": null,
+    "listPrice": null
+   }
+  },
+  {
+   "name": "오버라이드 — 비우기",
+   "method": "PUT",
+   "path": "/api/backlog/87/overrides",
+   "body": {
+    "name": null,
+    "developers": [],
+    "publishers": [],
+    "releasedOn": null,
+    "listPrice": null
+   }
+  },
+  {
+   "name": "오버라이드 — 비었는데 또 비우기",
+   "method": "PUT",
+   "path": "/api/backlog/90/overrides",
+   "body": {}
+  },
+  {
+   "name": "오버라이드 — 이름만 (정렬 키)",
+   "method": "PUT",
+   "path": "/api/backlog/93/overrides",
+   "body": {
+    "name": "aaa 첫 번째"
+   }
+  },
+  {
+   "name": "오버라이드 — 금액만 없는 가격",
+   "method": "PUT",
+   "path": "/api/backlog/94/overrides",
+   "body": {
+    "listPrice": {
+     "currency": "KRW"
+    }
+   }
+  },
+  {
+   "name": "오버라이드 — 이름 301자",
+   "method": "PUT",
+   "path": "/api/backlog/82/overrides",
+   "body": {
+    "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   }
+  },
+  {
+   "name": "오버라이드 — 개발사 원소 201자",
+   "method": "PUT",
+   "path": "/api/backlog/82/overrides",
+   "body": {
+    "developers": [
+     "ok",
+     "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    ]
+   }
+  },
+  {
+   "name": "오버라이드 — 없는 통화",
+   "method": "PUT",
+   "path": "/api/backlog/82/overrides",
+   "body": {
+    "listPrice": {
+     "amount": 1,
+     "currency": "ABC"
+    }
+   }
+  },
+  {
+   "name": "오버라이드 — 통화 없음",
+   "method": "PUT",
+   "path": "/api/backlog/82/overrides",
+   "body": {
+    "listPrice": {
+     "amount": 1
+    }
+   }
+  },
+  {
+   "name": "오버라이드 — 음수 금액",
+   "method": "PUT",
+   "path": "/api/backlog/82/overrides",
+   "body": {
+    "listPrice": {
+     "amount": -5,
+     "currency": "KRW"
+    }
+   }
+  },
+  {
+   "name": "오버라이드 — 금액 오류가 404보다 먼저",
+   "method": "PUT",
+   "path": "/api/backlog/999999/overrides",
+   "body": {
+    "listPrice": {
+     "amount": -5,
+     "currency": "KRW"
+    }
+   }
+  },
+  {
+   "name": "오버라이드 — 없는 항목",
+   "method": "PUT",
+   "path": "/api/backlog/999999/overrides",
+   "body": {
+    "name": "x"
+   }
+  },
+  {
+   "name": "오버라이드 — 잘못된 날짜",
+   "method": "PUT",
+   "path": "/api/backlog/82/overrides",
+   "body": {
+    "releasedOn": "2016-13-01"
+   }
+  },
+  {
+   "name": "오버라이드 — 개발사가 배열 아님",
+   "method": "PUT",
+   "path": "/api/backlog/82/overrides",
+   "body": {
+    "developers": "CDPR"
+   }
+  },
+  {
+   "name": "상세 82 — 오버라이드 반영",
+   "method": "GET",
+   "path": "/api/backlog/82"
+  },
+  {
+   "name": "회사 사전 — 오버라이드 반영",
+   "method": "GET",
+   "path": "/api/backlog/companies"
+  },
+  {
+   "name": "목록 — 오버라이드 개발사로 검색",
+   "method": "GET",
+   "path": "/api/backlog?developer=saber"
+  },
+  {
+   "name": "목록 — 이름순 (정렬 키 반영)",
+   "method": "GET",
+   "path": "/api/backlog?sort=name&size=5"
+  },
+  {
+   "name": "태그 — 새 이름",
+   "method": "PUT",
+   "path": "/api/backlog/95/tag",
+   "body": {
+    "name": "  새 태그  "
+   }
+  },
+  {
+   "name": "태그 — 같은 값",
+   "method": "PUT",
+   "path": "/api/backlog/95/tag",
+   "body": {
+    "name": "새 태그"
+   }
+  },
+  {
+   "name": "태그 — 기존 이름",
+   "method": "PUT",
+   "path": "/api/backlog/96/tag",
+   "body": {
+    "name": "Indie"
+   }
+  },
+  {
+   "name": "태그 — 떼기",
+   "method": "PUT",
+   "path": "/api/backlog/97/tag",
+   "body": {
+    "name": null
+   }
+  },
+  {
+   "name": "태그 — 숫자 이름",
+   "method": "PUT",
+   "path": "/api/backlog/98/tag",
+   "body": {
+    "name": 2077
+   }
+  },
+  {
+   "name": "태그 — 51자",
+   "method": "PUT",
+   "path": "/api/backlog/95/tag",
+   "body": {
+    "name": "ttttttttttttttttttttttttttttttttttttttttttttttttttt"
+   }
+  },
+  {
+   "name": "태그 — 없는 항목",
+   "method": "PUT",
+   "path": "/api/backlog/999999/tag",
+   "body": {
+    "name": "x"
+   }
+  },
+  {
+   "name": "장르 — 교체 (유지·추가·중복·공백)",
+   "method": "PUT",
+   "path": "/api/backlog/84/genres",
+   "body": {
+    "names": [
+     "플랫포머",
+     "  새 장르 ",
+     "새 장르",
+     "",
+     null,
+     "액션"
+    ]
+   }
+  },
+  {
+   "name": "장르 — 처음 붙이기",
+   "method": "PUT",
+   "path": "/api/backlog/196/genres",
+   "body": {
+    "names": [
+     "오픈 월드",
+     "잠입 액션"
+    ]
+   }
+  },
+  {
+   "name": "장르 — 전부 떼기",
+   "method": "PUT",
+   "path": "/api/backlog/86/genres",
+   "body": {
+    "names": []
+   }
+  },
+  {
+   "name": "장르 — names 없음",
+   "method": "PUT",
+   "path": "/api/backlog/84/genres",
+   "body": {}
+  },
+  {
+   "name": "장르 — 원소 51자",
+   "method": "PUT",
+   "path": "/api/backlog/84/genres",
+   "body": {
+    "names": [
+     "ggggggggggggggggggggggggggggggggggggggggggggggggggg"
+    ]
+   }
+  },
+  {
+   "name": "장르 — 없는 항목",
+   "method": "PUT",
+   "path": "/api/backlog/999999/genres",
+   "body": {
+    "names": [
+     "x"
+    ]
+   }
+  },
+  {
+   "name": "상세 84 — 장르 반영",
+   "method": "GET",
+   "path": "/api/backlog/84"
+  },
+  {
+   "name": "목록 — 떼어진 항목은 마스터 장르로",
+   "method": "GET",
+   "path": "/api/backlog?genreName=adventure&size=100"
+  },
+  {
+   "name": "회차 — 추가 (위시리스트 → 진행 중)",
+   "method": "POST",
+   "path": "/api/backlog/86/playthroughs",
+   "body": {
+    "startedOn": "2026-10-01",
+    "finishedOn": null,
+    "status": "PLAYING",
+    "deviceId": 9,
+    "platformId": 11,
+    "emulatorId": null,
+    "platformAccountId": 6,
+    "inputMethodId": 6,
+    "label": "  첫 회차  "
+   },
+   "save": {
+    "pt1": "id"
+   }
+  },
+  {
+   "name": "회차 — 진행 중이 이미 있음",
+   "method": "POST",
+   "path": "/api/backlog/86/playthroughs",
+   "body": {
+    "startedOn": "2026-10-10",
+    "finishedOn": null,
+    "status": "PLAYING",
+    "deviceId": 9,
+    "platformId": 11,
+    "emulatorId": null,
+    "platformAccountId": 6,
+    "inputMethodId": 6,
+    "label": "  첫 회차  "
+   }
+  },
+  {
+   "name": "회차 — 기간 겹침",
+   "method": "POST",
+   "path": "/api/backlog/86/playthroughs",
+   "body": {
+    "startedOn": "2026-09-01",
+    "finishedOn": "2026-10-01",
+    "status": "COMPLETED",
+    "deviceId": 9,
+    "platformId": 11,
+    "emulatorId": null,
+    "platformAccountId": 6,
+    "inputMethodId": 6,
+    "label": "  첫 회차  "
+   }
+  },
+  {
+   "name": "회차 — 과거 회차 (상태는 최신이 정함)",
+   "method": "POST",
+   "path": "/api/backlog/86/playthroughs",
+   "body": {
+    "startedOn": "2025-01-01",
+    "finishedOn": "2025-02-01",
+    "status": "COMPLETED",
+    "deviceId": 9,
+    "platformId": 11,
+    "emulatorId": null,
+    "platformAccountId": 6,
+    "inputMethodId": 6,
+    "label": null
+   },
+   "save": {
+    "pt2": "id"
+   }
+  },
+  {
+   "name": "회차 — 당일 완료",
+   "method": "POST",
+   "path": "/api/backlog/86/playthroughs",
+   "body": {
+    "startedOn": "2025-03-01",
+    "finishedOn": "2025-03-01",
+    "status": "DROPPED",
+    "deviceId": 9,
+    "platformId": 11,
+    "emulatorId": null,
+    "platformAccountId": 6,
+    "inputMethodId": 6,
+    "label": "  첫 회차  "
+   }
+  },
+  {
+   "name": "회차 — PLAYING인데 종료일",
+   "method": "POST",
+   "path": "/api/backlog/86/playthroughs",
+   "body": {
+    "startedOn": "2024-01-01",
+    "finishedOn": "2024-02-01",
+    "status": "PLAYING",
+    "deviceId": 9,
+    "platformId": 11,
+    "emulatorId": null,
+    "platformAccountId": 6,
+    "inputMethodId": 6,
+    "label": "  첫 회차  "
+   }
+  },
+  {
+   "name": "회차 — COMPLETED인데 종료일 없음",
+   "method": "POST",
+   "path": "/api/backlog/86/playthroughs",
+   "body": {
+    "startedOn": "2026-10-01",
+    "finishedOn": null,
+    "status": "COMPLETED",
+    "deviceId": 9,
+    "platformId": 11,
+    "emulatorId": null,
+    "platformAccountId": 6,
+    "inputMethodId": 6,
+    "label": "  첫 회차  "
+   }
+  },
+  {
+   "name": "회차 — 종료일이 시작일보다 앞",
+   "method": "POST",
+   "path": "/api/backlog/86/playthroughs",
+   "body": {
+    "startedOn": "2024-02-01",
+    "finishedOn": "2024-01-01",
+    "status": "PAUSED",
+    "deviceId": 9,
+    "platformId": 11,
+    "emulatorId": null,
+    "platformAccountId": 6,
+    "inputMethodId": 6,
+    "label": "  첫 회차  "
+   }
+  },
+  {
+   "name": "회차 — 시작일 없음",
+   "method": "POST",
+   "path": "/api/backlog/86/playthroughs",
+   "body": {
+    "startedOn": null,
+    "finishedOn": null,
+    "status": "PLAYING",
+    "deviceId": 9,
+    "platformId": 11,
+    "emulatorId": null,
+    "platformAccountId": 6,
+    "inputMethodId": 6,
+    "label": "  첫 회차  "
+   }
+  },
+  {
+   "name": "회차 — 상태 없음",
+   "method": "POST",
+   "path": "/api/backlog/86/playthroughs",
+   "body": {
+    "startedOn": "2026-10-01",
+    "finishedOn": null,
+    "status": null,
+    "deviceId": 9,
+    "platformId": 11,
+    "emulatorId": null,
+    "platformAccountId": 6,
+    "inputMethodId": 6,
+    "label": "  첫 회차  "
+   }
+  },
+  {
+   "name": "회차 — 라벨 101자",
+   "method": "POST",
+   "path": "/api/backlog/86/playthroughs",
+   "body": {
+    "startedOn": "2026-10-01",
+    "finishedOn": null,
+    "status": "PLAYING",
+    "deviceId": 9,
+    "platformId": 11,
+    "emulatorId": null,
+    "platformAccountId": 6,
+    "inputMethodId": 6,
+    "label": "lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll"
+   }
+  },
+  {
+   "name": "회차 — 없는 상태",
+   "method": "POST",
+   "path": "/api/backlog/86/playthroughs",
+   "body": {
+    "startedOn": "2026-10-01",
+    "finishedOn": null,
+    "status": "WON",
+    "deviceId": 9,
+    "platformId": 11,
+    "emulatorId": null,
+    "platformAccountId": 6,
+    "inputMethodId": 6,
+    "label": "  첫 회차  "
+   }
+  },
+  {
+   "name": "회차 — 잘못된 날짜",
+   "method": "POST",
+   "path": "/api/backlog/86/playthroughs",
+   "body": {
+    "startedOn": "2026-02-30",
+    "finishedOn": null,
+    "status": "PLAYING",
+    "deviceId": 9,
+    "platformId": 11,
+    "emulatorId": null,
+    "platformAccountId": 6,
+    "inputMethodId": 6,
+    "label": "  첫 회차  "
+   }
+  },
+  {
+   "name": "회차 — 없는 기기",
+   "method": "POST",
+   "path": "/api/backlog/106/playthroughs",
+   "body": {
+    "startedOn": "2026-10-01",
+    "finishedOn": null,
+    "status": "PLAYING",
+    "deviceId": 999999,
+    "platformId": 11,
+    "emulatorId": null,
+    "platformAccountId": 6,
+    "inputMethodId": 6,
+    "label": "  첫 회차  "
+   }
+  },
+  {
+   "name": "회차 — 없는 플랫폼",
+   "method": "POST",
+   "path": "/api/backlog/106/playthroughs",
+   "body": {
+    "startedOn": "2026-10-01",
+    "finishedOn": null,
+    "status": "PLAYING",
+    "deviceId": 9,
+    "platformId": 999999,
+    "emulatorId": null,
+    "platformAccountId": 6,
+    "inputMethodId": 6,
+    "label": "  첫 회차  "
+   }
+  },
+  {
+   "name": "회차 — 없는 계정",
+   "method": "POST",
+   "path": "/api/backlog/106/playthroughs",
+   "body": {
+    "startedOn": "2026-10-01",
+    "finishedOn": null,
+    "status": "PLAYING",
+    "deviceId": 9,
+    "platformId": 11,
+    "emulatorId": null,
+    "platformAccountId": 999999,
+    "inputMethodId": 6,
+    "label": "  첫 회차  "
+   }
+  },
+  {
+   "name": "회차 — 없는 에뮬",
+   "method": "POST",
+   "path": "/api/backlog/106/playthroughs",
+   "body": {
+    "startedOn": "2026-10-01",
+    "finishedOn": null,
+    "status": "PLAYING",
+    "deviceId": 9,
+    "platformId": null,
+    "emulatorId": 999999,
+    "platformAccountId": 6,
+    "inputMethodId": 6,
+    "label": "  첫 회차  "
+   }
+  },
+  {
+   "name": "회차 — 없는 입력 방식",
+   "method": "POST",
+   "path": "/api/backlog/106/playthroughs",
+   "body": {
+    "startedOn": "2026-10-01",
+    "finishedOn": null,
+    "status": "PLAYING",
+    "deviceId": 9,
+    "platformId": 11,
+    "emulatorId": null,
+    "platformAccountId": 6,
+    "inputMethodId": 999999,
+    "label": "  첫 회차  "
+   }
+  },
+  {
+   "name": "회차 — 계정이 소속과 안 맞음",
+   "method": "POST",
+   "path": "/api/backlog/106/playthroughs",
+   "body": {
+    "startedOn": "2026-10-01",
+    "finishedOn": null,
+    "status": "PLAYING",
+    "deviceId": 9,
+    "platformId": 11,
+    "emulatorId": null,
+    "platformAccountId": 5,
+    "inputMethodId": 6,
+    "label": "  첫 회차  "
+   }
+  },
+  {
+   "name": "회차 — 플랫폼과 에뮬 둘 다 (에뮬 버림)",
+   "method": "POST",
+   "path": "/api/backlog/106/playthroughs",
+   "body": {
+    "startedOn": "2024-05-01",
+    "finishedOn": "2024-05-03",
+    "status": "COMPLETED",
+    "deviceId": 9,
+    "platformId": 11,
+    "emulatorId": 3,
+    "platformAccountId": 6,
+    "inputMethodId": 6,
+    "label": "  첫 회차  "
+   },
+   "save": {
+    "pt3": "id"
+   }
+  },
+  {
+   "name": "회차 — 에뮬 + 그 에뮬 계정",
+   "method": "POST",
+   "path": "/api/backlog/106/playthroughs",
+   "body": {
+    "startedOn": "2024-06-01",
+    "finishedOn": "2024-06-02",
+    "status": "COMPLETED",
+    "deviceId": 9,
+    "platformId": null,
+    "emulatorId": 3,
+    "platformAccountId": 17,
+    "inputMethodId": 6,
+    "label": "  첫 회차  "
+   }
+  },
+  {
+   "name": "회차 — 계정만 (소속 안 고름)",
+   "method": "POST",
+   "path": "/api/backlog/106/playthroughs",
+   "body": {
+    "startedOn": "2024-07-01",
+    "finishedOn": "2024-07-02",
+    "status": "PAUSED",
+    "platformAccountId": 5,
+    "deviceId": "12"
+   }
+  },
+  {
+   "name": "회차 — 숫자 라벨",
+   "method": "POST",
+   "path": "/api/backlog/106/playthroughs",
+   "body": {
+    "startedOn": "2024-08-01",
+    "finishedOn": "2024-08-02",
+    "status": "COMPLETED",
+    "label": 7
+   }
+  },
+  {
+   "name": "회차 — 없는 항목",
+   "method": "POST",
+   "path": "/api/backlog/999999/playthroughs",
+   "body": {
+    "startedOn": "2026-10-01",
+    "finishedOn": null,
+    "status": "PLAYING",
+    "deviceId": 9,
+    "platformId": 11,
+    "emulatorId": null,
+    "platformAccountId": 6,
+    "inputMethodId": 6,
+    "label": "  첫 회차  "
+   }
+  },
+  {
+   "name": "회차 — 실데이터 (진행 중 113에 과거 회차)",
+   "method": "POST",
+   "path": "/api/backlog/113/playthroughs",
+   "body": {
+    "startedOn": "2020-01-01",
+    "finishedOn": "2020-01-31",
+    "status": "COMPLETED",
+    "deviceId": 9,
+    "platformId": 11,
+    "emulatorId": null,
+    "platformAccountId": 6,
+    "inputMethodId": 6,
+    "label": "  첫 회차  "
+   }
+  },
+  {
+   "name": "회차 수정 — 진행 중을 멈춤으로",
+   "method": "PUT",
+   "path": "/api/playthroughs/171",
+   "body": {
+    "startedOn": "2026-10-17",
+    "finishedOn": "2026-10-20",
+    "status": "PAUSED",
+    "deviceId": 9,
+    "platformId": 11,
+    "platformAccountId": 6,
+    "inputMethodId": 6
+   }
+  },
+  {
+   "name": "회차 수정 — 같은 값",
+   "method": "PUT",
+   "path": "/api/playthroughs/72",
+   "body": {
+    "startedOn": "2026-05-27",
+    "finishedOn": "2026-09-28",
+    "status": "COMPLETED",
+    "deviceId": 9,
+    "platformId": 11,
+    "platformAccountId": 6,
+    "inputMethodId": 6
+   }
+  },
+  {
+   "name": "회차 수정 — 형제와 겹침",
+   "method": "PUT",
+   "path": "/api/playthroughs/72",
+   "body": {
+    "startedOn": "2022-06-01",
+    "finishedOn": "2026-09-28",
+    "status": "COMPLETED",
+    "deviceId": 9,
+    "platformId": 11,
+    "platformAccountId": 6
+   }
+  },
+  {
+   "name": "회차 수정 — 과거 회차를 최신으로",
+   "method": "PUT",
+   "path": "/api/playthroughs/104",
+   "body": {
+    "startedOn": "2026-04-09",
+    "finishedOn": "2026-10-01",
+    "status": "DROPPED",
+    "deviceId": 9,
+    "platformId": 11,
+    "platformAccountId": 6
+   }
+  },
+  {
+   "name": "회차 수정 — 참조만 바꿈",
+   "method": "PUT",
+   "path": "/api/playthroughs/94",
+   "body": {
+    "startedOn": "2025-12-25",
+    "finishedOn": "2026-03-22",
+    "status": "COMPLETED",
+    "deviceId": 7,
+    "platformId": 13,
+    "platformAccountId": 5,
+    "inputMethodId": 5,
+    "label": "맥으로"
+   }
+  },
+  {
+   "name": "회차 수정 — 방금 만든 것",
+   "method": "PUT",
+   "path": "/api/playthroughs/${pt2}",
+   "body": {
+    "startedOn": "2025-01-01",
+    "finishedOn": "2025-02-15",
+    "status": "COMPLETED",
+    "deviceId": 12
+   }
+  },
+  {
+   "name": "회차 수정 — 없음",
+   "method": "PUT",
+   "path": "/api/playthroughs/999999",
+   "body": {
+    "startedOn": "2026-10-01",
+    "finishedOn": null,
+    "status": "PLAYING",
+    "deviceId": 9,
+    "platformId": 11,
+    "emulatorId": null,
+    "platformAccountId": 6,
+    "inputMethodId": 6,
+    "label": "  첫 회차  "
+   }
+  },
+  {
+   "name": "회차 수정 — 상태 규칙",
+   "method": "PUT",
+   "path": "/api/playthroughs/72",
+   "body": {
+    "startedOn": "2026-05-27",
+    "finishedOn": null,
+    "status": "DROPPED"
+   }
+  },
+  {
+   "name": "회차 수정 — id 형식 오류",
+   "method": "PUT",
+   "path": "/api/playthroughs/abc",
+   "body": {
+    "startedOn": "2026-10-01",
+    "finishedOn": null,
+    "status": "PLAYING",
+    "deviceId": 9,
+    "platformId": 11,
+    "emulatorId": null,
+    "platformAccountId": 6,
+    "inputMethodId": 6,
+    "label": "  첫 회차  "
+   }
+  },
+  {
+   "name": "회차 삭제 — 유일한 회차 (→ BACKLOG)",
+   "method": "DELETE",
+   "path": "/api/playthroughs/167"
+  },
+  {
+   "name": "회차 삭제 — 최신 회차 (이전 회차로)",
+   "method": "DELETE",
+   "path": "/api/playthroughs/105"
+  },
+  {
+   "name": "회차 수정 — 최신 삭제 뒤 과거 회차가 최신으로",
+   "method": "PUT",
+   "path": "/api/playthroughs/104",
+   "body": {
+    "startedOn": "2026-04-09",
+    "finishedOn": "2026-07-01",
+    "status": "DROPPED",
+    "deviceId": 9,
+    "platformId": 11,
+    "platformAccountId": 6
+   }
+  },
+  {
+   "name": "회차 삭제 — 방금 만든 것",
+   "method": "DELETE",
+   "path": "/api/playthroughs/${pt3}"
+  },
+  {
+   "name": "회차 삭제 — 없음",
+   "method": "DELETE",
+   "path": "/api/playthroughs/999999"
+  },
+  {
+   "name": "상세 86 — 회차 반영",
+   "method": "GET",
+   "path": "/api/backlog/86"
+  },
+  {
+   "name": "상세 131 — 회차 반영",
+   "method": "GET",
+   "path": "/api/backlog/131"
+  },
+  {
+   "name": "취득 — 추가 (위시리스트 → BACKLOG)",
+   "method": "POST",
+   "path": "/api/backlog/199/acquisitions",
+   "body": {
+    "method": "PURCHASED",
+    "platformId": 13,
+    "platformAccountId": 5,
+    "subscriptionId": null,
+    "price": {
+     "amount": 15000,
+     "currency": "KRW"
+    },
+    "acquiredOn": "2026-10-01",
+    "label": null
+   },
+   "save": {
+    "acq1": "id"
+   }
+  },
+  {
+   "name": "취득 — 구독",
+   "method": "POST",
+   "path": "/api/backlog/200/acquisitions",
+   "body": {
+    "method": "SUBSCRIPTION",
+    "platformId": 11,
+    "platformAccountId": null,
+    "subscriptionId": 2,
+    "price": {
+     "amount": 0,
+     "currency": "KRW"
+    },
+    "acquiredOn": "2026-10-01",
+    "label": "  NSO  "
+   },
+   "save": {
+    "acq2": "id"
+   }
+  },
+  {
+   "name": "취득 — 가격 반올림·소문자 통화",
+   "method": "POST",
+   "path": "/api/backlog/201/acquisitions",
+   "body": {
+    "method": "PURCHASED",
+    "platformId": 13,
+    "platformAccountId": 5,
+    "subscriptionId": null,
+    "price": {
+     "amount": "12.345",
+     "currency": " usd "
+    },
+    "acquiredOn": "2026-10-01",
+    "label": null
+   }
+  },
+  {
+   "name": "취득 — 가격 없음 (실물)",
+   "method": "POST",
+   "path": "/api/backlog/202/acquisitions",
+   "body": {
+    "method": "PURCHASED",
+    "platformId": 16,
+    "platformAccountId": null,
+    "subscriptionId": null,
+    "price": null,
+    "acquiredOn": "2026-10-01",
+    "label": null
+   }
+  },
+  {
+   "name": "취득 — 진행 중 항목에 추가 (상태 그대로)",
+   "method": "POST",
+   "path": "/api/backlog/237/acquisitions",
+   "body": {
+    "method": "FREE",
+    "platformId": 13,
+    "platformAccountId": 5,
+    "subscriptionId": null,
+    "price": {
+     "amount": 0,
+     "currency": "KRW"
+    },
+    "acquiredOn": "2026-10-01",
+    "label": null
+   }
+  },
+  {
+   "name": "취득 — 구독인데 방식이 다름",
+   "method": "POST",
+   "path": "/api/backlog/199/acquisitions",
+   "body": {
+    "method": "PURCHASED",
+    "platformId": 13,
+    "platformAccountId": 5,
+    "subscriptionId": 2,
+    "price": {
+     "amount": 15000,
+     "currency": "KRW"
+    },
+    "acquiredOn": "2026-10-01",
+    "label": null
+   }
+  },
+  {
+   "name": "취득 — 없는 구독",
+   "method": "POST",
+   "path": "/api/backlog/199/acquisitions",
+   "body": {
+    "method": "SUBSCRIPTION",
+    "platformId": 13,
+    "platformAccountId": 5,
+    "subscriptionId": 999,
+    "price": {
+     "amount": 15000,
+     "currency": "KRW"
+    },
+    "acquiredOn": "2026-10-01",
+    "label": null
+   }
+  },
+  {
+   "name": "취득 — 음수 가격",
+   "method": "POST",
+   "path": "/api/backlog/199/acquisitions",
+   "body": {
+    "method": "PURCHASED",
+    "platformId": 13,
+    "platformAccountId": 5,
+    "subscriptionId": null,
+    "price": {
+     "amount": -1,
+     "currency": "KRW"
+    },
+    "acquiredOn": "2026-10-01",
+    "label": null
+   }
+  },
+  {
+   "name": "취득 — 통화 없음",
+   "method": "POST",
+   "path": "/api/backlog/199/acquisitions",
+   "body": {
+    "method": "PURCHASED",
+    "platformId": 13,
+    "platformAccountId": 5,
+    "subscriptionId": null,
+    "price": {
+     "amount": 1
+    },
+    "acquiredOn": "2026-10-01",
+    "label": null
+   }
+  },
+  {
+   "name": "취득 — 없는 통화",
+   "method": "POST",
+   "path": "/api/backlog/199/acquisitions",
+   "body": {
+    "method": "PURCHASED",
+    "platformId": 13,
+    "platformAccountId": 5,
+    "subscriptionId": null,
+    "price": {
+     "amount": 1,
+     "currency": "ZZZ"
+    },
+    "acquiredOn": "2026-10-01",
+    "label": null
+   }
+  },
+  {
+   "name": "취득 — 계정이 플랫폼과 안 맞음",
+   "method": "POST",
+   "path": "/api/backlog/199/acquisitions",
+   "body": {
+    "method": "PURCHASED",
+    "platformId": 11,
+    "platformAccountId": 5,
+    "subscriptionId": null,
+    "price": {
+     "amount": 15000,
+     "currency": "KRW"
+    },
+    "acquiredOn": "2026-10-01",
+    "label": null
+   }
+  },
+  {
+   "name": "취득 — 없는 플랫폼",
+   "method": "POST",
+   "path": "/api/backlog/199/acquisitions",
+   "body": {
+    "method": "PURCHASED",
+    "platformId": 999999,
+    "platformAccountId": 5,
+    "subscriptionId": null,
+    "price": {
+     "amount": 15000,
+     "currency": "KRW"
+    },
+    "acquiredOn": "2026-10-01",
+    "label": null
+   }
+  },
+  {
+   "name": "취득 — 없는 계정",
+   "method": "POST",
+   "path": "/api/backlog/199/acquisitions",
+   "body": {
+    "method": "PURCHASED",
+    "platformId": 13,
+    "platformAccountId": 999999,
+    "subscriptionId": null,
+    "price": {
+     "amount": 15000,
+     "currency": "KRW"
+    },
+    "acquiredOn": "2026-10-01",
+    "label": null
+   }
+  },
+  {
+   "name": "취득 — 방식 없음",
+   "method": "POST",
+   "path": "/api/backlog/199/acquisitions",
+   "body": {
+    "method": null,
+    "platformId": 13,
+    "platformAccountId": 5,
+    "subscriptionId": null,
+    "price": {
+     "amount": 15000,
+     "currency": "KRW"
+    },
+    "acquiredOn": "2026-10-01",
+    "label": null
+   }
+  },
+  {
+   "name": "취득 — 없는 방식",
+   "method": "POST",
+   "path": "/api/backlog/199/acquisitions",
+   "body": {
+    "method": "STOLEN",
+    "platformId": 13,
+    "platformAccountId": 5,
+    "subscriptionId": null,
+    "price": {
+     "amount": 15000,
+     "currency": "KRW"
+    },
+    "acquiredOn": "2026-10-01",
+    "label": null
+   }
+  },
+  {
+   "name": "취득 — 라벨 101자",
+   "method": "POST",
+   "path": "/api/backlog/199/acquisitions",
+   "body": {
+    "method": "PURCHASED",
+    "platformId": 13,
+    "platformAccountId": 5,
+    "subscriptionId": null,
+    "price": {
+     "amount": 15000,
+     "currency": "KRW"
+    },
+    "acquiredOn": "2026-10-01",
+    "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   }
+  },
+  {
+   "name": "취득 — 없는 항목",
+   "method": "POST",
+   "path": "/api/backlog/999999/acquisitions",
+   "body": {
+    "method": "PURCHASED",
+    "platformId": 13,
+    "platformAccountId": 5,
+    "subscriptionId": null,
+    "price": {
+     "amount": 15000,
+     "currency": "KRW"
+    },
+    "acquiredOn": "2026-10-01",
+    "label": null
+   }
+  },
+  {
+   "name": "취득 수정 — 실데이터 가격·라벨",
+   "method": "PUT",
+   "path": "/api/acquisitions/109",
+   "body": {
+    "method": "PURCHASED",
+    "platformId": 11,
+    "platformAccountId": 12,
+    "price": {
+     "amount": 59800,
+     "currency": "KRW"
+    },
+    "acquiredOn": "2025-12-13",
+    "label": "할인"
+   }
+  },
+  {
+   "name": "취득 수정 — 같은 값",
+   "method": "PUT",
+   "path": "/api/acquisitions/114",
+   "body": {
+    "method": "PURCHASED",
+    "platformId": 13,
+    "platformAccountId": 5,
+    "price": {
+     "amount": "9600",
+     "currency": "KRW"
+    },
+    "acquiredOn": "2025-12-25"
+   }
+  },
+  {
+   "name": "취득 수정 — 방금 만든 것",
+   "method": "PUT",
+   "path": "/api/acquisitions/${acq2}",
+   "body": {
+    "method": "SUBSCRIPTION",
+    "platformId": 11,
+    "subscriptionId": null,
+    "price": null,
+    "acquiredOn": null,
+    "label": null
+   }
+  },
+  {
+   "name": "취득 수정 — 없음",
+   "method": "PUT",
+   "path": "/api/acquisitions/999999",
+   "body": {
+    "method": "PURCHASED",
+    "platformId": 13,
+    "platformAccountId": 5,
+    "subscriptionId": null,
+    "price": {
+     "amount": 15000,
+     "currency": "KRW"
+    },
+    "acquiredOn": "2026-10-01",
+    "label": null
+   }
+  },
+  {
+   "name": "취득 수정 — 구독 방식 모순",
+   "method": "PUT",
+   "path": "/api/acquisitions/114",
+   "body": {
+    "method": "PURCHASED",
+    "platformId": 13,
+    "platformAccountId": 5,
+    "subscriptionId": 2,
+    "price": {
+     "amount": 15000,
+     "currency": "KRW"
+    },
+    "acquiredOn": "2026-10-01",
+    "label": null
+   }
+  },
+  {
+   "name": "취득 삭제 — 유일한 취득 (→ 위시리스트)",
+   "method": "DELETE",
+   "path": "/api/acquisitions/78"
+  },
+  {
+   "name": "취득 삭제 — 둘 중 하나",
+   "method": "DELETE",
+   "path": "/api/acquisitions/192"
+  },
+  {
+   "name": "취득 삭제 — 없음",
+   "method": "DELETE",
+   "path": "/api/acquisitions/999999"
+  },
+  {
+   "name": "상세 200 — 취득 반영",
+   "method": "GET",
+   "path": "/api/backlog/200"
+  },
+  {
+   "name": "삭제 — 205",
+   "method": "DELETE",
+   "path": "/api/backlog/205"
+  },
+  {
+   "name": "삭제 — 206",
+   "method": "DELETE",
+   "path": "/api/backlog/206"
+  },
+  {
+   "name": "삭제 — 207",
+   "method": "DELETE",
+   "path": "/api/backlog/207"
+  },
+  {
+   "name": "삭제 — 108",
+   "method": "DELETE",
+   "path": "/api/backlog/108"
+  },
+  {
+   "name": "삭제 — 이미 삭제됨",
+   "method": "DELETE",
+   "path": "/api/backlog/205"
+  },
+  {
+   "name": "삭제 — 없음",
+   "method": "DELETE",
+   "path": "/api/backlog/999999"
+  },
+  {
+   "name": "휴지통 목록",
+   "method": "GET",
+   "path": "/api/backlog/deleted"
+  },
+  {
+   "name": "휴지통 — 1페이지 크기 1",
+   "method": "GET",
+   "path": "/api/backlog/deleted?page=1&size=1"
+  },
+  {
+   "name": "휴지통 미리보기",
+   "method": "GET",
+   "path": "/api/backlog/deleted/205"
+  },
+  {
+   "name": "개인 기록 — 삭제된 항목",
+   "method": "PUT",
+   "path": "/api/backlog/205/personal-record",
+   "body": {
+    "rating": 1
+   }
+  },
+  {
+   "name": "회차 — 삭제된 항목",
+   "method": "POST",
+   "path": "/api/backlog/205/playthroughs",
+   "body": {
+    "startedOn": "2026-10-01",
+    "finishedOn": null,
+    "status": "PLAYING",
+    "deviceId": 9,
+    "platformId": 11,
+    "emulatorId": null,
+    "platformAccountId": 6,
+    "inputMethodId": 6,
+    "label": "  첫 회차  "
+   }
+  },
+  {
+   "name": "취득 — 삭제된 항목",
+   "method": "POST",
+   "path": "/api/backlog/205/acquisitions",
+   "body": {
+    "method": "PURCHASED",
+    "platformId": 13,
+    "platformAccountId": 5,
+    "subscriptionId": null,
+    "price": {
+     "amount": 15000,
+     "currency": "KRW"
+    },
+    "acquiredOn": "2026-10-01",
+    "label": null
+   }
+  },
+  {
+   "name": "태그 — 삭제된 항목",
+   "method": "PUT",
+   "path": "/api/backlog/205/tag",
+   "body": {
+    "name": "x"
+   }
+  },
+  {
+   "name": "상세 — 삭제된 항목은 404",
+   "method": "GET",
+   "path": "/api/backlog/205"
+  },
+  {
+   "name": "되살리기",
+   "method": "POST",
+   "path": "/api/backlog/205/revive"
+  },
+  {
+   "name": "되살리기 — 살아 있음",
+   "method": "POST",
+   "path": "/api/backlog/205/revive"
+  },
+  {
+   "name": "되살리기 — 없음",
+   "method": "POST",
+   "path": "/api/backlog/999999/revive"
+  },
+  {
+   "name": "완전 삭제 — 살아 있음",
+   "method": "DELETE",
+   "path": "/api/backlog/deleted/81"
+  },
+  {
+   "name": "완전 삭제 — 없음",
+   "method": "DELETE",
+   "path": "/api/backlog/deleted/999999"
+  },
+  {
+   "name": "완전 삭제 — 206",
+   "method": "DELETE",
+   "path": "/api/backlog/deleted/206"
+  },
+  {
+   "name": "오버라이드 — 완전 삭제할 항목",
+   "method": "PUT",
+   "path": "/api/backlog/88/overrides",
+   "body": {
+    "name": "RDR2",
+    "developers": [
+     "Rockstar"
+    ],
+    "publishers": [
+     "Take-Two"
+    ]
+   }
+  },
+  {
+   "name": "삭제 — 88 (커버·회차·취득·장르)",
+   "method": "DELETE",
+   "path": "/api/backlog/88"
+  },
+  {
+   "name": "완전 삭제 — 88",
+   "method": "DELETE",
+   "path": "/api/backlog/deleted/88"
+  },
+  {
+   "name": "삭제 — 148 (회차·취득 둘)",
+   "method": "DELETE",
+   "path": "/api/backlog/148"
+  },
+  {
+   "name": "완전 삭제 — 148",
+   "method": "DELETE",
+   "path": "/api/backlog/deleted/148"
+  },
+  {
+   "name": "완전 삭제 — 두 번",
+   "method": "DELETE",
+   "path": "/api/backlog/deleted/148"
+  },
+  {
+   "name": "목록 — 끝",
+   "method": "GET",
+   "path": "/api/backlog?size=100"
+  },
+  {
+   "name": "목록 — 끝 이름순",
+   "method": "GET",
+   "path": "/api/backlog?sort=name&size=100&page=1"
+  },
+  {
+   "name": "전량 카드 — 끝",
+   "method": "GET",
+   "path": "/api/backlog/cards"
+  },
+  {
+   "name": "파셋 — 끝",
+   "method": "GET",
+   "path": "/api/backlog/facets"
+  },
+  {
+   "name": "이름 목록 — 끝",
+   "method": "GET",
+   "path": "/api/backlog/names"
+  },
+  {
+   "name": "휴지통 — 끝",
+   "method": "GET",
+   "path": "/api/backlog/deleted"
+  },
+  {
+   "name": "회사 사전 — 끝",
+   "method": "GET",
+   "path": "/api/backlog/companies"
+  },
+  {
+   "name": "상세 81 — 끝",
+   "method": "GET",
+   "path": "/api/backlog/81"
+  },
+  {
+   "name": "상세 83 — 끝",
+   "method": "GET",
+   "path": "/api/backlog/83"
+  },
+  {
+   "name": "상세 84 — 끝",
+   "method": "GET",
+   "path": "/api/backlog/84"
+  },
+  {
+   "name": "상세 87 — 끝",
+   "method": "GET",
+   "path": "/api/backlog/87"
+  },
+  {
+   "name": "상세 113 — 끝",
+   "method": "GET",
+   "path": "/api/backlog/113"
+  },
+  {
+   "name": "상세 118 — 끝",
+   "method": "GET",
+   "path": "/api/backlog/118"
+  },
+  {
+   "name": "상세 199 — 끝",
+   "method": "GET",
+   "path": "/api/backlog/199"
+  },
+  {
+   "name": "상세 201 — 끝",
+   "method": "GET",
+   "path": "/api/backlog/201"
+  },
+  {
+   "name": "상세 205 — 끝",
+   "method": "GET",
+   "path": "/api/backlog/205"
+  },
+  {
+   "name": "상세 237 — 끝",
+   "method": "GET",
+   "path": "/api/backlog/237"
+  }
+ ]
+}

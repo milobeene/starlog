@@ -1,0 +1,215 @@
+{
+ "name": "backlog-owner",
+ "env": {
+  "STARLOG_PROFILE": "test",
+  "SPRING_PROFILES_INCLUDE": "test"
+ },
+ "steps": [
+  {
+   "name": "남의 것 — 상세",
+   "method": "GET",
+   "path": "/api/backlog/81",
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "남의 것 — 삭제 미리보기",
+   "method": "GET",
+   "path": "/api/backlog/deleted/81",
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "남의 것 — 개인 기록",
+   "method": "PUT",
+   "path": "/api/backlog/81/personal-record",
+   "headers": {
+    "X-Member-Id": "999"
+   },
+   "body": {
+    "rating": 1
+   }
+  },
+  {
+   "name": "남의 것 — 오버라이드",
+   "method": "PUT",
+   "path": "/api/backlog/81/overrides",
+   "headers": {
+    "X-Member-Id": "999"
+   },
+   "body": {
+    "name": "x"
+   }
+  },
+  {
+   "name": "남의 것 — 태그",
+   "method": "PUT",
+   "path": "/api/backlog/81/tag",
+   "headers": {
+    "X-Member-Id": "999"
+   },
+   "body": {
+    "name": "x"
+   }
+  },
+  {
+   "name": "남의 것 — 장르",
+   "method": "PUT",
+   "path": "/api/backlog/81/genres",
+   "headers": {
+    "X-Member-Id": "999"
+   },
+   "body": {
+    "names": [
+     "x"
+    ]
+   }
+  },
+  {
+   "name": "남의 것 — 회차 추가",
+   "method": "POST",
+   "path": "/api/backlog/81/playthroughs",
+   "headers": {
+    "X-Member-Id": "999"
+   },
+   "body": {
+    "startedOn": "2020-01-01",
+    "finishedOn": "2020-01-02",
+    "status": "COMPLETED"
+   }
+  },
+  {
+   "name": "남의 것 — 회차 수정",
+   "method": "PUT",
+   "path": "/api/playthroughs/72",
+   "headers": {
+    "X-Member-Id": "999"
+   },
+   "body": {
+    "startedOn": "2020-01-01",
+    "finishedOn": "2020-01-02",
+    "status": "COMPLETED"
+   }
+  },
+  {
+   "name": "남의 것 — 회차 삭제",
+   "method": "DELETE",
+   "path": "/api/playthroughs/72",
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "남의 것 — 취득 추가",
+   "method": "POST",
+   "path": "/api/backlog/81/acquisitions",
+   "headers": {
+    "X-Member-Id": "999"
+   },
+   "body": {
+    "method": "FREE",
+    "price": {
+     "amount": 0,
+     "currency": "KRW"
+    }
+   }
+  },
+  {
+   "name": "남의 것 — 취득 수정",
+   "method": "PUT",
+   "path": "/api/acquisitions/114",
+   "headers": {
+    "X-Member-Id": "999"
+   },
+   "body": {
+    "method": "FREE",
+    "price": {
+     "amount": 0,
+     "currency": "KRW"
+    }
+   }
+  },
+  {
+   "name": "남의 것 — 취득 삭제",
+   "method": "DELETE",
+   "path": "/api/acquisitions/114",
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "남의 것 — 삭제",
+   "method": "DELETE",
+   "path": "/api/backlog/81",
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "남의 것 — 되살리기",
+   "method": "POST",
+   "path": "/api/backlog/81/revive",
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "남의 것 — 완전 삭제",
+   "method": "DELETE",
+   "path": "/api/backlog/deleted/81",
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "남의 회원 — 목록 (비었음)",
+   "method": "GET",
+   "path": "/api/backlog",
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "남의 회원 — 전량 카드",
+   "method": "GET",
+   "path": "/api/backlog/cards",
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "남의 회원 — 파셋",
+   "method": "GET",
+   "path": "/api/backlog/facets",
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "남의 회원 — 이름",
+   "method": "GET",
+   "path": "/api/backlog/names",
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "남의 회원 — 휴지통",
+   "method": "GET",
+   "path": "/api/backlog/deleted",
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "남의 회원 — 회사 사전",
+   "method": "GET",
+   "path": "/api/backlog/companies",
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  }
+ ]
+}
