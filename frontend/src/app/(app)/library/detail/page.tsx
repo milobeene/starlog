@@ -104,7 +104,7 @@ function BacklogDetail() {
         <div className="page-x relative pt-4">
           <DetailHero data={data} onOpen={setDialog} />
 
-          <SummaryStats data={data} />
+          <SummaryStats data={data} onOpen={setDialog} />
 
           <div className="grid grid-cols-1 gap-10 lg:grid-cols-3">
             {/*

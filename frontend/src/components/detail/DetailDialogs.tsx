@@ -1,7 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import PersonalRecordDialog from "@/components/library/PersonalRecordDialog";
+import MemoDialog from "@/components/detail/MemoDialog";
+import StatsDialog from "@/components/detail/StatsDialog";
 import OverridesDialog from "@/components/library/OverridesDialog";
 import PlaythroughDialog from "@/components/library/PlaythroughDialog";
 import AcquisitionDialog from "@/components/library/AcquisitionDialog";
@@ -32,8 +33,17 @@ export default function DetailDialogs({
 
   return (
     <>
-      {dialog?.kind === "record" && (
-        <PersonalRecordDialog
+      {dialog?.kind === "memo" && (
+        <MemoDialog
+          entryId={data.entryId}
+          record={personalRecord}
+          onClose={() => onClose()}
+          onSaved={onSaved}
+        />
+      )}
+
+      {dialog?.kind === "stats" && (
+        <StatsDialog
           entryId={data.entryId}
           record={personalRecord}
           onClose={() => onClose()}

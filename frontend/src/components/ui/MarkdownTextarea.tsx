@@ -22,12 +22,15 @@ export default function MarkdownTextarea({
   rows = 10,
   maxLength,
   placeholder,
+  fill = false,
 }: {
   value: string;
   onChange: (value: string) => void;
   rows?: number;
   maxLength?: number;
   placeholder?: string;
+  /** 부모(세로 flex)의 남는 높이를 꽉 채운다. 높이 조절 손잡이 없음 — `rows`는 무시된다 */
+  fill?: boolean;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
 
@@ -109,7 +112,7 @@ export default function MarkdownTextarea({
       rows={rows}
       maxLength={maxLength}
       placeholder={placeholder}
-      className={`${FIELD_INPUT} resize-y font-light`}
+      className={`${FIELD_INPUT} font-light ${fill ? "min-h-32 flex-1 resize-none" : "resize-y"}`}
     />
   );
 }

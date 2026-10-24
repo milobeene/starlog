@@ -17,12 +17,15 @@ export default function Modal({
   children,
   footer,
   width = "max-w-lg",
+  tall = false,
 }: {
   title: string;
   onClose: () => void;
   children: React.ReactNode;
   footer?: React.ReactNode;
   width?: string;
+  /** 높이를 최대(85vh)로 고정한다 — 메모처럼 본문을 입력칸이 꽉 채우는 팝업용. 본문은 세로 flex라 `flex-1` 자식이 채운다 */
+  tall?: boolean;
 }) {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -43,7 +46,7 @@ export default function Modal({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`glass-panel flex max-h-[85vh] w-full ${width} flex-col overflow-hidden rounded-xl !bg-neutral-950/92`}
+        className={`glass-panel flex max-h-[85vh] ${tall ? "h-[85vh]" : ""} w-full ${width} flex-col overflow-hidden rounded-xl !bg-neutral-950/92`}
       >
         <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-6 py-4">
           <h3 className="text-sm font-semibold tracking-wide text-white/90 uppercase">{title}</h3>
@@ -58,7 +61,7 @@ export default function Modal({
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
+        <div className={`min-h-0 flex-1 overflow-y-auto px-6 py-5 ${tall ? "flex flex-col" : ""}`}>{children}</div>
 
         {footer && (
           <div className="flex shrink-0 items-center justify-end gap-2 border-t border-white/10 px-6 py-4">

@@ -29,9 +29,9 @@ export default function NotesSection({
         */}
         <Button
           className="!text-teal-200/70"
-          onClick={() => onOpen({ kind: "record" })}
+          onClick={() => onOpen({ kind: "memo" })}
         >
-          내 기록 수정
+          메모 수정
         </Button>
       </h3>
       {/*

@@ -27,17 +27,20 @@ export function Field({
   label,
   hint,
   composite = false,
+  className = "",
   children,
 }: {
   label: string;
   hint?: string;
   composite?: boolean;
+  /** 부모 flex 안에서 늘어나게 할 때 (`min-h-0 flex-1`) */
+  className?: string;
   children: React.ReactNode;
 }) {
   const Tag = composite ? "div" : "label";
 
   return (
-    <Tag className="flex flex-col gap-1.5">
+    <Tag className={`flex flex-col gap-1.5 ${className}`}>
       <span className="text-[10px] font-semibold tracking-widest text-white/40 uppercase">
         {label}
       </span>
