@@ -4,7 +4,8 @@
  * - 없거나 빈 문자열이면 null (스프링 숫자·날짜·enum 변환기가 빈 문자열을 null로 본다)
  * - 형식이 틀리면 400 `"{이름} 값이 올바르지 않습니다"` (`MethodArgumentTypeMismatchException`)
  * - 목록(`List<Enum>`)은 `?a=X&a=Y`와 `?a=X,Y` 둘 다 받는다 (스프링이 콤마를 나눈다)
- * - 문자열은 그대로 — `?q=`면 `""`이다 (스프링도 String은 변환하지 않는다)
+ * - 문자열은 그대로 — `?q=`면 `""`이다 (스프링도 String은 변환하지 않는다).
+ *   **반복되면 콤마로 이어 붙인다** — `?q=a&q=b` → `"a,b"` (스프링 String 바인딩, backlog 이전에서 확인)
  */
 import type { Context } from "hono";
 import { InvalidInput } from "../common/errors";
@@ -55,7 +56,10 @@ export class Query {
     return v === null || v.trim() === "" ? null : v;
   }
 
-  str(name: string): string | null { return this.first(name); }
+  str(name: string): string | null {
+    const all = this.c.req.queries(name);
+    return all && all.length > 1 ? all.join(",") : this.first(name);
+  }
 
   long(name: string): number | null {
     const v = this.blankToNull(name);
