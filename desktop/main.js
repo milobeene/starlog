@@ -26,6 +26,7 @@ const paths = require("./paths");
 const store = require("./settings");
 const backup = require("./backup");
 const saveFiles = require("./saveFiles");
+const media = require("./media");
 
 /**
  * 서버 번들은 **패키징 여부에 따라 자리가 다르다** (10단계) → `paths.js`가 정한다.
@@ -42,6 +43,8 @@ const WEB_FOR_SERVER = WEB.replace(`app.asar${path.sep}`, `app.asar.unpacked${pa
 
 let backend = null;
 let backendPort = null;
+/** 지금 백엔드가 쓰는 `<데이터 루트>/media` — 클립보드·내보내기 경로를 이 안으로 묶는다 */
+let backendMediaRoot = null;
 let win = null;
 /** 우리가 일부러 죽인 건지, 저 혼자 죽은 건지 구분한다 — 후자만 사용자에게 알린다 */
 let stoppingOnPurpose = false;
@@ -323,9 +326,15 @@ function spawnServer(port, config) {
   }
 
   let diagnostic = null;
+  /*
+   * 썸네일은 서버가 부탁하고 여기서 만든다 (`nativeImage`가 메인 전용). 경로는 **이 서버에 준 데이터 루트**
+   * 안으로 묶는다 — 설정의 데이터 루트가 그사이 바뀌어도 이 서버가 보는 곳은 그대로다
+   */
+  const mediaRoot = config.env?.STARLOG_DATA_ROOT ? path.join(config.env.STARLOG_DATA_ROOT, "media") : null;
   // 진단은 두 길로 온다 — 메시지(정상)와 stdout 한 줄(메시지가 가기 전에 죽었을 때)
   child.on("message", (m) => {
     if (m && m.type === "diagnostic") diagnostic = m.code;
+    else media.handleServerMessage(m, mediaRoot, (reply) => child.postMessage(reply));
   });
   child.stdout?.on("data", (chunk) => {
     const found = chunk.toString().match(/STARLOG_DIAGNOSTIC:\s*([A-Z_]+)/);
@@ -365,12 +374,14 @@ function startBackend(port, config) {
   const { proc, exited } = spawnServer(port, config);
   backend = proc;
   backendPort = proc ? port : null;
+  backendMediaRoot = proc && config.env?.STARLOG_DATA_ROOT ? path.join(config.env.STARLOG_DATA_ROOT, "media") : null;
 
   const done = exited.then((result) => {
     // 그 사이에 새 백엔드가 떴으면 그건 남의 것이다 — 내가 죽었다고 남을 지우면 안 된다
     if (backend !== proc) return result;
     backend = null;
     backendPort = null;
+    backendMediaRoot = null;
     if (!stoppingOnPurpose) onBackendDied(result.code, result.diagnostic);
     return result;
   });
@@ -462,6 +473,7 @@ function stopBackend() {
   stoppingOnPurpose = true;
   backend = null;
   backendPort = null;
+  backendMediaRoot = null;
   session = null;
 
   return new Promise((resolve) => {
@@ -601,6 +613,20 @@ function dataDirs() {
   return paths.ensureDataRoot(store.getSettings().dataRoot);
 }
 
+/**
+ * 파일을 꺼내 가는 IPC는 **우리 창의 최상위 문서(`app://starlog`)에서 온 것만** 받는다.
+ * 창이 외부 페이지를 띄울 일은 없지만(외부 링크는 브라우저로 보낸다), 혹시 떠도 내 파일을 못 꺼내게
+ */
+function assertFromApp(event) {
+  let ok = false;
+  try {
+    const url = new URL(event.senderFrame?.url ?? "");
+    ok = url.protocol === "app:" && url.host === "starlog"
+      && event.senderFrame === event.sender.mainFrame && win !== null && event.sender === win.webContents;
+  } catch { /* 주소를 못 읽으면 거절 */ }
+  if (!ok) throw new Error("허용되지 않은 요청입니다");
+}
+
 function registerIpc() {
   /**
    * 지금 백엔드의 포트. **동기로 답한다.**
@@ -694,6 +720,56 @@ function registerIpc() {
       throw new Error("데이터 폴더 밖은 열 수 없습니다");
     }
     shell.openPath(resolved);
+  });
+
+  // ── 스크린샷 관리자: 클립보드 · 내보내기 (P6 S2) ──
+
+  /**
+   * 화면이 주는 건 `{entryId, fileName}`뿐이다. **실제 경로는 서버에게 묻는다** — 소유권·폴더 탈출 검사를
+   * 서버가 이미 한다. 받은 경로도 그대로 믿지 않고 `<데이터 루트>/media/<게임>/<파일>`인지 다시 본다
+   */
+  async function resolveMediaRefs(refs) {
+    if (!Array.isArray(refs) || refs.length === 0 || refs.length > 5000) throw new Error("고른 파일이 없습니다");
+    if (!backendPort || !backendMediaRoot) throw new Error("서버가 떠 있지 않습니다");
+    const out = [];
+    for (const ref of refs) {
+      const entryId = ref?.entryId, fileName = ref?.fileName;
+      if (!Number.isSafeInteger(entryId) || entryId <= 0 || typeof fileName !== "string" || fileName === "") {
+        throw new Error("잘못된 파일입니다");
+      }
+      const label = { entryId, fileName };
+      let file = null;
+      try {
+        const { path: reported } = await getJson(backendPort,
+          `/api/backlog/${entryId}/screenshots/${encodeURIComponent(fileName)}/path`);
+        file = media.mediaFileInside(backendMediaRoot, reported);
+      } catch { /* 없어진 파일 — 아래에서 실패로 센다 */ }
+      out.push({ file, label });
+    }
+    return out;
+  }
+
+  ipcMain.handle("media:copy", async (event, ref) => {
+    assertFromApp(event);
+    const [{ file }] = await resolveMediaRefs([ref]);
+    if (!file) return { ok: false, reason: "NOT_FOUND" };
+    return media.copyToClipboard(file);
+  });
+
+  /** 저장할 폴더는 **매번** 고른다 (사용자 결정) — 마지막 폴더를 기억해 조용히 쏟아붓지 않는다 */
+  ipcMain.handle("media:saveTo", async (event, refs) => {
+    assertFromApp(event);
+    const resolved = await resolveMediaRefs(refs);
+    const picked = await dialog.showOpenDialog(win, {
+      title: "저장할 폴더",
+      buttonLabel: "여기에 저장",
+      properties: ["openDirectory", "createDirectory"],
+    });
+    if (picked.canceled || !picked.filePaths[0]) return { canceled: true };
+    const folder = picked.filePaths[0];
+    const { saved, failed } = media.saveFiles(resolved.filter((r) => r.file), folder);
+    for (const r of resolved) if (!r.file) failed.push({ ...r.label, reason: "NOT_FOUND" });
+    return { canceled: false, folder, saved, failed };
   });
 
   ipcMain.handle("saves:list", () => saveFiles.list(dataDirs()));

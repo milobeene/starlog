@@ -238,6 +238,30 @@
    ]
   },
   {
+   "name": "남의 것 — 갤러리 한 게임",
+   "method": "GET",
+   "path": "/api/screenshots?entryId=81",
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "남의 것 — 썸네일",
+   "method": "GET",
+   "path": "/api/backlog/81/screenshots/001.jpg/thumb",
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "남의 것 — 파일 경로",
+   "method": "GET",
+   "path": "/api/backlog/81/screenshots/001.jpg/path",
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
    "name": "남의 것 — 번역",
    "method": "POST",
    "path": "/api/backlog/81/translate",

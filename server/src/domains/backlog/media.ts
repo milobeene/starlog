@@ -7,18 +7,22 @@
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db, type Db } from "../../db/client";
+import { rows } from "../../db/raw";
 import { coverImage, game } from "../../db/schema";
-import { FileIo, InvalidInput } from "../../common/errors";
+import { FileIo, InvalidInput, NotFound } from "../../common/errors";
 import { nowKst } from "../../common/clock";
-import { normalize } from "../../common/text";
+import { normalize, slug } from "../../common/text";
 import {
   STORAGE_LIMITS, coverTarget, coversDir, fileStorage, localDelete, localExists, localList, localRead,
   localResolve, localSave, localSaveAs, mediaFolder, type CoverLocation,
 } from "../../common/storage";
+import {
+  canMakeThumbs, dropThumb, ensureThumb, isFresh, knownFailure, mtimeMsOf, pointsIntoThumbs, pruneOrphans, thumbPathOf, warmThumb,
+} from "../../common/storage/thumbs";
 import { recordApiCall } from "../system/service";
-import { assignMediaFolder, uniqueMediaSlug } from "../game/service";
+import { assignMediaFolder, mediaSlugGiven, uniqueMediaSlug } from "../game/service";
 import { findOwned, findOwnedAlive404 } from "./shared";
 import { saveIfChanged } from "../../db/changes";
 
@@ -83,6 +87,14 @@ function mediaContentType(fileName: string | null, size: number): string {
   if (size <= 0) throw new InvalidInput("파일 크기가 올바르지 않습니다");
   if (size > limit) throw new InvalidInput(`파일이 너무 큽니다. 최대 ${MB(limit)}MB`);
   return contentType;
+}
+
+export type MediaKind = "IMAGE" | "VIDEO";
+
+/** 이미지·영상이 아니면 null (사람이 폴더에 넣은 `.DS_Store`·메모 따위) */
+export function mediaKindOf(fileName: string): MediaKind | null {
+  const ext = fileName.slice(fileName.lastIndexOf(".") + 1).toLowerCase();
+  return IMAGES[ext] ? "IMAGE" : VIDEOS[ext] ? "VIDEO" : null;
 }
 
 /** 확장자 → MIME. DB에 행이 없어서 이름에서 되돌린다 */
@@ -247,23 +259,42 @@ function instantText(ns: bigint): string {
   return `${base}.${frac}Z`;
 }
 
-function describe(entryId: number, folder: string, name: string) {
-  const file = path.join(folder, name);
-  let st: fs.BigIntStats;
-  try { st = fs.statSync(file, { bigint: true }); } catch (e) { throw new FileIo(e); }
+const screenshotUrl = (entryId: number, name: string) => `/api/backlog/${entryId}/screenshots/${encodePathSegment(name)}`;
+
+/**
+ * 썸네일 주소 — 신선한 게 있거나, 지금 만들 수 있고 전에 실패한 적이 없을 때만.
+ * 일렉트론 없이 도는 서버면 null → 화면이 원본(`url`)을 쓴다.
+ * `?v=`는 원본 수정시각이다 — 같은 이름에 다른 파일이 들어오면 주소가 바뀌어 캐시가 깨진다
+ */
+function thumbUrlOf(entryId: number, folder: string, name: string, st: fs.BigIntStats): string | null {
+  const kind = mediaKindOf(name);
+  if (kind === null) return null;
+  const ms = mtimeMsOf(st);
+  const ready = isFresh(thumbPathOf(folder, name), ms) || (canMakeThumbs() && !knownFailure(path.join(folder, name), ms, st.size));
+  return ready ? `${screenshotUrl(entryId, name)}/thumb?v=${ms}` : null;
+}
+
+function statOf(folder: string, name: string): fs.BigIntStats {
+  try { return fs.statSync(path.join(folder, name), { bigint: true }); } catch (e) { throw new FileIo(e); }
+}
+
+function describe(entryId: number, folder: string, name: string, st: fs.BigIntStats = statOf(folder, name)) {
   return {
     fileName: name,
-    url: `/api/backlog/${entryId}/screenshots/${encodePathSegment(name)}`,
+    url: screenshotUrl(entryId, name),
     sizeBytes: Number(st.size),
     contentType: mediaContentTypeOf(name),
     takenAt: instantText(st.mtimeNs),
+    thumbUrl: thumbUrlOf(entryId, folder, name, st),
   };
 }
 
 export async function listScreenshots(memberId: number, entryId: number) {
   const folder = await db().transaction((tx) => folderOf(tx, memberId, entryId, false, false));
   if (folder === null) return [];
-  return localList(folder).map((name) => describe(entryId, folder, name));
+  const names = localList(folder);
+  pruneOrphans(folder, new Set(names));
+  return names.map((name) => describe(entryId, folder, name));
 }
 
 /** `001.png`, `002.jpg` … 가장 큰 번호 다음. 개수 + 1이면 중간을 지웠을 때 덮어쓴다 */
@@ -289,12 +320,14 @@ export async function saveScreenshot(memberId: number, entryId: number, fileName
   const contentType = mediaContentType(fileName, bytes.length);
   if (!magicMatches(bytes.subarray(0, MAGIC_LENGTH), contentType)) throw new InvalidInput("파일 내용이 형식과 맞지 않습니다");
 
-  return db().transaction(async (tx) => {
+  const saved = await db().transaction(async (tx) => {
     const folder = (await folderOf(tx, memberId, entryId, true, true))!;
     // 원문에서 마지막 점 뒤 (검증은 strip한 이름이었다)
     const raw = fileName!;
     const extension = normalize(raw.slice(raw.lastIndexOf(".") + 1))?.toLowerCase() ?? "";
     const stored = nextName(folder, extension);
+    // 끝번호를 지우고 다시 올리면 같은 이름이 돌아온다 — 옛 썸네일을 먼저 치운다
+    dropThumb(folder, stored);
     localSaveAs(folder, stored, bytes);
     if (takenAtMillis !== null && takenAtMillis > 0) {
       const file = path.join(folder, stored);
@@ -304,15 +337,38 @@ export async function saveScreenshot(memberId: number, entryId: number, fileName
         console.warn(`원본 시각을 심지 못했습니다. ${stored}`, e);   // 못 심어도 파일은 멀쩡하다
       }
     }
-    return describe(entryId, folder, stored);
+    return { folder, stored, item: describe(entryId, folder, stored) };
   });
+  // 트랜잭션 밖에서, 기다리지 않고 — 그리드가 열릴 때쯤엔 이미 있다
+  const kind = mediaKindOf(saved.stored);
+  if (kind !== null) warmThumb(path.join(saved.folder, saved.stored), kind === "IMAGE" ? "image" : "video");
+  return saved.item;
 }
 
 /** 원본 경로 — 바이트가 아니라 경로를 준다 (영상 200MB, Range 재생) */
 export async function resolveScreenshot(memberId: number, entryId: number, fileName: string): Promise<string> {
+  return (await locate(memberId, entryId, fileName)).file;
+}
+
+async function locate(memberId: number, entryId: number, fileName: string) {
   const folder = await db().transaction((tx) => folderOf(tx, memberId, entryId, false, false));
-  if (folder === null || !localExists(folder, fileName)) throw new InvalidInput(`스크린샷이 없습니다: ${fileName}`);
-  return localResolve(folder, fileName);
+  // 썸네일 폴더 안은 스크린샷이 아니다 — 없는 것과 같게
+  if (folder === null || pointsIntoThumbs(fileName) || !localExists(folder, fileName)) {
+    throw new InvalidInput(`스크린샷이 없습니다: ${fileName}`);
+  }
+  return { folder, file: localResolve(folder, fileName) };
+}
+
+/**
+ * 썸네일 경로. 없으면 **이 요청에서** 만든다 (줄 서서, 한 장만). 못 만들면 404 — 화면은 원본으로 물러난다.
+ * 원본이 없으면 원본 조회와 같은 400
+ */
+export async function resolveThumb(memberId: number, entryId: number, fileName: string): Promise<string> {
+  const { file } = await locate(memberId, entryId, fileName);
+  const kind = mediaKindOf(fileName);
+  const thumb = kind === null ? null : await ensureThumb(file, kind === "IMAGE" ? "image" : "video");
+  if (thumb === null) throw new NotFound(`썸네일이 없습니다: ${fileName}`);
+  return thumb;
 }
 
 /**
@@ -325,7 +381,12 @@ export async function deleteScreenshots(memberId: number, entryId: number, fileN
     const folder = await folderOf(tx, memberId, entryId, false, true);
     if (folder === null) return 0;
     let deleted = 0;
-    for (const name of fileNames) if (localDelete(folder, name!)) deleted++;
+    for (const name of fileNames) {
+      if (pointsIntoThumbs(name!)) continue;   // 썸네일 폴더는 이름으로 못 지운다 (지운 개수에도 안 든다)
+      if (localDelete(folder, name!)) deleted++;
+      // 원본이 이미 없었어도 (탐색기로 지움) 썸네일은 치운다
+      dropThumb(folder, name!);
+    }
     return deleted;
   });
 }
@@ -339,4 +400,79 @@ export async function screenshotFolderPath(memberId: number, entryId: number): P
     throw new FileIo(e);
   }
   return path.resolve(folder!);
+}
+
+/** 일렉트론이 클립보드·저장에 쓸 실제 경로. 경로는 서버가 정한다 — 화면이 준 경로를 믿지 않으려고 */
+export async function screenshotFilePath(memberId: number, entryId: number, fileName: string): Promise<string> {
+  return path.resolve((await locate(memberId, entryId, fileName)).file);
+}
+
+// ───────────── 갤러리 (게임 전체) ─────────────
+
+export type GalleryKind = "ALL" | MediaKind;
+
+interface Owned { entryId: number; gameId: number; name: string; mediaFolder: string | null; displayName: string }
+
+/**
+ * 내 살아 있는 항목마다 폴더 하나. `folderOf`와 같은 규칙인데 **한 번의 조회로** —
+ * 칸이 빈 게임은 이름으로 찾아보되 저장하지 않는다 (읽기 요청이 DB를 바꾸지 않게)
+ */
+async function ownedFolders(memberId: number) {
+  const { owned, owners } = await db().transaction(async (tx) => ({
+    owned: await rows<Owned>(tx, sql`select b.id as "entryId", g.id as "gameId", g.name, g.media_folder as "mediaFolder",
+        b.display_name as "displayName"
+      from backlog_entry b join game g on g.id = b.game_id
+      where b.member_id = ${memberId} and b.deleted_at is null
+      order by b.display_name_sort_key, b.id`),
+    owners: await rows<{ id: number; mediaFolder: string }>(tx,
+      sql`select id, media_folder as "mediaFolder" from game where media_folder is not null`),
+  }));
+  const ownerOf = new Map(owners.map((o) => [o.mediaFolder, o.id]));
+  const out: { entry: Owned; folder: string }[] = [];
+  for (const entry of owned) {
+    try {
+      const slugName = entry.mediaFolder ?? mediaSlugGiven({ id: entry.gameId, name: entry.name }, ownerOf.get(slug(entry.name)));
+      const folder = mediaFolder(slugName);
+      if (isDirectory(folder)) out.push({ entry, folder });
+    } catch {
+      // 폴더 이름이 데이터 루트 밖을 가리키는 행 — 단건 조회에선 500이지만 목록 전체를 죽이진 않는다
+    }
+  }
+  return out;
+}
+
+/**
+ * 스크린샷 관리자 — 내 게임 전체(또는 하나)의 사진·영상, **찍은 시각 최신순**.
+ *
+ * 파일을 열지 않는다 (stat만). 수천 장이어도 폴더 수 × readdir + 파일 수 × stat 두 번이다.
+ * `games`는 거르기 전 전체 — 위쪽 고르기 목록이 지금 필터와 상관없이 같은 게임을 보여야 한다
+ */
+export async function listGallery(memberId: number, entryId: number | null, kind: GalleryKind) {
+  if (entryId !== null) await db().transaction((tx) => findOwnedAlive404(tx, memberId, entryId));
+  const games: { entryId: number; gameName: string; imageCount: number; videoCount: number }[] = [];
+  const items: (ReturnType<typeof describe> & { entryId: number; gameName: string; kind: MediaKind; mtimeNs: bigint })[] = [];
+  for (const { entry, folder } of await ownedFolders(memberId)) {
+    const names = localList(folder);
+    pruneOrphans(folder, new Set(names));
+    let images = 0, videos = 0;
+    for (const name of names) {
+      const k = mediaKindOf(name);
+      if (k === null) continue;
+      if (k === "IMAGE") images++; else videos++;
+      if ((entryId !== null && entry.entryId !== entryId) || (kind !== "ALL" && kind !== k)) continue;
+      let st: fs.BigIntStats;
+      try { st = fs.statSync(path.join(folder, name), { bigint: true }); } catch { continue; }   // 읽는 사이 지워짐
+      items.push({ entryId: entry.entryId, gameName: entry.displayName, kind: k, ...describe(entry.entryId, folder, name, st), mtimeNs: st.mtimeNs });
+    }
+    if (images + videos > 0) games.push({ entryId: entry.entryId, gameName: entry.displayName, imageCount: images, videoCount: videos });
+  }
+  items.sort((a, b) => (a.mtimeNs !== b.mtimeNs ? (a.mtimeNs < b.mtimeNs ? 1 : -1)
+    : a.entryId !== b.entryId ? a.entryId - b.entryId : a.fileName < b.fileName ? 1 : a.fileName > b.fileName ? -1 : 0));
+  return {
+    games,
+    items: items.map((it) => ({
+      entryId: it.entryId, gameName: it.gameName, fileName: it.fileName, kind: it.kind, contentType: it.contentType,
+      sizeBytes: it.sizeBytes, takenAt: it.takenAt, url: it.url, thumbUrl: it.thumbUrl,
+    })),
+  };
 }

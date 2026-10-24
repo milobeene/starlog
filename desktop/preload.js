@@ -103,6 +103,23 @@ contextBridge.exposeInMainWorld("starlog", {
     test: (profile, options) => ipcRenderer.invoke("connections:test", profile, options),
   },
 
+  /**
+   * 스크린샷 관리자 (P6 S2). 파일은 **`{entryId, fileName}`으로만** 가리킨다 — 경로는 일렉트론이 서버에 묻고
+   * 데이터 루트의 `media/` 안인지 다시 본다. 본 앱(`app://starlog`)에서만 된다
+   */
+  media: {
+    /**
+     * 클립보드로. 사진은 그림으로(`as: "image"`), WebP·영상은 파일 참조로(`as: "file"`, 맥·윈도우).
+     * @returns `{ ok: true, as }` | `{ ok: false, reason: "NOT_FOUND" | "UNSUPPORTED" }`
+     */
+    copy: (ref) => ipcRenderer.invoke("media:copy", ref),
+    /**
+     * 폴더를 **매번** 골라 복사한다. 이름이 겹치면 `001 (1).png`. 덮어쓰지 않는다
+     * @returns `{ canceled: true }` | `{ canceled: false, folder, saved: [{entryId, fileName, savedAs}], failed: [{entryId, fileName, reason}] }`
+     */
+    saveTo: (refs) => ipcRenderer.invoke("media:saveTo", refs),
+  },
+
   /** 백엔드를 띄우고 진단까지 통과하면 창이 본 앱으로 넘어간다 */
   launch: (request) => ipcRenderer.invoke("launch", request),
 

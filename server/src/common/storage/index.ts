@@ -15,6 +15,7 @@ import crypto from "crypto";
 import { AwsV4Signer } from "aws4fetch";
 import { config } from "../../config";
 import { ExternalApi, FileIo, InvalidInput } from "../errors";
+import { THUMB_DIR } from "./thumbs";
 
 // ───────────── 설정 ─────────────
 
@@ -195,7 +196,10 @@ export function localList(directory: string): string[] {
   }
 }
 
-/** 폴더 하나의 실제 크기 (하위 폴더 포함). 실패하면 0 — 시스템 화면이 이것 때문에 죽으면 안 된다 */
+/**
+ * 폴더 하나의 실제 크기 (하위 폴더 포함). 실패하면 0 — 시스템 화면이 이것 때문에 죽으면 안 된다.
+ * 썸네일 폴더(`.thumbs`)는 안 센다 — 사용자가 올린 것이 아니라 캐시다
+ */
 export function folderSize(dir: string): number {
   if (!isDirectory(dir)) return 0;
   try {
@@ -203,7 +207,7 @@ export function folderSize(dir: string): number {
     const walk = (d: string) => {
       for (const e of fs.readdirSync(d, { withFileTypes: true })) {
         const p = path.join(d, e.name);
-        if (e.isDirectory()) walk(p);
+        if (e.isDirectory()) { if (e.name !== THUMB_DIR) walk(p); }
         else {
           try { const st = fs.statSync(p); if (st.isFile()) total += st.size; } catch { /* 못 읽는 파일은 0으로 센다 */ }
         }

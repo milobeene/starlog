@@ -73,8 +73,13 @@ export async function findGameByMediaFolder(d: Db, folder: string): Promise<Game
  */
 export async function uniqueMediaSlug(d: Db, g: Pick<GameRow, "id" | "name">): Promise<string> {
   const base = slug(g.name);
-  const other = await findGameByMediaFolder(d, base);
-  return other && other.id !== g.id ? `${base}-${g.id}` : base;
+  return mediaSlugGiven(g, (await findGameByMediaFolder(d, base))?.id);
+}
+
+/** 같은 규칙, 조회 없이 — 여러 게임을 한 번에 볼 때 (`folder` 칸 주인을 미리 모아 둔 쪽) */
+export function mediaSlugGiven(g: Pick<GameRow, "id" | "name">, baseOwnerId: number | undefined): string {
+  const base = slug(g.name);
+  return baseOwnerId !== undefined && baseOwnerId !== g.id ? `${base}-${g.id}` : base;
 }
 
 /**

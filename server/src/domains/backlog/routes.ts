@@ -25,8 +25,9 @@ import { changeTag, replaceGenres } from "../tag/service";
 import { addPlaythrough, deletePlaythrough, updatePlaythrough } from "./playthrough";
 import { addToBacklog } from "./entry";
 import {
-  confirmExternalCover, deleteCover, deleteScreenshots, listScreenshots, mediaContentTypeOf, prepareCover, readLocalCover,
-  removeFile, resolveScreenshot, saveLocalCover, saveScreenshot, screenshotFolderPath,
+  confirmExternalCover, deleteCover, deleteScreenshots, listGallery, listScreenshots, mediaContentTypeOf, prepareCover,
+  readLocalCover, removeFile, resolveScreenshot, resolveThumb, saveLocalCover, saveScreenshot, screenshotFilePath,
+  screenshotFolderPath,
 } from "./media";
 import { firstFile, firstText, missingPart, multipartFile, multipartForm, parseLongParam, sendFile } from "../../http/files";
 import { findOwnedAlive404 } from "./shared";
@@ -252,6 +253,14 @@ routes.delete("/api/backlog/:entryId/cover", async (c) => {
 
 // ───────────── 스크린샷 (DB를 안 본다 — 폴더가 곧 목록) ─────────────
 
+/** 스크린샷 관리자 — 게임 전체 또는 하나, 사진·영상 거르기. 최신순 */
+routes.get("/api/screenshots", async (c) => {
+  const q = query(c);
+  const entryId = q.long("entryId");
+  const kind = q.enumOf("kind", ["ALL", "IMAGE", "VIDEO"] as const) ?? "ALL";
+  return c.json(await listGallery(c.get("memberId"), entryId, kind));
+});
+
 routes.get("/api/backlog/:entryId/screenshots", async (c) => {
   const entryId = pathId(c, "entryId");
   return c.json(await listScreenshots(c.get("memberId"), entryId));
@@ -282,6 +291,19 @@ routes.get("/api/backlog/:entryId/screenshots/:fileName", async (c) => {
   const fileName = c.req.param("fileName");
   const file = await resolveScreenshot(c.get("memberId"), entryId, fileName);
   return sendFile(c, file, mediaContentTypeOf(fileName));
+});
+
+/** 썸네일 (JPEG, 긴 변 480). 없으면 이 요청에서 만든다. 못 만들면 404 — 화면은 원본으로 */
+routes.get("/api/backlog/:entryId/screenshots/:fileName/thumb", async (c) => {
+  const entryId = pathId(c, "entryId");
+  const thumb = await resolveThumb(c.get("memberId"), entryId, c.req.param("fileName"));
+  return sendFile(c, thumb, "image/jpeg");
+});
+
+/** 실제 파일 경로 — 일렉트론 메인이 클립보드·저장에 쓴다 (화면이 준 경로를 안 믿고 여기서 받는다) */
+routes.get("/api/backlog/:entryId/screenshots/:fileName/path", async (c) => {
+  const entryId = pathId(c, "entryId");
+  return c.json({ path: await screenshotFilePath(c.get("memberId"), entryId, c.req.param("fileName")) });
 });
 
 /** 일괄 삭제. DELETE에 본문을 싣는 건 회색지대라 POST */

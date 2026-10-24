@@ -320,6 +320,10 @@ routes.delete("/api/me/emulators/:emulatorId", async (c) => {
     requireAlive(await findEmulatorRow(tx, emulatorId), memberId,
       `${NOT_FOUND.emulator}. id=${emulatorId}`, (x) => x.name);
     const now = nowKst();
+    // 플랫폼 삭제와 같게 딸린 계정도 닫는다 — 남겨두면 내보낸 세이브가 가져오기에서 깨진다
+    // ("계정이 가리키는 에뮬레이터가 백업에 없습니다")
+    await tx.update(platformAccount).set({ deletedAt: now, updatedAt: now })
+      .where(and(eq(platformAccount.emulatorId, emulatorId), isNull(platformAccount.deletedAt)));
     await tx.update(emulator).set({ deletedAt: now, updatedAt: now }).where(eq(emulator.id, emulatorId));
   });
   return c.body(null, 204);

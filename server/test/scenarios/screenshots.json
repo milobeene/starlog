@@ -1,0 +1,182 @@
+{
+ "name": "screenshots",
+ "note": "스크린샷 관리자·썸네일. 일렉트론 대신 `copy` 썸네일러(원본을 그대로 복사, 영상은 실패)로 흐름만 본다",
+ "fixture": "fresh",
+ "env": {
+  "STARLOG_PROFILE": "test",
+  "STARLOG_THUMBNAILER": "copy"
+ },
+ "steps": [
+  {
+   "name": "준비 — 게임 A",
+   "method": "POST",
+   "path": "/api/games",
+   "body": {
+    "name": "Gallery Alpha"
+   },
+   "save": {
+    "ga": "id"
+   }
+  },
+  {
+   "name": "준비 — A 담기",
+   "method": "POST",
+   "path": "/api/backlog",
+   "body": {
+    "gameId": "${ga}"
+   },
+   "save": {
+    "ea": "id"
+   }
+  },
+  {
+   "name": "준비 — 게임 B",
+   "method": "POST",
+   "path": "/api/games",
+   "body": {
+    "name": "Gallery Beta"
+   },
+   "save": {
+    "gb": "id"
+   }
+  },
+  {
+   "name": "준비 — B 담기",
+   "method": "POST",
+   "path": "/api/backlog",
+   "body": {
+    "gameId": "${gb}"
+   },
+   "save": {
+    "eb": "id"
+   }
+  },
+  {
+   "name": "갤러리 — 비었음",
+   "method": "GET",
+   "path": "/api/screenshots"
+  },
+  {
+   "name": "올리기 — A 사진 (썸네일 주소가 붙는다, v=원본 시각)",
+   "method": "POST",
+   "path": "/api/backlog/${ea}/screenshots?takenAt=1700000000000",
+   "multipart": {
+    "file": {
+     "file": "backlog-media/shot.jpg"
+    }
+   }
+  },
+  {
+   "name": "올리기 — A 영상 (아직 실패를 모르니 주소가 붙는다)",
+   "method": "POST",
+   "path": "/api/backlog/${ea}/screenshots?takenAt=1700000005000",
+   "multipart": {
+    "file": {
+     "file": "backlog-media/clip.mp4"
+    }
+   }
+  },
+  {
+   "name": "올리기 — B 사진",
+   "method": "POST",
+   "path": "/api/backlog/${eb}/screenshots?takenAt=1700000002000",
+   "multipart": {
+    "file": {
+     "file": "backlog-media/web.webp"
+    }
+   }
+  },
+  {
+   "name": "갤러리 — 전체 최신순 (영상은 못 만든 걸 알아서 null)",
+   "method": "GET",
+   "path": "/api/screenshots"
+  },
+  {
+   "name": "갤러리 — 영상만",
+   "method": "GET",
+   "path": "/api/screenshots?kind=VIDEO"
+  },
+  {
+   "name": "갤러리 — B만",
+   "method": "GET",
+   "path": "/api/screenshots?entryId=${eb}&kind=ALL"
+  },
+  {
+   "name": "썸네일 — A 사진",
+   "method": "GET",
+   "path": "/api/backlog/${ea}/screenshots/001.jpg/thumb?v=1700000000000"
+  },
+  {
+   "name": "썸네일 — A 영상 (못 만듦 404)",
+   "method": "GET",
+   "path": "/api/backlog/${ea}/screenshots/002.mp4/thumb"
+  },
+  {
+   "name": "게임별 목록 — 썸네일 주소",
+   "method": "GET",
+   "path": "/api/backlog/${ea}/screenshots"
+  },
+  {
+   "name": "시스템 — 미디어 용량에 썸네일은 안 센다 (66+212+56)",
+   "method": "GET",
+   "path": "/api/system",
+   "ignore": [
+    "database.sizeBytes",
+    "database.totalBytes"
+   ],
+   "note": "DB 파일 크기는 실행마다 다르다"
+  },
+  {
+   "name": "삭제 — 썸네일 파일을 이름으로 (안 지움)",
+   "method": "POST",
+   "path": "/api/backlog/${ea}/screenshots/delete",
+   "body": [
+    ".thumbs/001.jpg.jpg"
+   ]
+  },
+  {
+   "name": "삭제 — A 사진 (썸네일도 함께)",
+   "method": "POST",
+   "path": "/api/backlog/${ea}/screenshots/delete",
+   "body": [
+    "001.jpg"
+   ]
+  },
+  {
+   "name": "삭제 — A 영상",
+   "method": "POST",
+   "path": "/api/backlog/${ea}/screenshots/delete",
+   "body": [
+    "002.mp4"
+   ]
+  },
+  {
+   "name": "올리기 — A에 다시 (같은 이름 001이 돌아온다)",
+   "method": "POST",
+   "path": "/api/backlog/${ea}/screenshots?takenAt=1700000009000",
+   "multipart": {
+    "file": {
+     "file": "backlog-media/shot.jpg"
+    }
+   }
+  },
+  {
+   "name": "썸네일 — 다시 올린 001 (새 원본 시각으로 새로 만든다)",
+   "method": "GET",
+   "path": "/api/backlog/${ea}/screenshots/001.jpg/thumb?v=1700000009000"
+  },
+  {
+   "name": "갤러리 — 끝",
+   "method": "GET",
+   "path": "/api/screenshots"
+  },
+  {
+   "name": "삭제 — B 사진 (썸네일도 함께 — 파일 트리가 증거)",
+   "method": "POST",
+   "path": "/api/backlog/${eb}/screenshots/delete",
+   "body": [
+    "001.webp"
+   ]
+  }
+ ]
+}

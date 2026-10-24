@@ -924,6 +924,59 @@
    "path": "/api/me/emulators/7"
   },
   {
+   "name": "에뮬레이터 삭제 — 계정이 딸린 에뮬레이터 (연쇄)",
+   "method": "POST",
+   "path": "/api/me/emulators",
+   "body": {
+    "name": "Cascade E"
+   },
+   "save": {
+    "ceid": "id"
+   }
+  },
+  {
+   "name": "계정 등록 — 에뮬 연쇄 대상 1",
+   "method": "POST",
+   "path": "/api/me/platform-accounts",
+   "body": {
+    "emulatorId": "${ceid}",
+    "accountLabel": "e1"
+   },
+   "save": {
+    "ce1": "id"
+   }
+  },
+  {
+   "name": "계정 등록 — 에뮬 연쇄 대상 2",
+   "method": "POST",
+   "path": "/api/me/platform-accounts",
+   "body": {
+    "emulatorId": "${ceid}",
+    "accountLabel": "e2"
+   },
+   "save": {
+    "ce2": "id"
+   }
+  },
+  {
+   "name": "계정 삭제 — e1 먼저 닫음",
+   "method": "DELETE",
+   "path": "/api/me/platform-accounts/${ce1}"
+  },
+  {
+   "name": "에뮬레이터 삭제 — 딸린 계정 e2만 함께 닫힘 (고친 버그: 예전엔 계정이 살아남아 세이브 가져오기가 깨졌다)",
+   "method": "DELETE",
+   "path": "/api/me/emulators/${ceid}"
+  },
+  {
+   "name": "계정 이름 변경 — 연쇄로 닫힌 에뮬 계정 (삭제됨)",
+   "method": "PUT",
+   "path": "/api/me/platform-accounts/${ce2}",
+   "body": {
+    "accountLabel": "X"
+   }
+  },
+  {
    "name": "에뮬레이터 등록 — 삭제된 이름 (되살리고 메모 덮어씀)",
    "method": "POST",
    "path": "/api/me/emulators",

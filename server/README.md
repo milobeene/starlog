@@ -22,7 +22,12 @@ npm run bundle         # → ../desktop/server/main.mjs
 
 설정은 전부 환경변수 (`src/config.ts`): `STARLOG_DB_DIR`(로컬) 또는 `STARLOG_DB_URL`·`_USER`·`_PASSWORD`·`_SCHEMA`(클라우드),
 `STARLOG_PORT`, `STARLOG_DATA_ROOT`, `STARLOG_STATIC_DIR`, `STARLOG_PROFILE`(dev·test면 `X-Member-Id`를 읽는다),
-`APP_IGDB_*`, `APP_STORAGE_*`, `STARLOG_MEDIA_USE_STORAGE_*`, `TRANSLATE_API_KEY`.
+`APP_IGDB_*`, `APP_STORAGE_*`, `STARLOG_MEDIA_USE_STORAGE_*`, `TRANSLATE_API_KEY`,
+`STARLOG_THUMBNAILER=copy`(dev·test 전용 — 일렉트론 없이 썸네일 흐름을 시험할 때 원본을 복사).
+
+**스크린샷 썸네일 (`src/common/storage/thumbs.ts`)** — `<게임 폴더>/.thumbs/<원본>.jpg`. 만드는 건 일렉트론 메인이다
+(`parentPort`로 `thumbnail` 요청 → `thumbnail:result`, 짝은 `desktop/media.js`). 일렉트론이 없으면 `thumbUrl`이 null.
+⚠️ `.thumbs`는 스크린샷이 아니다 — 목록·번호·용량·이름으로 읽기/지우기에서 빼야 한다. 새 경로를 만들면 거기서도 빼는지 볼 것
 
 ## 쓰는 것
 
