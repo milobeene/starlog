@@ -65,7 +65,7 @@ export async function openDb(target: DbTarget): Promise<OpenDb> {
     };
   }
   const pool = new pg.Pool({
-    connectionString: target.url,
+    ...connectionFields(target.url),
     user: target.user ?? undefined,
     password: target.password ?? undefined,
     max: 3,
@@ -101,6 +101,24 @@ export async function openDb(target: DbTarget): Promise<OpenDb> {
       }
     },
     close: () => pool.end(),
+  };
+}
+
+/**
+ * 주소를 직접 푼다. ⚠️ **`connectionString`을 넘기면 안 된다** — node-postgres는 주소를 파싱한 값으로
+ * 따로 준 `user`·`password`를 **덮어쓴다.** Neon 주소엔 비밀번호가 없어서(연결 설정에 따로 저장)
+ * 비밀번호가 통째로 빠지고 `SASL: client password must be a string`으로 죽었다 (2026-10-24 실기에서).
+ *
+ * SSL: 주소의 `sslmode`가 disable이 아니면 인증서까지 검증한다 (Neon은 정식 인증서다)
+ */
+export function connectionFields(url: string) {
+  const u = new URL(url.replace(/^postgres(ql)?:/, "http:"));
+  const sslmode = u.searchParams.get("sslmode");
+  return {
+    host: decodeURIComponent(u.hostname),
+    port: u.port ? Number(u.port) : 5432,
+    database: decodeURIComponent(u.pathname.replace(/^\//, "")) || undefined,
+    ssl: sslmode === null || sslmode === "disable" ? undefined : { rejectUnauthorized: true },
   };
 }
 
