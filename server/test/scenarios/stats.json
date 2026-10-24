@@ -1,0 +1,347 @@
+{
+ "name": "stats",
+ "steps": [
+  {
+   "name": "실데이터 — 장르 분포",
+   "method": "GET",
+   "path": "/api/stats/genres"
+  },
+  {
+   "name": "실데이터 — 월별 완료",
+   "method": "GET",
+   "path": "/api/stats/completions/monthly"
+  },
+  {
+   "name": "실데이터 — 플레이 시간",
+   "method": "GET",
+   "path": "/api/stats/playtime"
+  },
+  {
+   "name": "실데이터 — 지출",
+   "method": "GET",
+   "path": "/api/stats/spending"
+  },
+  {
+   "name": "실데이터 — 월별 지출",
+   "method": "GET",
+   "path": "/api/stats/spending/monthly"
+  },
+  {
+   "name": "플레이 시간 limit=1",
+   "method": "GET",
+   "path": "/api/stats/playtime?limit=1"
+  },
+  {
+   "name": "플레이 시간 limit=3",
+   "method": "GET",
+   "path": "/api/stats/playtime?limit=3"
+  },
+  {
+   "name": "플레이 시간 limit=50",
+   "method": "GET",
+   "path": "/api/stats/playtime?limit=50"
+  },
+  {
+   "name": "플레이 시간 limit=51",
+   "method": "GET",
+   "path": "/api/stats/playtime?limit=51"
+  },
+  {
+   "name": "플레이 시간 limit=0",
+   "method": "GET",
+   "path": "/api/stats/playtime?limit=0"
+  },
+  {
+   "name": "플레이 시간 limit=-5",
+   "method": "GET",
+   "path": "/api/stats/playtime?limit=-5"
+  },
+  {
+   "name": "플레이 시간 limit=1000",
+   "method": "GET",
+   "path": "/api/stats/playtime?limit=1000"
+  },
+  {
+   "name": "플레이 시간 limit=2147483647",
+   "method": "GET",
+   "path": "/api/stats/playtime?limit=2147483647"
+  },
+  {
+   "name": "플레이 시간 limit 빈 값",
+   "method": "GET",
+   "path": "/api/stats/playtime?limit="
+  },
+  {
+   "name": "플레이 시간 limit 문자",
+   "method": "GET",
+   "path": "/api/stats/playtime?limit=abc"
+  },
+  {
+   "name": "플레이 시간 limit 소수",
+   "method": "GET",
+   "path": "/api/stats/playtime?limit=1.5"
+  },
+  {
+   "name": "플레이 시간 limit 범위 초과",
+   "method": "GET",
+   "path": "/api/stats/playtime?limit=2147483648"
+  },
+  {
+   "name": "없는 회원 — 장르 분포",
+   "method": "GET",
+   "path": "/api/stats/genres",
+   "headers": {
+    "X-Member-Id": "99999"
+   }
+  },
+  {
+   "name": "없는 회원 — 월별 완료",
+   "method": "GET",
+   "path": "/api/stats/completions/monthly",
+   "headers": {
+    "X-Member-Id": "99999"
+   }
+  },
+  {
+   "name": "없는 회원 — 플레이 시간",
+   "method": "GET",
+   "path": "/api/stats/playtime",
+   "headers": {
+    "X-Member-Id": "99999"
+   }
+  },
+  {
+   "name": "없는 회원 — 지출",
+   "method": "GET",
+   "path": "/api/stats/spending",
+   "headers": {
+    "X-Member-Id": "99999"
+   }
+  },
+  {
+   "name": "없는 회원 — 월별 지출",
+   "method": "GET",
+   "path": "/api/stats/spending/monthly",
+   "headers": {
+    "X-Member-Id": "99999"
+   }
+  },
+  {
+   "name": "월간 KRW 종료 있음",
+   "method": "POST",
+   "path": "/api/me/subscriptions",
+   "body": {
+    "serviceName": "Alpha",
+    "startedOn": "2019-12-31",
+    "endedOn": "2020-01-01",
+    "fee": {
+     "amount": 9900.5,
+     "currency": "krw"
+    },
+    "billingCycle": "MONTHLY"
+   }
+  },
+  {
+   "name": "연간 USD 윤일 시작",
+   "method": "POST",
+   "path": "/api/me/subscriptions",
+   "body": {
+    "serviceName": "Beta",
+    "startedOn": "2020-02-29",
+    "fee": {
+     "amount": 59.99,
+     "currency": "usd"
+    },
+    "billingCycle": "YEARLY"
+   }
+  },
+  {
+   "name": "연간 종료 12개월 직전",
+   "method": "POST",
+   "path": "/api/me/subscriptions",
+   "body": {
+    "serviceName": "Gamma",
+    "startedOn": "2021-03-15",
+    "endedOn": "2022-02-28",
+    "fee": {
+     "amount": 120,
+     "currency": "usd"
+    },
+    "billingCycle": "YEARLY"
+   }
+  },
+  {
+   "name": "연간 종료 정확히 12개월",
+   "method": "POST",
+   "path": "/api/me/subscriptions",
+   "body": {
+    "serviceName": "Gamma",
+    "startedOn": "2021-03-15",
+    "endedOn": "2022-03-01",
+    "fee": {
+     "amount": 0.01,
+     "currency": "eur"
+    },
+    "billingCycle": "YEARLY"
+   }
+  },
+  {
+   "name": "월간 0원",
+   "method": "POST",
+   "path": "/api/me/subscriptions",
+   "body": {
+    "serviceName": "무료 체험",
+    "startedOn": "2024-05-10",
+    "endedOn": "2024-05-20",
+    "fee": {
+     "amount": 0,
+     "currency": "krw"
+    },
+    "billingCycle": "MONTHLY"
+   }
+  },
+  {
+   "name": "월간 금액 없음 (제외)",
+   "method": "POST",
+   "path": "/api/me/subscriptions",
+   "body": {
+    "serviceName": "금액없음",
+    "startedOn": "2024-05-10",
+    "billingCycle": "MONTHLY"
+   }
+  },
+  {
+   "name": "월간 이달 말 시작 (미래일 수 있음)",
+   "method": "POST",
+   "path": "/api/me/subscriptions",
+   "body": {
+    "serviceName": "Delta",
+    "startedOn": "2026-10-31",
+    "fee": {
+     "amount": 1000,
+     "currency": "jpy"
+    },
+    "billingCycle": "MONTHLY"
+   }
+  },
+  {
+   "name": "월간 다음 달 시작 (미래)",
+   "method": "POST",
+   "path": "/api/me/subscriptions",
+   "body": {
+    "serviceName": "Epsilon",
+    "startedOn": "2030-01-01",
+    "fee": {
+     "amount": 1000,
+     "currency": "jpy"
+    },
+    "billingCycle": "MONTHLY"
+   }
+  },
+  {
+   "name": "월간 종료일이 미래",
+   "method": "POST",
+   "path": "/api/me/subscriptions",
+   "body": {
+    "serviceName": "Zeta",
+    "startedOn": "2026-09-01",
+    "endedOn": "2031-01-01",
+    "fee": {
+     "amount": 333.335,
+     "currency": "jpy"
+    },
+    "billingCycle": "MONTHLY"
+   }
+  },
+  {
+   "name": "월간 시작 당일 종료",
+   "method": "POST",
+   "path": "/api/me/subscriptions",
+   "body": {
+    "serviceName": "Eta",
+    "startedOn": "2023-07-31",
+    "endedOn": "2023-07-31",
+    "fee": {
+     "amount": 7777.77,
+     "currency": "gbp"
+    },
+    "billingCycle": "MONTHLY"
+   }
+  },
+  {
+   "name": "월간 같은 이름 중복 (이름 한 번)",
+   "method": "POST",
+   "path": "/api/me/subscriptions",
+   "body": {
+    "serviceName": "Alpha",
+    "startedOn": "2019-12-01",
+    "endedOn": "2020-01-31",
+    "fee": {
+     "amount": 1.01,
+     "currency": "krw"
+    },
+    "billingCycle": "MONTHLY"
+   }
+  },
+  {
+   "name": "월간 아주 오래전 (해 평균 반올림)",
+   "method": "POST",
+   "path": "/api/me/subscriptions",
+   "body": {
+    "serviceName": "Theta",
+    "startedOn": "2015-01-01",
+    "endedOn": "2015-03-31",
+    "fee": {
+     "amount": 1.01,
+     "currency": "cad"
+    },
+    "billingCycle": "MONTHLY"
+   }
+  },
+  {
+   "name": "월간 큰 금액",
+   "method": "POST",
+   "path": "/api/me/subscriptions",
+   "body": {
+    "serviceName": "Iota",
+    "startedOn": "2016-06-01",
+    "endedOn": "2016-06-30",
+    "fee": {
+     "amount": 12345678901234.5,
+     "currency": "krw"
+    },
+    "billingCycle": "MONTHLY"
+   }
+  },
+  {
+   "name": "구독 추가 후 — 장르 분포",
+   "method": "GET",
+   "path": "/api/stats/genres"
+  },
+  {
+   "name": "구독 추가 후 — 월별 완료",
+   "method": "GET",
+   "path": "/api/stats/completions/monthly"
+  },
+  {
+   "name": "구독 추가 후 — 플레이 시간",
+   "method": "GET",
+   "path": "/api/stats/playtime"
+  },
+  {
+   "name": "구독 추가 후 — 지출",
+   "method": "GET",
+   "path": "/api/stats/spending"
+  },
+  {
+   "name": "구독 추가 후 — 월별 지출",
+   "method": "GET",
+   "path": "/api/stats/spending/monthly"
+  },
+  {
+   "name": "플레이 시간 (구독 추가 후) limit=2",
+   "method": "GET",
+   "path": "/api/stats/playtime?limit=2"
+  }
+ ]
+}
