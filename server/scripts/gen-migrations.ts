@@ -4,14 +4,29 @@
  * SQL을 추가·수정하면 다시 돌린다 (`npm run gen`). typecheck·build가 먼저 돌린다.
  */
 import fs from "fs";
+import zlib from "zlib";
 import path from "path";
 const dir = path.resolve(import.meta.dirname, "../migrations");
 const files = fs.readdirSync(dir).filter(f => /^V\d+__.+\.sql$/.test(f))
   .sort((a, b) => +a.match(/^V(\d+)/)![1]! - +b.match(/^V(\d+)/)![1]!);
 const items = files.map(f => {
   const [, v, desc] = f.match(/^V(\d+)__(.+)\.sql$/)!;
-  return { version: v!, description: desc!.replace(/_/g, " "), script: f, sql: fs.readFileSync(path.join(dir, f), "utf8") };
+  const sql = fs.readFileSync(path.join(dir, f), "utf8");
+  return { version: v!, description: desc!.replace(/_/g, " "), script: f, checksum: flywayChecksum(sql), sql };
 });
 const out = `// 생성 파일 — 손대지 말 것. scripts/gen-migrations.ts\nexport const MIGRATIONS = ${JSON.stringify(items, null, 1)} as const;\n`;
 fs.writeFileSync(path.resolve(import.meta.dirname, "../src/db/migrations.generated.ts"), out);
 console.log(`migrations: ${items.length} (V${items[0]!.version}..V${items.at(-1)!.version})`);
+
+/**
+ * Flyway 체크섬 (`ChecksumCalculator`) — 줄마다 줄바꿈을 뗀 UTF-8 바이트로 CRC32를 이어 굴리고
+ * 부호 있는 32비트로 자른다. 첫 줄의 BOM은 뗀다.
+ * 맞춰 두는 이유: 이력 행을 자바 Flyway가 그대로 받아들여야 비교 장치가 같은 DB를 쓸 수 있다
+ */
+function flywayChecksum(text: string): number {
+  const lines = text.replace(/^\uFEFF/, "").split(/\r\n|\r|\n/);
+  if (lines.at(-1) === "") lines.pop();     // readLine()은 마지막 줄바꿈 뒤 빈 줄을 주지 않는다
+  let crc = 0;
+  for (const l of lines) crc = zlib.crc32(Buffer.from(l, "utf8"), crc);
+  return crc | 0;
+}

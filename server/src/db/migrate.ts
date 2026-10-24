@@ -5,7 +5,9 @@
  * Neon이 아무 전환 없이 이어진다 — 여기서 보면 V1~V13은 이미 적용된 것이다.
  * 새 DB면 테이블을 Flyway와 같은 모양으로 만들고 V1부터 돈다.
  *
- * 체크섬은 검사하지 않는다 (Flyway의 CRC32를 흉내 낼 이유가 없다 — SQL 파일은 앱 안에 박혀 있다).
+ * 체크섬은 **Flyway와 같은 값으로 적되 검사하지는 않는다.** 적는 이유는 자바 Flyway가 이 이력을
+ * 그대로 받아들이게 하려는 것 — 비교 장치가 같은 DB에 자바를 붙인다. 검사할 이유는 없다
+ * (SQL 파일은 앱 안에 박혀 있어서 바뀔 수가 없다).
  * 하나씩 트랜잭션으로 돌리고, 실패하면 거기서 멈춘다.
  */
 import { sql } from "drizzle-orm";
@@ -50,7 +52,7 @@ export async function migrate(open: OpenDb): Promise<{ applied: string[] }> {
     await open.execScript(`${m.sql}
 ;
 insert into ${HISTORY} ("installed_rank", "version", "description", "type", "script", "checksum", "installed_by", "execution_time", "success")
-values (${rank!.next}, ${lit(m.version)}, ${lit(m.description)}, 'SQL', ${lit(m.script)}, null, 'starlog', ${Date.now() - started}, true);`);
+values (${rank!.next}, ${lit(m.version)}, ${lit(m.description)}, 'SQL', ${lit(m.script)}, ${m.checksum}, 'starlog', ${Date.now() - started}, true);`);
     applied.push(m.version);
   }
   return { applied };

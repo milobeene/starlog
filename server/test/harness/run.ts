@@ -22,6 +22,8 @@ import net from "net";
 import os from "os";
 import path from "path";
 import { PGlite } from "@electric-sql/pglite";
+import { openDb } from "../../src/db/client";
+import { migrate } from "../../src/db/migrate";
 
 // ───────────── 시나리오 형식 ─────────────
 interface Step {
@@ -36,7 +38,39 @@ interface Step {
   ignore?: string[];                  // 이 단계 본문에서 무시할 경로 (예: "items.*.coverUrl") — 남발 금지, 이유를 시나리오 note에
   note?: string;
 }
-interface Scenario { name: string; steps: Step[]; env?: Record<string, string> }
+interface Scenario {
+  name: string;
+  steps: Step[];
+  /**
+   * 양쪽 서버에 넣을 환경변수. 값이 `$LOCAL:app.igdb.client-id`처럼 시작하면
+   * `backend/src/main/resources/application-local.yml`에서 그 키를 읽어 넣는다 — **비밀값을 시나리오에 적지 않는다**
+   */
+  env?: Record<string, string>;
+  /** 빈 DB에서 시작 — 주인 생성·기본 카탈로그 심기를 대조할 때 */
+  emptyDb?: boolean;
+}
+
+/** application-local.yml에서 점 경로로 값 하나 — 들여쓰기 기반 단순 파서 (이 파일 모양에만 맞춘다) */
+function localYml(key: string): string {
+  const file = path.resolve(ROOT, "../backend/src/main/resources/application-local.yml");
+  const lines = fs.readFileSync(file, "utf8").split("\n");
+  const want = key.split(".");
+  const stack: { indent: number; name: string }[] = [];
+  for (const line of lines) {
+    if (/^\s*(#|$)/.test(line)) continue;
+    const m = /^(\s*)([\w.-]+):\s*(.*)$/.exec(line);
+    if (!m) continue;
+    const indent = m[1]!.length;
+    while (stack.length && stack.at(-1)!.indent >= indent) stack.pop();
+    stack.push({ indent, name: m[2]! });
+    if (stack.map(x => x.name).join(".") === want.join(".") && m[3]) return m[3].trim();
+  }
+  throw new Error(`application-local.yml에 ${key}가 없다`);
+}
+
+function resolveEnv(env: Record<string, string> | undefined): Record<string, string> {
+  return Object.fromEntries(Object.entries(env ?? {}).map(([k, v]) => [k, v.startsWith("$LOCAL:") ? localYml(v.slice(7)) : v]));
+}
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
 const SCRATCH = process.env.HARNESS_SCRATCH ?? path.join(os.tmpdir(), "starlog-harness");
@@ -222,13 +256,22 @@ async function main() {
   const work = fs.mkdtempSync(path.join(SCRATCH + "-"));
   const javaDb = path.join(work, "java-db"), tsDb = path.join(work, "ts-db");
   const javaData = path.join(work, "java-data"), tsData = path.join(work, "ts-data");
-  fs.cpSync(FIXTURE, javaDb, { recursive: true });
-  fs.cpSync(FIXTURE, tsDb, { recursive: true });
+  if (scenario.emptyDb) {
+    /*
+     * 스키마만 있고 행은 없는 DB. 우리 러너로 깐다 — 자바 Flyway가 빈 PGlite에서 직접 돌면
+     * 잠금 연결과 작업 연결이 소켓 서버의 세션 하나에 몰려 서로를 기다린다.
+     * 이력 행의 체크섬이 Flyway와 같아서 자바도 "이미 적용됨"으로 받아들인다
+     */
+    for (const d of [javaDb, tsDb]) { const o = await openDb({ kind: "pglite", dir: d }); await migrate(o); await o.close(); }
+  } else {
+    fs.cpSync(FIXTURE, javaDb, { recursive: true });
+    fs.cpSync(FIXTURE, tsDb, { recursive: true });
+  }
   fs.mkdirSync(javaData); fs.mkdirSync(tsData);
 
   const [pgPort, javaPort, tsPort] = [await freePort(), await freePort(), await freePort()];
   runStartKst = kstNow();
-  const scenarioEnv = scenario.env ?? {};
+  const scenarioEnv = resolveEnv(scenario.env);
 
   const pgLog: string[] = [], javaLog: string[] = [], tsLog: string[] = [];
   const pgsrv = spawn(path.join(ROOT, "node_modules/.bin/pglite-server"), [`--db=${javaDb}`, `--port=${pgPort}`, "--max-connections=4"], { stdio: ["ignore", "pipe", "pipe"] });
@@ -290,7 +333,9 @@ async function main() {
   console.log(`── 파일 ${fileDiffs.length ? `${fileDiffs.length}건 다름` : "같음"}`);
   for (const f of fileDiffs.slice(0, 20)) console.log(`    ${f}`);
 
-  if (keep) console.log(`\n작업 폴더 유지: ${work}\n자바 로그 마지막:\n${javaLog.slice(-5).join("")}`);
+  fs.writeFileSync(path.join(work, "java.log"), javaLog.join(""));
+  fs.writeFileSync(path.join(work, "ts.log"), tsLog.join(""));
+  if (keep) console.log(`\n작업 폴더 유지: ${work}  (java.log · ts.log · java-db · ts-db · *-data)`);
   else fs.rmSync(work, { recursive: true, force: true });
   if (fails || errors.length || fileDiffs.length) {
     if (!keep) {
