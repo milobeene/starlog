@@ -93,3 +93,6 @@ desktop/dist/
 # 지금까지의 이력은 커밋 7c215da 이전에 남아 있다
 docs/
 CLAUDE.md
+
+# 비교 장치 녹화본 — 실데이터(게임 목록·메모·가격)가 들어 있다. 저장소가 공개라 올리지 않는다
+server/test/golden/

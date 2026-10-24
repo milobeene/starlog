@@ -84,6 +84,19 @@ npx tsx test/harness/run.ts test/scenarios/<도메인>.json --only 수정  # 이
 - ⚠️ **`pkill -f src/main.ts` 금지** — 같은 시각에 다른 사람이 돌리는 비교 장치의 서버까지 죽는다.
   직접 띄운 서버는 pid를 잡아 두고 그것만 끈다. 공용 픽스처(`fx-base`)는 **직접 열지 말고 복사해서** 연다
 
+### 녹화본 (골든) — 자바가 사라진 뒤의 회귀 테스트
+
+```bash
+npx tsx test/harness/run.ts test/scenarios/<도메인>.json --record         # 비교가 통과하면 자바 결과를 녹화
+npx tsx test/harness/run.ts test/scenarios/<도메인>.json --golden         # 자바 없이 TS만 — 몇 초
+npx tsx test/harness/run.ts test/scenarios/<도메인>.json --golden-update  # 의도한 동작 변경 뒤, TS 결과로 다시 녹화
+```
+
+- 녹화본은 `test/golden/` — **gitignore다.** 실데이터(게임 목록·메모·가격)가 들어 있고 저장소가 공개다.
+  픽스처도 로컬 전용이라 어차피 이 테스트는 이 맥에서만 돈다
+- 응답 + **픽스처 대비 바뀐 행만** 담는다
+- 외부를 실제로 부르는 시나리오(`game-igdb`, `backlog-external`)는 녹화하지 않는다 — 바깥 데이터가 바뀌면 흔들린다
+
 ### 시나리오 쓰는 법
 
 - **엔드포인트 전부**, 그리고 **자바 코드의 `throw`마다 하나씩** (검증 실패·없음·남의 것·충돌)

@@ -14,6 +14,14 @@
  *   - `updated_at`만 다른 건 경고로 따로 센다 (값이 안 바뀐 수정에서 하이버네이트는 안 건드린다)
  *
  * 필요한 것: 픽스처(`HARNESS_FIXTURE`, 기본은 스크래치 `fx-base`), 자바 jar(`../backend/build/libs/app.jar`)
+ *
+ * ## 골든 (자바가 사라진 뒤에도 시나리오를 살리는 법)
+ *
+ *   --record   위와 똑같이 비교하고, **통과하면** 자바 쪽 결과를 `test/golden/<시나리오>.json`에 녹화한다
+ *   --golden   자바 없이 TS만 띄워 녹화본과 비교한다 (자바 제거 후의 회귀 테스트)
+ *
+ * 녹화본에는 응답과 **픽스처 대비 바뀐 행만** 담는다 — 테이블 전체를 담으면 시나리오마다 수백 KB다.
+ * 의도해서 동작을 바꿨으면(자바 버그 수정 등) 고친 뒤 `--golden-update`로 TS 결과를 새 녹화본으로 쓴다
  */
 import { spawn, type ChildProcess } from "child_process";
 import crypto from "crypto";
@@ -82,6 +90,9 @@ const JAVA = process.env.HARNESS_JAVA ?? "java";
 const args = process.argv.slice(2);
 const scenarioPath = args.find(a => a.endsWith(".json"));
 const keep = args.includes("--keep");
+const mode: "compare" | "record" | "golden" | "golden-update" =
+  args.includes("--golden-update") ? "golden-update" : args.includes("--golden") ? "golden" : args.includes("--record") ? "record" : "compare";
+const usesJava = mode === "compare" || mode === "record";
 const only = args.includes("--only") ? args[args.indexOf("--only") + 1] : undefined;
 if (!scenarioPath) { console.error("사용법: run.ts <scenario.json> [--keep] [--only 이름]"); process.exit(2); }
 
@@ -236,6 +247,54 @@ function diffDbs(a: Record<string, Record<string, unknown>[]>, b: Record<string,
   return { errors, warnings };
 }
 
+// ───────────── 골든 ─────────────
+interface GoldenStep { name: string; status: number; location: string | null; json?: unknown; hash?: string; text?: string }
+type Rows = Record<string, Record<string, unknown>[]>;
+interface Changes { [table: string]: { added: Record<string, unknown>[]; removed: string[]; changed: { key: string; cols: Record<string, unknown> }[] } }
+interface Golden { scenario: string; recordedFrom: "java" | "ts"; recordedAt: string; steps: GoldenStep[]; db: Changes; files: Record<string, string> }
+
+const goldenPath = (name: string) => path.join(ROOT, "test/golden", `${name}.json`);
+
+function normRow(r: Record<string, unknown>) {
+  return Object.fromEntries(Object.entries(r).map(([k, v]) => [k, normScalar(v)]));
+}
+
+/** 시작 DB 대비 바뀐 행 — 녹화본에 담는 건 이것뿐 */
+function changes(base: Rows, after: Rows): Changes {
+  const out: Changes = {};
+  for (const t of [...new Set([...Object.keys(base), ...Object.keys(after)])].sort()) {
+    const rb = new Map((base[t] ?? []).map(r => [rowKey(r), r])), ra = new Map((after[t] ?? []).map(r => [rowKey(r), r]));
+    const added: Record<string, unknown>[] = [], removed: string[] = [], changed: { key: string; cols: Record<string, unknown> }[] = [];
+    for (const [k, r] of ra) {
+      const b = rb.get(k);
+      if (!b) { added.push(normRow(r)); continue; }
+      const cols: Record<string, unknown> = {};
+      for (const c of Object.keys(r)) if (JSON.stringify(b[c]) !== JSON.stringify(r[c])) cols[c] = normScalar(r[c]);
+      if (Object.keys(cols).length) changed.push({ key: k, cols });
+    }
+    for (const k of rb.keys()) if (!ra.has(k)) removed.push(k);
+    if (added.length || removed.length || changed.length) {
+      added.sort((x, y) => JSON.stringify(x).localeCompare(JSON.stringify(y)));
+      out[t] = { added, removed: removed.sort(), changed: changed.sort((x, y) => x.key.localeCompare(y.key)) };
+    }
+  }
+  return out;
+}
+
+/** 녹화본의 바뀐 행 vs 지금 바뀐 행. `updated_at`만 다른 건 경고 */
+function diffChanges(expected: Changes, actual: Changes) {
+  const errors: string[] = [], warnings: string[] = [];
+  const strip = (c: Changes) => JSON.stringify(c, (k, v) => (k === "updated_at" ? undefined : v));
+  for (const t of new Set([...Object.keys(expected), ...Object.keys(actual)])) {
+    const e = expected[t], a = actual[t];
+    if (JSON.stringify(e) === JSON.stringify(a)) continue;
+    const se = strip({ [t]: e! ?? null }), sa = strip({ [t]: a! ?? null });
+    const msg = `${t}: 녹화=${JSON.stringify(e ?? null).slice(0, 300)}\n      TS=${JSON.stringify(a ?? null).slice(0, 300)}`;
+    (se === sa ? warnings : errors).push(msg);
+  }
+  return { errors, warnings };
+}
+
 function fileTree(root: string) {
   const out: Record<string, string> = {};
   const walk = (d: string) => {
@@ -256,6 +315,7 @@ async function main() {
   const work = fs.mkdtempSync(path.join(SCRATCH + "-"));
   const javaDb = path.join(work, "java-db"), tsDb = path.join(work, "ts-db");
   const javaData = path.join(work, "java-data"), tsData = path.join(work, "ts-data");
+  const golden: Golden | null = mode === "golden" ? JSON.parse(fs.readFileSync(goldenPath(scenario.name), "utf8")) : null;
   if (scenario.emptyDb) {
     /*
      * 스키마만 있고 행은 없는 DB. 우리 러너로 깐다 — 자바 Flyway가 빈 PGlite에서 직접 돌면
@@ -268,16 +328,19 @@ async function main() {
     fs.cpSync(FIXTURE, tsDb, { recursive: true });
   }
   fs.mkdirSync(javaData); fs.mkdirSync(tsData);
+  // 시작 상태 — 녹화본은 이것 대비 바뀐 행만 담는다
+  const base = await dumpDbRaw(tsDb);
 
   const [pgPort, javaPort, tsPort] = [await freePort(), await freePort(), await freePort()];
   runStartKst = kstNow();
   const scenarioEnv = resolveEnv(scenario.env);
 
   const pgLog: string[] = [], javaLog: string[] = [], tsLog: string[] = [];
-  const pgsrv = spawn(path.join(ROOT, "node_modules/.bin/pglite-server"), [`--db=${javaDb}`, `--port=${pgPort}`, "--max-connections=4"], { stdio: ["ignore", "pipe", "pipe"] });
-  await waitFor(pgsrv, pgLog, /listening/, 30000, "pglite-server");
+  const noop = { exitCode: 0 } as unknown as ChildProcess;
+  const pgsrv = !usesJava ? noop : spawn(path.join(ROOT, "node_modules/.bin/pglite-server"), [`--db=${javaDb}`, `--port=${pgPort}`, "--max-connections=4"], { stdio: ["ignore", "pipe", "pipe"] });
+  if (usesJava) await waitFor(pgsrv, pgLog, /listening/, 30000, "pglite-server");
 
-  const java = spawn(JAVA, ["-jar", JAR, `--server.port=${javaPort}`, "--spring.profiles.active=desktop",
+  const java = !usesJava ? noop : spawn(JAVA, ["-jar", JAR, `--server.port=${javaPort}`, "--spring.profiles.active=desktop",
     `--spring.datasource.url=jdbc:postgresql://127.0.0.1:${pgPort}/postgres?sslmode=disable&prepareThreshold=0`,
     "--spring.datasource.driver-class-name=org.postgresql.Driver", "--spring.datasource.hikari.maximum-pool-size=3"],
     { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, SPRING_DATASOURCE_USERNAME: "postgres", SPRING_DATASOURCE_PASSWORD: "postgres", STARLOG_DATA_ROOT: javaData, ...scenarioEnv } });
@@ -286,7 +349,7 @@ async function main() {
 
   try {
     await Promise.all([
-      waitFor(java, javaLog, /Started StarlogApplication/, 90000, "자바"),
+      usesJava ? waitFor(java, javaLog, /Started StarlogApplication/, 90000, "자바") : Promise.resolve(),
       waitFor(ts, tsLog, /STARLOG_READY/, 30000, "TS"),
     ]);
   } catch (e) {
@@ -297,9 +360,23 @@ async function main() {
   const javaBase = `http://127.0.0.1:${javaPort}`, tsBase = `http://127.0.0.1:${tsPort}`;
   const vars: Record<string, unknown> = {};
   let fails = 0, passes = 0;
-  for (const step of scenario.steps) {
+  const recorded: GoldenStep[] = [];
+  for (const [i, step] of scenario.steps.entries()) {
     if (only && !step.name.includes(only)) continue;
-    const [ja, tb] = [await send(javaBase, step, vars), await send(tsBase, step, vars)];
+    let ja: Resp;
+    if (golden) {
+      const g = golden.steps[i];
+      if (!g || g.name !== step.name) throw new Error(`녹화본과 시나리오가 어긋난다 (${i}번 단계: ${step.name}) — 다시 녹화할 것`);
+      ja = { status: g.status, location: g.location, type: "", json: g.json, hash: g.hash, text: g.text };
+    } else if (mode === "golden-update") {
+      ja = await send(tsBase, step, vars);
+    } else {
+      ja = await send(javaBase, step, vars);
+    }
+    const tb = mode === "golden-update" ? ja : await send(tsBase, step, vars);
+    recorded.push({ name: step.name, status: ja.status, location: ja.location,
+      ...(ja.json !== undefined ? { json: JSON.parse(JSON.stringify(ja.json, (_k, v) => normScalar(v))) } : {}),
+      ...(ja.hash !== undefined ? { hash: ja.hash } : {}), ...(ja.text !== undefined ? { text: ja.text } : {}) });
     const problems: string[] = [];
     if (ja.status !== tb.status) problems.push(`상태: 자바=${ja.status} TS=${tb.status}`);
     if ((ja.location ?? null) !== (tb.location ?? null)) problems.push(`Location: 자바=${ja.location} TS=${tb.location}`);
@@ -319,9 +396,12 @@ async function main() {
 
   await Promise.all([stop(java), stop(ts)]);
   await stop(pgsrv);
-  const [da, db] = [await dumpDbRaw(javaDb), await dumpDbRaw(tsDb)];
-  const { errors, warnings } = diffDbs(da, db);
-  const fa = fileTree(javaData), fb = fileTree(tsData);
+  const db = await dumpDbRaw(tsDb);
+  const da = usesJava ? await dumpDbRaw(javaDb) : db;
+  const tsChanges = changes(base, db);
+  const { errors, warnings } = golden ? diffChanges(golden.db, tsChanges) : diffDbs(da, db);
+  const fb = fileTree(tsData);
+  const fa = golden ? golden.files : usesJava ? fileTree(javaData) : fb;
   const fileDiffs = [...new Set([...Object.keys(fa), ...Object.keys(fb)])].filter(k => fa[k] !== fb[k])
     .map(k => `${k}: 자바=${fa[k] ?? "(없음)"} TS=${fb[k] ?? "(없음)"}`);
 
@@ -332,6 +412,19 @@ async function main() {
   for (const w of warnings.slice(0, 5)) console.log(`    (경고) ${w}`);
   console.log(`── 파일 ${fileDiffs.length ? `${fileDiffs.length}건 다름` : "같음"}`);
   for (const f of fileDiffs.slice(0, 20)) console.log(`    ${f}`);
+
+  const ok = !fails && !errors.length && !fileDiffs.length;
+  if ((mode === "record" && ok && !only) || (mode === "golden-update" && !only)) {
+    const g: Golden = {
+      scenario: scenario.name, recordedFrom: mode === "record" ? "java" : "ts", recordedAt: kstNow(),
+      steps: recorded, db: mode === "record" ? changes(base, da) : tsChanges, files: mode === "record" ? fa : fb,
+    };
+    fs.mkdirSync(path.dirname(goldenPath(scenario.name)), { recursive: true });
+    fs.writeFileSync(goldenPath(scenario.name), JSON.stringify(g, null, 1) + "\n");
+    console.log(`\n녹화 → test/golden/${scenario.name}.json (${(fs.statSync(goldenPath(scenario.name)).size / 1024).toFixed(0)}KB)`);
+  } else if (mode === "record" && !ok) {
+    console.log("\n녹화 안 함 — 비교가 실패했다");
+  }
 
   fs.writeFileSync(path.join(work, "java.log"), javaLog.join(""));
   fs.writeFileSync(path.join(work, "ts.log"), tsLog.join(""));
