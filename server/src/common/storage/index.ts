@@ -1,11 +1,11 @@
 /**
- * 미디어 파일 — 자바 `common/storage` 패키지 (`MediaPaths`·`LocalFileStore`·`FileStoragePort`·`MediaTargets`).
+ * 미디어 파일 — 로컬 폴더와 S3 호환 스토리지.
  *
  * 둘로 갈린다:
  *   - **로컬 폴더**(데이터 루트) — 커버 LOCAL·스크린샷. 경로를 우리가 조립하므로 탈출 검사가 여기 있다
  *   - **S3 호환 스토리지**(R2) — 커버 EXTERNAL. 자격증명이 없으면 "미설정" 구현이 자리를 지킨다
  *
- * 로컬 폴더가 스토리지 포트를 흉내 내지 않는 이유는 자바와 같다 — 프리사인드 URL은
+ * 로컬 폴더가 스토리지 포트를 흉내 내지 않는 이유 — 프리사인드 URL은
  * 오브젝트 스토리지에만 있는 개념이고, 업로드 경로 자체가 갈린다 (architecture §4).
  */
 import fs from "fs";
@@ -16,10 +16,10 @@ import { AwsV4Signer } from "aws4fetch";
 import { config } from "../../config";
 import { ExternalApi, FileIo, InvalidInput } from "../errors";
 
-// ───────────── 설정 (자바 `StorageProperties`) ─────────────
+// ───────────── 설정 ─────────────
 
 /**
- * 자바 기본값 그대로. 자바는 `app.storage.*`로 바꿀 수 있었지만 일렉트론이 넘긴 적이 없다 —
+ * 고정값이다 — 일렉트론이 바꿔 넘긴 적이 없다.
  * 지역만 환경변수로 받는다 (R2는 의미가 없어도 서명에 들어간다)
  */
 export const STORAGE_LIMITS = {
@@ -38,15 +38,15 @@ function region(): string {
   return r === undefined || r.trim() === "" ? "auto" : r;
 }
 
-/** 넷 다 있어야 한다 (`StorageProperties.hasCredentials`) */
+/** 넷 다 있어야 한다 */
 export function storageHasCredentials(): boolean {
   const s = config().storage;
   return !!(s.endpoint && s.bucket && s.accessKey && s.secretKey);
 }
 
-// ───────────── 데이터 루트 (자바 `MediaPaths`) ─────────────
+// ───────────── 데이터 루트 ─────────────
 
-/** 안 넘어오면 개발 환경으로 본다 — 임시 폴더로 떨어뜨린다 (자바와 같은 이름) */
+/** 안 넘어오면 개발 환경으로 본다 — 임시 폴더로 떨어뜨린다 */
 export function dataRoot(): string {
   return config().dataRoot ?? path.join(os.tmpdir(), "starlog-dev-data");
 }
@@ -62,7 +62,7 @@ export function mediaDir(): string {
 }
 
 /**
- * 기동 때 한 번 (자바 `@PostConstruct ensure`). 업로드 시점에 만들면 권한 문제를
+ * 기동 때 한 번. 업로드 시점에 만들면 권한 문제를
  * 파일을 받은 뒤에야 안다 — 못 쓰는 데이터 루트는 앱을 열자마자 드러나야 한다
  */
 export function ensureMediaDirs(): void {
@@ -73,8 +73,8 @@ export function ensureMediaDirs(): void {
 
 /**
  * 게임 하나의 스크린샷 폴더.
- * ⚠️ slug를 이어 붙이기 전에 밖으로 나가지 않는지 본다. 자바는 `IllegalArgumentException`이라
- * 전역 핸들러가 못 잡고 **500**이 났다 — 그래서 `AppError`가 아닌 평범한 `Error`로 던진다
+ * ⚠️ slug를 이어 붙이기 전에 밖으로 나가지 않는지 본다. **500**이 나는 게 맞다 —
+ * `AppError`가 아닌 평범한 `Error`로 던져 전역 핸들러가 클라이언트 오류로 접지 않는다
  */
 export function mediaFolder(slug: string): string {
   const base = mediaDir();
@@ -84,12 +84,12 @@ export function mediaFolder(slug: string): string {
 }
 
 /**
- * 자바 `directory.resolve(name).normalize()` + `startsWith(directory)`.
+ * `name`을 `directory` 아래로 풀고(`normalize`) 그 안에 머무는지 본다.
  * `resolve`는 절대 경로가 오면 그쪽으로 갈아탄다 (`path.join`은 이어 붙인다 — 다르다).
  * `startsWith`는 글자가 아니라 **경로 조각** 단위다 (`/a/covers2`는 `/a/covers` 안이 아니다)
  */
 function resolveInside(directory: string, name: string): string | null {
-  // 자바 Path는 NUL이 든 이름에서 InvalidPathException(=IllegalArgumentException)을 던진다 → 500
+  // NUL이 든 이름은 경로가 될 수 없다 → 평범한 `Error`라 500
   if (name.includes("\0")) throw new Error(`Illegal char <\\0> in path: ${name}`);
   const dir = path.normalize(directory);
   const file = path.normalize(path.isAbsolute(name) ? name : path.join(dir, name));
@@ -97,7 +97,7 @@ function resolveInside(directory: string, name: string): string | null {
   return trimmed === dir || trimmed.startsWith(dir.endsWith(path.sep) ? dir : dir + path.sep) ? trimmed : null;
 }
 
-// ───────────── 로컬 파일 (자바 `LocalFileStore`) ─────────────
+// ───────────── 로컬 파일 ─────────────
 
 /** ⚠️ 파일명은 클라이언트에서 오기도 한다 (스크린샷 삭제). 데이터 루트 밖이면 400 */
 function safeResolve(directory: string, fileName: string): string {
@@ -117,7 +117,7 @@ function write(target: string, bytes: Uint8Array): void {
     fs.writeFileSync(tmp, bytes);
     fs.renameSync(tmp, target);
   } catch (e) {
-    throw new FileIo(e);   // 자바 UncheckedIOException → 500 FILE_IO_ERROR
+    throw new FileIo(e);   // 500 FILE_IO_ERROR
   }
 }
 
@@ -141,7 +141,7 @@ export function localSave(directory: string, bytes: Uint8Array, extension: strin
 
 /** 이름을 지정해 저장 (스크린샷). 이미 있으면 덮어쓴다 */
 export function localSaveAs(directory: string, fileName: string, bytes: Uint8Array): void {
-  // 자바 `directory.resolve(fileName)` — 검사 없이 조립한다 (이름은 서버가 만든 순번)
+  // 검사 없이 조립한다 (이름은 서버가 만든 순번)
   write(path.isAbsolute(fileName) ? fileName : path.join(directory, fileName), bytes);
 }
 
@@ -167,7 +167,7 @@ export function localResolve(directory: string, fileName: string): string {
  * 실패해도 던지지 않는다 — 여러 장을 지울 때 하나 때문에 전부 멈추면 안 된다.
  * @returns 실제로 지웠으면 true. 이미 없었거나 실패했으면 false
  *
- * 자바 `Files.deleteIfExists`는 **빈 폴더도 지우고**, 안 빈 폴더면 실패(false)다 — 그대로 따른다
+ * **빈 폴더도 지우고**, 안 빈 폴더면 실패(false)다
  */
 export function localDelete(directory: string, fileName: string): boolean {
   try {
@@ -189,7 +189,7 @@ export function localList(directory: string): string[] {
   try {
     return fs.readdirSync(directory)
       .filter((n) => isRegularFile(path.join(directory, n)))
-      .sort();   // 자바 String 자연 순서 = UTF-16 코드 단위 순서 = JS 기본 sort
+      .sort();   // 기본 sort = UTF-16 코드 단위 순서
   } catch (e) {
     throw new FileIo(e);
   }
@@ -205,7 +205,7 @@ export function folderSize(dir: string): number {
         const p = path.join(d, e.name);
         if (e.isDirectory()) walk(p);
         else {
-          try { const st = fs.statSync(p); if (st.isFile()) total += st.size; } catch { /* 자바도 0으로 센다 */ }
+          try { const st = fs.statSync(p); if (st.isFile()) total += st.size; } catch { /* 못 읽는 파일은 0으로 센다 */ }
         }
       }
     };
@@ -216,7 +216,7 @@ export function folderSize(dir: string): number {
   }
 }
 
-// ───────────── 무엇을 어디에 (자바 `MediaTargets`) ─────────────
+// ───────────── 무엇을 어디에 ─────────────
 
 export type CoverLocation = "LOCAL" | "EXTERNAL";
 
@@ -229,7 +229,7 @@ export function screenshotsToStorage(): boolean {
   return config().media.useStorageForScreenshots && storageHasCredentials();
 }
 
-// ───────────── 오브젝트 스토리지 (자바 `FileStoragePort`) ─────────────
+// ───────────── 오브젝트 스토리지 ─────────────
 
 export interface PresignedUpload { uploadUrl: string; storageKey: string; expiresInSeconds: number }
 export interface StoredObject { contentType: string | null; sizeBytes: number }
@@ -252,7 +252,7 @@ export interface FileStoragePort {
 const UNCONFIGURED_MESSAGE = "스토리지 설정이 없습니다 (app.storage.endpoint / bucket / access-key / secret-key)";
 
 /**
- * 자격증명이 없을 때 (자바 `UnconfiguredFileStorage`). 기동은 시키고 **부르는 순간에만** 502.
+ * 자격증명이 없을 때. 기동은 시키고 **부르는 순간에만** 502.
  * 조용히 성공한 척하지 않는다 — 그러면 업로드가 되는 줄 알고 넘어간다
  */
 const unconfigured: FileStoragePort = {
@@ -264,22 +264,22 @@ const unconfigured: FileStoragePort = {
   async checkAccess() { return "스토리지 자격증명이 설정되지 않았습니다"; },
 };
 
-/** S3가 돌려준 실패. 자바 `S3Exception`(응답은 받았다) 자리 */
+/** S3가 응답은 줬는데 실패인 경우. 연결 실패·타임아웃은 이 타입이 아니다 (`head`·`readHead`가 이걸로 갈라낸다) */
 class S3Status extends Error {
   constructor(readonly status: number, readonly errorCode: string | null) { super(`S3 ${status} ${errorCode ?? ""}`); }
 }
 
 /**
- * S3 호환 (자바 `S3CompatibleFileStorage`). R2·MinIO가 쓰는 **경로 방식**(`endpoint/bucket/key`)이다 —
- * 가상 호스트 방식으로 두면 R2에서 서명이 어긋난다 (자바 `pathStyleAccessEnabled(true)`).
+ * S3 호환. R2·MinIO가 쓰는 **경로 방식**(`endpoint/bucket/key`)이다 —
+ * 가상 호스트 방식으로 두면 R2에서 서명이 어긋난다.
  *
  * 서명은 aws4fetch, 전송은 fetch. aws4fetch의 `AwsClient.fetch`는 재시도를 10번까지 하므로 안 쓰고
- * SDK 기본(3번 시도, 5xx·429·연결 실패만)을 직접 흉내 낸다
+ * 재시도(3번 시도, 5xx·429·연결 실패만)를 `send`에서 직접 한다
  */
 class S3Storage implements FileStoragePort {
   constructor(private readonly s: { endpoint: string; bucket: string; accessKey: string; secretKey: string; publicBaseUrl: string | null }) {}
 
-  /** SDK `urlEncodeIgnoreSlashes` — RFC 3986 unreserved만 그대로, `/`는 살린다 */
+  /** 경로 방식 URL. 키 인코딩은 `encodeKey` */
   private objectUrl(key: string | null): string {
     const base = `${this.s.endpoint.replace(/\/+$/, "")}/${encodeKey(this.s.bucket)}`;
     return key === null ? base : `${base}/${encodeKey(key)}`;
@@ -290,11 +290,11 @@ class S3Storage implements FileStoragePort {
       method, url, headers, signQuery, datetime,
       accessKeyId: this.s.accessKey, secretAccessKey: this.s.secretKey,
       service: "s3", region: region(),
-      allHeaders: true,   // ⚠️ 기본은 content-type·content-length를 서명에서 뺀다. SDK는 넣는다 — 그게 K-3의 절반이다
+      allHeaders: true,   // ⚠️ 기본은 content-type·content-length를 서명에서 뺀다. 둘 다 넣어야 SignedHeaders가 content-length;content-type;host가 되고, 다른 타입·크기 업로드를 스토리지가 거부한다 (K-3)
     });
   }
 
-  /** 서명 + 전송 + SDK식 재시도. 응답은 받았는데 2xx가 아니면 `S3Status` */
+  /** 서명 + 전송 + 재시도. 응답은 받았는데 2xx가 아니면 `S3Status` */
   private async send(method: string, key: string | null, headers: Record<string, string> = {}): Promise<Response> {
     let last: unknown;
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -309,7 +309,7 @@ class S3Storage implements FileStoragePort {
         throw err;
       } catch (e) {
         if (e instanceof S3Status) throw e;
-        last = e;   // 연결 실패·타임아웃 — 자바 SdkClientException
+        last = e;   // 연결 실패·타임아웃
       }
     }
     throw last;
@@ -320,8 +320,8 @@ class S3Storage implements FileStoragePort {
   }
 
   /**
-   * SDK와 **같은 문자열**을 만든다 — 쿼리 순서까지 (`Algorithm·Date·SignedHeaders·Credential·Expires·Signature`).
-   * 순서는 서명에 영향이 없지만(정규화 때 정렬한다), 같은 문자열이어야 고정 시각 테스트로 대조할 수 있다.
+   * 이전 AWS SDK(`S3Presigner`)가 만들던 URL과 **같은 문자열**을 만든다 — 쿼리 순서까지 (`Algorithm·Date·SignedHeaders·Credential·Expires·Signature`).
+   * 순서는 서명에 영향이 없지만(정규화 때 정렬한다), 같은 문자열이어야 SDK로 뽑은 기대값을 고정 시각 테스트로 대조할 수 있다 (`presign.test.ts`).
    * `datetime`은 테스트용 (`20261024T094951Z`)
    */
   async presignUrl(storageKey: string, contentType: string, sizeBytes: number, expiresInSeconds: number, datetime?: string): Promise<string> {
@@ -343,7 +343,7 @@ class S3Storage implements FileStoragePort {
         console.error(`스토리지 조회 실패 — key=${storageKey}`, e);
         throw new ExternalApi("FILE_STORAGE", "업로드된 파일을 확인하지 못했습니다");
       }
-      throw e;   // ⚠️ 자바는 연결 실패(SdkClientException)를 안 잡아서 500이었다 — 그대로
+      throw e;   // ⚠️ 연결 실패는 502로 안 접고 그대로 올린다 → 500 (알려진 버그 9, `docs/v2-plan.md`)
     }
   }
 
@@ -358,12 +358,12 @@ class S3Storage implements FileStoragePort {
         console.error(`스토리지 부분 읽기 실패 — key=${storageKey}`, e);
         throw new ExternalApi("FILE_STORAGE", "업로드된 파일을 확인하지 못했습니다");
       }
-      throw e;   // 자바와 같이 500
+      throw e;   // 연결 실패 → 500 (알려진 버그 9, `docs/v2-plan.md`)
     }
     try {
       return new Uint8Array(await res.arrayBuffer()).slice(0, length);
     } catch (e) {
-      // 자바 IOException(본문 읽다 끊김) → 502
+      // 본문 읽다 끊김 → 502
       console.error(`스토리지 부분 읽기 실패 — key=${storageKey}`, e);
       throw new ExternalApi("FILE_STORAGE", "업로드된 파일을 확인하지 못했습니다");
     }
@@ -373,7 +373,7 @@ class S3Storage implements FileStoragePort {
     try {
       await this.send("DELETE", storageKey);
     } catch (e) {
-      // 던지지 않는다 — 연결 실패까지 (자바가 SdkException을 넓게 잡은 이유). 남은 파일은 라이프사이클이 정리한다
+      // 던지지 않는다 — 연결 실패까지. DB 커밋 뒤라 던지면 성공한 삭제가 실패로 보인다. 남은 파일은 라이프사이클이 정리한다
       console.warn(`스토리지 파일 삭제 실패 — key=${storageKey} (고아 파일로 남는다)`, e);
     }
   }
@@ -405,14 +405,14 @@ function encodeKey(s: string): string {
   return encodeURIComponent(s).replace(/[!'()*]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase()).replace(/%2F/g, "/");
 }
 
-/** 쿼리 값 — `/`까지 인코딩한다 (SDK가 만든 URL과 같은 글자) */
+/** 쿼리 값 — `/`까지 인코딩한다 (이전 SDK 출력과 같은 글자) */
 function encodeStrict(s: string): string {
   return encodeKey(s).replace(/\//g, "%2F");
 }
 
 let port: FileStoragePort | null = null;
 
-/** 자바는 기동 때 빈을 하나 골랐다. 설정이 기동 때 굳으므로 처음 부를 때 한 번 고른다 */
+/** 설정이 기동 때 굳으므로 처음 부를 때 한 번 고른다 */
 export function fileStorage(): FileStoragePort {
   if (port) return port;
   if (!storageHasCredentials()) {

@@ -1,18 +1,18 @@
 /**
- * 요청 본문 모양(Zod) 공용 조각 — 자바 DTO 필드 타입과 Jackson의 관대함을 맞춘다.
+ * 요청 본문 모양(Zod) 공용 조각 — 기존 Jackson 역직렬화의 관대함을 맞춘다.
  *
- * 모양만 본다. **없거나 null이면 null** (자바 record 필드가 null로 들어오는 것과 같다).
+ * 모양만 본다. **없거나 null이면 null**.
  * 규칙(필수·길이)은 `violations()`로 따로 — 메시지가 다르다.
  */
 import { z } from "zod";
 
 /**
  * String 필드 — Jackson은 **숫자·불리언도 문자열로 받아준다** (`{"color": 5}` → `"5"`).
- * `z.string()`으로 받으면 자바는 받는 입력을 우리가 "읽을 수 없음"으로 튕긴다 (platform 이전에서 발견)
+ * `z.string()`으로만 받으면 기존엔 되던 입력이 "읽을 수 없음"으로 튕긴다
  */
 export const zText = z.union([z.string(), z.number().transform(String), z.boolean().transform(String)]);
 
-/** LocalDate — `"2026-10-19"`. 잘못된 날짜(2월 30일)도 읽기 단계에서 거절한다 (Jackson과 같다) */
+/** LocalDate — `"2026-10-19"`. 잘못된 날짜(2월 30일)도 읽기 단계에서 거절한다 (Jackson도 그랬다) */
 export const zDate = z.string().refine((s) => {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
   if (!m) return false;

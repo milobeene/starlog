@@ -1,12 +1,12 @@
 /**
- * 시스템 — 자바 `system/service`의 다른 도메인이 쓰는 부분.
+ * 시스템 — 다른 도메인이 쓰는 부분과 시스템 현황.
  *
- *   - `recordApiCall` — 외부 API 호출을 한 줄 남긴다 (`ApiCallRecorder`)
- *   - 앱 설정 (`AppSettingService`) — IGDB·번역 키, 번역 하루 한도
- *   - 번역 한도 (`TranslationQuota`)와 번역 (`GameTranslationService`·`TranslationClient`)
- *   - 시스템 현황 (`SystemStatusService`)
+ *   - `recordApiCall` — 외부 API 호출을 한 줄 남긴다
+ *   - 앱 설정 — IGDB·번역 키, 번역 하루 한도
+ *   - 번역 한도와 번역
+ *   - 시스템 현황
  *
- * ⚠️ **`recordApiCall`·`recordTranslation`은 자바 `REQUIRES_NEW` 자리다** — 부르는 쪽 트랜잭션과 따로 커밋된다.
+ * ⚠️ **`recordApiCall`·`recordTranslation`은 부르는 쪽 트랜잭션과 따로 커밋된다** (롤백돼도 기록은 남는다).
  * 그래서 `db()`로 바로 쓴다. **트랜잭션 콜백 안에서 부르면 안 된다** — PGlite는 세션이 하나라
  * 열린 트랜잭션이 끝날 때까지 `db()` 쿼리가 기다리고, 그 트랜잭션은 이 쿼리를 기다린다(교착).
  * 외부 호출은 어차피 트랜잭션 밖이므로 기록도 그 자리에서 한다.
@@ -22,7 +22,7 @@ import { config } from "../../config";
 import { coversDir, folderSize, mediaDir, storageHasCredentials } from "../../common/storage";
 import { isJavaBlank, javaStrip } from "../../common/text";
 
-// ───────────── 호출 기록 (자바 `ApiCallRecorder`) ─────────────
+// ───────────── 호출 기록 ─────────────
 
 /** 한도를 여기 적지 않는다 — 벤더가 바꾸면 조용히 거짓말이 된다. 화면이 기준일과 함께 든다 */
 export const API_PROVIDERS = ["IGDB", "STORAGE", "TRANSLATE"] as const;
@@ -41,7 +41,7 @@ export async function recordApiCall(provider: ApiProvider, operation: string, su
   }
 }
 
-// ───────────── 앱 설정 (자바 `AppSettingService`) ─────────────
+// ───────────── 앱 설정 ─────────────
 
 export const SETTING = {
   IGDB_CLIENT_ID: "igdb.clientId",
@@ -64,8 +64,8 @@ export interface IgdbCredentials { clientId: string | null; clientSecret: string
 export const igdbCredentialsPresent = (c: IgdbCredentials) => !isJavaBlank(c.clientId) && !isJavaBlank(c.clientSecret);
 
 /**
- * 부팅 설정. 자바는 `${IGDB_CLIENT_ID:}`라 환경변수가 없으면 **빈 문자열**이었다 (null 아님) —
- * 설정 화면 응답(`igdbClientId: ""`)이 그 차이를 그대로 드러내서 맞춘다
+ * 부팅 설정. 환경변수가 없으면 null이 아니라 **빈 문자열**이다 —
+ * 설정 화면 응답(`igdbClientId: ""`)에 그대로 드러난다
  */
 function bootIgdb(): IgdbCredentials {
   const c = config().igdb;
@@ -88,7 +88,7 @@ export async function translateApiKey(d: Db = db()): Promise<string | null> {
 }
 
 /**
- * 넣거나 바꾼다. 하이버네이트처럼 **값이 실제로 바뀔 때만** UPDATE한다 (`updated_at`이 그대로 남는다)
+ * 넣거나 바꾼다. **값이 실제로 바뀔 때만** UPDATE한다 (`updated_at`이 그대로 남는다)
  */
 export async function putSetting(key: string, value: string): Promise<void> {
   await db().transaction(async (tx) => {
@@ -102,7 +102,7 @@ export async function putSetting(key: string, value: string): Promise<void> {
   });
 }
 
-// ───────────── 번역 한도 (자바 `TranslationQuota`) ─────────────
+// ───────────── 번역 한도 ─────────────
 
 /** 구글이 매달 공짜로 주는 양 */
 export const FREE_MONTHLY_CHARS = 500_000;
@@ -111,7 +111,7 @@ export const GUARD_MONTHLY_CHARS = 450_000;
 /** 한 번에 보낼 수 있는 최대 글자 수 — 책 한 권이 통째로 넘어오는 사고를 한 번으로 끝낸다 */
 export const MAX_CHARS_PER_CALL = 25_000;
 
-/** 자바 `Long.parseLong` — 부호 허용, 범위 밖은 실패 */
+/** 64비트 정수만 받는다 — 부호 허용, 범위 밖은 실패 */
 export function parseJavaLong(s: string): number | null {
   if (!/^[+-]?\d+$/.test(s)) return null;
   const n = BigInt(s);
@@ -119,7 +119,7 @@ export function parseJavaLong(s: string): number | null {
   return Number(n);
 }
 
-/** 자바 `%,d` (한국어 로케일) */
+/** 천 단위 쉼표 (`1,234`) */
 export const grouped = (n: number) => n.toLocaleString("en-US");
 
 /** 사람이 적어둔 하루 한도. 안 적었거나 숫자가 아니면 null — 그때는 안 막는다 */
@@ -149,7 +149,6 @@ function midnightIn(timeZone: string, y: number, m: number, d: number): Date {
 /**
  * ⚠️ **하루·한 달 모두 태평양 기준이다** — 구글의 할당량이 그쪽 자정에 리셋된다.
  * 태평양 자정을 우리 시각(KST 벽시계)으로 옮긴 값과 `called_at`을 비교한다.
- * 자바는 `ZoneId.systemDefault()`를 거쳤다 — 기본 시간대가 KST라는 전제가 깔려 있다(한국 설치)
  */
 function startOfPacificDay(now = new Date()): string {
   const p = zoneParts(now, QUOTA_ZONE);
@@ -209,18 +208,18 @@ export async function checkTranslationQuota(chars: number, d: Db = db()): Promis
 
 /**
  * 쓴 만큼 기록한다. `recordApiCall`과 달리 **실패를 안 삼킨다** — 안 남으면 다음 검사가 덜 쓴 줄 안다.
- * 자바 `REQUIRES_NEW` → `db()`로 따로 커밋 (트랜잭션 안에서 부르지 말 것)
+ * `db()`로 따로 커밋 (트랜잭션 안에서 부르지 말 것)
  */
 export async function recordTranslation(chars: number, success: boolean): Promise<void> {
   const now = nowKst();
   await db().insert(apiCallLog).values({ provider: "TRANSLATE", operation: "translate", calledAt: now, success, units: chars, createdAt: now, updatedAt: now });
 }
 
-// ───────────── 번역 (자바 `TranslationClient`·`GameTranslationService`) ─────────────
+// ───────────── 번역 ─────────────
 
 const TRANSLATE_URL = "https://translation.googleapis.com/language/translate/v2";
 
-/** 자바 `RestClient`의 4xx (`HttpClientErrorException`) 자리 */
+/** 4xx 응답 — 이것만 502로 접는다 */
 class Http4xx extends Error {
   constructor(readonly status: number) { super(`HTTP ${status}`); }
 }
@@ -229,7 +228,7 @@ class Http4xx extends Error {
  * Google Cloud Translation v2. `q`를 **여러 개** 보내고 같은 순서로 받는다 — 이어 붙였다면
  * 구분자를 번역기가 옮겨버려 경계가 어긋난다. `format=text`가 없으면 `&#39;`가 그대로 보인다.
  *
- * ⚠️ 자바는 4xx만 502로 접었다. 5xx·연결 실패·응답 해석 실패는 안 잡혀 **500**이었다 — 그대로
+ * ⚠️ 4xx만 502로 접는다. 5xx·연결 실패·응답 해석 실패는 안 잡혀 **500**이다 (알려진 버그 8, `docs/v2-plan.md`)
  */
 export async function toKorean(apiKey: string, texts: string[]): Promise<string[]> {
   const body = new URLSearchParams();
@@ -267,12 +266,11 @@ export interface TranslationResult { summaryKo: string | null; storylineKo: stri
 const hasText = (v: string | null) => !isJavaBlank(v);
 
 /**
- * 게임 소개문·스토리라인 번역 (`GameTranslationService.translate`). 순서가 전부다:
+ * 게임 소개문·스토리라인 번역. 순서가 전부다:
  *   1. 원문을 꺼낸다 → 2. **보내기 전에** 한도를 본다 → 3. 구글 → 4. 성공·실패 상관없이 기록 → 5. 저장
  *
- * 자바는 이 전체가 트랜잭션 하나였다. 여기선 구글 호출을 트랜잭션 밖으로 뺐다 — PGlite는 트랜잭션 동안
- * 앱 전체가 멈춘다. 관찰되는 결과(응답·기록 행·게임 행)는 같다: 기록은 자바도 `REQUIRES_NEW`라
- * 게임 저장보다 먼저 커밋됐고, 남은 양은 기록 **전에** 계산했다(`finally`가 `return` 식 뒤에 돈다)
+ * 구글 호출은 트랜잭션에 넣지 않는다 — PGlite는 트랜잭션 동안 앱 전체가 멈춘다.
+ * 기록은 게임 저장보다 먼저 따로 커밋되고, 응답의 남은 양은 기록 **전에** 계산한다 (이번 호출분은 `- chars`로 직접 뺀다)
  */
 export async function translateGame(gameId: number): Promise<TranslationResult> {
   const d = db();
@@ -288,7 +286,7 @@ export async function translateGame(gameId: number): Promise<TranslationResult> 
   if (hasText(g.storyline)) sources.push(g.storyline!);
   if (sources.length === 0) throw new InvalidInput("번역할 내용이 없습니다");
 
-  const chars = sources.reduce((n, s) => n + s.length, 0);   // 자바 String.length() = UTF-16 단위
+  const chars = sources.reduce((n, s) => n + s.length, 0);   // UTF-16 코드 단위 길이
   await checkTranslationQuota(chars, d);
 
   let ok = false;
@@ -313,7 +311,7 @@ export async function translateGame(gameId: number): Promise<TranslationResult> 
   return result;
 }
 
-// ───────────── 시스템 현황 (자바 `SystemStatusService`) ─────────────
+// ───────────── 시스템 현황 ─────────────
 
 /** 호출 기록 보존 기간. `startup.ts`의 정리와 같은 값 */
 export const RETENTION_DAYS = 30;
@@ -340,7 +338,7 @@ async function usageOf(d: Db, provider: ApiProvider, now: Date) {
   };
 }
 
-/** `pg_database_size`. 실패하면 null (자바는 H2 파일 크기로 한 번 더 시도했다 — Postgres만 남았다) */
+/** `pg_database_size`. 실패하면 null */
 async function databaseSize(d: Db): Promise<number | null> {
   try {
     const r = await one<{ v: number | string }>(d, sql`select pg_database_size(current_database()) as v`);
@@ -352,7 +350,7 @@ async function databaseSize(d: Db): Promise<number | null> {
 
 /**
  * **내 테이블만** — `pg_database_size`는 시스템 카탈로그 7MB가 섞여 게임을 넣어도 안 움직였다.
- * ⚠️ 자바가 `public`을 박아 뒀다. 스키마를 지정한 클라우드(결정 60)에선 0이 나온다 — 그대로 옮긴다
+ * ⚠️ `public` 스키마로 고정돼 있다. 스키마를 지정한 클라우드(결정 60)에선 0이 나온다 (알려진 버그 10, `docs/v2-plan.md`)
  */
 async function myTablesSize(d: Db): Promise<number | null> {
   try {
@@ -373,7 +371,7 @@ export async function systemStatus(d: Db = db()) {
   const storage = { coverCount: Number(covers!.n), totalBytes: Number(covers!.bytes), configured: storageHasCredentials() };
 
   const database = {
-    product: "PostgreSQL",   // 자바: JDBC 메타데이터. PGlite·Neon 둘 다 Postgres다
+    product: "PostgreSQL",   // PGlite·Neon 둘 다 Postgres다
     sizeBytes: await myTablesSize(d),
     totalBytes: await databaseSize(d),
     coverBytes: folderSize(coversDir()),

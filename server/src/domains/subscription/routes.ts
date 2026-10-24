@@ -1,5 +1,5 @@
 /**
- * 구독 (FR-ACQ-04) — 자바 `subscription` 패키지.
+ * 구독 (FR-ACQ-04).
  * 취득이 SUBSCRIPTION일 때 여기 연결된다 (FR-ACQ-05). 서비스명은 마스터가 아니라 문자열 (OI-06).
  *
  * 구독은 **물리 삭제**다 (§7.4). 취득이 참조 중이면 FK 위반 → 409 — 앱에서 막지 않고 DB에 맡긴다.
@@ -37,13 +37,13 @@ function validate(r: SubscriptionRequest) {
     .throwIfAny();
 }
 
-/** 엔티티 `apply` — 검증 순서와 메시지를 자바와 같게 */
+/** 검증 순서와 메시지를 바꾸지 않는다 — 화면이 메시지를 그대로 보여준다 */
 function apply(r: SubscriptionRequest) {
   const serviceName = normalize(r.serviceName);
   if (serviceName === null) throw new InvalidInput("구독 서비스명은 필수입니다");
   if (r.startedOn === null) throw new InvalidInput("구독 시작일은 필수입니다");
   if (r.billingCycle === null) throw new InvalidInput("결제 주기는 필수입니다");
-  // 회차의 BR-PT-01과 같은 규칙. 당일 종료도 유효 (isBefore)
+  // 회차의 BR-PT-01과 같은 규칙. 당일 종료도 유효
   if (r.endedOn !== null && r.endedOn < r.startedOn) {
     throw new InvalidInput(`종료일은 시작일 이후여야 합니다: ${r.startedOn} ~ ${r.endedOn}`);
   }

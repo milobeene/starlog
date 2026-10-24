@@ -1,9 +1,8 @@
 /**
- * 커버·스크린샷 — 자바 `CoverImageService`·`CoverRecordService`·`CoverImageValidator`·
- * `ScreenshotService`·`MediaFileValidator`.
+ * 커버·스크린샷.
  *
- * 스토리지·파일시스템 왕복은 **트랜잭션 밖**에서, DB는 짧은 트랜잭션으로 (자바도 커버 서비스에
- * `@Transactional`이 없었다). PGlite는 트랜잭션 동안 다른 요청을 다 세운다.
+ * 스토리지·파일시스템 왕복은 **트랜잭션 밖**에서, DB는 짧은 트랜잭션으로. PGlite는 트랜잭션 동안
+ * 다른 요청을 다 세운다.
  */
 import fs from "fs";
 import path from "path";
@@ -57,7 +56,7 @@ function extensionFrom(fileName: string | null): string {
   return normalized.slice(dot + 1).toLowerCase();
 }
 
-/** 커버 — 발급 단계는 클라이언트가 **선언한** 크기를 본다 (`CoverImageValidator`) */
+/** 커버 — 발급 단계는 클라이언트가 **선언한** 크기를 본다 */
 function coverContentType(fileName: string | null, size: number): string {
   const ext = extensionFrom(fileName);
   const contentType = IMAGES[ext];
@@ -74,7 +73,7 @@ function validateStoredCover(size: number, head: Uint8Array, contentType: string
   if (!magicMatches(head, contentType)) throw new InvalidInput("이미지 파일이 아닙니다");
 }
 
-/** 스크린샷·영상 (`MediaFileValidator.resolveContentType`) — 영상은 상한 자릿수가 다르다 */
+/** 스크린샷·영상 — 영상은 상한 자릿수가 다르다 */
 function mediaContentType(fileName: string | null, size: number): string {
   const ext = extensionFrom(fileName);
   let contentType = IMAGES[ext];
@@ -86,7 +85,7 @@ function mediaContentType(fileName: string | null, size: number): string {
   return contentType;
 }
 
-/** 확장자 → MIME. DB에 행이 없어서 이름에서 되돌린다 (`MediaFileValidator.contentTypeOf`) */
+/** 확장자 → MIME. DB에 행이 없어서 이름에서 되돌린다 */
 export function mediaContentTypeOf(fileName: string): string {
   const ext = fileName.slice(fileName.lastIndexOf(".") + 1).toLowerCase();
   return IMAGES[ext] ?? VIDEOS[ext] ?? "application/octet-stream";
@@ -209,7 +208,7 @@ export async function deleteCover(memberId: number, entryId: number) {
  * 폴더가 있으면 그게 이 게임 것이다 (`uniqueMediaSlug`가 남의 이름은 피해 간다).
  *
  * @param create  없으면 이름을 정할지. 목록·읽기는 안 정한다
- * @param persist 칸에 적은 값을 저장할지. 자바는 목록·읽기가 `readOnly`라 적어도 저장되지 않았다
+ * @param persist 칸에 적은 값을 저장할지. 목록·읽기는 저장하지 않는다 (읽기 요청이 DB를 바꾸지 않게)
  */
 async function folderOf(d: Db, memberId: number, entryId: number, create: boolean, persist: boolean): Promise<string | null> {
   const entry = await findOwnedAlive404(d, memberId, entryId);
@@ -231,14 +230,14 @@ function isDirectory(p: string) {
 }
 
 /**
- * 스프링 `UriUtils.encodePathSegment` — pchar(비예약 문자·sub-delims·`:`·`@`)만 그대로.
+ * 경로 조각 인코딩 — pchar(비예약 문자·sub-delims·`:`·`@`)만 그대로 둔다 (`encodeURIComponent`보다 덜 인코딩).
  * 사람이 탐색기로 넣은 `내 스샷 #1.png`의 `#`이 조각으로 잘려나가지 않게 한다
  */
 function encodePathSegment(s: string): string {
   return encodeURIComponent(s).replace(/%(24|26|2B|2C|3B|3D|3A|40)/g, (m) => decodeURIComponent(m));
 }
 
-/** 자바 `Instant.toString()` — 소수부는 0·3·6·9자리 중 필요한 만큼 */
+/** UTC 시각 문자열 — 소수부는 0·3·6·9자리 중 필요한 만큼 (`toISOString`은 항상 3자리라 직접 만든다) */
 function instantText(ns: bigint): string {
   const sec = ns / 1_000_000_000n, nano = Number(ns % 1_000_000_000n);
   const base = new Date(Number(sec) * 1000).toISOString().slice(0, 19);
@@ -274,7 +273,7 @@ function nextName(folder: string, extension: string): string {
     const base = name.replace(/\..*$/, "");
     if (!/^[0-9]+$/.test(base)) continue;
     const n = Number(base);
-    // 자바 Integer.parseInt — int 범위를 넘으면 NumberFormatException(500)
+    // int 범위를 넘는 번호는 파싱 실패(500)로 둔다 — 기존 동작 유지, 실데이터엔 없다
     if (n > 2147483647) throw new Error(`For input string: "${base}"`);
     max = Math.max(max, n);
   }
@@ -282,7 +281,7 @@ function nextName(folder: string, extension: string): string {
 }
 
 /**
- * 한 장 저장 (영상도 같은 문). **검증이 소유권보다 먼저다** — 자바 순서 그대로.
+ * 한 장 저장 (영상도 같은 문). **검증이 소유권보다 먼저다** — 기존 오류 우선순위 유지.
  * @param takenAtMillis 원본의 수정시각. 파일에 심어야 "찍은 순서"로 정렬된다
  */
 export async function saveScreenshot(memberId: number, entryId: number, fileName: string | null,
@@ -292,7 +291,7 @@ export async function saveScreenshot(memberId: number, entryId: number, fileName
 
   return db().transaction(async (tx) => {
     const folder = (await folderOf(tx, memberId, entryId, true, true))!;
-    // 원문에서 마지막 점 뒤 (검증은 strip한 이름이었다) — 자바 extensionOf
+    // 원문에서 마지막 점 뒤 (검증은 strip한 이름이었다)
     const raw = fileName!;
     const extension = normalize(raw.slice(raw.lastIndexOf(".") + 1))?.toLowerCase() ?? "";
     const stored = nextName(folder, extension);
@@ -323,7 +322,7 @@ export async function deleteScreenshots(memberId: number, entryId: number, fileN
     if (folder === null) return 0;
     let deleted = 0;
     for (const name of fileNames) {
-      // 자바는 null 이름에서 Path.resolve가 NPE(삼키지 않는 예외) → 500
+      // null 이름은 걸러내지 않고 500으로 둔다 (알려진 버그 18, `docs/v2-plan.md`)
       if (name === null) throw new Error("fileName is null");
       if (localDelete(folder, name)) deleted++;
     }

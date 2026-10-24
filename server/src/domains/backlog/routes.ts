@@ -1,8 +1,8 @@
 /**
- * 백로그 — 자바 `BacklogController`·`PlaythroughController`·`AcquisitionController`.
+ * 백로그 — 항목·커버·스크린샷·회차·취득 라우트.
  *
  * ⚠️ 고정 경로(`/api/backlog/cards` 등)를 변수 경로(`/api/backlog/:entryId`)보다 **먼저** 건다.
- * 스프링은 리터럴을 고르지만 Hono는 등록 순서다.
+ * Hono는 등록 순서대로 매칭해서, 뒤에 걸면 `cards`가 `:entryId`로 읽힌다.
  *
  * 커버·스크린샷 파일 처리는 `media.ts`, 멀티파트·Range 응답은 `http.ts`.
  */
@@ -57,7 +57,7 @@ const OverrideUpdateRequest = z.object({
 });
 
 const BacklogAddRequest = z.object({ gameId: opt(zLong), externalId: opt(zText) });
-/** `long sizeBytes`(원시형) — Jackson 3은 없거나 null이면 읽기 실패다 (FAIL_ON_NULL_FOR_PRIMITIVES) */
+/** `sizeBytes`는 필수다 — 없거나 null이면 검증 전에 본문 읽기 실패(400)가 난다 */
 const CoverUploadUrlRequest = z.object({ fileName: opt(zText), sizeBytes: zLong });
 const CoverConfirmRequest = z.object({ storageKey: opt(zText) });
 const TagUpdateRequest = z.object({ name: opt(zText) });
@@ -119,7 +119,7 @@ async function acquisitionBody(c: Context) {
 // ───────────── 목록·조회 (고정 경로 먼저) ─────────────
 
 /**
- * 목록. 스프링은 인자를 선언 순서대로 바인딩하다 첫 실패에서 400을 낸다 — 같은 순서로 읽는다
+ * 목록. 파라미터를 이 순서대로 읽는다 — 형식 오류가 여럿이면 첫 번째에서 400이 나므로 순서가 곧 오류 우선순위다
  */
 routes.get("/api/backlog", async (c) => {
   const q = query(c);
@@ -149,7 +149,7 @@ routes.get("/api/backlog", async (c) => {
   const page = q.int("page", 0);
   const size = q.int("size", 20);
   const rawSort = q.str("sort");
-  // `defaultValue`는 빈 문자열에도 적용된다
+  // 빈 문자열도 기본값으로 취급한다
   const sort = sortFrom(rawSort === null || rawSort === "" ? "lastPlayed" : rawSort);
   return c.json(await db().transaction((tx) => search(tx, c.get("memberId"), condition, page, size, sort)));
 });
@@ -175,7 +175,7 @@ routes.get("/api/backlog/deleted/:entryId", async (c) => {
 routes.delete("/api/backlog/deleted/:entryId", async (c) => {
   const entryId = pathId(c, "entryId");
   const coverKey = await db().transaction((tx) => purge(tx, c.get("memberId"), entryId));
-  // 커밋 뒤에 스토리지에서 지운다 (실패는 삼킨다). ⚠️ 자바 버그 그대로 — LOCAL 커버여도 스토리지 쪽을 부르고
+  // 커밋 뒤에 스토리지에서 지운다 (실패는 삼킨다). ⚠️ 알려진 버그 15(`docs/v2-plan.md`)를 그대로 둔다 — LOCAL 커버여도 스토리지 쪽을 부르고
   // 호출 기록도 안 남긴다. 로컬 파일은 고아로 남는다
   if (coverKey !== null) await fileStorage().delete(coverKey);
   return c.body(null, 204);
@@ -190,7 +190,7 @@ routes.get("/api/backlog/companies", async (c) => c.json(await db().transaction(
 routes.post("/api/backlog", async (c) => {
   const memberId = c.get("memberId");
   const r = await readBodyExact(c, BacklogAddRequest);
-  // `@AssertTrue isTargetPresent()` — 프로퍼티 이름이 targetPresent가 된다
+  // 검증 실패 필드 이름은 `targetPresent`다 (오류 메시지에 그대로 나간다)
   violations().when(r.gameId === null && normalize(r.externalId) === null,
     "targetPresent", "gameId 또는 externalId 중 하나는 필요합니다").throwIfAny();
   const gameId = await resolveGame(db(), r.gameId, r.externalId);
@@ -259,7 +259,7 @@ routes.get("/api/backlog/:entryId/screenshots", async (c) => {
   return c.json(await listScreenshots(c.get("memberId"), entryId));
 });
 
-/** 한 장 저장. `takenAt`은 브라우저가 읽은 원본 파일의 수정시각 (스프링은 쿼리와 폼 필드를 같이 본다) */
+/** 한 장 저장. `takenAt`은 브라우저가 읽은 원본 파일의 수정시각 (쿼리와 폼 필드를 둘 다 본다) */
 routes.post("/api/backlog/:entryId/screenshots", async (c) => {
   const entryId = pathId(c, "entryId");
   const form = await multipartForm(c);
@@ -278,7 +278,6 @@ routes.get("/api/backlog/:entryId/screenshots/folder", async (c) => {
 
 /**
  * 원본. 영상이 200MB까지라 통째로 읽지 않고 흘려보내고, **Range를 받는다** — 안 받으면 재생 막대를 못 끈다
- * (자바는 `Resource`를 돌려줘 스프링이 Range를 처리했다)
  */
 routes.get("/api/backlog/:entryId/screenshots/:fileName", async (c) => {
   const entryId = pathId(c, "entryId");
@@ -334,7 +333,7 @@ routes.put("/api/backlog/:entryId/overrides", async (c) => {
     ...elementSizeViolations("publishers", r.publishers, 200, DEFAULT_MSG.size(0, 200)),
   ];
   if (errors.length) throw new InvalidInput(errors.join(", "));
-  // `toCommand()`가 컨트롤러에서 돈다 — 금액 오류가 소유권 확인보다 먼저다
+  // 금액 변환을 소유권 확인보다 먼저 한다 — 금액 오류가 먼저 나간다
   const listPrice = toMoney(r.listPrice);
   await db().transaction((tx) => updateOverrides(tx, c.get("memberId"), entryId, {
     name: r.name, developers: r.developers, publishers: r.publishers, releasedOn: r.releasedOn, listPrice,

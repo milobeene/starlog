@@ -18,7 +18,7 @@ export type PlaythroughRow = typeof playthrough.$inferSelect;
 
 const notFound = (entryId: number) => new NotFound(`백로그 항목을 찾을 수 없습니다. id=${entryId}`);
 
-// ───────────── 소유권 (BacklogEntryFinder) ─────────────
+// ───────────── 소유권 ─────────────
 
 /** 삭제된 것 포함. 남의 것도 404 — 메시지도 같게 (NFR-S7) */
 export async function findOwnedIncludingDeleted(d: Db, memberId: number, entryId: number): Promise<EntryRow> {
@@ -35,8 +35,8 @@ export async function findOwned(d: Db, memberId: number, entryId: number): Promi
 }
 
 /**
- * 항목 행을 잠그고 나서 `findOwned`. 자바는 형제 회차 검증(BR-PT-02·03)을 직렬화하려고 잠갔다.
- * PGlite는 세션이 하나라 원래 직렬이지만, 클라우드(Postgres)에서는 자바와 같은 이유로 필요하다
+ * 항목 행을 잠그고 나서 `findOwned`. 형제 회차 검증(BR-PT-02·03)을 직렬화하려는 잠금이다.
+ * PGlite는 세션이 하나라 원래 직렬이지만, 클라우드(Postgres)에서는 필요하다
  */
 export async function findOwnedForUpdate(d: Db, memberId: number, entryId: number): Promise<EntryRow> {
   const [locked] = await d.select({ id: backlogEntry.id }).from(backlogEntry)
@@ -52,7 +52,7 @@ export async function findOwnedAlive404(d: Db, memberId: number, entryId: number
   return row;
 }
 
-// ───────────── 파생 상태 (BacklogEntry.syncDerivedState, §7.6) ─────────────
+// ───────────── 파생 상태 (§7.6) ─────────────
 
 type PtLike = Pick<PlaythroughRow, "id" | "sequenceNo" | "startedOn" | "finishedOn" | "status">;
 

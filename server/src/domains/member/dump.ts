@@ -1,12 +1,12 @@
 /**
- * 회원 데이터 한 벌 — 자바 `MemberExport`. 내보내기·가져오기·덮어쓰기 공용.
+ * 회원 데이터 한 벌. 내보내기·가져오기·덮어쓰기 공용.
  *
- * **사용자가 들고 다니는 파일 형식이다.** 키 이름·순서·null·날짜 모양을 자바와 같게 둔다.
- * 자격증명·파생 상태·커버 실물·id는 담지 않는다 (자바 클래스 주석 그대로).
+ * **사용자가 들고 다니는 파일 형식이다.** 키 이름·순서·null·날짜 모양을 바꾸면 이미 받아 둔 백업을 못 읽는다.
+ * 자격증명·파생 상태·커버 실물·id는 담지 않는다.
  *
- * 받는 쪽(Zod)은 Jackson과 같은 관대함으로 읽는다 — 모르는 키는 버리고, 빠진 칸은 null.
+ * 받는 쪽(Zod)은 관대하게 읽는다 — 모르는 키는 버리고, 빠진 칸은 null.
  * 본문은 `readBodyExact`로 읽으므로 **JSON 숫자가 원문 글자(문자열)로** 들어온다
- * (`150.0`이 `150`으로 뭉개지면 평점 오류 메시지가 갈린다).
+ * (`150.0`이 `150`으로 뭉개지면 평점 오류 메시지가 입력과 갈린다).
  */
 import { z } from "zod";
 import { opt, zDate, zDecimal, zLong, zText } from "../../common/schemas";
@@ -15,7 +15,7 @@ import { opt, zDate, zDecimal, zLong, zText } from "../../common/schemas";
 export const FORMAT_VERSION = 2;
 
 /**
- * LocalDateTime — Jackson `ISO_LOCAL_DATE_TIME` (`2026-08-28T15:14:26.781806`, 초·소수는 생략 가능).
+ * ISO 로컬 날짜시각 (`2026-08-28T15:14:26.781806`, 초·소수는 생략 가능).
  * 못 읽으면 본문 전체가 400이다 (가져오기는 `createdAt`을 안 쓰지만 읽기는 한다)
  */
 const zLdt = z.string().refine((s) => {
@@ -29,9 +29,9 @@ const zLdt = z.string().refine((s) => {
 const text = opt(zText);
 const decimal = opt(zDecimal.transform(String));
 const int = opt(zLong);
-/** `List<String>` — 원소 null도 그대로 들어온다 (정규화 단계에서 걸러진다) */
+/** 문자열 목록 — 원소 null도 그대로 들어온다 (정규화 단계에서 걸러진다) */
 const texts = opt(z.array(zText.nullable()));
-/** 객체 목록 — 원소가 null이면 자바는 꺼내 쓰다 NPE(500)다. 그 자리까지 그대로 들고 간다 */
+/** 객체 목록 — 원소가 null이면 꺼내 쓰는 자리에서 NPE 500이 난다 (`npe`). 그 자리까지 그대로 들고 간다 */
 const list = <T extends z.ZodType>(t: T) => opt(z.array(t.nullable()));
 
 const Money = opt(z.object({ amount: decimal, currency: text }));
@@ -62,9 +62,8 @@ const Game = z.object({
 });
 
 /**
- * 자바 원시형(`int`·`long`) 칸 — **빠지거나 null이면 본문 전체가 400이다.**
- * 빠짐·null 둘 다 자바가 400을 냈다 (비교 장치 실측). Jackson 3에서 `FAIL_ON_NULL_FOR_PRIMITIVES`가
- * 기본으로 켜졌기 때문이다 — 2.x였다면 0으로 채워져 "지원하지 않는 형식 (파일은 0)"으로 갔을 것
+ * 필수 숫자 칸 — **빠지거나 null이면 본문 전체가 400이다.**
+ * 0으로 채우지 않는다 (채우면 "지원하지 않는 형식 (파일은 0)"으로 갈린다)
  */
 const primitive = zLong;
 
@@ -88,7 +87,7 @@ const Entry = z.object({
   cover: opt(Cover), playthroughs: list(Playthrough), acquisitions: list(Acquisition),
 });
 
-/** 요청 본문 (`@RequestBody MemberExport`) */
+/** 요청 본문 */
 export const MemberDump = z.object({
   formatVersion: primitive,
   exportedAt: opt(zLdt),
@@ -107,12 +106,12 @@ export type DumpEntry = z.output<typeof Entry>;
 export type DumpCover = z.output<typeof Cover>;
 
 
-/** 자바 `NullPointerException` 자리 — 전역 핸들러가 못 잡아 스프링 기본 500 본문이 나간다 */
+/** 의도된 500 — 값이 null인 채 꺼내 쓰이던 자리. 전역 핸들러가 못 잡아 기본 500 본문이 나간다 */
 export function npe(what: string): never {
   throw new Error(`NullPointerException: ${what}`);
 }
 
-/** 자바 `Enum.valueOf` — null이면 NPE, 없는 이름이면 IllegalArgumentException. 둘 다 500 */
+/** enum 이름 해석 — null이면 NPE, 없는 이름이면 IllegalArgumentException. 둘 다 400이 아니라 500이다 (의도) */
 export function valueOf<T extends string>(values: readonly T[], name: string | null, what: string): T {
   if (name === null) npe(`${what} is null`);
   if (!(values as readonly string[]).includes(name)) throw new Error(`IllegalArgumentException: No enum constant ${what}.${name}`);

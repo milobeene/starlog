@@ -1,5 +1,5 @@
 /**
- * 항목 쓰기 — 자바 `BacklogService`. 항목에 붙는 태그·장르는 tag 도메인(`changeTag`·`replaceGenres`)이 맡는다.
+ * 항목 쓰기. 항목에 붙는 태그·장르는 tag 도메인(`changeTag`·`replaceGenres`)이 맡는다.
  */
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../../db/client";
@@ -85,7 +85,7 @@ export interface OverrideCommand {
   listPrice: Money | null;
 }
 
-/** `MoneyRequest.toMoney` — 금액이 없으면 통째로 없는 것. **컨트롤러에서** 만들어져 소유권 검사보다 먼저 터진다 */
+/** 금액이 없으면 통째로 없는 것. 라우트에서 요청을 읽는 시점에 만들어지므로 소유권 검사보다 먼저 터진다 */
 export function toMoney(r: { amount?: string | number | null; currency?: string | null } | null | undefined): Money | null {
   if (r === null || r === undefined || r.amount === null || r.amount === undefined) return null;
   return money(r.amount, r.currency);
@@ -107,7 +107,7 @@ export async function updateOverrides(d: Db, memberId: number, entryId: number, 
     releasedOnResolved: cmd.releasedOn ?? g!.releasedOn,
   });
 
-  // 값 컬렉션(@ElementCollection bag) — 비우거나 하나라도 넣으면 하이버네이트가 통째로 지우고 다시 넣는다
+  // 개발사·유통사는 통째로 지우고 다시 넣는다 (행 단위 diff 없음)
   await replaceValues(d, entryId, "developer", normalizeAll(cmd.developers));
   await replaceValues(d, entryId, "publisher", normalizeAll(cmd.publishers));
 }
@@ -115,7 +115,7 @@ export async function updateOverrides(d: Db, memberId: number, entryId: number, 
 async function replaceValues(d: Db, entryId: number, kind: "developer" | "publisher", values: string[]) {
   const table = kind === "developer" ? backlogDeveloperOverride : backlogPublisherOverride;
   const existing = await d.select({ id: table.backlogEntryId }).from(table).where(eq(table.backlogEntryId, entryId));
-  // PersistentBag.clear()는 원래 비어 있었으면 더럽히지 않는다 — 비었고 넣을 것도 없으면 그대로
+  // 원래 비었고 넣을 것도 없으면 아무것도 안 한다 (불필요한 쓰기 방지)
   if (existing.length === 0 && values.length === 0) return;
   await d.delete(table).where(eq(table.backlogEntryId, entryId));
   if (values.length === 0) return;
@@ -146,7 +146,7 @@ export async function revive(d: Db, memberId: number, entryId: number) {
  * 완전 삭제. **휴지통을 거친 것만** — 살아 있는 게임이 한 방에 사라지는 경로를 안 만든다.
  *
  * 순서가 전부다. 항목 ↔ 회차가 서로를 참조해서(lastPlaythrough) **항목의 참조를 먼저 끊어야**
- * 회차를 지울 수 있다. 값 컬렉션(개발사·유통사 오버라이드)은 하이버네이트가 벌크 삭제 전에 지운다.
+ * 회차를 지울 수 있다. 개발사·유통사 오버라이드는 항목보다 먼저 지운다.
  *
  * @return 커밋 뒤에 스토리지에서 지울 커버 key (없으면 null)
  */

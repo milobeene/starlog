@@ -1,5 +1,5 @@
 /**
- * 태그·장르 사전 관리 (FR-TAG-02, FR-TAG-05) — 자바 `tag` 패키지의 컨트롤러.
+ * 태그·장르 사전 관리 (FR-TAG-02, FR-TAG-05).
  * 태그를 항목에 붙이고 떼는 건 백로그 쪽이고(`service.ts`의 `changeTag`·`replaceGenres`),
  * 여기는 **사전 자체**를 고친다. 둘 다 물리 삭제다 (§7.4).
  */
@@ -18,17 +18,12 @@ import { opt, zLong, zText } from "../../common/schemas";
 
 export const routes = new Hono<AppEnv>();
 
-/**
- * 문자열 필드 — Jackson은 숫자·불리언도 문자열로 받는다 (`{"color": 5}` → `"5"`).
- * 객체·배열은 읽기 실패다
- */
-
 const NameRequest = z.object({ name: opt(zText) });
 
 /**
- * `@NotBlank @Size(max = 50)`.
- * ⚠️ 하이버네이트의 `@NotBlank`는 `trim()`(U+0020 이하)이 아니라 `Character.isWhitespace` 기준이다 —
- * 전각 공백(U+3000)만 있어도 걸린다. 공용 `violations().notBlank`는 앞쪽 기준이라 여기서는 `normalize`로 본다
+ * 이름: 비면 안 되고 50자 이하.
+ * ⚠️ Hibernate Validator의 `@NotBlank`는 `trim()`(U+0020 이하)이 아니라 `Character.isWhitespace` 기준이라
+ * 전각 공백(U+3000)만 있어도 걸린다. 그래서 `normalize`로 본다
  */
 function checkName(r: z.output<typeof NameRequest>) {
   violations()
@@ -79,7 +74,7 @@ routes.put("/api/me/tags/order", async (c) => {
     // 목록에 없던 것들은 원래 순서를 지키며 뒤로
     for (const left of mine) if (byId.has(left.id)) target.set(left.id, order++);
 
-    // 하이버네이트는 값이 바뀐 태그만 UPDATE한다
+    // 값이 바뀐 태그만 UPDATE한다 (`updated_at`이 안 움직여야 한다)
     for (const t of mine) {
       const next = target.get(t.id)!;
       if (t.sortOrder !== next) {
@@ -119,7 +114,7 @@ routes.put("/api/me/tags/:tagId", async (c) => {
     const t = await findOwnedTag(tx, memberId, tagId);
     const name = normalize(r.name);
     if (name === null) throw new InvalidInput("태그 이름은 비울 수 없습니다");
-    // 같은 이름이 이미 있으면 예외 — 병합하지 않는다. 검증을 변경보다 먼저 (원칙 14번)
+    // 같은 이름이 이미 있으면 예외 — 병합하지 않는다. 중복 검사를 변경보다 먼저
     const [other] = await tx.select({ id: tag.id }).from(tag).where(and(eq(tag.memberId, memberId), eq(tag.name, name)));
     if (other && other.id !== tagId) throw new Conflict(`이미 있는 태그 이름입니다: ${name}`);
     if (t.name !== name) {

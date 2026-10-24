@@ -1,5 +1,5 @@
 /**
- * 금액 — 자바 `Money`. scale 2, HALF_UP, 0 이상, ISO 4217.
+ * 금액 — scale 2, HALF_UP, 0 이상, ISO 4217.
  *
  * **부동소수 계산 금지.** 문자열 ↔ 정수(센트, BigInt)로만 다룬다. JSON으로 들어온 숫자는
  * `String(n)`으로 받는다 — JS의 가장 짧은 왕복 표기라 원래 JSON 글자와 같다.
@@ -23,7 +23,7 @@ export function scale2(input: string | number): string {
   return format(neg && cents !== 0n ? -cents : cents);
 }
 
-/** 금액 생성 — 자바 `new Money(amount, currency)`와 같은 검증·메시지 */
+/** 금액 생성 — 검증과 메시지는 화면이 그대로 띄운다 */
 export function money(amount: string | number | null | undefined, currency: string | null | undefined): Money {
   if (amount === null || amount === undefined) throw new InvalidInput("금액은 필수입니다");
   if (currency === null || currency === undefined) throw new InvalidInput("통화는 필수입니다");
@@ -34,12 +34,12 @@ export function money(amount: string | number | null | undefined, currency: stri
   return { amount: scaled, currency: code };
 }
 
-/** 응답용 — DB의 numeric 문자열을 숫자로. 화면은 숫자로 받는다 (자바도 JSON 숫자로 냈다) */
+/** 응답용 — DB의 numeric 문자열을 숫자로. 화면은 숫자로 받는다 */
 export function amountJson(amount: string | null | undefined): number | null {
   return amount === null || amount === undefined ? null : Number(amount);
 }
 
-/** 비교 — `compareTo` 대신. 둘 다 scale 2 문자열이라고 가정하지 않는다 */
+/** 비교 — 둘 다 scale 2 문자열이라고 가정하지 않는다 */
 export function compareAmount(a: string, b: string): number {
   const x = toCents(scale2(a)), y = toCents(scale2(b));
   return x < y ? -1 : x > y ? 1 : 0;
@@ -94,7 +94,7 @@ export function setScale(input: string, n: number): string {
   return neg && v !== 0n ? "-" + s : s;
 }
 
-/** 자바 `BigDecimal.toString()` — 오류 메시지에 원래 값이 그대로 실린다 (`150.0`은 `150.0`) */
+/** BigDecimal 문자열 표기 — 오류 메시지에 원래 값이 그대로 실린다 (`150.0`은 `150.0`) */
 export function bigDecimalText(input: string): string {
   const m = /^([+-]?)(\d*)(?:\.(\d*))?$/.exec(input.trim());
   if (!m) return input;

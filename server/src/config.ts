@@ -1,8 +1,8 @@
 /**
  * 기동 설정. **전부 환경변수로 받는다** — 일렉트론이 `utilityProcess`를 띄우며 넣어준다.
  *
- * 자바 때는 인자(`--spring.datasource.url=...`)로도 받았지만, 인자는 `ps`로 같은 계정의
- * 다른 프로세스에 보인다. 자격증명이 섞이는 값은 환경변수로만 받는다.
+ * 인자로는 안 받는다 — 인자는 `ps`로 같은 계정의 다른 프로세스에 보인다.
+ * 자격증명이 섞이는 값은 환경변수로만 받는다.
  */
 
 export type DbTarget =
@@ -17,10 +17,10 @@ export interface Config {
   dataRoot: string | null;
   /** 정적 프론트(`out/`) 폴더. 없으면 API만 연다 */
   staticDir: string | null;
-  /** dev·test에서만 `X-Member-Id` 헤더를 읽는다 (자바 `MemberIdOverride`) */
+  /** dev·test에서만 `X-Member-Id` 헤더를 읽는다 (테스트 장치, 인증 아님) */
   allowMemberOverride: boolean;
   /**
-   * 데스크탑 CORS를 거는가 — dev·test가 아니면 건다 (자바 `DesktopCorsConfig`는 `desktop` 프로필 전용이었다).
+   * 데스크탑 CORS를 거는가 — dev·test가 아니면 건다.
    * 개발 중엔 프론트 개발 서버가 프록시로 붙어서 출처가 `localhost:3000`이다 — 걸면 막힌다
    */
   desktopCors: boolean;
@@ -41,7 +41,7 @@ const blank = (v: string | undefined) => (v === undefined || v.trim() === "" ? n
 const flag = (v: string | undefined) => v?.trim().toLowerCase() === "true";
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
-  // `jdbc:postgresql://...` 형태도 받는다 — 연결 설정 화면이 자바 시절 형식으로 저장해 뒀다
+  // `jdbc:postgresql://...` 형태도 받는다 — 이미 저장된 연결 설정이 그 형식이다
   const dbUrl = blank(env.STARLOG_DB_URL)?.replace(/^jdbc:/, "") ?? null;
   const dbDir = blank(env.STARLOG_DB_DIR);
   if (!dbUrl && !dbDir) throw new Error("STARLOG_DB_DIR(로컬) 또는 STARLOG_DB_URL(클라우드) 중 하나가 필요합니다");

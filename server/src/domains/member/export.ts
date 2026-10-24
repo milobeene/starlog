@@ -1,9 +1,9 @@
 /**
- * 회원 데이터 내보내기 — 자바 `MemberExportService`.
+ * 회원 데이터 내보내기. 파일 형식은 `dump.ts`.
  *
- * 항목마다 회차·취득·장르를 따로 읽는다 (자바도 그랬다 — 하루 한 번 도는 백업이라 정확함이 속도보다 먼저).
- * 특히 **장르 연결은 자바와 같은 SQL 모양**(`where backlog_entry_id = ?`, 정렬 없음)으로 읽는다 —
- * 정렬이 없어 물리 순서가 곧 출력 순서이고, 조인으로 묶으면 실행 계획이 바뀌어 순서가 갈릴 수 있다.
+ * 항목마다 회차·취득·장르를 따로 읽는다 (하루 한 번 도는 백업이라 정확함이 속도보다 먼저).
+ * 특히 **장르 연결은 `where backlog_entry_id = ?`, 정렬 없음 모양**으로 읽는다 —
+ * 정렬이 없어 물리 순서가 곧 출력 순서이고, 조인으로 묶으면 실행 계획이 바뀌어 기존 파일과 순서가 갈릴 수 있다.
  */
 import { alias } from "drizzle-orm/pg-core";
 import { asc, eq } from "drizzle-orm";
@@ -27,7 +27,7 @@ export const gameKeyOf = (g: Pick<GameRow, "externalId" | "name">) =>
   g.externalId !== null ? `igdb:${g.externalId}` : `name:${g.name}`;
 
 /**
- * 자바 `LocalDateTime` JSON (`ISO_LOCAL_DATE_TIME`) — 소수 끝의 0은 안 찍는다.
+ * ISO 로컬 날짜시각 — 소수 끝의 0은 안 찍는다 (기존 파일과 같은 모양).
  * DB에서 온 값은 Postgres가 이미 그렇게 주므로 `ldt()`면 되고, 이건 지금 시각용이다
  */
 function nowLdt(): string {
@@ -35,7 +35,7 @@ function nowLdt(): string {
   return s.replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
 }
 
-/** `starlog-backup-20261024.json` (`BASIC_ISO_DATE`) */
+/** `starlog-backup-20261024.json` */
 export const backupFileName = (today: string) => `starlog-backup-${today.replaceAll("-", "")}.json`;
 
 export async function exportData(d: Db, memberId: number) {
@@ -47,10 +47,10 @@ export async function exportData(d: Db, memberId: number) {
     .where(eq(backlogEntry.memberId, memberId))
     .orderBy(asc(backlogEntry.id));
 
-  // 여러 항목이 같은 게임을 가리킬 수는 없지만(uk) 순서를 지키며 중복을 걷는다 (LinkedHashMap)
+  // 여러 항목이 같은 게임을 가리킬 수는 없지만(uk) 순서를 지키며 중복을 걷는다
   const games = new Map<string, ReturnType<typeof toGame>>();
   const exported = [];
-  // TreeSet<String> — 자바 문자열 비교는 UTF-16 단위라 JS 기본 정렬과 같다
+  // 쓰인 태그·장르는 UTF-16 코드 유닛 순으로 정렬한다 (JS 기본 정렬)
   const usedTags = new Set<string>();
   const usedGenres = new Set<string>();
 
@@ -103,10 +103,10 @@ function profile(m: MemberRow) {
 }
 
 /**
- * ⚠️ **자바 버그 그대로 옮겼다** — 계정의 소속을 `a.getPlatform().getName()`으로만 읽어서
+ * ⚠️ **알려진 버그 1 (`docs/v2-plan.md`) — 일부러 그대로 둔다.** 계정의 소속을 플랫폼으로만 읽어서
  * **에뮬레이터 소속 계정(platform = null)이 하나라도 있으면 NPE → 500**이다.
- * 형식 2의 `Account(label, platform)`에는 소속 종류 칸도 없다 (가져오기는 늘 `onPlatform`).
- * 고칠 때는 아래 `platformNameOf(a)` 한 줄을 `ownerName(a)`로 바꾸면 된다 (+ 형식에 소속 종류를 더할지 결정)
+ * 형식 2의 `accounts[]`(label, platform)에는 소속 종류 칸도 없다 (가져오기는 늘 플랫폼 계정으로 만든다).
+ * 고칠 때는 이 함수를 `ownerName(a.platform, a.emulator)`로 바꾸면 된다 (+ 형식에 소속 종류를 더할지 결정)
  */
 const platformNameOf = (a: SelectableAccount): string => (a.platform === null ? npe("account.platform") : a.platform.name);
 
@@ -156,7 +156,7 @@ function toGame(g: GameRow, c: { developers: string[]; publishers: string[]; mas
   };
 }
 
-/** `findByBacklogEntryId` 후 장르를 하나씩 — 연결 행 순서 그대로 */
+/** 연결 행 순서 그대로 장르를 하나씩 */
 async function genreNames(d: Db, entryId: number): Promise<string[]> {
   const links = await d.select().from(backlogEntryGenre).where(eq(backlogEntryGenre.backlogEntryId, entryId));
   const out: string[] = [];

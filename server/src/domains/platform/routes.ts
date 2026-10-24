@@ -1,5 +1,5 @@
 /**
- * 내 선택지 5종 (FR-PLT-01~04) — 자바 `platform` 패키지.
+ * 내 선택지 5종 (FR-PLT-01~04).
  * 플랫폼·플랫폼 계정·기기·에뮬레이터·입력 방식. 전부 회원 소유이고 **물리 삭제가 없다**
  * (회차·취득이 참조하므로 deletedAt만 찍는다 — §7.4).
  *
@@ -26,11 +26,6 @@ export const routes = new Hono<AppEnv>();
 
 // ───────────── 공통 ─────────────
 
-/**
- * 문자열 필드 — Jackson은 숫자·불리언도 문자열로 받는다 (`{"name": 5}` → `"5"`).
- * 객체·배열은 읽기 실패다
- */
-
 const CatalogNameRequest = z.object({ name: opt(zText) });
 const DeviceRequest = z.object({
   deviceType: opt(zText),
@@ -46,12 +41,12 @@ const PlatformAccountCreateRequest = z.object({
 const PlatformAccountRenameRequest = z.object({ accountLabel: opt(zText) });
 
 /**
- * `@NotBlank`. ⚠️ 하이버네이트는 `trim()`(U+0020 이하)이 아니라 `Character.isWhitespace` 기준이다 —
- * 전각 공백(U+3000)만 있어도 걸린다. 공용 `violations().notBlank`는 앞쪽 기준이라 여기서는 `normalize`로 본다
+ * 공백뿐이면 비었다고 본다. ⚠️ Hibernate Validator의 `@NotBlank`는 `trim()`(U+0020 이하)이 아니라
+ * `Character.isWhitespace` 기준이라 전각 공백(U+3000)만 있어도 걸린다. 그래서 `normalize`로 본다
  */
 const blank = (v: string | null) => normalize(v) === null;
 
-/** `@NotBlank @Size(max = 50)` */
+/** 이름: 비면 안 되고 50자 이하 */
 function checkName(field: string, v: string | null) {
   return violations()
     .when(blank(v), field, DEFAULT_MSG.notBlank)
@@ -104,7 +99,7 @@ routes.put("/api/me/platforms/:platformId", async (c) => {
     const p = requireAlive(await findPlatformRow(tx, platformId), memberId,
       `${NOT_FOUND.platform}. id=${platformId}`, (x) => x.name);
     const name = requireText(r.name, "플랫폼 이름은 비울 수 없습니다");
-    // 검증을 변경보다 먼저 (원칙 14번)
+    // 중복 검사를 변경보다 먼저
     const [other] = await tx.select({ id: platform.id }).from(platform)
       .where(and(eq(platform.memberId, memberId), eq(platform.name, name)));
     if (other && other.id !== platformId) throw new Conflict(`이미 있는 플랫폼입니다: ${name}`);
@@ -197,7 +192,7 @@ function checkDevice(r: z.output<typeof DeviceRequest>) {
     .size("memo", r.memo, 0, 2000, DEFAULT_MSG.size(0, 2000));
 }
 
-/** 엔티티 `apply` — 유형 → 라벨 순으로 검사한다 */
+/** 유형 → 라벨 순으로 검사한다 — 둘 다 비면 유형 메시지가 먼저 나간다 */
 function applyDevice(r: z.output<typeof DeviceRequest>) {
   return {
     deviceType: requireText(r.deviceType, "기기 유형은 비울 수 없습니다"),
@@ -241,7 +236,7 @@ routes.put("/api/me/devices/:deviceId", async (c) => {
     const cur = requireAlive(await findDeviceRow(tx, deviceId), memberId,
       `${NOT_FOUND.device}. id=${deviceId}`, (x) => x.label);
     const label = requireText(r.label, "기기 라벨은 비울 수 없습니다");
-    // 검증을 변경보다 먼저 (원칙 14번) — 라벨에 유니크 제약이 걸려 있다
+    // 중복 검사를 변경보다 먼저 — 라벨에 유니크 제약이 걸려 있다
     const [other] = await tx.select({ id: device.id }).from(device)
       .where(and(eq(device.memberId, memberId), eq(device.label, label)));
     if (other && other.id !== deviceId) throw new Conflict(`이미 있는 기기입니다: ${label}`);
@@ -346,7 +341,7 @@ routes.post("/api/me/platform-accounts", async (c) => {
       throw new InvalidInput("플랫폼이나 에뮬레이터 중 하나만 골라 주세요");
     }
     const p = r.platformId === null ? null : await platformFindAlive(tx, memberId, r.platformId);
-    // 에뮬레이터는 삭제된 것도 받는다 (자바 emulatorService.findOne)
+    // ⚠️ 에뮬레이터는 삭제된 것도 받는다 — 삭제된 에뮬레이터에도 계정이 생긴다 (알려진 버그 6, `docs/v2-plan.md`)
     const e = r.emulatorId === null ? null : await emulatorFindOne(tx, memberId, r.emulatorId);
 
     const label = requireText(r.accountLabel, "계정 라벨은 비울 수 없습니다");
@@ -417,6 +412,7 @@ routes.post("/api/me/platform-accounts/:accountId/revive", async (c) => {
   await db().transaction(async (tx) => {
     const a = await accountFindOne(tx, memberId, accountId);
     if (a.deletedAt === null) throw new Conflict(`삭제되지 않았습니다: ${a.accountLabel}`);
+    // ⚠️ 부모 플랫폼이 삭제돼 있어도 되살린다 (알려진 버그 5, `docs/v2-plan.md`)
     await tx.update(platformAccount).set({ deletedAt: null, updatedAt: nowKst() })
       .where(eq(platformAccount.id, accountId));
   });

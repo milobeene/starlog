@@ -1,9 +1,9 @@
 /**
- * 시각 — 전부 `Asia/Seoul` (자바 `AppClock`).
+ * 시각 — 전부 `Asia/Seoul`.
  *
  * ⚠️ **DB의 `now()`를 쓰지 않는다.** 컬럼이 `timestamp without time zone`이라 벽시계 값이 그대로
- * 저장되는데, 세션 시간대가 UTC면(Neon 기본) 9시간 밀린 값이 들어간다. 자바도 앱에서 KST로
- * 만들어 넣었다. **시각은 항상 여기서 만들어 파라미터로 넘긴다.**
+ * 저장되는데, 세션 시간대가 UTC면(Neon 기본) 9시간 밀린 값이 들어간다.
+ * **시각은 항상 여기서 만들어 파라미터로 넘긴다.**
  */
 
 const DATE_TIME = new Intl.DateTimeFormat("en-CA", {

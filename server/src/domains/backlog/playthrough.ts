@@ -1,5 +1,5 @@
 /**
- * 회차 (FR-PT-01~07) — 자바 `PlaythroughService` + `Playthrough` 엔티티의 불변식.
+ * 회차 (FR-PT-01~07) — 상태 불변식과 형제 회차 검증.
  */
 import { eq } from "drizzle-orm";
 import type { Db } from "../../db/client";
@@ -23,12 +23,12 @@ export interface PlaythroughCommand {
   label: string | null;
 }
 
-/** `Playthrough.apply` — 혼자 판단 가능한 규칙(BR-PT-01·04, 종료일과 상태의 짝) */
+/** 혼자 판단 가능한 규칙(BR-PT-01·04, 종료일과 상태의 짝) */
 function apply(cmd: PlaythroughCommand) {
   const { startedOn, finishedOn, status } = cmd;
   if (startedOn === null) throw new InvalidInput("시작일은 필수입니다");
   if (status === null) throw new InvalidInput("회차 상태는 필수입니다");
-  // 당일 완료도 유효 (isBefore)
+  // 당일 완료도 유효 (같은 날은 통과)
   if (finishedOn !== null && finishedOn < startedOn) {
     throw new InvalidInput(`종료일은 시작일 이후여야 합니다: ${startedOn} ~ ${finishedOn}`);
   }
@@ -42,7 +42,7 @@ function apply(cmd: PlaythroughCommand) {
 }
 
 type Span = Pick<PlaythroughRow, "sequenceNo" | "startedOn" | "finishedOn"> & { id: number | null };
-const MAX_DATE = "￿";      // LocalDate.MAX — 진행 중 회차는 시작일부터 무한대까지 점유한다
+const MAX_DATE = "￿";      // 진행 중 회차는 시작일부터 무한대까지 점유한다
 const until = (p: Span) => p.finishedOn ?? MAX_DATE;
 
 /** BR-PT-02 기간 겹침 (닫힌 구간 — 하루라도 닿으면 겹침) */
@@ -60,7 +60,7 @@ function validateAgainstSiblings(target: Span, siblings: Span[]) {
 }
 
 /**
- * 참조 조회 — 넷 다 남의 것을 못 붙인다. 순서도 자바와 같다 (기기 → 플랫폼 → 계정 → 에뮬 → 입력).
+ * 참조 조회 — 넷 다 남의 것을 못 붙인다. 조회 순서가 곧 오류 우선순위다 (기기 → 플랫폼 → 계정 → 에뮬 → 입력).
  * 플랫폼과 에뮬이 둘 다 오면 **에뮬을 버린다** (예외 아님 — 옛 데이터를 고치는 중간 상태라서)
  */
 async function resolveReferences(d: Db, ownerId: number, cmd: PlaythroughCommand) {
@@ -128,7 +128,7 @@ export async function updatePlaythrough(d: Db, memberId: number, playthroughId: 
   await syncEntry(d, entry, siblings.map((s) => (s.id === pt.id ? { ...s, ...after } : s)));
 }
 
-/** 물리 삭제. 항목이 이 회차를 가리키고 있을 수 있어 **항목부터** 고친다 (하이버네이트도 UPDATE가 DELETE보다 먼저) */
+/** 물리 삭제. 항목이 이 회차를 가리키고 있을 수 있어 **항목부터** 고친다 (참조를 먼저 끊어야 FK에 안 걸린다) */
 export async function deletePlaythrough(d: Db, memberId: number, playthroughId: number) {
   const { pt, entry } = await findOwnedPlaythrough(d, memberId, playthroughId);
   const rest = (await playthroughsOf(d, entry.id)).filter((s) => s.id !== pt.id);

@@ -1,8 +1,8 @@
 /**
- * 태그·장르 서비스 중 **백로그가 부르는 부분** — 자바 `TagService`·`GenreService`.
+ * 태그·장르 서비스 중 **백로그가 부르는 부분**.
  * (사전 관리 — 이름·색·순서·삭제 — 는 `routes.ts`)
  *
- * 자바는 `BacklogEntryFinder`를 썼는데, 백로그 도메인을 import하지 않으려고 항목 확인을 여기 로컬로 둔다.
+ * 백로그 도메인을 import하지 않으려고 항목 확인을 여기 로컬로 둔다.
  */
 import { and, asc, eq, getTableColumns, inArray, isNull } from "drizzle-orm";
 import type { Db } from "../../db/client";
@@ -14,7 +14,7 @@ import { normalize } from "../../common/text";
 export type TagRow = typeof tag.$inferSelect;
 export type GenreRow = typeof genre.$inferSelect;
 
-/** `BacklogEntryFinder.findOwned` — 살아있는 내 항목만. 남의 것도 404 (NFR-S7) */
+/** 살아있는 내 항목만. 남의 것도 404 (NFR-S7) */
 async function findOwnedEntry(d: Db, memberId: number, entryId: number) {
   const [entry] = await d.select().from(backlogEntry).where(eq(backlogEntry.id, entryId));
   if (!entry || entry.memberId !== memberId) throw new NotFound(`백로그 항목을 찾을 수 없습니다. id=${entryId}`);
@@ -37,7 +37,7 @@ async function tagFindOrCreate(d: Db, memberId: number, name: string): Promise<T
   const found = await findTagByName(d, memberId, name);
   if (found) return found;
   const now = nowKst();
-  // sortOrder는 자바 엔티티의 int 기본값 0 — 새 태그는 맨 앞에 같은 값으로 들어가고 이름으로 tie-break된다
+  // sortOrder 기본값은 0 — 새 태그는 맨 앞에 같은 값으로 들어가고 이름으로 tie-break된다
   const [row] = await d.insert(tag)
     .values({ memberId, name, sortOrder: 0, color: null, createdAt: now, updatedAt: now })
     .returning();
@@ -60,7 +60,7 @@ export async function changeTag(d: Db, memberId: number, entryId: number, name: 
   const entry = await findOwnedEntry(d, memberId, entryId);
   const normalized = normalize(name);
   const next = normalized === null ? null : await tagFindOrCreate(d, entry.memberId, normalized);
-  // 하이버네이트는 값이 실제로 바뀐 때만 UPDATE한다
+  // 값이 실제로 바뀐 때만 UPDATE한다 (기존 변경 감지와 같다 — `updated_at`이 안 움직여야 한다)
   if ((next?.id ?? null) !== entry.tagId) {
     await d.update(backlogEntry).set({ tagId: next?.id ?? null, updatedAt: nowKst() }).where(eq(backlogEntry.id, entryId));
   }
@@ -94,7 +94,7 @@ export async function findGenreDictionary(d: Db, memberId: number): Promise<Genr
 /** 항목의 개인 장르 전체 교체 (FR-TAG-05). 뗄 때는 연결만 지운다 — 사전 행은 조회에서 거른다 */
 export async function replaceGenres(d: Db, memberId: number, entryId: number, names: readonly (string | null)[] | null) {
   const entry = await findOwnedEntry(d, memberId, entryId);
-  // 입력 순서를 유지하면서 중복을 제거한다 (LinkedHashSet)
+  // 입력 순서를 유지하면서 중복을 제거한다
   const wanted = [...new Set((names ?? []).map(normalize).filter((n): n is string => n !== null))];
 
   const existing = await d.select({ linkId: backlogEntryGenre.id, name: genre.name })
@@ -106,7 +106,7 @@ export async function replaceGenres(d: Db, memberId: number, entryId: number, na
   const drop = existing.filter((l) => !wanted.includes(l.name)).map((l) => l.linkId);
   const current = new Set(existing.map((l) => l.name));
 
-  // 하이버네이트 액션 큐 순서 — INSERT가 DELETE보다 먼저 나간다
+  // INSERT를 DELETE보다 먼저 보낸다 (기존 Hibernate 액션 큐 순서)
   for (const name of wanted.filter((n) => !current.has(n))) {
     const g = await genreFindOrCreate(d, entry.memberId, name);
     const now = nowKst();

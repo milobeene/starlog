@@ -1,5 +1,5 @@
 /**
- * IGDB — 자바 `game/client` (`IgdbProperties`·`IgdbTokenProvider`·`HttpIgdbClient`).
+ * IGDB 클라이언트.
  *
  * 바깥 세계의 형태(APIcalypse 본문, snake_case, Unix 타임스탬프, 초 단위 시간)를 여기 가둔다.
  * 밖으로 나가는 건 `CatalogGameSummary`·`CatalogGameDetail`뿐이다.
@@ -13,12 +13,12 @@ import { scale2 } from "../../common/money";
 import { igdbCredentials, igdbCredentialsPresent, recordApiCall, type IgdbCredentials } from "../system/service";
 import { isJavaBlank, javaStrip } from "../../common/text";
 
-// ───────────── 설정 (자바 `IgdbProperties` 기본값) ─────────────
+// ───────────── 설정 ─────────────
 
 export const IGDB = {
   baseUrl: "https://api.igdb.com/v4",
   tokenUrl: "https://id.twitch.tv/oauth2/token",
-  /** 자바는 연결 3초 + 읽기 5초였다. fetch엔 둘의 구분이 없어 합으로 끊는다 */
+  /** fetch엔 연결/읽기 타임아웃 구분이 없어 합쳐서(연결 3초 + 읽기 5초) 끊는다 */
   timeoutMs: 8_000,
   searchLimit: 20,
   /** 만료 이 시간 전부터 미리 갱신 (1일) */
@@ -58,12 +58,12 @@ export interface CatalogGameDetail {
 
 // ───────────── HTTP 공통 ─────────────
 
-/** 자바 `RestClientException` 자리 — 4xx·5xx·연결 실패·해석 실패가 전부 이리로 */
+/** HTTP 호출 실패 — 4xx·5xx·연결 실패·해석 실패가 전부 이리로 */
 export class RestFailure extends Error {
   constructor(readonly status: number | null, message: string, override readonly cause?: unknown) { super(message); }
 }
 
-/** 응답 본문 JSON. 빈 본문은 null (자바 `body(type)`도 null) */
+/** 응답 본문 JSON. 빈 본문은 null */
 export async function restCall(url: string, init: RequestInit, timeoutMs: number | null): Promise<unknown> {
   let res: Response;
   try {
@@ -81,11 +81,12 @@ export async function restCall(url: string, init: RequestInit, timeoutMs: number
   try { return JSON.parse(text); } catch (e) { throw new RestFailure(null, "응답 해석 실패", e); }
 }
 
-// ───────────── 토큰 (자바 `IgdbTokenProvider`) ─────────────
+// ───────────── 토큰 ─────────────
 
 interface CachedToken { value: string; expiresAt: number }
+/** ⚠️ 자격증명별 캐시가 아니다 — 키를 바꿔도 401을 받기 전까지 옛 토큰을 쓴다 (알려진 버그 13, `docs/v2-plan.md`) */
 let cached: CachedToken | null = null;
-/** 자바 `synchronized issue()` — 동시에 만료를 발견해도 발급은 한 번 */
+/** 동시에 만료를 발견해도 발급은 한 번 */
 let issuing: Promise<string> | null = null;
 
 const usable = (t: CachedToken | null, now = Date.now()) => t !== null && now < t.expiresAt - IGDB.tokenRenewMarginMs;
@@ -107,7 +108,7 @@ export async function forceRefresh(): Promise<string> {
 }
 
 function issue(): Promise<string> {
-  // 줄을 선 사이 다른 요청이 이미 받아뒀을 수 있다 (자바의 double-checked)
+  // 줄을 선 사이 다른 요청이 이미 받아뒀을 수 있다
   const run = async (): Promise<string> => {
     if (usable(cached)) return cached!.value;
     const c = await credentials();
@@ -135,12 +136,12 @@ function issue(): Promise<string> {
   return p.finally(() => { if (issuing === p) issuing = null; });
 }
 
-/** 자바는 값을 URI 템플릿에 그대로 넣었다(인코딩은 URL에 못 들어가는 글자만) — 같은 결과가 나오게 */
+/** `encodeURI`만 쓴다 — URL에 못 들어가는 글자만 인코딩되고 `&`·`+` 같은 건 그대로 나간다 (그래야 요청 URL이 이전과 같다) */
 export function tokenUrl(clientId: string, clientSecret: string): string {
   return `${IGDB.tokenUrl}?client_id=${encodeURI(clientId)}&client_secret=${encodeURI(clientSecret)}&grant_type=client_credentials`;
 }
 
-// ───────────── 전역 게이트 (자바 `Semaphore(6, fair)` + 간격 잠금) ─────────────
+// ───────────── 전역 게이트 (동시 자리 + 호출 간격) ─────────────
 
 let permits: number = IGDB.maxConcurrent;
 const waiters: { grant: () => void }[] = [];
@@ -182,7 +183,7 @@ async function throttle(): Promise<void> {
   await turn;
 }
 
-// ───────────── 호출 (자바 `HttpIgdbClient.post`·`send`) ─────────────
+// ───────────── 호출 ─────────────
 
 class Unauthorized extends Error {}
 
@@ -217,7 +218,7 @@ async function send(endpoint: string, query: string, bearer: string): Promise<un
       headers: { "Client-ID": c.clientId ?? "", Authorization: `Bearer ${bearer}`, Accept: "application/json", "Content-Type": "text/plain" },
       body: query,
     }, IGDB.timeoutMs);
-    // 자바는 `List<...>`로 역직렬화했다 — 배열이 아니면 그 단계에서 실패(→ 502, 실패로 기록)
+    // 배열이 아니면 해석 실패 (→ 502, 실패로 기록)
     if (body !== null && !Array.isArray(body)) throw new RestFailure(null, "응답 해석 실패");
     succeeded = true;
     return body;
@@ -319,8 +320,8 @@ function toLocalDate(unixSeconds: number | null): string | null {
 }
 
 /**
- * 초 → 시간. 0 이하는 자료 없음. ⚠️ 자바는 `Math.round(seconds / 3600f)` — **float** 나눗셈이다.
- * 경계값에서 double과 반올림이 갈릴 수 있어 `fround`로 같은 정밀도를 만든다
+ * 초 → 시간. 0 이하는 자료 없음. ⚠️ **float(32비트)** 정밀도로 나눈 뒤 반올림한다 —
+ * double로 나누면 경계값에서 반올림이 갈릴 수 있어 `fround`로 맞춘다
  */
 function toHours(seconds: number | null): number | null {
   if (seconds === null || seconds <= 0) return null;
@@ -328,7 +329,7 @@ function toHours(seconds: number | null): number | null {
   return Math.floor(f + 0.5);
 }
 
-/** 0 이하·없음은 null. 자바 `BigDecimal.valueOf(double)`은 `Double.toString` — JS의 가장 짧은 표기와 같다 */
+/** 0 이하·없음은 null. 숫자의 가장 짧은 표기(`String(rating)`) 그대로 scale 2로 맞춘다 */
 function toRating(rating: number | null): string | null {
   if (rating === null || rating <= 0) return null;
   return scale2(String(rating));
@@ -368,7 +369,7 @@ function firstOf(blocks: unknown, name: string): NonNullable<Node> | null {
   return null;
 }
 
-/** 자바 `Long.parseLong(strip)`. APIcalypse 본문에 끼워 넣으니 숫자 확인이 곧 인젝션 방어다 */
+/** 64비트 정수만 받는다. APIcalypse 본문에 끼워 넣으니 숫자 확인이 곧 인젝션 방어다 */
 function parseId(externalId: string): bigint {
   const s = javaStrip(externalId);
   if (/^[+-]?\d+$/.test(s)) {

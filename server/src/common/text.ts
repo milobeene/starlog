@@ -1,12 +1,13 @@
 /**
- * 문자열 규칙 — 자바 `TextValues`·`SortKeys`·`Slugs`를 그대로.
+ * 문자열 규칙 — 공백 정리, 정렬 키, 폴더 슬러그.
+ * 기존 데이터(정렬 키·폴더 이름)가 이 규칙으로 만들어져 있어 바꾸면 어긋난다.
  */
 import { InvalidInput } from "./errors";
 
 /**
  * 앞뒤 공백 제거(`strip` — 유니코드 공백까지), 빈 문자열은 null로 수렴.
- * 자바 `String.strip()`은 `Character.isWhitespace` 기준이다 — JS `trim()`과 거의 같지만
- * NBSP(U+00A0)는 자바에선 공백이 아니고 JS `trim()`에선 공백이다. 자바 쪽에 맞춘다
+ * 기존 서버의 `String.strip()`(`Character.isWhitespace` 기준)에 맞춘다 — JS `trim()`과 거의 같지만
+ * NBSP(U+00A0)는 공백으로 안 본다
  */
 export function normalize(value: string | null | undefined): string | null {
   if (value === null || value === undefined) return null;
@@ -20,14 +21,14 @@ export function require(value: string | null | undefined, message: string): stri
   return n;
 }
 
-/** 목록 정리 — 정규화 후 null 제거 (`TextValues.replaceAll`) */
+/** 목록 정리 — 정규화 후 null 제거 */
 export function normalizeAll(values: readonly (string | null | undefined)[] | null | undefined): string[] {
   if (!values) return [];
   return values.map(normalize).filter((v): v is string => v !== null);
 }
 
 /**
- * 자바 `Character.isWhitespace` — 공백 문자 중 NBSP(00A0·2007·202F) 제외 + 제어문자 09~0D·1C~1F.
+ * 자바 `Character.isWhitespace` 기준 공백 — 공백 문자 중 NBSP(00A0·2007·202F) 제외 + 제어문자 09~0D·1C~1F.
  * 정규식으로 안 쓰는 이유: U+2028·2029가 줄바꿈이라 글자째 들어가면 정규식 리터럴이 깨진다
  */
 export function isJavaWhitespace(c: number): boolean {
@@ -36,14 +37,14 @@ export function isJavaWhitespace(c: number): boolean {
     || c === 0x2028 || c === 0x2029 || c === 0x205f || c === 0x3000;
 }
 
-/** 자바 `String.isBlank()` (null도 빈 것으로) */
+/** 공백뿐이거나 null이면 true */
 export function isJavaBlank(v: string | null | undefined): boolean {
   if (v === null || v === undefined) return true;
   for (let i = 0; i < v.length; i++) if (!isJavaWhitespace(v.charCodeAt(i))) return false;
   return true;
 }
 
-/** 자바 `String.strip()` */
+/** `strip` — 위 기준의 공백을 앞뒤에서 걷어낸다 */
 export function javaStrip(s: string): string {
   let a = 0, b = s.length;
   while (a < b && isJavaWhitespace(s.charCodeAt(a))) a++;
@@ -52,7 +53,7 @@ export function javaStrip(s: string): string {
 }
 
 /**
- * 정렬 키 — 숫자·기호 → 라틴 → 한글 → 나머지 순으로 묶고 소문자 이름을 붙인다 (`SortKeys.of`).
+ * 정렬 키 — 숫자·기호 → 라틴 → 한글 → 나머지 순으로 묶고 소문자 이름을 붙인다.
  * 첫 글자로 그룹을 정한다
  */
 export function sortKey(displayName: string | null | undefined): string | null {
@@ -72,7 +73,7 @@ function group(cp: number): string {
 }
 
 /**
- * 폴더 이름용 슬러그 (`Slugs.of`) — 결합 문자 제거, 소문자, 글자·숫자 아닌 건 `-`, 최대 80자.
+ * 폴더 이름용 슬러그 — 결합 문자 제거, 소문자, 글자·숫자 아닌 건 `-`, 최대 80자.
  * ⚠️ 한글은 NFD로 자모가 갈라졌다가 NFC로 다시 붙는다 — 결합 문자(\p{M})만 지우므로 한글은 살아남는다
  */
 export function slug(name: string | null | undefined): string {

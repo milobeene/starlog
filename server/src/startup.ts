@@ -1,5 +1,5 @@
 /**
- * 기동 직후 할 일 — 자바 `StartupCleanup`.
+ * 기동 직후 할 일.
  * **실패가 기동을 막으면 안 된다.** 정리 없이도 서비스는 멀쩡히 돈다.
  */
 import { lt } from "drizzle-orm";
@@ -7,7 +7,7 @@ import { db } from "./db/client";
 import { apiCallLog } from "./db/schema";
 import { nowKst } from "./common/clock";
 
-/** API 호출 기록 보존 기간 (자바 `SystemStatusService.RETENTION_DAYS`) */
+/** API 호출 기록 보존 기간 */
 export const API_CALL_RETENTION_DAYS = 30;
 
 export async function runStartupTasks() {

@@ -1,5 +1,5 @@
 /**
- * 취득 (FR-ACQ-01~06) — 자바 `AcquisitionService` + `Acquisition` 엔티티.
+ * 취득 (FR-ACQ-01~06).
  * 형제 검증이 없다 — 재구매도 DLC도 별도 행이 정상이다
  */
 import { eq } from "drizzle-orm";
@@ -25,7 +25,7 @@ export interface AcquisitionCommand {
   label: string | null;
 }
 
-/** `Acquisition.apply`. SUBSCRIPTION인데 연결이 없는 건 허용한다 — 제약 최소화 */
+/** 명령을 검사해 저장 값으로 바꾼다. SUBSCRIPTION인데 연결이 없는 건 허용한다 — 제약 최소화 */
 function apply(cmd: AcquisitionCommand) {
   if (cmd.method === null) throw new InvalidInput("취득 방식은 필수입니다");
   if (cmd.subscriptionId !== null && cmd.method !== "SUBSCRIPTION") {

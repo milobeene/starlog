@@ -1,5 +1,5 @@
 /**
- * 마스터 게임 — 자바 `GameController` (`/api/games`).
+ * 마스터 게임 (`/api/games`).
  *
  * 회원 식별이 없는 유일한 구역이다 — 마스터는 공용 데이터라 내 것/남의 것이 없다.
  * `/api/admin`이 사라지며 이름·정보 수정·재동기화·삭제가 여기로 합쳐졌다 (1인 앱이라 인가가 없다).
@@ -37,7 +37,7 @@ const MasterInfoUpdateRequest = z.object({
   listPrice: zMoney,
 });
 
-/** `MoneyRequest.toMoney` — 금액이 없으면 통째로 없는 것. 컨트롤러에서 서비스보다 **먼저** 돈다 (검증 순서) */
+/** 금액이 없으면 통째로 없는 것. 서비스보다 **먼저** 돈다 (검증 순서) */
 function toMoney(m: z.output<typeof zMoney>): Money | null {
   if (m === null || m === undefined || m.amount === null || m.amount === undefined) return null;
   return money(m.amount, m.currency ?? null);

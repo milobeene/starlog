@@ -1,8 +1,8 @@
 /**
- * 연결 테스트 — 자바 `IgdbConnectionTester`·`TranslationConnectionTester`.
+ * 연결 테스트 — IGDB·번역 키.
  *
  * **저장하지 않은 값으로 시험한다.** 저장부터 하면 틀린 키가 들어간 뒤에야 알게 되고 그 사이 검색이 다 502다.
- * 둘 다 호출 기록(`api_call_log`)을 남기지 않는다 — 자바도 안 남겼다.
+ * 둘 다 호출 기록(`api_call_log`)을 남기지 않는다.
  */
 import { IGDB, RestFailure, restCall, tokenUrl } from "../game/igdb";
 import { isJavaBlank, javaStrip } from "../../common/text";
@@ -14,7 +14,7 @@ export interface IgdbTestResult { ok: boolean; tokenIssued: boolean; searchWorks
  * 단계를 나눠 준다 — "실패했습니다" 한 줄이면 키가 틀린 건지 인터넷이 없는 건지 알 수 없다.
  *   1. 토큰 발급 (Twitch) — 키가 맞나
  *   2. 검색 한 번 (IGDB) — 실제로 도나
- * 자바는 부트 기본 RestClient라 타임아웃이 없었다 — 여기도 두지 않는다
+ * 타임아웃은 두지 않는다
  */
 export async function testIgdb(clientId: string | null, clientSecret: string | null): Promise<IgdbTestResult> {
   if (isJavaBlank(clientId) || isJavaBlank(clientSecret)) {
@@ -31,7 +31,7 @@ export async function testIgdb(clientId: string | null, clientSecret: string | n
     console.log("IGDB 토큰 발급 실패 — 테스트", e.message);
     return { ok: false, tokenIssued: false, searchWorks: false, message: "키가 거부되었습니다. 클라이언트 ID와 시크릿을 확인해 주세요" };
   }
-  // 자바 `(String) response.get("access_token")` — 문자열이 아니면 ClassCastException(500)이었다
+  // 문자열이 아니면 평범한 예외 → 500
   if (token !== null && typeof token !== "string") throw new Error("access_token이 문자열이 아니다");
   if (token === null) return { ok: false, tokenIssued: false, searchWorks: false, message: "토큰을 받지 못했습니다" };
 

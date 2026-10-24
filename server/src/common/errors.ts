@@ -1,8 +1,8 @@
 /**
- * 실패 응답 — 자바 `GlobalExceptionHandler`와 **같은 상태코드·같은 JSON**을 낸다.
+ * 실패 응답 — 화면이 기대하는 **상태코드와 `{code, message}` JSON**을 낸다.
  *
  * 화면은 `{code, message}`만 알아본다. 형태가 다르면 코드도 메시지도 못 꺼내고 기본 문구를 띄운다
- * (자바 시절 "올리지 못했습니다"만 뜨던 사고가 정확히 그것이었다).
+ * ("올리지 못했습니다"만 뜨던 사고가 정확히 그것이었다).
  */
 
 export class AppError extends Error {
@@ -36,7 +36,7 @@ export class Conflict extends AppError {
 
 /**
  * 409 — 삭제된 행이 이미 있어 되살리기가 가능한 상태 (§7.4).
- * 자바는 예외 타입 → 라우트 매핑을 전역 핸들러가 쥐었는데, 여기선 던지는 쪽이 라우트를 같이 준다.
+ * 던지는 쪽이 되살리기 라우트를 같이 준다.
  * 되살리기 라우트는 둘뿐이다: `/api/backlog/{id}/revive`, `/api/me/platform-accounts/{id}/revive`
  */
 export class Revivable extends AppError {
@@ -53,7 +53,7 @@ export class TooManyRequests extends AppError {
   constructor(code: string, message: string) { super(429, code, message); }
 }
 
-/** 외부 서비스 이름 — 자바 `ExternalApiException.Service` */
+/** 외부 서비스 이름 — 사용자에게 보이는 문구 */
 export const EXTERNAL_SERVICE = {
   GAME_CATALOG: "게임 정보 서비스",
   FILE_STORAGE: "이미지 저장소",
@@ -101,11 +101,9 @@ export function sqlState(e: unknown): string | null {
 }
 
 /**
- * 자바에서 `DataIntegrityViolationException`(→ 409 `CONSTRAINT_VIOLATION`)이 되던 오류들.
- * 하이버네이트는 SQLSTATE **클래스** 21·22(데이터 — 길이 초과·숫자 범위)를 `DataException`으로,
- * 23·27·44(무결성 — 유니크·FK·NOT NULL·CHECK)를 `ConstraintViolationException`으로 바꾸고,
- * 스프링은 둘 다 `DataIntegrityViolationException`으로 넘긴다.
- * 처음엔 23만 봤다 — 닉네임 31자 가져오기에서 자바 409 / TS 500으로 실측해 고쳤다 (2026-10-24)
+ * 409 `CONSTRAINT_VIOLATION`이 되는 SQLSTATE **클래스**. 기존 서버(Hibernate+Spring)가 21·22(데이터 —
+ * 길이 초과·숫자 범위)와 23·27·44(무결성 — 유니크·FK·NOT NULL·CHECK)를 모두 이 오류로 묶었고, 화면이 그걸 안다.
+ * 처음엔 23만 봤다 — 닉네임 31자 가져오기에서 409가 아닌 500이 나와 고쳤다 (2026-10-24)
  */
 const INTEGRITY_CLASSES = new Set(["21", "22", "23", "27", "44"]);
 export const isIntegrityViolation = (e: unknown) => INTEGRITY_CLASSES.has(sqlState(e)?.slice(0, 2) ?? "");

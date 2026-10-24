@@ -1,6 +1,5 @@
 /**
- * 선택지 5종의 조회 서비스 — 자바 `PlatformService`·`PlatformAccountService`·`DeviceService`·
- * `EmulatorService`·`InputMethodService`·`OwnedCatalog`의 **다른 도메인이 쓰는 부분**.
+ * 선택지 5종(플랫폼·계정·기기·에뮬레이터·입력방식)의 조회 — **다른 도메인이 쓰는 부분**.
  * 백로그(취득·회차)와 member(내 정보·옵션)가 가져다 쓴다. 쓰기는 `routes.ts`.
  *
  * 첫 인자가 `Db`라 트랜잭션(tx)도 그대로 넘길 수 있다.
@@ -27,7 +26,7 @@ export const NOT_FOUND = {
 type Owned = { memberId: number; deletedAt: string | null };
 
 /**
- * 삭제된 것도 돌려준다 (`OwnedCatalog.require`). 과거 기록에 붙은 항목을 읽을 때 필요하다.
+ * 삭제된 것도 돌려준다. 과거 기록에 붙은 항목을 읽을 때 필요하다.
  * "없음"과 "남의 것"을 같은 404로 뭉갠다 (NFR-S7)
  */
 export function requireOwned<T extends Owned>(row: T | undefined, memberId: number, message: string): T {
@@ -35,7 +34,7 @@ export function requireOwned<T extends Owned>(row: T | undefined, memberId: numb
   return row;
 }
 
-/** 수정·삭제 대상 (`OwnedCatalog.requireAlive`). 이미 지운 것을 또 만지려는 요청을 끊는다 */
+/** 수정·삭제 대상. 이미 지운 것을 또 만지려는 요청을 끊는다 */
 export function requireAlive<T extends Owned>(
   row: T | undefined, memberId: number, message: string, displayName: (r: T) => string,
 ): T {
@@ -87,7 +86,7 @@ export type SelectableAccount = PlatformAccountRow & {
 
 /**
  * 회차·취득 입력 시 고를 수 있는 계정. 삭제된 건 빠진다.
- * 소속(플랫폼 또는 에뮬) 이름으로 묶어 정렬한다 — 자바 JPQL `order by coalesce(p.name, e.name), accountLabel, id`
+ * 소속(플랫폼 또는 에뮬) 이름 → 라벨 → id 순으로 정렬한다
  */
 export async function accountFindSelectable(d: Db, memberId: number): Promise<SelectableAccount[]> {
   const rows = await d.select({ a: platformAccount, p: platform, e: emulator })
@@ -117,7 +116,7 @@ export async function deviceFindSelectable(d: Db, memberId: number): Promise<Dev
     .orderBy(asc(device.label));
 }
 
-/** 선택지에 찍히는 이름 (`Device.optionLabel`) */
+/** 선택지에 찍히는 이름 */
 export const deviceOptionLabel = (r: Pick<DeviceRow, "label" | "deviceType">) =>
   r.label === r.deviceType ? r.label : `${r.label} (${r.deviceType})`;
 

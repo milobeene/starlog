@@ -12,9 +12,9 @@ export {
 } from "../platform/service";
 
 /**
- * `PlatformAccount.belongsTo` 그대로.
+ * 계정이 그 소속(플랫폼 또는 에뮬레이터)의 것인지.
  *
- * ⚠️ 자바 버그를 옮겼다 — 소속 id(플랫폼 **또는** 에뮬레이터)를 물어본 id와 숫자로만 비교한다.
+ * ⚠️ 알려진 버그 14(`docs/v2-plan.md`)를 그대로 둔다 — 소속 id(플랫폼 **또는** 에뮬레이터)를 물어본 id와 숫자로만 비교한다.
  * 플랫폼 3과 에뮬레이터 3은 다른 것인데 같다고 본다. 테이블이 달라 id가 겹칠 수 있다
  */
 export function belongsTo(account: PlatformAccountRow, platformId: number | null, emulatorId: number | null) {

@@ -1,5 +1,5 @@
 /**
- * 시스템 화면 — 자바 `SystemController`(`/api/system`) + `AppSettingController`(`/api/system/settings`).
+ * 시스템 화면 (`/api/system`, `/api/system/settings`).
  *
  * 인가가 없다 — 한 설치 = 한 사람이라 막을 상대가 없다. 로컬이든 클라우드든 내 사용량은 내가 본다.
  */
@@ -16,12 +16,12 @@ import { javaStrip } from "../../common/text";
 
 const optStr = zText.nullish().transform((v) => v ?? null);
 
-/** ⚠️ 자바 DTO에 `@NotNull`이 있지만 컨트롤러에 `@Valid`가 없어 검사가 안 돈다 — null이면 아래 `strip()`에서 500 */
+/** ⚠️ 필수 검증이 없다 — null이면 아래 `strip()`에서 500 (알려진 버그 7, `docs/v2-plan.md`) */
 const IgdbRequest = z.object({ clientId: optStr, clientSecret: optStr });
 const TranslateKeyRequest = z.object({ apiKey: optStr });
 const DailyLimitRequest = z.object({ dailyChars: optStr });
 
-/** 자바 `value.strip()` — null이면 NPE(→ 500, 전역 핸들러가 모르는 예외) */
+/** 앞뒤 공백 제거. null이면 평범한 예외(→ 500, 전역 핸들러가 모르는 예외) */
 function strip(v: string | null): string {
   if (v === null) throw new TypeError("Cannot invoke \"String.strip()\" because value is null");
   return javaStrip(v);
@@ -52,7 +52,7 @@ routes.get("/api/system/settings", async (c) => {
   });
 });
 
-/** ⚠️ 하나씩 따로 커밋된다 — 시크릿이 null이면 ID는 이미 저장된 뒤 500이다 (자바 그대로) */
+/** ⚠️ 하나씩 따로 커밋된다 — 시크릿이 null이면 ID는 이미 저장된 뒤 500이다 (알려진 버그 7, `docs/v2-plan.md`) */
 routes.put("/api/system/settings/igdb", async (c) => {
   const r = await readBody(c, IgdbRequest);
   await putSetting(SETTING.IGDB_CLIENT_ID, strip(r.clientId));

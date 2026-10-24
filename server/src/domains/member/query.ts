@@ -1,8 +1,8 @@
 /**
- * 화면 4(프로필·설정)와 편집 폼 선택지 — 자바 `MeQueryService` + `MemberService`.
+ * 화면 4(프로필·설정)와 편집 폼 선택지.
  *
  * 여러 도메인을 가로질러 읽는다 (API 설계서 §0의 "화면 단위 조회 전용 서비스").
- * 선택지 다섯 종은 platform 도메인의 `findSelectable`을 그대로 쓴다 — 정렬까지 그쪽이 자바와 맞춰 뒀다.
+ * 선택지 다섯 종은 platform 도메인의 `findSelectable`을 그대로 쓴다 — 정렬까지 그쪽이 맞춰 뒀다.
  */
 import { desc, eq } from "drizzle-orm";
 import type { Db } from "../../db/client";
@@ -25,7 +25,7 @@ export async function findMember(d: Db, memberId: number): Promise<MemberRow> {
   return row;
 }
 
-/** 구독은 물리 삭제라 소프트 삭제 조건이 없다. 같은 시작일끼리는 2차 정렬이 없다 (자바와 같은 SQL) */
+/** 구독은 물리 삭제라 소프트 삭제 조건이 없다. 같은 시작일끼리는 2차 정렬이 없다 (기존 응답 순서 그대로) */
 export function subscriptionsOf(d: Db, memberId: number) {
   return d.select().from(subscription).where(eq(subscription.memberId, memberId)).orderBy(desc(subscription.startedOn));
 }
@@ -33,14 +33,14 @@ export function subscriptionsOf(d: Db, memberId: number) {
 /** **null이면 빈 목록이 아니라 null** — "기본값을 따른다"와 "다섯 칸이 비었다"는 다른 뜻이다 */
 export const colorsOf = (colors: string | null) => (colors === null ? null : javaSplit(colors, ","));
 
-/** 자바 `String.split` — 끝의 빈 조각은 버린다 */
+/** 끝의 빈 조각을 버리는 split — 기존 응답과 같은 모양 */
 function javaSplit(s: string, sep: string): string[] {
   const parts = s.split(sep);
   while (parts.length > 1 && parts[parts.length - 1] === "") parts.pop();
   return parts.length === 1 && parts[0] === "" && s !== "" ? [] : parts;
 }
 
-/** `GET /api/me` — `MeResponse` */
+/** `GET /api/me` */
 export async function findMe(d: Db, memberId: number) {
   const m = await findMember(d, memberId);
   const ref = (r: { id: number; name: string } | null) => (r === null ? null : { id: r.id, name: r.name });
@@ -79,7 +79,7 @@ export async function findMe(d: Db, memberId: number) {
 }
 
 /**
- * `GET /api/me/options` — `OptionsResponse`. **회원을 확인하지 않는다** (자바도 안 했다 — 없는 회원이면 빈 목록).
+ * `GET /api/me/options`. **회원을 확인하지 않는다** (없는 회원이면 404가 아니라 빈 목록).
  * 태그·장르 사전은 살아있는 항목에 붙은 것만 (§6.7 자동 소멸)
  */
 export async function findOptions(d: Db, memberId: number) {
@@ -103,12 +103,12 @@ export async function findOptions(d: Db, memberId: number) {
   };
 }
 
-// ───────────── 프로필 (Member.updateProfile · changeBackgroundColors) ─────────────
+// ───────────── 프로필 ─────────────
 
 /** `#RRGGBB` ×5, 쉼표 구분. 대소문자는 받아서 대문자로 통일한다 */
 export const PALETTE = /^(#[0-9a-fA-F]{6})(,#[0-9a-fA-F]{6}){4}$/;
 
-/** 엔티티 쪽 검증 — 컨트롤러의 `@Pattern`만 믿지 않는다 (이 값은 그대로 셰이더 uniform이 된다) */
+/** 라우트의 패턴 검사와 별개로 한 번 더 검증한다 — 가져오기도 이 경로를 탄다 (이 값은 그대로 셰이더 uniform이 된다) */
 export function profileValues(nickname: string | null, memo: string | null, colors: string | null) {
   const n = normalize(nickname);
   if (n === null) throw new InvalidInput("닉네임은 비울 수 없습니다");
@@ -118,7 +118,7 @@ export function profileValues(nickname: string | null, memo: string | null, colo
   return { nickname: n, memo: memoValue, backgroundColors: c === null ? null : c.toUpperCase() };
 }
 
-/** 값이 실제로 바뀐 때만 UPDATE (하이버네이트 변경 감지) */
+/** 값이 실제로 바뀐 때만 UPDATE (변경 감지 — 같은 값이면 `updated_at`도 그대로) */
 export async function saveProfile(d: Db, m: MemberRow, v: ReturnType<typeof profileValues>) {
   await saveIfChanged(d, m, v, (patch) => d.update(member).set(patch).where(eq(member.id, m.id)));
 }

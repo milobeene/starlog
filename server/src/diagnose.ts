@@ -1,5 +1,5 @@
 /**
- * 기동 진단 — 자바 `StartupDiagnostic`. 문제가 있으면 `STARLOG_DIAGNOSTIC: <코드>` 한 줄을 찍고
+ * 기동 진단. 문제가 있으면 `STARLOG_DIAGNOSTIC: <코드>` 한 줄을 찍고
  * 정해진 종료코드로 죽는다. **일렉트론이 그 줄을 읽어 한글 안내를 띄운다** — 코드 이름이 계약이다.
  *
  *   접속 → 실패면 SQLSTATE로 분류
@@ -28,7 +28,7 @@ export class DiagnosticFailure extends Error {
   get exitCode() { return 40 + DIAGNOSTIC.indexOf(this.diagnostic); }
 }
 
-/** 접속 실패 분류. node-postgres는 네트워크 오류에 SQLSTATE가 없다 — JDBC라면 08xxx였을 것들 */
+/** 접속 실패 분류. node-postgres는 네트워크 오류에 SQLSTATE가 없어 코드 이름(`ENOTFOUND` 등)으로 본다 */
 export function classify(e: unknown): DiagnosticCode {
   const code = (e as { code?: unknown })?.code;
   if (typeof code !== "string") return "DB_UNKNOWN_ERROR";

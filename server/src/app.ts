@@ -1,5 +1,5 @@
 /**
- * HTTP 앱 — 라우트 조립과 전역 오류 처리 (자바 `GlobalExceptionHandler` 자리).
+ * HTTP 앱 — 라우트 조립과 전역 오류 처리.
  *
  * 각 도메인의 `routes`는 **전체 경로**(`/api/...`)로 라우트를 건다. 여기선 붙이기만 한다.
  * ⚠️ 같은 자리에 고정 경로와 변수 경로가 겹치면(`/api/backlog/all` vs `/api/backlog/:id`)
@@ -22,10 +22,10 @@ import { routes as system } from "./domains/system/routes";
 import { routes as backlog } from "./domains/backlog/routes";
 import { routes as member } from "./domains/member/routes";
 
-/** 스프링 `max-request-size` (260MB) — 스크린샷·영상 업로드 */
+/** 요청 본문 상한 (260MB) — 스크린샷·영상 업로드. 기존 `max-request-size`와 같은 값 */
 const MAX_REQUEST_BYTES = 260 * 1024 * 1024;
 
-/** 스프링 기본 오류 본문 — 우리 핸들러가 못 잡은 예외(진짜 버그)일 때 */
+/** 스프링 기본 오류 본문(timestamp·status·error·path) — 우리 핸들러가 못 잡은 예외(진짜 버그)일 때 */
 function springError(c: Context, status: 404 | 500, error: string) {
   return c.json({ timestamp: new Date().toISOString(), status, error, path: c.req.path }, status);
 }

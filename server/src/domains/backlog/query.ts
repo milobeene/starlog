@@ -1,9 +1,8 @@
 /**
- * 화면 단위 조회 — 자바 `BacklogQueryService`·`BacklogFacetQueryService`·`BacklogEntryRepositoryImpl`(QueryDSL).
+ * 화면 단위 조회 — 목록·파셋·사이드바·휴지통·상세. **쿼리 몇 방 + 메모리에서 묶기**로 카드·상세를 만든다.
  *
- * 하이버네이트가 엔티티를 읽어 DTO로 바꾸던 것을 **쿼리 몇 방 + 묶기**로 옮겼다.
- * 컬렉션(장르·개발사)에 `order by`가 없는 건 자바와 같다 — 하이버네이트도 순서 없이 읽었고,
- * 같은 DB가 같은 계획으로 같은 (힙) 순서를 준다
+ * 컬렉션(장르·개발사)에 `order by`가 없는 건 의도다 — 화면에 보이는 순서는 DB가 주는 (힙) 순서이고,
+ * 정렬을 넣으면 기존 데이터의 표시 순서가 바뀐다
  */
 import { sql, type SQL } from "drizzle-orm";
 import type { Db } from "../../db/client";
@@ -20,7 +19,7 @@ const MAX_SIZE = 100;
 export const normalizeSize = (size: number) => Math.min(Math.max(size, 1), MAX_SIZE);
 export const normalizePage = (page: number) => Math.max(page, 0);
 
-// ───────────── 정렬 (BacklogSort) ─────────────
+// ───────────── 정렬 ─────────────
 
 const SORTS = {
   lastPlayed: sql`b.last_played_on desc nulls last`,
@@ -31,7 +30,7 @@ const SORTS = {
 } as const;
 export type BacklogSort = keyof typeof SORTS;
 
-/** 대소문자·언더스코어를 흡수한다. `replace("_", "")`는 자바에서 **전부** 바꾼다 */
+/** 대소문자·언더스코어를 흡수한다 (`_`는 전부 제거) */
 export function sortFrom(value: string | null): BacklogSort {
   const stripped = normalize(value);
   if (stripped === null) return "lastPlayed";
@@ -51,7 +50,7 @@ function orderBy(sort: BacklogSort): SQL {
   return sql.join(parts, sql`, `);
 }
 
-// ───────────── 검색 조건 (BacklogSearchCondition) ─────────────
+// ───────────── 검색 조건 ─────────────
 
 export interface SearchCondition {
   keyword: string | null;
@@ -78,8 +77,8 @@ export interface SearchCondition {
 }
 
 /**
- * QueryDSL `containsIgnoreCase` — `lower(x) like '%kw%' escape '!'`. 상수는 자바에서 소문자로 바꾸고
- * `%`·`_`·`!`를 `!`로 이스케이프한다 (JPQLTemplates 기본 이스케이프 문자가 `!`)
+ * 대소문자 무시 부분 일치 — `lower(x) like '%kw%' escape '!'`. 키워드는 소문자로 바꾸고
+ * `%`·`_`·`!`를 `!`로 이스케이프한다 (입력한 `%`·`_`가 와일드카드로 읽히면 안 된다)
  */
 function containsIc(column: SQL, keyword: string): SQL {
   const escaped = keyword.toLowerCase().replace(/[!%_]/g, (c) => "!" + c);
@@ -127,7 +126,7 @@ function predicates(memberId: number, c: SearchCondition): SQL {
     w.push(sql`exists (select 1 from playthrough p where ${sql.join(p, sql` and `)})`);
   }
 
-  // 취득 축. ⚠️ 통화를 빠뜨리면 통화만 고른 필터가 조용히 무시된다 (자바 v1.2에서 고친 것)
+  // 취득 축. ⚠️ 통화를 빠뜨리면 통화만 고른 필터가 조용히 무시된다
   const acqFilter = c.acqMethod !== null || c.acqCurrency !== null || c.acqMinPrice !== null || c.acqMaxPrice !== null
     || c.acqPlatformId !== null || c.acqAccountId !== null || c.acqFrom !== null || c.acqTo !== null;
   if (acqFilter) {
@@ -145,7 +144,7 @@ function predicates(memberId: number, c: SearchCondition): SQL {
   return sql.join(w, sql` and `);
 }
 
-// ───────────── 카드 (BacklogCardResponse) ─────────────
+// ───────────── 카드 ─────────────
 
 const ENTRY_COLUMNS = sql`b.id, b.member_id as "memberId", b.game_id as "gameId", b.status, b.display_name as "displayName",
   b.name_override as "nameOverride", b.released_on_override as "releasedOnOverride", b.released_on_resolved as "releasedOnResolved",
@@ -336,7 +335,7 @@ export async function findDeletedDetail(d: Db, memberId: number, entryId: number
 
 /**
  * 개발사·유통사 사전. 표시값 기준이라 두 방 — 오버라이드가 있으면 그것만, 비면 마스터.
- * 정렬은 `String.CASE_INSENSITIVE_ORDER`(안정 정렬), 중복 제거는 대소문자까지 같은 것만
+ * 정렬은 `caseInsensitive`(안정 정렬), 중복 제거는 대소문자까지 같은 것만
  */
 export async function findCompanies(d: Db, memberId: number) {
   const q = (s: SQL) => rows<{ v: string }>(d, s).then((r) => r.map((x) => x.v));
@@ -360,7 +359,7 @@ export async function findCompanies(d: Db, memberId: number) {
   };
 }
 
-/** `String.CASE_INSENSITIVE_ORDER` — UTF-16 단위로 대문자, 그다음 소문자 비교 */
+/** 대소문자 무시 정렬 — UTF-16 단위로 대문자, 그다음 소문자 비교. `localeCompare`와 순서가 달라 직접 구현했다 */
 function caseInsensitive(a: string, b: string): number {
   const n = Math.min(a.length, b.length);
   for (let i = 0; i < n; i++) {
@@ -373,11 +372,11 @@ function caseInsensitive(a: string, b: string): number {
   }
   return a.length - b.length;
 }
-// `Character.toUpperCase(char)`는 한 글자를 한 글자로만 바꾼다 (`ß`는 그대로)
+// 한 글자를 한 글자로만 바꾼다 (`ß`는 그대로 — JS `toUpperCase`는 `SS`가 된다)
 const upper = (c: number) => { const s = String.fromCharCode(c).toUpperCase(); return s.length === 1 ? s.charCodeAt(0) : c; };
 const lower = (c: number) => { const s = String.fromCharCode(c).toLowerCase(); return s.length === 1 ? s.charCodeAt(0) : c; };
 
-// ───────────── 상세 (BacklogDetailResponse) ─────────────
+// ───────────── 상세 ─────────────
 
 export async function findDetail(d: Db, memberId: number, entryId: number) {
   const e = await findOwnedAlive404(d, memberId, entryId);
@@ -488,7 +487,7 @@ export async function findDetail(d: Db, memberId: number, entryId: number) {
       finishedOn: p.finishedOn,
       status: p.status,
       label: p.label,
-      // 선택지 목록과 같은 문구 — "거실 스위치 (Nintendo Switch)" (Device.optionLabel)
+      // 선택지 목록과 같은 문구 — "거실 스위치 (Nintendo Switch)"
       device: p.deviceId === null ? null : {
         deviceId: p.deviceId,
         name: p.deviceLabel === p.deviceType ? p.deviceLabel : `${p.deviceLabel} (${p.deviceType})`,

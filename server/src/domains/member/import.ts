@@ -1,15 +1,15 @@
 /**
- * 회원 데이터 가져오기·덮어쓰기 — 자바 `MemberImportService` + `MemberDataReplaceService`.
+ * 회원 데이터 가져오기·덮어쓰기. 파일 형식은 `dump.ts`.
  *
  * ## 순서가 전부다
  * `마스터 게임 → 플랫폼 → 계정 → 기기·에뮬·입력방식 → 구독 → 태그·장르 → (프로필) → 항목 →
  * 회차·취득·커버 → 파생 상태 재계산`. 계정이 플랫폼을, 회차가 기기·계정을 참조한다.
  *
- * ⚠️ **INSERT 순서도 자바와 같게 둔다.** 자바는 IDENTITY라 `persist` 순간 INSERT가 나가 id를 받는다.
- * 중간에 검증이 터지면 롤백되지만 **시퀀스는 안 돌아간다** — 같은 자리에서 터져야 뒤에 만드는 행의
- * id가 자바와 같다. 그래서 "INSERT 먼저, 검증은 그다음"인 자리(게임 정가·항목의 금액·평점)도 그 순서를 지킨다.
+ * ⚠️ **INSERT와 검증의 순서를 바꾸지 않는다.** 중간에 검증이 터지면 롤백되지만 **시퀀스는 안 돌아간다** —
+ * 같은 자리에서 터져야 뒤에 만드는 행의 id가 기존 동작과 같다. 그래서 "INSERT 먼저, 검증은 그다음"인
+ * 자리(게임 정가·항목의 금액·평점)도 그 순서를 지킨다.
  *
- * 값 컬렉션(개발사·유통사·장르·출시 기종, 항목의 오버라이드)은 하이버네이트가 flush 때 넣는다 — id가 없어 순서가 상관없다.
+ * 값 컬렉션(개발사·유통사·장르·출시 기종, 항목의 오버라이드)은 id가 없어 INSERT 순서가 상관없다.
  */
 import { and, eq, inArray } from "drizzle-orm";
 import type { Db } from "../../db/client";
@@ -34,14 +34,14 @@ export interface ImportResult { games: number; entries: number; playthroughs: nu
 
 type Row<T extends { $inferSelect: unknown }> = T["$inferSelect"];
 
-/** 자바 `money(MemberExport.Money)` — 객체가 있으면 금액·통화 검증을 탄다 (금액이 null이어도) */
+/** 객체가 있으면 금액·통화 검증을 탄다 (금액이 null이어도) */
 const toMoney = (m: DumpMoney): Money | null => (m === null ? null : money(m.amount, m.currency));
 
-/** 엔티티의 `apply`가 받는 커맨드 금액 — **금액이 없으면 통째로 없는 것** (구독료·취득가) */
+/** **금액이 없으면 통째로 없는 것** (구독료·취득가) — 통화만 있어도 검증하지 않는다 */
 const toOptionalMoney = (m: DumpMoney): Money | null =>
   (m === null || m.amount === null ? null : money(m.amount, m.currency));
 
-/** 자바 `String.equalsIgnoreCase` — 글자마다 대문자·소문자 둘 다 비교한다 */
+/** 글자 단위로 대문자·소문자 둘 다 비교한다 (통째로 대소문자 변환하면 `ß` 같은 글자에서 길이가 달라진다) */
 function equalsIgnoreCase(a: string, b: string | null): boolean {
   if (b === null || a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
@@ -52,7 +52,7 @@ function equalsIgnoreCase(a: string, b: string | null): boolean {
   return true;
 }
 
-/** 자바 `String.join(",", list)` — null 원소는 `"null"` 글자가 된다 (JS `join`은 빈 칸으로 만든다) */
+/** null 원소는 `"null"` 글자가 된다 (JS `join`은 빈 칸으로 만든다) — 기존 동작 유지 */
 const javaJoin = (values: (string | null)[]) => values.map((v) => (v === null ? "null" : v)).join(",");
 
 // ───────────── 가져오기 ─────────────
@@ -109,7 +109,9 @@ async function importGames(d: Db, exported: (DumpGame | null)[] | null): Promise
 
 /**
  * IGDB 게임은 `externalId`로, 수동 등록은 이름으로. 이름 조회는 부분 일치 검색(20건)을 재활용하고
- * **결과를 정확 일치로 거른다** — 21번째 너머에 있으면 못 찾는 것까지 자바와 같다
+ * **결과를 정확 일치로 거른다** — 21번째 너머에 있으면 못 찾는다 (기존 동작 그대로).
+ * 이름은 정규화 전 원문으로 비교한다 — 앞뒤 공백이 있는 덤프는 가져올 때마다 같은 게임이 새로 생긴다
+ * (알려진 버그 20, `docs/v2-plan.md`. 실제 export는 정규화돼 있어 밟지 않는다)
  */
 async function findExisting(d: Db, item: DumpGame): Promise<GameRow | undefined> {
   if (item.externalId !== null) return findIgdbGame(d, item.externalId);
@@ -118,11 +120,11 @@ async function findExisting(d: Db, item: DumpGame): Promise<GameRow | undefined>
 }
 
 /**
- * 둘로 나눠 채운다 — `syncFromCatalog`는 일부러 정가를 안 건드리고(§6.2), 복원은 정가까지 되살려야 해서
- * `updateMasterInfo`로 한 번 더 덮는다. 결과는 "덤프의 값 전부"다
+ * 둘로 나눠 채운다 — IGDB 동기화는 일부러 정가를 안 건드리고(§6.2), 복원은 정가까지 되살려야 해서
+ * INSERT 뒤에 정가를 한 번 더 덮는다. 결과는 "덤프의 값 전부"다
  */
 async function createGame(d: Db, item: DumpGame): Promise<GameRow> {
-  // IGDB 게임은 이름을 정규화하지 않는다 (`Game.fromCatalog`). 수동 등록만 `updateName`을 탄다
+  // IGDB 게임은 이름을 정규화하지 않는다 (IGDB 원문 그대로). 수동 등록만 정규화·필수 검사를 탄다
   const name = item.externalId !== null ? item.name : require(item.name, "게임 이름은 비울 수 없습니다");
   const now = nowKst();
   const [row] = await d.insert(game).values({
@@ -147,7 +149,7 @@ async function createGame(d: Db, item: DumpGame): Promise<GameRow> {
     updatedAt: now,
   }).returning();
 
-  // 정가 검증은 INSERT 뒤다 (자바: persist → … → updateMasterInfo(money(listPrice)))
+  // 정가 검증은 INSERT 뒤다 (위 순서 규칙)
   const listPrice = toMoney(item.listPrice);
   let g = row!;
   if (listPrice !== null) {
@@ -199,7 +201,7 @@ async function importCatalog(d: Db, m: MemberRow, data: DumpCatalog | null): Pro
   const stamp = () => ({ memberId: m.id, createdAt: now, updatedAt: now });
 
   for (const name of data.platforms ?? []) {
-    // 자바 파생 쿼리는 null 인자를 `is null`로 바꾼다 — name이 not null이라 못 찾고, 만들다 검증에 걸린다
+    // 이름이 null이면 조회 없이 만들러 가서 `require`에서 400이 난다
     const [found] = name === null ? [] : await d.select().from(platform)
       .where(and(eq(platform.memberId, m.id), eq(platform.name, name)));
     c.platforms.set(name, found ?? (await d.insert(platform)
@@ -210,7 +212,7 @@ async function importCatalog(d: Db, m: MemberRow, data: DumpCatalog | null): Pro
     if (item === null) npe("account");
     const p = c.platforms.get(item.platform);
     if (!p) throw new InvalidInput(`계정이 가리키는 플랫폼이 백업에 없습니다: ${item.platform}`);
-    // 형식 2의 계정에는 소속 종류가 없다 — 늘 플랫폼 계정으로 만든다 (내보내기의 NPE와 짝인 한계)
+    // 형식 2의 계정에는 소속 종류가 없다 — 늘 플랫폼 계정으로 만든다 (`export.ts` `platformNameOf`와 짝인 한계)
     const [a] = await d.insert(platformAccount).values({
       ...stamp(), platformId: p.id, emulatorId: null,
       accountLabel: require(item.label, "계정 라벨은 비울 수 없습니다"), ownerKey: `P${p.id}`,
@@ -244,7 +246,7 @@ async function importCatalog(d: Db, m: MemberRow, data: DumpCatalog | null): Pro
 
   for (const item of data.subscriptions ?? []) {
     if (item === null) npe("subscription");
-    // BillingCycle.valueOf가 커맨드를 만들 때 먼저 돈다 — 엔티티 검증보다 앞
+    // 결제 주기 해석이 다른 검증보다 먼저 돈다 — 잘못된 값은 400이 아니라 500 (`valueOf`)
     const billingCycle = valueOf(["MONTHLY", "YEARLY"] as const, item.billingCycle, "BillingCycle");
     const serviceName = normalize(item.serviceName);
     if (serviceName === null) throw new InvalidInput("구독 서비스명은 필수입니다");
@@ -282,7 +284,7 @@ async function importProfile(d: Db, m: MemberRow, p: DumpProfile | null) {
 
 // ───────────── 항목 ─────────────
 
-/** `BacklogEntry.normalizeRating` — setScale 후 범위. 메시지엔 원래 값 */
+/** 소수 1자리로 맞춘(setScale) 뒤 범위를 본다. 메시지엔 원래 값 */
 function normalizeRating(v: string | null): string | null {
   if (v === null) return null;
   const scaled = setScale(v, 1);
@@ -305,7 +307,10 @@ function validatePlayTimeHours(v: string | null): string | null {
 const optional = <T>(byName: Map<string | null, T>, name: string | null): T | null =>
   (name === null ? null : byName.get(name) ?? null);
 
-/** 없으면 터진다 — 항목이 이름을 적어 놓았는데 사전에 없으면 백업이 깨진 것이다 */
+/**
+ * 없으면 터진다 — 항목이 이름을 적어 놓았는데 사전에 없으면 백업이 깨진 것이다.
+ * 메시지의 조사가 어색한 건("구독가") 알려진 버그 21 (`docs/v2-plan.md`) — UI에 그대로 보이므로 문자열을 안 고친다
+ */
 function required<T>(byName: Map<string | null, T>, name: string | null, what: string): T {
   const found = byName.get(name);
   if (found === undefined) throw new InvalidInput(`${what}가 백업의 사전에 없습니다: ${name}`);
@@ -314,7 +319,8 @@ function required<T>(byName: Map<string | null, T>, name: string | null, what: s
 
 /**
  * 계정을 **소속까지 보고** 찾는다 (형식 2). 라벨만으로는 `Beene(Steam)`과 `Beene(Nintendo)`가 뭉개진다.
- * 소속이 없거나(형식 1) 소속으로 못 찾으면 라벨로 한 번 더 — 여기서 null을 주면 계정이 조용히 사라진다
+ * 소속이 없거나(형식 1) 소속으로 못 찾으면 라벨로 한 번 더 — 여기서 null을 주면 계정이 조용히 사라진다.
+ * 형식 1 파일에서 같은 라벨 계정이 소속마다 있으면 라벨 폴백에서 마지막 것이 붙어 400이 난다 (알려진 버그 19, `docs/v2-plan.md`)
  */
 function accountOf(c: Catalog, label: string | null, ownerName: string | null): PlatformAccountRow | null {
   if (label === null) return null;
@@ -325,14 +331,14 @@ function accountOf(c: Catalog, label: string | null, ownerName: string | null): 
   return c.accounts.get(label) ?? null;
 }
 
-/** `PlatformAccount.belongsTo` — 소속 id를 물어본 id와 숫자로만 비교한다 (자바 그대로) */
+/** 소속 id를 물어본 id와 숫자로만 비교한다 — 플랫폼 3과 에뮬레이터 3을 같다고 본다 (알려진 버그 14, `docs/v2-plan.md`) */
 function belongsTo(a: PlatformAccountRow, platformId: number | null, emulatorId: number | null) {
   return (a.platformId ?? a.emulatorId) === (platformId ?? emulatorId ?? null);
 }
 
 async function importEntry(d: Db, m: MemberRow, g: GameRow, item: DumpEntry, c: Catalog) {
   const now = nowKst();
-  // BacklogEntry.of — 담는 순간은 위시리스트, 표시값은 마스터에서
+  // 담는 순간은 위시리스트, 표시값은 마스터에서
   const [e] = await d.insert(backlogEntry).values({
     memberId: m.id, gameId: g.id, status: "WISHLIST",
     displayName: g.name, displayNameSortKey: sortKey(g.name), releasedOnResolved: g.releasedOn,
@@ -340,7 +346,7 @@ async function importEntry(d: Db, m: MemberRow, g: GameRow, item: DumpEntry, c: 
   }).returning({ id: backlogEntry.id });
   const entryId = e!.id;
 
-  // 검증은 INSERT 뒤 — 자바와 같은 자리에서 터져야 시퀀스가 같게 소모된다
+  // 검증은 INSERT 뒤 — 파일 머리의 순서 규칙 (같은 자리에서 터져야 시퀀스가 같게 소모된다)
   const listPrice = toMoney(item.listPriceOverride);
   const nameOverride = normalize(item.nameOverride);
   const developers = normalizeAll(item.developerOverrides);
@@ -359,7 +365,7 @@ async function importEntry(d: Db, m: MemberRow, g: GameRow, item: DumpEntry, c: 
   for (const pt of item.playthroughs ?? []) {
     if (pt === null) npe("playthrough");
     const status = valueOf(PLAYTHROUGH_STATUSES, pt.status, "PlaythroughStatus");
-    // Playthrough.apply
+    // 회차 검증
     if (pt.startedOn === null) throw new InvalidInput("시작일은 필수입니다");
     if (pt.finishedOn !== null && pt.finishedOn < pt.startedOn) {
       throw new InvalidInput(`종료일은 시작일 이후여야 합니다: ${pt.startedOn} ~ ${pt.finishedOn}`);
@@ -372,7 +378,7 @@ async function importEntry(d: Db, m: MemberRow, g: GameRow, item: DumpEntry, c: 
     }
     /*
      * 형식에 회차의 플랫폼이 없다 — **계정에서 역산한다** (V11 백필과 같은 규칙).
-     * 플랫폼이 있으면 에뮬은 버린다 (assignReferences)
+     * 플랫폼이 있으면 에뮬은 버린다
      */
     const account = accountOf(c, pt.platformAccount, pt.platformAccountPlatform);
     const platformId = account?.platformId ?? null;
@@ -458,7 +464,7 @@ async function attachCover(d: Db, entryId: number, cover: DumpCover, now: string
   });
 }
 
-// ───────────── 덮어쓰기 (MemberDataReplaceService) ─────────────
+// ───────────── 덮어쓰기 ─────────────
 
 /**
  * 지우고 붓는다. **한 트랜잭션이다** — 중간에 실패하면 옛 데이터가 그대로 남는다.
@@ -471,7 +477,7 @@ export async function replace(d: Db, memberId: number, data: MemberDump): Promis
   return importInto(d, memberId, data);
 }
 
-/** 자식 → 부모 순서. 순서 근거는 V1의 FK다 (자바 `ENTRY_CHILDREN`·`OWNED_CATALOG`) */
+/** 자식 → 부모 순서. 순서 근거는 V1의 FK다 */
 async function wipe(d: Db, memberId: number) {
   // 순환 참조(항목 ↔ 회차의 lastPlaythrough)를 먼저 끊는다. 벌크라 updatedAt을 직접 쓴다
   await d.update(backlogEntry).set({ lastPlaythroughId: null, updatedAt: nowKst() }).where(eq(backlogEntry.memberId, memberId));
@@ -481,7 +487,7 @@ async function wipe(d: Db, memberId: number) {
   await d.delete(coverImage).where(inArray(coverImage.backlogEntryId, mine));
   await d.delete(acquisition).where(inArray(acquisition.backlogEntryId, mine));
   await d.delete(playthrough).where(inArray(playthrough.backlogEntryId, mine));
-  // 하이버네이트 벌크 삭제는 엔티티의 값 컬렉션 테이블(@ElementCollection)을 먼저 지운다
+  // 개발사·유통사 오버라이드 테이블도 항목을 가리키는 FK라 항목보다 먼저
   await d.delete(backlogDeveloperOverride).where(inArray(backlogDeveloperOverride.backlogEntryId, mine));
   await d.delete(backlogPublisherOverride).where(inArray(backlogPublisherOverride.backlogEntryId, mine));
   const entries = await d.delete(backlogEntry).where(eq(backlogEntry.memberId, memberId)).returning({ id: backlogEntry.id });

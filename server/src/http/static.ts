@@ -1,10 +1,10 @@
 /**
- * 정적 프론트 — 자바 `StaticSiteConfig`의 `HtmlExtensionResolver`와 같은 규칙.
+ * 정적 프론트 — `.html` 확장자 없는 경로를 풀어 준다.
  *
  * Next 정적 내보내기는 `/library/detail` 같은 경로에 `library/detail.html`을 만든다.
  *   1. 그 경로에 파일이 있으면 그대로
  *   2. 점(.)이 들어간 경로(자원 요청)인데 없으면 404
- *   3. 아니면 `경로.html` → `경로/index.html` → 그래도 없으면 `404.html` (상태 200 — 자바와 같다)
+ *   3. 아니면 `경로.html` → `경로/index.html` → 그래도 없으면 `404.html` (상태 200)
  */
 import fs from "fs";
 import path from "path";

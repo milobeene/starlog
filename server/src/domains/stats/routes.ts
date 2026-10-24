@@ -1,7 +1,7 @@
 /**
- * 통계 (FR-STAT-01~04, 07) — 자바 `stats` 패키지. 조회 전용.
+ * 통계 (FR-STAT-01~04, 07). 조회 전용.
  *
- * 금액은 전부 센트(BigInt)로 더한다. 자바 `BigDecimal`이 scale 2 그대로 합산하는 것과 같다.
+ * 금액은 전부 센트(BigInt)로 더한다 — numeric을 scale 2 그대로 합산하는 것과 같고, 부동소수점 오차가 없다.
  */
 import { Hono } from "hono";
 import { and, desc, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
@@ -22,16 +22,16 @@ function fromCents(cents: bigint): string {
   return `${cents / 100n}.${(cents % 100n).toString().padStart(2, "0")}`;
 }
 
-/** 자바 `String.compareTo` — UTF-16 코드 유닛 순. JS의 `<`가 같은 규칙이다 */
+/** UTF-16 코드 유닛 순 비교. JS의 `<`가 같은 규칙이라 기존 응답과 정렬이 같다 */
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 /**
- * 자바 `LocalDate.now()`는 JVM 기본 시간대를 따르고 `AppClock`을 거치지 않는다.
- * 실사용 환경은 KST라 `todayKst()`와 같다
+ * 구독 합계의 "오늘". 원래 구현은 서버 시스템 시간대를 따랐지만 KST 환경에선 `todayKst()`와 같다
+ * (알려진 버그 3, `docs/v2-plan.md`)
  */
 const today = () => todayKst();
 
-/** `YearMonth` 산술용 — 연*12+월(0부터) */
+/** 월 산술용 — 연*12+월(0부터) */
 const ym = (date: string) => Number(date.slice(0, 4)) * 12 + (Number(date.slice(5, 7)) - 1);
 const ymString = (n: number) => `${String(Math.floor(n / 12)).padStart(4, "0")}-${String((n % 12) + 1).padStart(2, "0")}`;
 
@@ -69,6 +69,7 @@ routes.get("/api/stats/genres", async (c) => {
 
   const out = [...merged.entries()]
     .map(([g, count]) => ({ genre: g, count }))
+    // 마스터 장르가 null이어도 터지지 않고 null 키로 나간다 (알려진 버그 4, `docs/v2-plan.md` — 실데이터엔 0건)
     .sort((a, b) => b.count - a.count || cmp(a.genre as string, b.genre as string));
   return c.json(out);
 });
@@ -279,7 +280,7 @@ routes.get("/api/stats/spending/monthly", async (c) => {
       items: [...[...(subNames.get(period) ?? [])].sort(cmp), ...[...(gameNames.get(period) ?? [])].sort(cmp)],
     }));
 
-  // 분모는 12개월 고정. HALF_UP, scale 2
+  // 연 평균 — 분모는 12개월 고정. 반올림은 HALF_UP, scale 2 (나머지 ×2 ≥ 12면 올림)
   const byYear = new Map<number, Map<string, bigint>>();
   for (const [period, amounts] of buckets) {
     const year = Number(period.slice(0, 4));

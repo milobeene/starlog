@@ -1,5 +1,5 @@
 /**
- * 서버 진입점. 일렉트론은 `utilityProcess.fork()`로, 비교 장치·개발은 `node`로 띄운다.
+ * 서버 진입점. 일렉트론은 `utilityProcess.fork()`로, 개발·골든 시나리오는 `node`로 띄운다.
  *
  *   잠금 → DB 열기(진단) → 마이그레이션 → 기동 작업 → 리슨 → `STARLOG_READY port=<n>`
  *
@@ -31,7 +31,7 @@ function emit(msg: Record<string, unknown>) {
  * 25초를 기다렸다 강제로 죽이고, 그 사이 세이브파일 잠금이 그대로 남는다.
  *
  * ⚠️ 윈도우에서 `utilityProcess.kill()`은 TerminateProcess(강제)다. PGlite가 닫힐 틈이 없다.
- * 그래서 일렉트론은 정상 종료를 **메시지**로 보낸다. 신호(SIGTERM)는 비교 장치·개발용
+ * 그래서 일렉트론은 정상 종료를 **메시지**로 보낸다. 신호(SIGTERM)는 개발·골든 시나리오용
  */
 let shutdownRequested: string | null = null;
 let shutdownNow: ((why: string) => void) | null = null;
@@ -44,8 +44,8 @@ process.on("SIGINT", () => requestShutdown("SIGINT"));
 parentPort?.on("message", (e) => { if ((e.data as { type?: string })?.type === "shutdown") requestShutdown("parent"); });
 
 /**
- * 로컬 세이브파일 잠금. **두 프로세스가 같은 PGlite 폴더를 열면 망가진다** — H2는 파일 잠금이
- * 막아줬지만(`DB_IN_USE`) PGlite는 그런 게 없다. 살아 있는 pid가 쥐고 있으면 거절한다.
+ * 로컬 세이브파일 잠금. **두 프로세스가 같은 PGlite 폴더를 열면 망가진다** — PGlite엔 파일 잠금이
+ * 없어서 직접 건다(`DB_IN_USE`). 살아 있는 pid가 쥐고 있으면 거절한다.
  * 죽은 pid의 잠금(강제 종료 흔적)은 넘겨받는다
  */
 function lock(dir: string): () => void {
@@ -73,7 +73,7 @@ async function open(cfg: ReturnType<typeof loadConfig>): Promise<OpenDb> {
     if (cfg.db.kind === "postgres") await opened.db.execute(sql`select 1`);
   } catch (e) {
     if (e instanceof DiagnosticFailure) throw e;
-    // 폴더가 있는데 못 열면 깨진 것 — 자바 시절 잘린 `.mv.db`(90028)와 같은 자리
+    // 폴더가 있는데 못 열면 깨진 것 (잘린 세이브파일)
     if (cfg.db.kind === "pglite" && !cfg.db.dir.startsWith("memory://") && fs.existsSync(path.join(cfg.db.dir, "PG_VERSION"))) throw new DiagnosticFailure("DB_CORRUPTED", e);
     throw new DiagnosticFailure(classify(e), e);
   }
@@ -85,7 +85,7 @@ async function open(cfg: ReturnType<typeof loadConfig>): Promise<OpenDb> {
 async function main() {
   const cfg = loadConfig();
   setConfig(cfg);
-  // `memory://`는 연결 시험용 일회성 DB다 (자바 시절 `jdbc:h2:mem:probe`) — 잠글 파일이 없다
+  // `memory://`는 연결 시험용 일회성 DB다 — 잠글 파일이 없다
   const unlock = cfg.db.kind === "pglite" && !cfg.db.dir.startsWith("memory://") ? lock(cfg.db.dir) : () => {};
 
   const opened = await open(cfg);
@@ -100,7 +100,7 @@ async function main() {
   const { applied } = await migrate(opened);
   if (applied.length) console.log(`마이그레이션 적용: V${applied.join(", V")}`);
   /*
-   * 미디어 폴더(covers/·media/)를 기동 때 만든다 (자바 `MediaPaths.ensure`). 업로드 시점에 만들면
+   * 미디어 폴더(covers/·media/)를 기동 때 만든다. 업로드 시점에 만들면
    * **권한 문제를 파일을 받은 뒤에야 안다.** 못 쓰는 곳이면 여기서 터져 기동 실패로 드러나야 한다
    */
   ensureMediaDirs();
@@ -127,7 +127,7 @@ async function main() {
   if (shutdownRequested) void shutdown(shutdownRequested);
 
   /*
-   * 부모 감시 — 자바 `ParentWatchdog` 자리. 일렉트론이 강제 종료되면 고아로 살아남아 세이브파일을
+   * 부모 감시 — 일렉트론이 강제 종료되면 고아로 살아남아 세이브파일을
    * 쥔다. 그러면 다음 실행의 자동 백업이 쓰는 중인 폴더를 복사해 찢어진 백업을 남긴다
    */
   if (parentPort || process.env.STARLOG_PARENT_WATCH === "true") {
