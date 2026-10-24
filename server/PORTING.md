@@ -37,7 +37,7 @@
 | 파라미터 | `pathId(c, "entryId")`, `query(c).long("tagId")` / `.int("page", 0)` / `.enumList(...)` / `.date(...)` — 스프링 바인딩 규칙 |
 | 본문 | `readBody(c, zodSchema)` (읽기 실패 → "요청 본문을 읽을 수 없습니다") → `violations()…throwIfAny()` (Bean Validation) |
 | 기본 문구 | `DEFAULT_MSG` — `@NotBlank` 등에 메시지가 없을 때 (하이버네이트 밸리데이터 한국어) |
-| 모양 조각 | `src/common/schemas.ts` — `zDate`·`zDecimal`·`zLong`·`zMoney`·`opt()` |
+| 모양 조각 | `src/common/schemas.ts` — `zText`(String 필드는 이걸로 — 숫자·불리언도 받는다)·`zDate`·`zDecimal`·`zLong`·`zMoney`·`opt()` |
 | 문자열 | `normalize`(strip+빈값→null)·`require`·`normalizeAll`·`sortKey`·`slug` (`src/common/text.ts`) |
 | 금액 | `money(amount, currency)`·`scale2`·`amountJson`·`compareAmount` — **부동소수 금지** |
 | 시각 | `nowKst()`·`todayKst()` — **DB `now()` 금지** (세션 시간대가 UTC면 9시간 밀린다) |
@@ -62,6 +62,9 @@
 - **라우트 등록 순서**: 고정 경로(`/api/backlog/all`)를 변수 경로(`/api/backlog/:id`)보다 **먼저** 건다
 - **외부 호출(IGDB·번역·S3)은 트랜잭션 밖에서.** PGlite는 트랜잭션 동안 다른 요청을 다 세운다
 - **Jackson은 모르는 필드를 무시한다** → Zod `z.object`(기본이 strip). `.strict()` 쓰지 말 것
+- **Jackson은 String 필드에 숫자·불리언을 받는다** → `z.string()` 말고 `zText`
+- **`@NotBlank`는 전각 공백(U+3000)도 공백이다** → `violations().notBlank`가 그렇게 본다 (2026-10-24 고침)
+- **위반 메시지가 둘 이상이면 자바 순서가 실행마다 바뀐다** → 시나리오는 위반 하나씩
 - **N+1 걱정은 덜어도 된다** (로컬 DB). 단 목록 응답이 수백 건이면 묶어서 조회
 
 ## 비교 장치
@@ -75,6 +78,11 @@ npx tsx test/harness/run.ts test/scenarios/<도메인>.json --only 수정  # 이
 - 실데이터 픽스처(25테이블, 게임 145개) 위에서 자바(정답지)와 TS를 동시에 띄운다. 한 번에 30~40초
 - 시나리오 형식은 `test/harness/run.ts` 맨 위. `save`로 응답 값을 변수에 담아 `${변수}`로 쓴다
 - 외부 자격증명은 없다 → 양쪽 다 "미설정" 경로를 탄다
+- **"남의 것"(소유권) 단계**는 `X-Member-Id` 헤더를 쓰는데 자바 `desktop` 프로필은 이 헤더를 무시한다.
+  시나리오에 `"env": {"STARLOG_PROFILE": "test", "SPRING_PROFILES_INCLUDE": "test"}`를 단다.
+  ⚠️ 그러면 자바의 `StartupCleanup`(`@Profile("!test")`)이 안 돈다 — 30일 지난 `api_call_log`가 생기는 시나리오에선 DB가 갈린다
+- ⚠️ **`pkill -f src/main.ts` 금지** — 같은 시각에 다른 사람이 돌리는 비교 장치의 서버까지 죽는다.
+  직접 띄운 서버는 pid를 잡아 두고 그것만 끈다. 공용 픽스처(`fx-base`)는 **직접 열지 말고 복사해서** 연다
 
 ### 시나리오 쓰는 법
 

@@ -1,0 +1,1329 @@
+{
+ "name": "platform",
+ "env": {
+  "STARLOG_PROFILE": "test",
+  "SPRING_PROFILES_INCLUDE": "test"
+ },
+ "steps": [
+  {
+   "name": "플랫폼 등록 — 정규화",
+   "method": "POST",
+   "path": "/api/me/platforms",
+   "body": {
+    "name": "  Itch Test  "
+   },
+   "save": {
+    "pid": "id"
+   }
+  },
+  {
+   "name": "플랫폼 등록 — 중복",
+   "method": "POST",
+   "path": "/api/me/platforms",
+   "body": {
+    "name": "Itch Test"
+   }
+  },
+  {
+   "name": "플랫폼 등록 — 공백",
+   "method": "POST",
+   "path": "/api/me/platforms",
+   "body": {
+    "name": "   "
+   }
+  },
+  {
+   "name": "플랫폼 등록 — 이름 없음",
+   "method": "POST",
+   "path": "/api/me/platforms",
+   "body": {}
+  },
+  {
+   "name": "플랫폼 등록 — null",
+   "method": "POST",
+   "path": "/api/me/platforms",
+   "body": {
+    "name": null
+   }
+  },
+  {
+   "name": "플랫폼 등록 — 51자",
+   "method": "POST",
+   "path": "/api/me/platforms",
+   "body": {
+    "name": "가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가"
+   }
+  },
+  {
+   "name": "플랫폼 등록 — 전각 공백",
+   "method": "POST",
+   "path": "/api/me/platforms",
+   "body": {
+    "name": "　"
+   }
+  },
+  {
+   "name": "플랫폼 등록 — 숫자 이름 (문자열로 받는다)",
+   "method": "POST",
+   "path": "/api/me/platforms",
+   "body": {
+    "name": 3
+   }
+  },
+  {
+   "name": "플랫폼 등록 — 배열 이름",
+   "method": "POST",
+   "path": "/api/me/platforms",
+   "body": {
+    "name": [
+     "a"
+    ]
+   }
+  },
+  {
+   "name": "플랫폼 등록 — 깨진 JSON",
+   "method": "POST",
+   "path": "/api/me/platforms",
+   "rawBody": "{name"
+  },
+  {
+   "name": "플랫폼 등록 — 본문 없음",
+   "method": "POST",
+   "path": "/api/me/platforms"
+  },
+  {
+   "name": "플랫폼 등록 — 회원 없음",
+   "method": "POST",
+   "path": "/api/me/platforms",
+   "body": {
+    "name": "X"
+   },
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "플랫폼 등록 — 삭제된 이름 (되살림)",
+   "method": "POST",
+   "path": "/api/me/platforms",
+   "body": {
+    "name": "GOG"
+   },
+   "save": {
+    "gogId": "id"
+   }
+  },
+  {
+   "name": "플랫폼 등록 — 되살린 뒤 또 등록 (중복)",
+   "method": "POST",
+   "path": "/api/me/platforms",
+   "body": {
+    "name": "GOG"
+   }
+  },
+  {
+   "name": "플랫폼 이름 변경",
+   "method": "PUT",
+   "path": "/api/me/platforms/${pid}",
+   "body": {
+    "name": "  Itch Test 2 "
+   }
+  },
+  {
+   "name": "플랫폼 이름 변경 — 같은 값 (변경 없음)",
+   "method": "PUT",
+   "path": "/api/me/platforms/${pid}",
+   "body": {
+    "name": "Itch Test 2"
+   }
+  },
+  {
+   "name": "플랫폼 이름 변경 — 중복",
+   "method": "PUT",
+   "path": "/api/me/platforms/${pid}",
+   "body": {
+    "name": "Steam"
+   }
+  },
+  {
+   "name": "플랫폼 이름 변경 — 삭제된 행과 중복",
+   "method": "PUT",
+   "path": "/api/me/platforms/${pid}",
+   "body": {
+    "name": "Xbox"
+   }
+  },
+  {
+   "name": "플랫폼 이름 변경 — 공백",
+   "method": "PUT",
+   "path": "/api/me/platforms/${pid}",
+   "body": {
+    "name": " "
+   }
+  },
+  {
+   "name": "플랫폼 이름 변경 — 전각 공백",
+   "method": "PUT",
+   "path": "/api/me/platforms/${pid}",
+   "body": {
+    "name": "　"
+   }
+  },
+  {
+   "name": "플랫폼 이름 변경 — 51자",
+   "method": "PUT",
+   "path": "/api/me/platforms/${pid}",
+   "body": {
+    "name": "가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가"
+   }
+  },
+  {
+   "name": "플랫폼 이름 변경 — 삭제된 플랫폼",
+   "method": "PUT",
+   "path": "/api/me/platforms/15",
+   "body": {
+    "name": "Xbox X"
+   }
+  },
+  {
+   "name": "플랫폼 이름 변경 — 없는 플랫폼",
+   "method": "PUT",
+   "path": "/api/me/platforms/999999",
+   "body": {
+    "name": "X"
+   }
+  },
+  {
+   "name": "플랫폼 이름 변경 — 남의 플랫폼",
+   "method": "PUT",
+   "path": "/api/me/platforms/${pid}",
+   "body": {
+    "name": "X"
+   },
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "플랫폼 이름 변경 — 경로 id 형식 오류",
+   "method": "PUT",
+   "path": "/api/me/platforms/abc",
+   "body": {
+    "name": "X"
+   }
+  },
+  {
+   "name": "플랫폼 삭제 — 계정이 딸린 플랫폼 (연쇄)",
+   "method": "POST",
+   "path": "/api/me/platforms",
+   "body": {
+    "name": "Cascade P"
+   },
+   "save": {
+    "cpid": "id"
+   }
+  },
+  {
+   "name": "계정 등록 — 연쇄 대상 1",
+   "method": "POST",
+   "path": "/api/me/platform-accounts",
+   "body": {
+    "platformId": "${cpid}",
+    "accountLabel": "c1"
+   },
+   "save": {
+    "c1": "id"
+   }
+  },
+  {
+   "name": "계정 등록 — 연쇄 대상 2",
+   "method": "POST",
+   "path": "/api/me/platform-accounts",
+   "body": {
+    "platformId": "${cpid}",
+    "accountLabel": "c2"
+   },
+   "save": {
+    "c2": "id"
+   }
+  },
+  {
+   "name": "계정 삭제 — c1 먼저 닫음",
+   "method": "DELETE",
+   "path": "/api/me/platform-accounts/${c1}"
+  },
+  {
+   "name": "플랫폼 삭제 — 딸린 계정 c2만 함께 닫힘",
+   "method": "DELETE",
+   "path": "/api/me/platforms/${cpid}"
+  },
+  {
+   "name": "플랫폼 삭제 — 이미 삭제됨",
+   "method": "DELETE",
+   "path": "/api/me/platforms/${cpid}"
+  },
+  {
+   "name": "플랫폼 삭제 — 없는 플랫폼",
+   "method": "DELETE",
+   "path": "/api/me/platforms/999999"
+  },
+  {
+   "name": "플랫폼 삭제 — 남의 플랫폼",
+   "method": "DELETE",
+   "path": "/api/me/platforms/${pid}",
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "플랫폼 삭제 — 경로 id 형식 오류",
+   "method": "DELETE",
+   "path": "/api/me/platforms/abc"
+  },
+  {
+   "name": "플랫폼 삭제 — 남겨둠",
+   "method": "DELETE",
+   "path": "/api/me/platforms/${pid}"
+  },
+  {
+   "name": "플랫폼 삭제 — 실데이터 (Steam, 계정 3개 딸림)",
+   "method": "DELETE",
+   "path": "/api/me/platforms/13"
+  },
+  {
+   "name": "플랫폼 등록 — 삭제한 Steam 되살림",
+   "method": "POST",
+   "path": "/api/me/platforms",
+   "body": {
+    "name": "Steam"
+   }
+  },
+  {
+   "name": "계정 되살리기 — Steam 계정 하나",
+   "method": "POST",
+   "path": "/api/me/platform-accounts/5/revive"
+  },
+  {
+   "name": "입력 방식 등록 — 정규화",
+   "method": "POST",
+   "path": "/api/me/input-methods",
+   "body": {
+    "name": "  Gamepad X  "
+   },
+   "save": {
+    "imId": "id"
+   }
+  },
+  {
+   "name": "입력 방식 등록 — 중복",
+   "method": "POST",
+   "path": "/api/me/input-methods",
+   "body": {
+    "name": "Gamepad X"
+   }
+  },
+  {
+   "name": "입력 방식 등록 — 공백",
+   "method": "POST",
+   "path": "/api/me/input-methods",
+   "body": {
+    "name": " "
+   }
+  },
+  {
+   "name": "입력 방식 등록 — 51자",
+   "method": "POST",
+   "path": "/api/me/input-methods",
+   "body": {
+    "name": "가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가"
+   }
+  },
+  {
+   "name": "입력 방식 등록 — 전각 공백",
+   "method": "POST",
+   "path": "/api/me/input-methods",
+   "body": {
+    "name": "　"
+   }
+  },
+  {
+   "name": "입력 방식 등록 — 회원 없음",
+   "method": "POST",
+   "path": "/api/me/input-methods",
+   "body": {
+    "name": "X"
+   },
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "입력 방식 등록 — 삭제된 이름 (되살림)",
+   "method": "POST",
+   "path": "/api/me/input-methods",
+   "body": {
+    "name": "키보드 & 마우스"
+   }
+  },
+  {
+   "name": "입력 방식 이름 변경",
+   "method": "PUT",
+   "path": "/api/me/input-methods/${imId}",
+   "body": {
+    "name": "Gamepad Y"
+   }
+  },
+  {
+   "name": "입력 방식 이름 변경 — 같은 값 (변경 없음)",
+   "method": "PUT",
+   "path": "/api/me/input-methods/8",
+   "body": {
+    "name": "XInput"
+   }
+  },
+  {
+   "name": "입력 방식 이름 변경 — 중복",
+   "method": "PUT",
+   "path": "/api/me/input-methods/${imId}",
+   "body": {
+    "name": "Nintendo"
+   }
+  },
+  {
+   "name": "입력 방식 이름 변경 — 삭제된 행과 중복",
+   "method": "PUT",
+   "path": "/api/me/input-methods/${imId}",
+   "body": {
+    "name": "닌텐도 컨트롤러"
+   }
+  },
+  {
+   "name": "입력 방식 이름 변경 — 공백",
+   "method": "PUT",
+   "path": "/api/me/input-methods/${imId}",
+   "body": {
+    "name": ""
+   }
+  },
+  {
+   "name": "입력 방식 이름 변경 — 삭제된 입력 방식",
+   "method": "PUT",
+   "path": "/api/me/input-methods/9",
+   "body": {
+    "name": "X"
+   }
+  },
+  {
+   "name": "입력 방식 이름 변경 — 없음",
+   "method": "PUT",
+   "path": "/api/me/input-methods/999999",
+   "body": {
+    "name": "X"
+   }
+  },
+  {
+   "name": "입력 방식 이름 변경 — 남의 것",
+   "method": "PUT",
+   "path": "/api/me/input-methods/${imId}",
+   "body": {
+    "name": "X"
+   },
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "입력 방식 삭제",
+   "method": "DELETE",
+   "path": "/api/me/input-methods/${imId}"
+  },
+  {
+   "name": "입력 방식 삭제 — 이미 삭제됨",
+   "method": "DELETE",
+   "path": "/api/me/input-methods/${imId}"
+  },
+  {
+   "name": "입력 방식 삭제 — 없음",
+   "method": "DELETE",
+   "path": "/api/me/input-methods/999999"
+  },
+  {
+   "name": "입력 방식 삭제 — 남의 것",
+   "method": "DELETE",
+   "path": "/api/me/input-methods/8",
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "입력 방식 삭제 — 경로 id 형식 오류",
+   "method": "DELETE",
+   "path": "/api/me/input-methods/abc"
+  },
+  {
+   "name": "기기 등록 — 정규화·메모",
+   "method": "POST",
+   "path": "/api/me/devices",
+   "body": {
+    "deviceType": " Windows PC ",
+    "label": "  서브 PC  ",
+    "memo": "  # 스펙\n- RTX  "
+   },
+   "save": {
+    "dId": "id"
+   }
+  },
+  {
+   "name": "기기 등록 — 메모 없음",
+   "method": "POST",
+   "path": "/api/me/devices",
+   "body": {
+    "deviceType": "Steam Deck",
+    "label": "덱"
+   },
+   "save": {
+    "dId2": "id"
+   }
+  },
+  {
+   "name": "기기 등록 — 공백 메모는 null로",
+   "method": "POST",
+   "path": "/api/me/devices",
+   "body": {
+    "deviceType": "Steam Deck",
+    "label": "덱 2",
+    "memo": "   "
+   }
+  },
+  {
+   "name": "기기 등록 — 라벨 중복",
+   "method": "POST",
+   "path": "/api/me/devices",
+   "body": {
+    "deviceType": "Windows PC",
+    "label": "서브 PC"
+   }
+  },
+  {
+   "name": "기기 등록 — 유형 공백",
+   "method": "POST",
+   "path": "/api/me/devices",
+   "body": {
+    "deviceType": " ",
+    "label": "X"
+   }
+  },
+  {
+   "name": "기기 등록 — 라벨 공백",
+   "method": "POST",
+   "path": "/api/me/devices",
+   "body": {
+    "deviceType": "X",
+    "label": ""
+   }
+  },
+  {
+   "name": "기기 등록 — 라벨 없음",
+   "method": "POST",
+   "path": "/api/me/devices",
+   "body": {
+    "deviceType": "X"
+   }
+  },
+  {
+   "name": "기기 등록 — 유형 51자",
+   "method": "POST",
+   "path": "/api/me/devices",
+   "body": {
+    "deviceType": "가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가",
+    "label": "X"
+   }
+  },
+  {
+   "name": "기기 등록 — 전각 공백 유형",
+   "method": "POST",
+   "path": "/api/me/devices",
+   "body": {
+    "deviceType": "　",
+    "label": "X"
+   }
+  },
+  {
+   "name": "기기 등록 — 메모 2001자",
+   "method": "POST",
+   "path": "/api/me/devices",
+   "body": {
+    "deviceType": "X",
+    "label": "긴 메모",
+    "memo": "가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가"
+   }
+  },
+  {
+   "name": "기기 등록 — 메모 2000자",
+   "method": "POST",
+   "path": "/api/me/devices",
+   "body": {
+    "deviceType": "X",
+    "label": "긴 메모",
+    "memo": "가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가"
+   }
+  },
+  {
+   "name": "기기 등록 — 회원 없음",
+   "method": "POST",
+   "path": "/api/me/devices",
+   "body": {
+    "deviceType": "X",
+    "label": "Y"
+   },
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "기기 등록 — 깨진 JSON",
+   "method": "POST",
+   "path": "/api/me/devices",
+   "rawBody": "["
+  },
+  {
+   "name": "기기 수정",
+   "method": "PUT",
+   "path": "/api/me/devices/${dId}",
+   "body": {
+    "deviceType": "Windows 11 PC",
+    "label": "서브 PC 2",
+    "memo": "새 메모"
+   }
+  },
+  {
+   "name": "기기 수정 — 같은 값 (변경 없음)",
+   "method": "PUT",
+   "path": "/api/me/devices/${dId}",
+   "body": {
+    "deviceType": "Windows 11 PC",
+    "label": "서브 PC 2",
+    "memo": "새 메모"
+   }
+  },
+  {
+   "name": "기기 수정 — 메모만 지움",
+   "method": "PUT",
+   "path": "/api/me/devices/${dId}",
+   "body": {
+    "deviceType": "Windows 11 PC",
+    "label": "서브 PC 2"
+   }
+  },
+  {
+   "name": "기기 수정 — 라벨 중복 (실데이터)",
+   "method": "PUT",
+   "path": "/api/me/devices/${dId}",
+   "body": {
+    "deviceType": "iPhone",
+    "label": "iPhone 14"
+   }
+  },
+  {
+   "name": "기기 수정 — 라벨은 같고 유형만 변경 (실데이터)",
+   "method": "PUT",
+   "path": "/api/me/devices/11",
+   "body": {
+    "deviceType": "iPhone 14 Pro",
+    "label": "iPhone 14"
+   }
+  },
+  {
+   "name": "기기 수정 — 유형 공백",
+   "method": "PUT",
+   "path": "/api/me/devices/${dId}",
+   "body": {
+    "deviceType": "",
+    "label": "X"
+   }
+  },
+  {
+   "name": "기기 수정 — 전각 공백 라벨",
+   "method": "PUT",
+   "path": "/api/me/devices/${dId}",
+   "body": {
+    "deviceType": "X",
+    "label": "　"
+   }
+  },
+  {
+   "name": "기기 수정 — 없는 기기",
+   "method": "PUT",
+   "path": "/api/me/devices/999999",
+   "body": {
+    "deviceType": "X",
+    "label": "X"
+   }
+  },
+  {
+   "name": "기기 수정 — 남의 기기",
+   "method": "PUT",
+   "path": "/api/me/devices/${dId}",
+   "body": {
+    "deviceType": "X",
+    "label": "X"
+   },
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "기기 수정 — 경로 id 형식 오류",
+   "method": "PUT",
+   "path": "/api/me/devices/abc",
+   "body": {
+    "deviceType": "X",
+    "label": "X"
+   }
+  },
+  {
+   "name": "기기 삭제",
+   "method": "DELETE",
+   "path": "/api/me/devices/${dId2}"
+  },
+  {
+   "name": "기기 삭제 — 이미 삭제됨",
+   "method": "DELETE",
+   "path": "/api/me/devices/${dId2}"
+  },
+  {
+   "name": "기기 수정 — 삭제된 기기",
+   "method": "PUT",
+   "path": "/api/me/devices/${dId2}",
+   "body": {
+    "deviceType": "X",
+    "label": "X"
+   }
+  },
+  {
+   "name": "기기 삭제 — 없는 기기",
+   "method": "DELETE",
+   "path": "/api/me/devices/999999"
+  },
+  {
+   "name": "기기 삭제 — 남의 기기",
+   "method": "DELETE",
+   "path": "/api/me/devices/7",
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "기기 삭제 — 실데이터",
+   "method": "DELETE",
+   "path": "/api/me/devices/12"
+  },
+  {
+   "name": "기기 등록 — 삭제된 라벨 (되살리고 유형·메모 덮어씀)",
+   "method": "POST",
+   "path": "/api/me/devices",
+   "body": {
+    "deviceType": "Windows PC (새로 산 것)",
+    "label": "한성컴퓨터 PC",
+    "memo": "되살림"
+   }
+  },
+  {
+   "name": "기기 등록 — 삭제된 라벨 + 유형 공백 (전각)",
+   "method": "POST",
+   "path": "/api/me/devices",
+   "body": {
+    "deviceType": "　",
+    "label": "덱"
+   }
+  },
+  {
+   "name": "기기 삭제 — 되살린 뒤 다시 삭제 (남겨둠)",
+   "method": "DELETE",
+   "path": "/api/me/devices/8"
+  },
+  {
+   "name": "에뮬레이터 등록 — 정규화·메모",
+   "method": "POST",
+   "path": "/api/me/emulators",
+   "body": {
+    "name": "  Dolphin(GC)  ",
+    "memo": " - 5.0 "
+   },
+   "save": {
+    "eId": "id"
+   }
+  },
+  {
+   "name": "에뮬레이터 등록 — 메모 없음",
+   "method": "POST",
+   "path": "/api/me/emulators",
+   "body": {
+    "name": "PCSX2"
+   },
+   "save": {
+    "eId2": "id"
+   }
+  },
+  {
+   "name": "에뮬레이터 등록 — 중복",
+   "method": "POST",
+   "path": "/api/me/emulators",
+   "body": {
+    "name": "PCSX2"
+   }
+  },
+  {
+   "name": "에뮬레이터 등록 — 공백",
+   "method": "POST",
+   "path": "/api/me/emulators",
+   "body": {
+    "name": " "
+   }
+  },
+  {
+   "name": "에뮬레이터 등록 — 메모 2001자",
+   "method": "POST",
+   "path": "/api/me/emulators",
+   "body": {
+    "name": "X",
+    "memo": "가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가"
+   }
+  },
+  {
+   "name": "에뮬레이터 등록 — 51자",
+   "method": "POST",
+   "path": "/api/me/emulators",
+   "body": {
+    "name": "가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가"
+   }
+  },
+  {
+   "name": "에뮬레이터 등록 — 전각 공백",
+   "method": "POST",
+   "path": "/api/me/emulators",
+   "body": {
+    "name": "　"
+   }
+  },
+  {
+   "name": "에뮬레이터 등록 — 회원 없음",
+   "method": "POST",
+   "path": "/api/me/emulators",
+   "body": {
+    "name": "X"
+   },
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "에뮬레이터 수정",
+   "method": "PUT",
+   "path": "/api/me/emulators/${eId}",
+   "body": {
+    "name": "Dolphin",
+    "memo": "새 메모"
+   }
+  },
+  {
+   "name": "에뮬레이터 수정 — 같은 값 (변경 없음)",
+   "method": "PUT",
+   "path": "/api/me/emulators/${eId}",
+   "body": {
+    "name": "Dolphin",
+    "memo": "새 메모"
+   }
+  },
+  {
+   "name": "에뮬레이터 수정 — 메모만 (실데이터)",
+   "method": "PUT",
+   "path": "/api/me/emulators/6",
+   "body": {
+    "name": "melonDS(DS)",
+    "memo": "- 1.0"
+   }
+  },
+  {
+   "name": "에뮬레이터 수정 — 중복",
+   "method": "PUT",
+   "path": "/api/me/emulators/${eId}",
+   "body": {
+    "name": "Eden(switch)"
+   }
+  },
+  {
+   "name": "에뮬레이터 수정 — 공백",
+   "method": "PUT",
+   "path": "/api/me/emulators/${eId}",
+   "body": {
+    "name": ""
+   }
+  },
+  {
+   "name": "에뮬레이터 수정 — 없음",
+   "method": "PUT",
+   "path": "/api/me/emulators/999999",
+   "body": {
+    "name": "X"
+   }
+  },
+  {
+   "name": "에뮬레이터 수정 — 남의 것",
+   "method": "PUT",
+   "path": "/api/me/emulators/${eId}",
+   "body": {
+    "name": "X"
+   },
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "에뮬레이터 수정 — 경로 id 형식 오류",
+   "method": "PUT",
+   "path": "/api/me/emulators/abc",
+   "body": {
+    "name": "X"
+   }
+  },
+  {
+   "name": "에뮬레이터 삭제",
+   "method": "DELETE",
+   "path": "/api/me/emulators/${eId2}"
+  },
+  {
+   "name": "에뮬레이터 삭제 — 이미 삭제됨",
+   "method": "DELETE",
+   "path": "/api/me/emulators/${eId2}"
+  },
+  {
+   "name": "에뮬레이터 수정 — 삭제된 에뮬레이터",
+   "method": "PUT",
+   "path": "/api/me/emulators/${eId2}",
+   "body": {
+    "name": "X"
+   }
+  },
+  {
+   "name": "에뮬레이터 삭제 — 없음",
+   "method": "DELETE",
+   "path": "/api/me/emulators/999999"
+  },
+  {
+   "name": "에뮬레이터 삭제 — 남의 것",
+   "method": "DELETE",
+   "path": "/api/me/emulators/3",
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "에뮬레이터 삭제 — 실데이터",
+   "method": "DELETE",
+   "path": "/api/me/emulators/7"
+  },
+  {
+   "name": "에뮬레이터 등록 — 삭제된 이름 (되살리고 메모 덮어씀)",
+   "method": "POST",
+   "path": "/api/me/emulators",
+   "body": {
+    "name": "Delta(DS, ...)",
+    "memo": "되살림"
+   }
+  },
+  {
+   "name": "에뮬레이터 등록 — 삭제된 이름, 메모 없이 (메모 지워짐)",
+   "method": "POST",
+   "path": "/api/me/emulators",
+   "body": {
+    "name": "PCSX2"
+   }
+  },
+  {
+   "name": "계정 등록 — 플랫폼",
+   "method": "POST",
+   "path": "/api/me/platform-accounts",
+   "body": {
+    "platformId": 13,
+    "accountLabel": "  신규 계정  "
+   },
+   "save": {
+    "aId": "id"
+   }
+  },
+  {
+   "name": "계정 등록 — 같은 라벨, 다른 플랫폼 (허용)",
+   "method": "POST",
+   "path": "/api/me/platform-accounts",
+   "body": {
+    "platformId": 9,
+    "accountLabel": "신규 계정"
+   },
+   "save": {
+    "aId2": "id"
+   }
+  },
+  {
+   "name": "계정 등록 — 에뮬레이터",
+   "method": "POST",
+   "path": "/api/me/platform-accounts",
+   "body": {
+    "emulatorId": 5,
+    "accountLabel": "에뮬 계정"
+   },
+   "save": {
+    "aId3": "id"
+   }
+  },
+  {
+   "name": "계정 등록 — 문자열 id (Jackson 변환)",
+   "method": "POST",
+   "path": "/api/me/platform-accounts",
+   "body": {
+    "platformId": "11",
+    "accountLabel": "문자열 id"
+   }
+  },
+  {
+   "name": "계정 등록 — 삭제된 에뮬레이터도 허용",
+   "method": "POST",
+   "path": "/api/me/platform-accounts",
+   "body": {
+    "emulatorId": 7,
+    "accountLabel": "삭제된 에뮬 계정"
+   }
+  },
+  {
+   "name": "계정 등록 — 같은 플랫폼 같은 라벨 (중복)",
+   "method": "POST",
+   "path": "/api/me/platform-accounts",
+   "body": {
+    "platformId": 13,
+    "accountLabel": "신규 계정"
+   }
+  },
+  {
+   "name": "계정 등록 — 같은 에뮬 같은 라벨 (중복)",
+   "method": "POST",
+   "path": "/api/me/platform-accounts",
+   "body": {
+    "emulatorId": 5,
+    "accountLabel": "에뮬 계정"
+   }
+  },
+  {
+   "name": "계정 등록 — 플랫폼 id와 에뮬 id가 같은 숫자 (소속 키 구별)",
+   "method": "POST",
+   "path": "/api/me/platform-accounts",
+   "body": {
+    "emulatorId": 9,
+    "accountLabel": "신규 계정"
+   }
+  },
+  {
+   "name": "계정 등록 — 둘 다 보냄",
+   "method": "POST",
+   "path": "/api/me/platform-accounts",
+   "body": {
+    "platformId": 13,
+    "emulatorId": 5,
+    "accountLabel": "X"
+   }
+  },
+  {
+   "name": "계정 등록 — 둘 다 없음",
+   "method": "POST",
+   "path": "/api/me/platform-accounts",
+   "body": {
+    "accountLabel": "X"
+   }
+  },
+  {
+   "name": "계정 등록 — 둘 다 보냄 (없는 id여도 400이 먼저)",
+   "method": "POST",
+   "path": "/api/me/platform-accounts",
+   "body": {
+    "platformId": 999999,
+    "emulatorId": 999999,
+    "accountLabel": "X"
+   }
+  },
+  {
+   "name": "계정 등록 — 삭제된 플랫폼",
+   "method": "POST",
+   "path": "/api/me/platform-accounts",
+   "body": {
+    "platformId": 12,
+    "accountLabel": "X"
+   }
+  },
+  {
+   "name": "계정 등록 — 없는 플랫폼",
+   "method": "POST",
+   "path": "/api/me/platform-accounts",
+   "body": {
+    "platformId": 999999,
+    "accountLabel": "X"
+   }
+  },
+  {
+   "name": "계정 등록 — 없는 에뮬레이터",
+   "method": "POST",
+   "path": "/api/me/platform-accounts",
+   "body": {
+    "emulatorId": 999999,
+    "accountLabel": "X"
+   }
+  },
+  {
+   "name": "계정 등록 — 라벨 공백",
+   "method": "POST",
+   "path": "/api/me/platform-accounts",
+   "body": {
+    "platformId": 13,
+    "accountLabel": " "
+   }
+  },
+  {
+   "name": "계정 등록 — 라벨 없음 + 소속도 없음 (검증이 먼저)",
+   "method": "POST",
+   "path": "/api/me/platform-accounts",
+   "body": {}
+  },
+  {
+   "name": "계정 등록 — 라벨 51자",
+   "method": "POST",
+   "path": "/api/me/platform-accounts",
+   "body": {
+    "platformId": 13,
+    "accountLabel": "가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가"
+   }
+  },
+  {
+   "name": "계정 등록 — 전각 공백 라벨",
+   "method": "POST",
+   "path": "/api/me/platform-accounts",
+   "body": {
+    "platformId": 13,
+    "accountLabel": "　"
+   }
+  },
+  {
+   "name": "계정 등록 — platformId 형식 오류",
+   "method": "POST",
+   "path": "/api/me/platform-accounts",
+   "body": {
+    "platformId": "abc",
+    "accountLabel": "X"
+   }
+  },
+  {
+   "name": "계정 등록 — 깨진 JSON",
+   "method": "POST",
+   "path": "/api/me/platform-accounts",
+   "rawBody": "{"
+  },
+  {
+   "name": "계정 등록 — 회원 없음",
+   "method": "POST",
+   "path": "/api/me/platform-accounts",
+   "body": {
+    "platformId": 13,
+    "accountLabel": "X"
+   },
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "계정 삭제",
+   "method": "DELETE",
+   "path": "/api/me/platform-accounts/${aId2}"
+  },
+  {
+   "name": "계정 등록 — 삭제된 계정과 같음 (되살리기 안내 409)",
+   "method": "POST",
+   "path": "/api/me/platform-accounts",
+   "body": {
+    "platformId": 9,
+    "accountLabel": "신규 계정"
+   }
+  },
+  {
+   "name": "계정 되살리기",
+   "method": "POST",
+   "path": "/api/me/platform-accounts/${aId2}/revive"
+  },
+  {
+   "name": "계정 되살리기 — 삭제되지 않음",
+   "method": "POST",
+   "path": "/api/me/platform-accounts/${aId2}/revive"
+  },
+  {
+   "name": "계정 되살리기 — 없는 계정",
+   "method": "POST",
+   "path": "/api/me/platform-accounts/999999/revive"
+  },
+  {
+   "name": "계정 되살리기 — 남의 계정",
+   "method": "POST",
+   "path": "/api/me/platform-accounts/${aId2}/revive",
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "계정 되살리기 — 경로 id 형식 오류",
+   "method": "POST",
+   "path": "/api/me/platform-accounts/abc/revive"
+  },
+  {
+   "name": "계정 이름 변경",
+   "method": "PUT",
+   "path": "/api/me/platform-accounts/${aId}",
+   "body": {
+    "accountLabel": "  바꾼 이름 "
+   }
+  },
+  {
+   "name": "계정 이름 변경 — 같은 값 (변경 없음)",
+   "method": "PUT",
+   "path": "/api/me/platform-accounts/${aId}",
+   "body": {
+    "accountLabel": "바꾼 이름"
+   }
+  },
+  {
+   "name": "계정 이름 변경 — 같은 소속 중복 (실데이터 Steam)",
+   "method": "PUT",
+   "path": "/api/me/platform-accounts/${aId}",
+   "body": {
+    "accountLabel": "Beene"
+   }
+  },
+  {
+   "name": "계정 이름 변경 — 다른 소속의 같은 라벨은 허용 (실데이터 Nintendo의 Beene)",
+   "method": "PUT",
+   "path": "/api/me/platform-accounts/5",
+   "body": {
+    "accountLabel": "Beene"
+   }
+  },
+  {
+   "name": "계정 이름 변경 — 에뮬 계정",
+   "method": "PUT",
+   "path": "/api/me/platform-accounts/${aId3}",
+   "body": {
+    "accountLabel": "에뮬 계정 2"
+   }
+  },
+  {
+   "name": "계정 이름 변경 — 공백",
+   "method": "PUT",
+   "path": "/api/me/platform-accounts/${aId}",
+   "body": {
+    "accountLabel": " "
+   }
+  },
+  {
+   "name": "계정 이름 변경 — 라벨 없음",
+   "method": "PUT",
+   "path": "/api/me/platform-accounts/${aId}",
+   "body": {}
+  },
+  {
+   "name": "계정 이름 변경 — 51자",
+   "method": "PUT",
+   "path": "/api/me/platform-accounts/${aId}",
+   "body": {
+    "accountLabel": "가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가"
+   }
+  },
+  {
+   "name": "계정 이름 변경 — 전각 공백",
+   "method": "PUT",
+   "path": "/api/me/platform-accounts/${aId}",
+   "body": {
+    "accountLabel": "　"
+   }
+  },
+  {
+   "name": "계정 이름 변경 — 없는 계정",
+   "method": "PUT",
+   "path": "/api/me/platform-accounts/999999",
+   "body": {
+    "accountLabel": "X"
+   }
+  },
+  {
+   "name": "계정 이름 변경 — 남의 계정",
+   "method": "PUT",
+   "path": "/api/me/platform-accounts/${aId}",
+   "body": {
+    "accountLabel": "X"
+   },
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "계정 이름 변경 — 경로 id 형식 오류",
+   "method": "PUT",
+   "path": "/api/me/platform-accounts/abc",
+   "body": {
+    "accountLabel": "X"
+   }
+  },
+  {
+   "name": "계정 삭제 — 남의 계정",
+   "method": "DELETE",
+   "path": "/api/me/platform-accounts/${aId}",
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "계정 삭제",
+   "method": "DELETE",
+   "path": "/api/me/platform-accounts/${aId}"
+  },
+  {
+   "name": "계정 삭제 — 이미 삭제됨",
+   "method": "DELETE",
+   "path": "/api/me/platform-accounts/${aId}"
+  },
+  {
+   "name": "계정 이름 변경 — 삭제된 계정",
+   "method": "PUT",
+   "path": "/api/me/platform-accounts/${aId}",
+   "body": {
+    "accountLabel": "X"
+   }
+  },
+  {
+   "name": "계정 삭제 — 없는 계정",
+   "method": "DELETE",
+   "path": "/api/me/platform-accounts/999999"
+  },
+  {
+   "name": "계정 삭제 — 경로 id 형식 오류",
+   "method": "DELETE",
+   "path": "/api/me/platform-accounts/abc"
+  },
+  {
+   "name": "계정 삭제 — 실데이터 (남겨둠)",
+   "method": "DELETE",
+   "path": "/api/me/platform-accounts/12"
+  },
+  {
+   "name": "계정 등록 — 실데이터에서 삭제한 것과 같음 (되살리기 안내)",
+   "method": "POST",
+   "path": "/api/me/platform-accounts",
+   "body": {
+    "platformId": 11,
+    "accountLabel": "DDUNI"
+   }
+  }
+ ]
+}

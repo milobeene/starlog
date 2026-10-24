@@ -1,0 +1,623 @@
+{
+ "name": "tag",
+ "note": "X-Member-Id로 남의 회원인 척하려면 dev·test 프로필이 필요하다 — 하네스는 desktop으로 띄우므로 양쪽에 test를 얹는다",
+ "env": {
+  "STARLOG_PROFILE": "test",
+  "SPRING_PROFILES_INCLUDE": "test"
+ },
+ "steps": [
+  {
+   "name": "태그 이름 변경 — 정규화",
+   "method": "PUT",
+   "path": "/api/me/tags/3",
+   "body": {
+    "name": "  Indie 2D  "
+   }
+  },
+  {
+   "name": "태그 이름 변경 — 같은 값 (변경 없음)",
+   "method": "PUT",
+   "path": "/api/me/tags/3",
+   "body": {
+    "name": "Indie 2D"
+   }
+  },
+  {
+   "name": "태그 이름 변경 — 자기 이름을 공백 달아 (변경 없음)",
+   "method": "PUT",
+   "path": "/api/me/tags/3",
+   "body": {
+    "name": " Indie 2D"
+   }
+  },
+  {
+   "name": "태그 이름 변경 — 중복",
+   "method": "PUT",
+   "path": "/api/me/tags/3",
+   "body": {
+    "name": "AAA"
+   }
+  },
+  {
+   "name": "태그 이름 변경 — 중복 (공백 포함)",
+   "method": "PUT",
+   "path": "/api/me/tags/3",
+   "body": {
+    "name": " Story "
+   }
+  },
+  {
+   "name": "태그 이름 변경 — 공백",
+   "method": "PUT",
+   "path": "/api/me/tags/3",
+   "body": {
+    "name": "   "
+   }
+  },
+  {
+   "name": "태그 이름 변경 — 이름 없음",
+   "method": "PUT",
+   "path": "/api/me/tags/3",
+   "body": {}
+  },
+  {
+   "name": "태그 이름 변경 — null",
+   "method": "PUT",
+   "path": "/api/me/tags/3",
+   "body": {
+    "name": null
+   }
+  },
+  {
+   "name": "태그 이름 변경 — 51자",
+   "method": "PUT",
+   "path": "/api/me/tags/3",
+   "body": {
+    "name": "가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가"
+   }
+  },
+  {
+   "name": "태그 이름 변경 — 50자",
+   "method": "PUT",
+   "path": "/api/me/tags/16",
+   "body": {
+    "name": "나나나나나나나나나나나나나나나나나나나나나나나나나나나나나나나나나나나나나나나나나나나나나나나나나나"
+   }
+  },
+  {
+   "name": "태그 이름 변경 — 전각 공백 (strip 후 빔)",
+   "method": "PUT",
+   "path": "/api/me/tags/3",
+   "body": {
+    "name": "　"
+   }
+  },
+  {
+   "name": "태그 이름 변경 — 전각 공백, 없는 태그 (404가 먼저)",
+   "method": "PUT",
+   "path": "/api/me/tags/999999",
+   "body": {
+    "name": "　"
+   }
+  },
+  {
+   "name": "태그 이름 변경 — 없는 태그",
+   "method": "PUT",
+   "path": "/api/me/tags/999999",
+   "body": {
+    "name": "X"
+   }
+  },
+  {
+   "name": "태그 이름 변경 — 남의 태그",
+   "method": "PUT",
+   "path": "/api/me/tags/3",
+   "body": {
+    "name": "X"
+   },
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "태그 이름 변경 — 경로 id 형식 오류",
+   "method": "PUT",
+   "path": "/api/me/tags/abc",
+   "body": {
+    "name": "X"
+   }
+  },
+  {
+   "name": "태그 이름 변경 — 깨진 JSON",
+   "method": "PUT",
+   "path": "/api/me/tags/3",
+   "rawBody": "{name:"
+  },
+  {
+   "name": "태그 이름 변경 — 본문 없음",
+   "method": "PUT",
+   "path": "/api/me/tags/3"
+  },
+  {
+   "name": "태그 이름 변경 — 남겨둠",
+   "method": "PUT",
+   "path": "/api/me/tags/15",
+   "body": {
+    "name": "Must-Play Story"
+   }
+  },
+  {
+   "name": "태그 색 — 팔레트",
+   "method": "PUT",
+   "path": "/api/me/tags/3/color",
+   "body": {
+    "color": "teal"
+   }
+  },
+  {
+   "name": "태그 색 — 같은 값 (변경 없음)",
+   "method": "PUT",
+   "path": "/api/me/tags/4/color",
+   "body": {
+    "color": "denim"
+   }
+  },
+  {
+   "name": "태그 색 — 공백 달린 팔레트 이름",
+   "method": "PUT",
+   "path": "/api/me/tags/5/color",
+   "body": {
+    "color": "  lavender "
+   }
+  },
+  {
+   "name": "태그 색 — 팔레트 밖",
+   "method": "PUT",
+   "path": "/api/me/tags/3/color",
+   "body": {
+    "color": "neon"
+   }
+  },
+  {
+   "name": "태그 색 — 대문자 (팔레트 밖)",
+   "method": "PUT",
+   "path": "/api/me/tags/3/color",
+   "body": {
+    "color": "Teal"
+   }
+  },
+  {
+   "name": "태그 색 — 없는 태그에 팔레트 밖 색 (404가 먼저)",
+   "method": "PUT",
+   "path": "/api/me/tags/999999/color",
+   "body": {
+    "color": "neon"
+   }
+  },
+  {
+   "name": "태그 색 — null (색 없음)",
+   "method": "PUT",
+   "path": "/api/me/tags/6/color",
+   "body": {
+    "color": null
+   }
+  },
+  {
+   "name": "태그 색 — 공백 (색 없음)",
+   "method": "PUT",
+   "path": "/api/me/tags/8/color",
+   "body": {
+    "color": "   "
+   }
+  },
+  {
+   "name": "태그 색 — 필드 없음",
+   "method": "PUT",
+   "path": "/api/me/tags/9/color",
+   "body": {}
+  },
+  {
+   "name": "태그 색 — 이미 없는 색에 null (변경 없음)",
+   "method": "PUT",
+   "path": "/api/me/tags/7/color",
+   "body": {
+    "color": null
+   }
+  },
+  {
+   "name": "태그 색 — 남의 태그",
+   "method": "PUT",
+   "path": "/api/me/tags/3/color",
+   "body": {
+    "color": "sky"
+   },
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "태그 색 — 없는 태그",
+   "method": "PUT",
+   "path": "/api/me/tags/999999/color",
+   "body": {
+    "color": "sky"
+   }
+  },
+  {
+   "name": "태그 색 — 경로 id 형식 오류",
+   "method": "PUT",
+   "path": "/api/me/tags/abc/color",
+   "body": {
+    "color": "sky"
+   }
+  },
+  {
+   "name": "태그 색 — 본문 없음",
+   "method": "PUT",
+   "path": "/api/me/tags/3/color"
+  },
+  {
+   "name": "태그 색 — 깨진 JSON",
+   "method": "PUT",
+   "path": "/api/me/tags/3/color",
+   "rawBody": "{"
+  },
+  {
+   "name": "태그 색 — 숫자 (문자열 아님)",
+   "method": "PUT",
+   "path": "/api/me/tags/3/color",
+   "body": {
+    "color": 5
+   }
+  },
+  {
+   "name": "순서 — 일부만 앞으로 (나머지는 원래 순서로 뒤로)",
+   "method": "PUT",
+   "path": "/api/me/tags/order",
+   "body": {
+    "tagIds": [
+     18,
+     17,
+     3
+    ]
+   }
+  },
+  {
+   "name": "순서 — 빈 목록 (재번호만)",
+   "method": "PUT",
+   "path": "/api/me/tags/order",
+   "body": {
+    "tagIds": []
+   }
+  },
+  {
+   "name": "순서 — 같은 순서 그대로 (변경 없음)",
+   "method": "PUT",
+   "path": "/api/me/tags/order",
+   "body": {
+    "tagIds": [
+     18,
+     17,
+     3
+    ]
+   }
+  },
+  {
+   "name": "순서 — 문자열 id",
+   "method": "PUT",
+   "path": "/api/me/tags/order",
+   "body": {
+    "tagIds": [
+     "4",
+     5
+    ]
+   }
+  },
+  {
+   "name": "순서 — tagIds 없음",
+   "method": "PUT",
+   "path": "/api/me/tags/order",
+   "body": {}
+  },
+  {
+   "name": "순서 — tagIds null",
+   "method": "PUT",
+   "path": "/api/me/tags/order",
+   "body": {
+    "tagIds": null
+   }
+  },
+  {
+   "name": "순서 — 없는 id",
+   "method": "PUT",
+   "path": "/api/me/tags/order",
+   "body": {
+    "tagIds": [
+     4,
+     999999
+    ]
+   }
+  },
+  {
+   "name": "순서 — 중복 id",
+   "method": "PUT",
+   "path": "/api/me/tags/order",
+   "body": {
+    "tagIds": [
+     4,
+     5,
+     4
+    ]
+   }
+  },
+  {
+   "name": "순서 — null 원소",
+   "method": "PUT",
+   "path": "/api/me/tags/order",
+   "body": {
+    "tagIds": [
+     4,
+     null
+    ]
+   }
+  },
+  {
+   "name": "순서 — 숫자 아닌 원소",
+   "method": "PUT",
+   "path": "/api/me/tags/order",
+   "body": {
+    "tagIds": [
+     4,
+     "abc"
+    ]
+   }
+  },
+  {
+   "name": "순서 — 배열 아님",
+   "method": "PUT",
+   "path": "/api/me/tags/order",
+   "body": {
+    "tagIds": 4
+   }
+  },
+  {
+   "name": "순서 — 남의 회원이 내 태그를 섞음",
+   "method": "PUT",
+   "path": "/api/me/tags/order",
+   "body": {
+    "tagIds": [
+     4
+    ]
+   },
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "순서 — 남의 회원 빈 목록 (태그 없음)",
+   "method": "PUT",
+   "path": "/api/me/tags/order",
+   "body": {
+    "tagIds": []
+   },
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "순서 — 깨진 JSON",
+   "method": "PUT",
+   "path": "/api/me/tags/order",
+   "rawBody": "["
+  },
+  {
+   "name": "순서 — 본문 없음",
+   "method": "PUT",
+   "path": "/api/me/tags/order"
+  },
+  {
+   "name": "순서 — 남겨둠 (전체 재배열)",
+   "method": "PUT",
+   "path": "/api/me/tags/order",
+   "body": {
+    "tagIds": [
+     14,
+     13,
+     12,
+     11,
+     10,
+     9,
+     8,
+     7,
+     6,
+     5,
+     4,
+     3,
+     15,
+     16,
+     17,
+     18
+    ]
+   }
+  },
+  {
+   "name": "태그 삭제 — 항목에 안 붙은 태그",
+   "method": "DELETE",
+   "path": "/api/me/tags/16"
+  },
+  {
+   "name": "태그 삭제 — 항목 12개에 붙은 태그 (벌크로 뗌)",
+   "method": "DELETE",
+   "path": "/api/me/tags/8"
+  },
+  {
+   "name": "태그 삭제 — 이미 지운 태그",
+   "method": "DELETE",
+   "path": "/api/me/tags/8"
+  },
+  {
+   "name": "태그 삭제 — 없는 태그",
+   "method": "DELETE",
+   "path": "/api/me/tags/999999"
+  },
+  {
+   "name": "태그 삭제 — 남의 태그",
+   "method": "DELETE",
+   "path": "/api/me/tags/3",
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "태그 삭제 — 경로 id 형식 오류",
+   "method": "DELETE",
+   "path": "/api/me/tags/abc"
+  },
+  {
+   "name": "순서 — 삭제된 id를 보냄",
+   "method": "PUT",
+   "path": "/api/me/tags/order",
+   "body": {
+    "tagIds": [
+     8
+    ]
+   }
+  },
+  {
+   "name": "순서 — 삭제 뒤 재번호",
+   "method": "PUT",
+   "path": "/api/me/tags/order",
+   "body": {
+    "tagIds": []
+   }
+  },
+  {
+   "name": "장르 이름 변경",
+   "method": "PUT",
+   "path": "/api/me/genres/39",
+   "body": {
+    "name": "  롤플레잉  "
+   }
+  },
+  {
+   "name": "장르 이름 변경 — 같은 값 (변경 없음)",
+   "method": "PUT",
+   "path": "/api/me/genres/39",
+   "body": {
+    "name": "롤플레잉"
+   }
+  },
+  {
+   "name": "장르 이름 변경 — 중복",
+   "method": "PUT",
+   "path": "/api/me/genres/39",
+   "body": {
+    "name": "TPS"
+   }
+  },
+  {
+   "name": "장르 이름 변경 — 공백",
+   "method": "PUT",
+   "path": "/api/me/genres/39",
+   "body": {
+    "name": " "
+   }
+  },
+  {
+   "name": "장르 이름 변경 — 이름 없음",
+   "method": "PUT",
+   "path": "/api/me/genres/39",
+   "body": {}
+  },
+  {
+   "name": "장르 이름 변경 — 51자",
+   "method": "PUT",
+   "path": "/api/me/genres/39",
+   "body": {
+    "name": "가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가"
+   }
+  },
+  {
+   "name": "장르 이름 변경 — 전각 공백",
+   "method": "PUT",
+   "path": "/api/me/genres/39",
+   "body": {
+    "name": "　"
+   }
+  },
+  {
+   "name": "장르 이름 변경 — 없는 장르",
+   "method": "PUT",
+   "path": "/api/me/genres/999999",
+   "body": {
+    "name": "X"
+   }
+  },
+  {
+   "name": "장르 이름 변경 — 남의 장르",
+   "method": "PUT",
+   "path": "/api/me/genres/39",
+   "body": {
+    "name": "X"
+   },
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "장르 이름 변경 — 경로 id 형식 오류",
+   "method": "PUT",
+   "path": "/api/me/genres/abc",
+   "body": {
+    "name": "X"
+   }
+  },
+  {
+   "name": "장르 이름 변경 — 깨진 JSON",
+   "method": "PUT",
+   "path": "/api/me/genres/39",
+   "rawBody": "x"
+  },
+  {
+   "name": "장르 이름 변경 — 남겨둠",
+   "method": "PUT",
+   "path": "/api/me/genres/40",
+   "body": {
+    "name": "3인칭 슈팅"
+   }
+  },
+  {
+   "name": "장르 삭제 — 항목 3개에 붙은 장르",
+   "method": "DELETE",
+   "path": "/api/me/genres/88"
+  },
+  {
+   "name": "장르 삭제 — 항목 1개에 붙은 장르",
+   "method": "DELETE",
+   "path": "/api/me/genres/87"
+  },
+  {
+   "name": "장르 삭제 — 이미 지운 장르",
+   "method": "DELETE",
+   "path": "/api/me/genres/88"
+  },
+  {
+   "name": "장르 삭제 — 없는 장르",
+   "method": "DELETE",
+   "path": "/api/me/genres/999999"
+  },
+  {
+   "name": "장르 삭제 — 남의 장르",
+   "method": "DELETE",
+   "path": "/api/me/genres/39",
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "장르 삭제 — 경로 id 형식 오류",
+   "method": "DELETE",
+   "path": "/api/me/genres/abc"
+  }
+ ]
+}

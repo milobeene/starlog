@@ -6,6 +6,12 @@
  */
 import { z } from "zod";
 
+/**
+ * String 필드 — Jackson은 **숫자·불리언도 문자열로 받아준다** (`{"color": 5}` → `"5"`).
+ * `z.string()`으로 받으면 자바는 받는 입력을 우리가 "읽을 수 없음"으로 튕긴다 (platform 이전에서 발견)
+ */
+export const zText = z.union([z.string(), z.number().transform(String), z.boolean().transform(String)]);
+
 /** LocalDate — `"2026-10-19"`. 잘못된 날짜(2월 30일)도 읽기 단계에서 거절한다 (Jackson과 같다) */
 export const zDate = z.string().refine((s) => {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
