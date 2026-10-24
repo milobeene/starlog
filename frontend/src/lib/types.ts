@@ -73,6 +73,13 @@ export interface BacklogCard {
   tag: string | null;
   /** IGDB 원제(영문). 한글 이름만 아는 사람이 영문으로도 찾도록 검색에 쓴다. 마스터가 없으면 null */
   masterName: string | null;
+  /**
+   * 정렬 기준에 따라 점수 아래 줄에 쓴다 (플레이 시간·출시일 정렬). **서버가 싣기 전엔 없다**
+   * (`undefined`) — 없으면 카드가 기존 회차 줄로 떨어진다. 값이 없는 게임은 null
+   */
+  playTimeHours?: number | null;
+  /** 출시일(`YYYY-MM-DD`, 개인 수정이 이긴 값) */
+  releasedOn?: string | null;
 }
 
 /* ── 상세 (GET /api/backlog/{entryId}) ────────────────────── */

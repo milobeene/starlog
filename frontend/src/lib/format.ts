@@ -49,3 +49,9 @@ export function bytesParts(bytes: number): { value: string; unit: string } {
   if (bytes < 1024 * 1024 * 1024) return { value: (bytes / 1024 / 1024).toFixed(1), unit: "MB" };
   return { value: (bytes / 1024 / 1024 / 1024).toFixed(2), unit: "GB" };
 }
+
+/** 출시 연월 — `2024-05-17` → `2024.05`. 값이 없거나 형식이 다르면 null */
+export function formatReleaseMonth(date: string | null | undefined): string | null {
+  const m = date?.match(/^(\d{4})-(\d{2})/);
+  return m ? `${m[1]}.${m[2]}` : null;
+}

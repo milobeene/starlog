@@ -41,7 +41,6 @@ export default function DashboardPage() {
   const playingCount = statuses.find((item) => item.status === "PLAYING")?.count ?? 0;
   const completionRate = totalGames > 0 ? ((completed / totalGames) * 100).toFixed(1) : "0.0";
 
-  const hoursByEntry = new Map(playtime.data?.top.map((row) => [row.entryId, row.hours]));
 
   if (facets.error) return <ErrorNotice error={facets.error} onRetry={facets.reload} />;
 
@@ -121,11 +120,10 @@ export default function DashboardPage() {
           card.lastPlaythrough?.finishedOn ?? card.lastPlaythrough?.startedOn ?? "—"
         }
       />
-      {/* 카드 목록 API엔 플레이 시간이 없다 — 같은 정렬의 상위 10개가 통계 API에 시간과 함께 온다 */}
       <GameRow
         title="Most Played"
         sort="playtime"
-        meta={(card) => <PlayTime hours={hoursByEntry.get(card.entryId)} />}
+        meta={(card) => <PlayTime hours={card.playTimeHours} />}
       />
       <GameRow
         title="Top Rated"

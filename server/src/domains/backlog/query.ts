@@ -260,6 +260,9 @@ async function toCards(d: Db, entries: EntryRow[]) {
       tag: e.tagId === null ? null : tags.get(e.tagId) ?? null,
       // 마스터 이름(IGDB 원제) — 화면이 전량 목록을 손에서 거를 때 원제로도 찾게 (서버 검색 `q`와 같은 규칙)
       masterName: games.get(e.gameId)?.name ?? null,
+      // 정렬 기준에 따라 카드 둘째 줄에 쓴다 (플레이 시간·출시일 정렬)
+      playTimeHours: amountJson(e.playTimeHours),
+      releasedOn: e.releasedOnResolved,
     };
   });
 }
