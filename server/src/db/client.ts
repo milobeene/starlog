@@ -70,11 +70,12 @@ export async function openDb(target: DbTarget): Promise<OpenDb> {
     password: target.password ?? undefined,
     max: 3,
     idleTimeoutMillis: 60_000,
-    types: {
-      getTypeParser: ((oid: number, format?: string) =>
-        PARSERS[oid] ?? pg.types.getTypeParser(oid, format as "text")) as typeof pg.types.getTypeParser,
-    },
   });
+  /*
+   * 풀의 `types`로는 안 먹는다 — Drizzle(node-postgres)이 쿼리마다 자기 `types`를 넘기고
+   * 나머지 oid는 전역 `pg.types`로 돌려서, 날 SQL(`rows()`)의 int8이 "237" 문자열로 왔다. 그래서 전역에 건다
+   */
+  for (const [oid, parse] of Object.entries(PARSERS)) pg.types.setTypeParser(Number(oid), parse);
   /*
    * 스키마 지정 (결정 60) — 한 DB에 남의 테이블과 공존할 때. 시작 파라미터(`options`)가 아니라
    * 연결마다 SET으로 건다 — Neon 풀러(PgBouncer)는 시작 파라미터 `options`를 거절한다

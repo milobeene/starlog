@@ -151,11 +151,8 @@ export interface StarlogBridge {
    */
   background?: {
     /** 동기. 첫 프레임 전에 알아야 기본색이 번쩍이지 않는다 */
-    get(): { colors: string[] | null; presets: { name: string; colors: string[] }[] };
-    set(patch: {
-      colors?: string[] | null;
-      presets?: { name: string; colors: string[] }[];
-    }): void;
+    get(): { colors: string[] | null };
+    set(patch: { colors?: string[] | null }): void;
   };
   /**
    * 스크린샷 공유 (F5). 옛 preload에는 없을 수 있다 → 부르는 쪽은 `?.`로 쓴다.

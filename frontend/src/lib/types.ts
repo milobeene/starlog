@@ -221,16 +221,8 @@ export interface BacklogDetail {
 /* ── 프로필 / 설정 (GET /api/me) ──────────────────────────── */
 
 export interface Profile {
-  memberId: number;
-  email: string;
   nickname: string;
   memo: string | null;
-  /** 구글 sub 자체는 안 내려온다 — 화면은 연결 여부만 알면 된다 */
-  googleLinked: boolean;
-  /** 비밀번호가 없으면 구글 연결을 해제할 수 없다 (BR-AUTH-01) */
-  hasPassword: boolean;
-  /** 관리자 메뉴를 보일지 정하는 데만 쓴다. 진짜 방어선은 서버의 hasRole (AUTH-P2) */
-  role: "USER" | "ADMIN";
   /**
    * 유체 배경 색 5개. **null이면 "안 골랐다"**는 뜻이고 기본 팔레트를 쓴다 —
    * 빈 배열과 구분해야 기본값을 나중에 바꿔도 안 만진 회원이 따라온다.
@@ -471,7 +463,6 @@ export interface MemberExport {
   formatVersion: number;
   exportedAt: string;
   profile: {
-    email: string;
     nickname: string | null;
     memo: string | null;
     backgroundColors: string[] | null;
@@ -503,6 +494,9 @@ export interface ScreenshotResponse {
   fileName: string;
   url: string;
   sizeBytes: number;
+  contentType: string;
+  /** 찍은 시각(파일 수정 시각, UTC ISO) */
+  takenAt: string;
   /** 저화질 썸네일. 일렉트론 밖(개발 서버)이거나 아직 안 만들어졌으면 null — 원본 `url`로 폴백한다 */
   thumbUrl: string | null;
 }
