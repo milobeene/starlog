@@ -91,7 +91,6 @@ export class ConstraintViolation extends AppError {
 
 /**
  * 드라이버 오류에서 SQLSTATE를 꺼낸다. Drizzle은 원인을 `cause`로 감싸서 던진다.
- * 23xxx(무결성 제약 — 유니크·FK·NOT NULL·CHECK)면 자바 `DataIntegrityViolationException`과 같은 자리
  */
 export function sqlState(e: unknown): string | null {
   for (let cur: unknown = e, depth = 0; cur && depth < 5; cur = (cur as { cause?: unknown }).cause, depth++) {
@@ -101,5 +100,13 @@ export function sqlState(e: unknown): string | null {
   return null;
 }
 
-export const isIntegrityViolation = (e: unknown) => sqlState(e)?.startsWith("23") ?? false;
+/**
+ * 자바에서 `DataIntegrityViolationException`(→ 409 `CONSTRAINT_VIOLATION`)이 되던 오류들.
+ * 하이버네이트는 SQLSTATE **클래스** 21·22(데이터 — 길이 초과·숫자 범위)를 `DataException`으로,
+ * 23·27·44(무결성 — 유니크·FK·NOT NULL·CHECK)를 `ConstraintViolationException`으로 바꾸고,
+ * 스프링은 둘 다 `DataIntegrityViolationException`으로 넘긴다.
+ * 처음엔 23만 봤다 — 닉네임 31자 가져오기에서 자바 409 / TS 500으로 실측해 고쳤다 (2026-10-24)
+ */
+const INTEGRITY_CLASSES = new Set(["21", "22", "23", "27", "44"]);
+export const isIntegrityViolation = (e: unknown) => INTEGRITY_CLASSES.has(sqlState(e)?.slice(0, 2) ?? "");
 export const isUniqueViolation = (e: unknown) => sqlState(e) === "23505";
