@@ -1,0 +1,39 @@
+{
+ "name": "game-igdb",
+ "env": {
+  "APP_IGDB_CLIENT_ID": "$LOCAL:app.igdb.client-id",
+  "APP_IGDB_CLIENT_SECRET": "$LOCAL:app.igdb.client-secret"
+ },
+ "steps": [
+  {
+   "name": "검색 — 실제 IGDB",
+   "method": "GET",
+   "path": "/api/games?q=hollow%20knight"
+  },
+  {
+   "name": "검색 — 마스터에 있는 게임은 마스터 값으로",
+   "method": "GET",
+   "path": "/api/games?q=slay%20the%20spire"
+  },
+  {
+   "name": "검색 — 따옴표·역슬래시 이스케이프",
+   "method": "GET",
+   "path": "/api/games?q=a%22b%5C"
+  },
+  {
+   "name": "재동기화 — 실데이터 (컬렉션·소개문·번역 버림을 DB로)",
+   "method": "POST",
+   "path": "/api/games/2/resync"
+  },
+  {
+   "name": "재동기화 — 번역이 있던 게임",
+   "method": "POST",
+   "path": "/api/games/26/resync"
+  },
+  {
+   "name": "현황 — IGDB 사용량",
+   "method": "GET",
+   "path": "/api/system"
+  }
+ ]
+}

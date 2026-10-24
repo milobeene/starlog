@@ -15,6 +15,7 @@ import { openDb, setDb, type OpenDb } from "./db/client";
 import { migrate } from "./db/migrate";
 import { DiagnosticFailure, classify, inspectSchema } from "./diagnose";
 import { runStartupTasks } from "./startup";
+import { ensureMediaDirs } from "./common/storage";
 import { createApp } from "./app";
 
 type ParentPort = { on(ev: "message", fn: (e: { data: unknown }) => void): void; postMessage(m: unknown): void };
@@ -98,6 +99,11 @@ async function main() {
   }
   const { applied } = await migrate(opened);
   if (applied.length) console.log(`마이그레이션 적용: V${applied.join(", V")}`);
+  /*
+   * 미디어 폴더(covers/·media/)를 기동 때 만든다 (자바 `MediaPaths.ensure`). 업로드 시점에 만들면
+   * **권한 문제를 파일을 받은 뒤에야 안다.** 못 쓰는 곳이면 여기서 터져 기동 실패로 드러나야 한다
+   */
+  ensureMediaDirs();
   await runStartupTasks();
 
   const app = createApp({ staticDir: cfg.staticDir });

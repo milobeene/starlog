@@ -1,0 +1,494 @@
+{
+ "name": "game",
+ "steps": [
+  {
+   "name": "검색 — 검색어 없음",
+   "method": "GET",
+   "path": "/api/games"
+  },
+  {
+   "name": "검색 — 빈 검색어",
+   "method": "GET",
+   "path": "/api/games?q="
+  },
+  {
+   "name": "검색 — 공백만 (전각 공백 포함)",
+   "method": "GET",
+   "path": "/api/games?q=%20%E3%80%80"
+  },
+  {
+   "name": "검색 — IGDB 미설정이면 502",
+   "method": "GET",
+   "path": "/api/games?q=zelda"
+  },
+  {
+   "name": "마스터 — 기본",
+   "method": "GET",
+   "path": "/api/games/master"
+  },
+  {
+   "name": "마스터 — 검색어·페이지",
+   "method": "GET",
+   "path": "/api/games/master?q=zelda&page=0&size=5"
+  },
+  {
+   "name": "마스터 — 둘째 페이지",
+   "method": "GET",
+   "path": "/api/games/master?q=the&page=1&size=5"
+  },
+  {
+   "name": "마스터 — 음수 페이지·0 크기는 잘린다",
+   "method": "GET",
+   "path": "/api/games/master?page=-1&size=0"
+  },
+  {
+   "name": "마스터 — 크기 상한 100",
+   "method": "GET",
+   "path": "/api/games/master?size=500"
+  },
+  {
+   "name": "마스터 — 끝을 넘은 페이지",
+   "method": "GET",
+   "path": "/api/games/master?page=99&size=30"
+  },
+  {
+   "name": "마스터 — 빈 page는 기본값",
+   "method": "GET",
+   "path": "/api/games/master?page=&size="
+  },
+  {
+   "name": "마스터 — % 는 와일드카드로 먹는다",
+   "method": "GET",
+   "path": "/api/games/master?q=%25&size=3"
+  },
+  {
+   "name": "마스터 — 공백 검색어는 전체",
+   "method": "GET",
+   "path": "/api/games/master?q=%20%20&size=3"
+  },
+  {
+   "name": "마스터 — page 형식 오류",
+   "method": "GET",
+   "path": "/api/games/master?page=abc"
+  },
+  {
+   "name": "일괄 동기화 대상",
+   "method": "GET",
+   "path": "/api/games/outdated"
+  },
+  {
+   "name": "수동 등록 — 전부 (정규화·반올림 결과를 DB로)",
+   "method": "POST",
+   "path": "/api/games",
+   "body": {
+    "name": "  수동 게임  ",
+    "developers": [
+     " Dev A ",
+     "",
+     null,
+     "Dev B"
+    ],
+    "publishers": [
+     "Pub"
+    ],
+    "genres": [
+     "RPG",
+     "  "
+    ],
+    "releasedOn": "2024-05-01",
+    "listPrice": {
+     "amount": "39.995",
+     "currency": " usd "
+    }
+   },
+   "save": {
+    "manualId": "id"
+   }
+  },
+  {
+   "name": "수동 등록 — 이름만 (검색에 걸릴 이름)",
+   "method": "POST",
+   "path": "/api/games",
+   "body": {
+    "name": "Zelda Clone"
+   },
+   "save": {
+    "manual2Id": "id"
+   }
+  },
+  {
+   "name": "수동 등록 — 금액 없는 정가는 없는 것",
+   "method": "POST",
+   "path": "/api/games",
+   "body": {
+    "name": "Free Thing",
+    "listPrice": {
+     "amount": null,
+     "currency": "KRW"
+    },
+    "developers": null
+   }
+  },
+  {
+   "name": "수동 등록 — 이름이 숫자 (Jackson이 글자로 받는다)",
+   "method": "POST",
+   "path": "/api/games",
+   "body": {
+    "name": 2048
+   }
+  },
+  {
+   "name": "수동 등록 — 이름 공백",
+   "method": "POST",
+   "path": "/api/games",
+   "body": {
+    "name": "   "
+   }
+  },
+  {
+   "name": "수동 등록 — 이름 없음",
+   "method": "POST",
+   "path": "/api/games",
+   "body": {
+    "developers": [
+     "X"
+    ]
+   }
+  },
+  {
+   "name": "수동 등록 — 이름 301자",
+   "method": "POST",
+   "path": "/api/games",
+   "body": {
+    "name": "가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가"
+   }
+  },
+  {
+   "name": "수동 등록 — 전각 공백 이름 (자바 @NotBlank도 공백으로 본다)",
+   "method": "POST",
+   "path": "/api/games",
+   "body": {
+    "name": "　"
+   }
+  },
+  {
+   "name": "수동 등록 — 음수 정가",
+   "method": "POST",
+   "path": "/api/games",
+   "body": {
+    "name": "X",
+    "listPrice": {
+     "amount": -1,
+     "currency": "KRW"
+    }
+   }
+  },
+  {
+   "name": "수동 등록 — 없는 통화",
+   "method": "POST",
+   "path": "/api/games",
+   "body": {
+    "name": "X",
+    "listPrice": {
+     "amount": 1,
+     "currency": "ABC"
+    }
+   }
+  },
+  {
+   "name": "수동 등록 — 통화 없음",
+   "method": "POST",
+   "path": "/api/games",
+   "body": {
+    "name": "X",
+    "listPrice": {
+     "amount": 1
+    }
+   }
+  },
+  {
+   "name": "수동 등록 — 금액 오류가 이름 오류보다 먼저",
+   "method": "POST",
+   "path": "/api/games",
+   "body": {
+    "name": "　",
+    "listPrice": {
+     "amount": -5,
+     "currency": "KRW"
+    }
+   }
+  },
+  {
+   "name": "수동 등록 — 깨진 JSON",
+   "method": "POST",
+   "path": "/api/games",
+   "rawBody": "{\"name\": "
+  },
+  {
+   "name": "수동 등록 — 빈 본문",
+   "method": "POST",
+   "path": "/api/games",
+   "rawBody": ""
+  },
+  {
+   "name": "수동 등록 — 잘못된 날짜",
+   "method": "POST",
+   "path": "/api/games",
+   "body": {
+    "name": "X",
+    "releasedOn": "2024-02-30"
+   }
+  },
+  {
+   "name": "수동 등록 — 목록 자리에 문자열",
+   "method": "POST",
+   "path": "/api/games",
+   "body": {
+    "name": "X",
+    "developers": "Dev"
+   }
+  },
+  {
+   "name": "검색 — 수동 게임이 있어도 IGDB가 없으면 502",
+   "method": "GET",
+   "path": "/api/games?q=zelda"
+  },
+  {
+   "name": "마스터 — 방금 만든 수동 게임",
+   "method": "GET",
+   "path": "/api/games/master?q=%EC%88%98%EB%8F%99"
+  },
+  {
+   "name": "이름 수정 — 수동 게임",
+   "method": "PUT",
+   "path": "/api/games/${manualId}/name",
+   "body": {
+    "name": "  수동 게임 2 "
+   }
+  },
+  {
+   "name": "이름 수정 — 실데이터, 오버라이드 없는 항목에 전파",
+   "method": "PUT",
+   "path": "/api/games/133/name",
+   "body": {
+    "name": "The Legend of Zelda: Ocarina of Time 3D"
+   }
+  },
+  {
+   "name": "이름 수정 — 같은 이름 (게임 행은 그대로, 오버라이드 항목은 안 건드림)",
+   "method": "PUT",
+   "path": "/api/games/57/name",
+   "body": {
+    "name": "Cult of the Lamb"
+   }
+  },
+  {
+   "name": "이름 수정 — 오버라이드 있는 항목은 전파 0",
+   "method": "PUT",
+   "path": "/api/games/24/name",
+   "body": {
+    "name": "Kirby and the Forgotten Land (Switch)"
+   }
+  },
+  {
+   "name": "이름 수정 — 없는 게임",
+   "method": "PUT",
+   "path": "/api/games/999999/name",
+   "body": {
+    "name": "X"
+   }
+  },
+  {
+   "name": "이름 수정 — 없는 게임 + 빈 이름 (검증이 먼저)",
+   "method": "PUT",
+   "path": "/api/games/999999/name",
+   "body": {
+    "name": ""
+   }
+  },
+  {
+   "name": "이름 수정 — id 형식 오류",
+   "method": "PUT",
+   "path": "/api/games/abc/name",
+   "body": {
+    "name": "X"
+   }
+  },
+  {
+   "name": "이름 수정 — 전각 공백",
+   "method": "PUT",
+   "path": "/api/games/133/name",
+   "body": {
+    "name": "　"
+   }
+  },
+  {
+   "name": "이름 수정 — 301자",
+   "method": "PUT",
+   "path": "/api/games/133/name",
+   "body": {
+    "name": "가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가"
+   }
+  },
+  {
+   "name": "정보 수정 — 실데이터 전체 교체 + 출시일 전파",
+   "method": "PUT",
+   "path": "/api/games/2",
+   "body": {
+    "developers": [
+     "Mega Crit",
+     " "
+    ],
+    "publishers": [],
+    "genres": [
+     "Card"
+    ],
+    "releasedOn": "2019-01-24",
+    "listPrice": {
+     "amount": 25000,
+     "currency": "KRW"
+    }
+   }
+  },
+  {
+   "name": "정보 수정 — 같은 값 (게임 행은 안 바뀌고 항목 전파는 돈다)",
+   "method": "PUT",
+   "path": "/api/games/3",
+   "body": {
+    "developers": [
+     "CD Projekt RED"
+    ],
+    "publishers": [
+     "WB Games",
+     "cdp.pl",
+     "Spike Chunsoft",
+     "Bandai Namco Entertainment"
+    ],
+    "genres": [
+     "Role-playing (RPG)",
+     "Adventure"
+    ],
+    "releasedOn": "2015-05-19",
+    "listPrice": null
+   }
+  },
+  {
+   "name": "정보 수정 — 빈 본문 객체는 전부 비운다",
+   "method": "PUT",
+   "path": "/api/games/24",
+   "body": {}
+  },
+  {
+   "name": "정보 수정 — 수동 게임 정가만 같은 값으로 (39.995 → 40.00 = 40)",
+   "method": "PUT",
+   "path": "/api/games/${manualId}",
+   "body": {
+    "developers": [
+     "Dev A",
+     "Dev B"
+    ],
+    "publishers": [
+     "Pub"
+    ],
+    "genres": [
+     "RPG"
+    ],
+    "releasedOn": "2024-05-01",
+    "listPrice": {
+     "amount": 40,
+     "currency": "USD"
+    }
+   }
+  },
+  {
+   "name": "정보 수정 — 없는 게임",
+   "method": "PUT",
+   "path": "/api/games/999999",
+   "body": {}
+  },
+  {
+   "name": "정보 수정 — 없는 게임 + 금액 오류 (금액이 먼저)",
+   "method": "PUT",
+   "path": "/api/games/999999",
+   "body": {
+    "listPrice": {
+     "amount": -1,
+     "currency": "KRW"
+    }
+   }
+  },
+  {
+   "name": "정보 수정 — id 형식 오류",
+   "method": "PUT",
+   "path": "/api/games/abc",
+   "body": {}
+  },
+  {
+   "name": "정보 수정 — 고정 경로 이름이 id 자리에",
+   "method": "PUT",
+   "path": "/api/games/master",
+   "body": {}
+  },
+  {
+   "name": "정보 수정 — 깨진 JSON",
+   "method": "PUT",
+   "path": "/api/games/2",
+   "rawBody": "{"
+  },
+  {
+   "name": "재동기화 — 수동 게임은 400",
+   "method": "POST",
+   "path": "/api/games/${manualId}/resync"
+  },
+  {
+   "name": "재동기화 — IGDB 미설정이면 502",
+   "method": "POST",
+   "path": "/api/games/2/resync"
+  },
+  {
+   "name": "재동기화 — 없는 게임",
+   "method": "POST",
+   "path": "/api/games/999999/resync"
+  },
+  {
+   "name": "재동기화 — id 형식 오류",
+   "method": "POST",
+   "path": "/api/games/x/resync"
+  },
+  {
+   "name": "삭제 — 회차·취득·장르가 딸린 실데이터",
+   "method": "DELETE",
+   "path": "/api/games/52"
+  },
+  {
+   "name": "삭제 — 커버가 딸린 실데이터",
+   "method": "DELETE",
+   "path": "/api/games/9"
+  },
+  {
+   "name": "삭제 — 항목 없는 수동 게임",
+   "method": "DELETE",
+   "path": "/api/games/${manual2Id}"
+  },
+  {
+   "name": "삭제 — 이미 없음",
+   "method": "DELETE",
+   "path": "/api/games/${manual2Id}"
+  },
+  {
+   "name": "삭제 — id 형식 오류",
+   "method": "DELETE",
+   "path": "/api/games/abc"
+  },
+  {
+   "name": "마스터 — 끝난 뒤",
+   "method": "GET",
+   "path": "/api/games/master?size=100"
+  },
+  {
+   "name": "일괄 동기화 대상 — 끝난 뒤",
+   "method": "GET",
+   "path": "/api/games/outdated"
+  }
+ ]
+}

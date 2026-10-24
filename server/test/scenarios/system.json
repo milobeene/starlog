@@ -1,0 +1,279 @@
+{
+ "name": "system",
+ "steps": [
+  {
+   "name": "현황 — 처음 (쓰기 전)",
+   "method": "GET",
+   "path": "/api/system"
+  },
+  {
+   "name": "스토리지 확인 — 미설정",
+   "method": "GET",
+   "path": "/api/system/storage/check"
+  },
+  {
+   "name": "설정 — 처음 (부팅 설정의 빈 문자열)",
+   "method": "GET",
+   "path": "/api/system/settings"
+  },
+  {
+   "name": "하루 한도 — 숫자 아님",
+   "method": "PUT",
+   "path": "/api/system/settings/translate/daily-limit",
+   "body": {
+    "dailyChars": "abc"
+   }
+  },
+  {
+   "name": "하루 한도 — 0",
+   "method": "PUT",
+   "path": "/api/system/settings/translate/daily-limit",
+   "body": {
+    "dailyChars": "0"
+   }
+  },
+  {
+   "name": "하루 한도 — 음수",
+   "method": "PUT",
+   "path": "/api/system/settings/translate/daily-limit",
+   "body": {
+    "dailyChars": "-5"
+   }
+  },
+  {
+   "name": "하루 한도 — 월 한도 초과",
+   "method": "PUT",
+   "path": "/api/system/settings/translate/daily-limit",
+   "body": {
+    "dailyChars": "450001"
+   }
+  },
+  {
+   "name": "하루 한도 — long 범위 밖",
+   "method": "PUT",
+   "path": "/api/system/settings/translate/daily-limit",
+   "body": {
+    "dailyChars": "99999999999999999999"
+   }
+  },
+  {
+   "name": "하루 한도 — 소수",
+   "method": "PUT",
+   "path": "/api/system/settings/translate/daily-limit",
+   "body": {
+    "dailyChars": "10.5"
+   }
+  },
+  {
+   "name": "하루 한도 — 깨진 JSON",
+   "method": "PUT",
+   "path": "/api/system/settings/translate/daily-limit",
+   "rawBody": "{"
+  },
+  {
+   "name": "하루 한도 — 빈 본문",
+   "method": "PUT",
+   "path": "/api/system/settings/translate/daily-limit",
+   "rawBody": ""
+  },
+  {
+   "name": "하루 한도 — 필드 없음은 지우기",
+   "method": "PUT",
+   "path": "/api/system/settings/translate/daily-limit",
+   "body": {}
+  },
+  {
+   "name": "현황 — 하루 한도 없음",
+   "method": "GET",
+   "path": "/api/system"
+  },
+  {
+   "name": "하루 한도 — 공백·부호 (정규화해서 저장)",
+   "method": "PUT",
+   "path": "/api/system/settings/translate/daily-limit",
+   "body": {
+    "dailyChars": "  +5000 "
+   }
+  },
+  {
+   "name": "하루 한도 — 숫자로 보냄",
+   "method": "PUT",
+   "path": "/api/system/settings/translate/daily-limit",
+   "body": {
+    "dailyChars": 7000
+   }
+  },
+  {
+   "name": "하루 한도 — 같은 값 다시 (updated_at 그대로)",
+   "method": "PUT",
+   "path": "/api/system/settings/translate/daily-limit",
+   "body": {
+    "dailyChars": "7000"
+   }
+  },
+  {
+   "name": "현황 — 하루 한도 7000",
+   "method": "GET",
+   "path": "/api/system"
+  },
+  {
+   "name": "IGDB 키 저장 — 앞뒤 공백",
+   "method": "PUT",
+   "path": "/api/system/settings/igdb",
+   "body": {
+    "clientId": " abc ",
+    "clientSecret": " def "
+   }
+  },
+  {
+   "name": "설정 — 저장한 키",
+   "method": "GET",
+   "path": "/api/system/settings"
+  },
+  {
+   "name": "IGDB 키 저장 — 시크릿 없음 (ID만 저장된 뒤 500)",
+   "method": "PUT",
+   "path": "/api/system/settings/igdb",
+   "body": {
+    "clientId": "x2"
+   }
+  },
+  {
+   "name": "설정 — ID만 바뀜",
+   "method": "GET",
+   "path": "/api/system/settings"
+  },
+  {
+   "name": "IGDB 키 저장 — 둘 다 없음 (500, 저장 없음)",
+   "method": "PUT",
+   "path": "/api/system/settings/igdb",
+   "body": {}
+  },
+  {
+   "name": "IGDB 키 저장 — 깨진 JSON",
+   "method": "PUT",
+   "path": "/api/system/settings/igdb",
+   "rawBody": "{\"clientId\":"
+  },
+  {
+   "name": "검색 — 가짜 키로 Twitch가 거절 → 502",
+   "method": "GET",
+   "path": "/api/games?q=hollow"
+  },
+  {
+   "name": "재동기화 — 가짜 키 → 502",
+   "method": "POST",
+   "path": "/api/games/2/resync"
+  },
+  {
+   "name": "현황 — IGDB 호출 기록 없음 (토큰 단계에서 끝남)",
+   "method": "GET",
+   "path": "/api/system"
+  },
+  {
+   "name": "IGDB 키 저장 — 공백만 (빈 값 저장, 부팅 설정으로 떨어짐)",
+   "method": "PUT",
+   "path": "/api/system/settings/igdb",
+   "body": {
+    "clientId": "   ",
+    "clientSecret": "   "
+   }
+  },
+  {
+   "name": "설정 — 키 칸은 있지만 비어 부팅 설정",
+   "method": "GET",
+   "path": "/api/system/settings"
+  },
+  {
+   "name": "번역 키 저장 — 없음 (500)",
+   "method": "PUT",
+   "path": "/api/system/settings/translate",
+   "body": {}
+  },
+  {
+   "name": "번역 키 저장 — 공백만 (빈 값)",
+   "method": "PUT",
+   "path": "/api/system/settings/translate",
+   "body": {
+    "apiKey": "   "
+   }
+  },
+  {
+   "name": "설정 — 번역 키 없음",
+   "method": "GET",
+   "path": "/api/system/settings"
+  },
+  {
+   "name": "번역 키 저장",
+   "method": "PUT",
+   "path": "/api/system/settings/translate",
+   "body": {
+    "apiKey": " fake-key "
+   }
+  },
+  {
+   "name": "설정 — 번역 키",
+   "method": "GET",
+   "path": "/api/system/settings"
+  },
+  {
+   "name": "번역 키 확인 — 없음",
+   "method": "POST",
+   "path": "/api/system/settings/translate/test",
+   "body": {}
+  },
+  {
+   "name": "번역 키 확인 — 공백",
+   "method": "POST",
+   "path": "/api/system/settings/translate/test",
+   "body": {
+    "apiKey": "  "
+   }
+  },
+  {
+   "name": "번역 키 확인 — 가짜 키 (구글 400)",
+   "method": "POST",
+   "path": "/api/system/settings/translate/test",
+   "body": {
+    "apiKey": "invalid-key-for-test"
+   },
+   "note": "구글을 실제로 부른다. 가짜 키라 글자도 안 쓰고 400이 온다"
+  },
+  {
+   "name": "번역 키 확인 — 깨진 JSON",
+   "method": "POST",
+   "path": "/api/system/settings/translate/test",
+   "rawBody": "["
+  },
+  {
+   "name": "IGDB 확인 — 비어 있음",
+   "method": "POST",
+   "path": "/api/system/settings/igdb/test",
+   "body": {
+    "clientId": "",
+    "clientSecret": "x"
+   }
+  },
+  {
+   "name": "IGDB 확인 — 가짜 키 (Twitch 거절)",
+   "method": "POST",
+   "path": "/api/system/settings/igdb/test",
+   "body": {
+    "clientId": "fake-id",
+    "clientSecret": "fake-secret"
+   },
+   "note": "Twitch를 실제로 부른다. 가짜 키라 400"
+  },
+  {
+   "name": "IGDB 확인 — 깨진 JSON",
+   "method": "POST",
+   "path": "/api/system/settings/igdb/test",
+   "rawBody": "x"
+  },
+  {
+   "name": "현황 — 끝",
+   "method": "GET",
+   "path": "/api/system"
+  }
+ ]
+}
