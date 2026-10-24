@@ -1,63 +1,28 @@
 "use client";
 
-import { Collapsible } from "@/components/settings/SettingsSection";
-import Unit from "@/components/ui/Unit";
 import Link from "next/link";
-import { Suspense, useCallback, useRef, useState } from "react";
+import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import GameCover from "@/components/ui/GameCover";
-import StatusBadge from "@/components/ui/StatusBadge";
-import Chip from "@/components/ui/Chip";
-import StarIcon from "@/components/ui/StarIcon";
 import SectionIcon from "@/components/ui/SectionIcon";
 import ErrorNotice from "@/components/ui/ErrorNotice";
-import { Skeleton } from "@/components/ui/Skeleton";
 import DetailBanner from "@/components/library/DetailBanner";
-import InfoRow from "@/components/library/InfoRow";
-import DataTable from "@/components/library/DataTable";
 import Timeline from "@/components/library/Timeline";
-import PersonalRecordDialog from "@/components/library/PersonalRecordDialog";
-import OverridesDialog from "@/components/library/OverridesDialog";
-import PlaythroughDialog from "@/components/library/PlaythroughDialog";
-import AcquisitionDialog from "@/components/library/AcquisitionDialog";
-import TagGenreDialog from "@/components/library/TagGenreDialog";
-import MoneyText from "@/components/ui/Money";
-import CoverDialog from "@/components/library/CoverDialog";
 import ScreenshotSection from "@/components/library/ScreenshotSection";
-import ConfirmDialog from "@/components/ui/ConfirmDialog";
-import { Button, EditButton } from "@/components/ui/Field";
-import { api, errorMessage } from "@/lib/api";
-import { useRouter } from "next/navigation";
+import AboutBlock from "@/components/detail/AboutBlock";
+import DeleteEntryButton from "@/components/detail/DeleteEntryButton";
+import DetailDialogs from "@/components/detail/DetailDialogs";
+import DetailHero from "@/components/detail/DetailHero";
+import DetailSkeleton from "@/components/detail/DetailSkeleton";
+import { GameInformationCard, HowLongToBeatCard, TagCard } from "@/components/detail/InfoCards";
+import NotesSection from "@/components/detail/NotesSection";
+import PlaythroughSection from "@/components/detail/PlaythroughSection";
+import PurchaseSection from "@/components/detail/PurchaseSection";
+import SummaryStats from "@/components/detail/SummaryStats";
+import type { DetailDialog } from "@/components/detail/detailDialog";
+import { useBannerScroll } from "@/components/detail/useBannerScroll";
 import { invalidateQueries, useApi } from "@/lib/useApi";
 import { bannerSrc } from "@/lib/cover";
-import {
-  ACQUISITION_METHOD_LABEL,
-  PLAYTHROUGH_STATUS_LABEL,
-  formatList,
-  formatRating,
-} from "@/lib/labels";
-import type { Acquisition, BacklogDetail, OptionsResponse, Playthrough } from "@/lib/types";
-import { formatHours } from "@/lib/format";
-
-/** 열려 있는 다이얼로그. 회차·취득은 수정 대상을 같이 들고 다닌다 (null이면 추가) */
-type Dialog =
-  | null
-  | { kind: "record" }
-  | { kind: "overrides" }
-  | { kind: "tag" }
-  | { kind: "cover" }
-  | { kind: "delete" }
-  | { kind: "playthrough"; run: Playthrough | null }
-  | { kind: "acquisition"; item: Acquisition | null };
-
-const PLAYTHROUGH_TONE: Record<string, string> = {
-  PLAYING: "text-green-400",
-  COMPLETED: "text-blue-400",
-  PAUSED: "text-yellow-400",
-  DROPPED: "text-red-400",
-};
+import type { BacklogDetail, OptionsResponse } from "@/lib/types";
 
 /**
  * 상세는 `/library/detail?entry=57`이다. 예전엔 `/library/[entryId]`였는데
@@ -77,32 +42,15 @@ export default function BacklogDetailPage() {
 
 function BacklogDetail() {
   const entryId = useSearchParams().get("entry") ?? "";
-  const bannerRef = useRef<HTMLDivElement>(null);
-
-  /**
-   * 배너는 fixed라 뷰포트 폭을 다 쓰지만 스크롤을 안 탄다.
-   * 스크롤한 만큼 위로 밀어 콘텐츠와 같이 흐르는 것처럼 만든다.
-   * 상태가 아니라 ref로 스타일을 직접 만지는 이유 — 프레임마다 리렌더하면
-   * 표 두 개와 마크다운이 통째로 다시 그려진다
-   */
-  const onScroll = useCallback((event: React.UIEvent<HTMLElement>) => {
-    const scrollTop = event.currentTarget.scrollTop;
-    requestAnimationFrame(() => {
-      if (bannerRef.current) {
-        bannerRef.current.style.transform = `translateY(${-scrollTop}px)`;
-      }
-    });
-  }, []);
+  const { bannerRef, onScroll } = useBannerScroll();
   const { data, error, reload } = useApi<BacklogDetail>(`/api/backlog/${entryId}`);
   // 선택지는 편집 폼 전부가 공유한다 (기기·에뮬·계정·플랫폼·구독·사전)
   const options = useApi<OptionsResponse>("/api/me/options");
-  const router = useRouter();
-
   /**
    * 열려 있는 다이얼로그. 하나만 열리므로 배열이 아니라 단일 상태로 둔다.
    * 회차·취득은 수정 대상을 같이 들고 다닌다 (null이면 새로 추가)
    */
-  const [dialog, setDialog] = useState<Dialog>(null);
+  const [dialog, setDialog] = useState<DetailDialog>(null);
 
   // 저장 뒤엔 상세를 다시 읽는다 — 회차를 고치면 서버가 상태·lastPlaythrough를 재계산한다
   /*
@@ -122,8 +70,7 @@ function BacklogDetail() {
    */
   if (!data) return <DetailSkeleton />;
 
-  const { resolved, master, overrides, personalRecord } = data;
-  const totalPlaytime = formatHours(personalRecord.playTimeHours);
+  const { master, personalRecord } = data;
   /*
    * 진행 중인 회차 — **종료일이 비었나로 본다.** 서버의 BR-PT-03과 같은 기준이다
    * (상태로 보면 "플레이 중"인데 종료일이 있는 회차를 놓친다)
@@ -155,91 +102,9 @@ function BacklogDetail() {
         </div>
 
         <div className="page-x relative pt-4">
-          {/* 헤더 — 커버 왼쪽, 글자는 커버 아래쪽 기준으로 정렬 */}
-          <div className="mb-10 flex flex-col items-start gap-8 md:flex-row md:items-end">
-            {/* 커버 위 우상단에 연필 — 별도 버튼을 두면 액션 목록이 길어진다 */}
-            <div className="group/cover relative w-40 shrink-0 md:w-48">
-              <GameCover
-                coverUrl={resolved.cover.url}
-                coverImageId={resolved.cover.imageId}
-                name={resolved.name}
-                size="t_cover_big"
-                className="border-white/20 shadow-2xl"
-              />
-              <button
-                type="button"
-                aria-label="커버 이미지 변경"
-                title="커버 이미지 변경"
-                onClick={() => setDialog({ kind: "cover" })}
-                /* 폰·태블릿은 호버가 없다 — 숨겨두면 커버를 바꿀 방법이 아예 없다. lg부터만 호버로 */
-                className="absolute top-2 right-2 flex h-7 w-7 items-center justify-center rounded-md border border-white/20 bg-black/60 text-white/80 backdrop-blur-sm transition-all hover:bg-white hover:text-black lg:opacity-0 lg:group-hover/cover:opacity-100"
-              >
-                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                  />
-                </svg>
-              </button>
-            </div>
+          <DetailHero data={data} onOpen={setDialog} />
 
-            {/* 커버 아래쪽에 바닥을 맞춘다 — items-end + 여기서는 패딩을 주지 않는다 */}
-            <div className="flex-1 pb-1">
-              <div className="mb-2">
-                <StatusBadge status={data.status} size="md" />
-              </div>
-
-              <h1 className="mb-3 text-4xl font-semibold tracking-tight text-white drop-shadow-md md:text-5xl">
-                {resolved.name}
-              </h1>
-
-              {/* 장르가 먼저, 별점은 아래 줄이다 — 한 줄에 섞으면 장르가 길 때 별이 밀려난다 */}
-              <div className="flex flex-col items-start gap-2.5">
-                {/* 표시값 장르다 — 개인 장르가 있으면 그것이 마스터를 덮은 결과 (§6.7) */}
-                <div className="flex flex-wrap items-center gap-2">
-                  {resolved.genres.map((genre) => (
-                    <Chip key={genre} label={genre} rounded />
-                  ))}
-                </div>
-                {personalRecord.rating != null && (
-                  <span className="flex items-center gap-1.5 text-lg font-medium text-yellow-500 drop-shadow-sm">
-                    <StarIcon className="h-[1.05em] w-[1.05em] -translate-y-[1px]" />
-                    <span className="num">{formatRating(personalRecord.rating)}</span>
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* 요약 스탯 한 줄 */}
-          {/*
-            divide-x/divide-y는 "첫 항목만 빼고 전부"라 2열↔4열 전환에서 선이 어긋난다
-            (2열일 때 두 번째 칸 위에도 가로선이 그어졌다). 몇 번째 칸인지로 직접 긋는다
-          */}
-          <div className="mb-10 grid grid-cols-2 border-t-line border-b-line py-6 md:grid-cols-4 [&>*]:border-white/15 [&>*:nth-child(2n)]:border-l [&>*:nth-child(n+3)]:border-t md:[&>*]:border-l md:[&>*:first-child]:border-l-0 md:[&>*:nth-child(n+3)]:border-t-0">
-            <Stat
-              label="Total Playtime"
-              value={totalPlaytime ?? "—"}
-              unit={totalPlaytime == null ? undefined : "h"}
-            />
-            <Stat label="Playthroughs" value={data.playthroughs.length} />
-            <Stat
-              label="My Rating"
-              value={
-                personalRecord.rating == null ? (
-                  "—"
-                ) : (
-                  <span className="inline-flex items-center gap-1.5">
-                    <StarIcon className="h-[0.8em] w-[0.8em] -translate-y-[1px] text-white/35" />
-                    {formatRating(personalRecord.rating)}
-                  </span>
-                )
-              }
-            />
-            <Stat label="Release Date" value={resolved.releasedOn ?? "—"} />
-          </div>
+          <SummaryStats data={data} />
 
           <div className="grid grid-cols-1 gap-10 lg:grid-cols-3">
             {/*
@@ -266,160 +131,15 @@ function BacklogDetail() {
 
               <Timeline detail={data} />
 
-              <section>
-                <h3 className="mb-4 flex items-center justify-between gap-3 text-base font-medium text-white/90 sm:text-lg">
-                  <span className="flex items-center gap-2">
-                    <SectionIcon name="play" />
-                    Playthrough Records
-                  </span>
-                  <span className="flex items-center gap-3">
-                    <span className="num text-xs text-white/30">
-                        {data.playthroughs.length}
-                        <Unit space>runs</Unit>
-                      </span>
-                    {/*
-                      **진행 중인 회차가 있으면 못 더한다** (v1.2). 서버가 BR-PT-03으로
-                      이미 막지만(409), 누른 뒤 다이얼로그를 다 채우고서야 거절당했다.
-                      판정 기준은 서버와 같은 **종료일 없음**이다 — 상태가 아니다
-                    */}
-                    <Button
-                      onClick={() => setDialog({ kind: "playthrough", run: null })}
-                      disabled={ongoingRun != null}
-                      title={
-                        ongoingRun
-                          ? `${ongoingRun.sequenceNo}회차가 진행 중입니다`
-                          : undefined
-                      }
-                    >
-                      회차 추가
-                    </Button>
-                  </span>
-                </h3>
-                {/*
-                  **Device 칸을 뺐다** (2026-08-28). 다섯 칸이 들어가니 노트북 폭에서
-                  `2024-03-13 ~ 2025-07-21`이 두 줄로 쪼개지고 `1회차`까지 접혔다.
-                  기기 이름은 계정 라벨에 이미 붙어 있어서(`Beene (한성컴퓨터 PC)`)
-                  같은 정보를 두 칸이 나눠 갖고 있던 셈이다 — 합치면 기간이 한 줄에 들어간다
-                */}
-                {ongoingRun && (
-                  <p className="mb-3 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/50">
-                    <span className="num text-white/70">{ongoingRun.sequenceNo}</span>회차가 진행
-                    중입니다. 종료일을 적어 닫으면 다음 회차를 더할 수 있습니다.
-                  </p>
-                )}
-                <DataTable
-                  headers={["Run", "Period", "Status", "Account", "Label"]}
-                  empty={data.playthroughs.length === 0 ? "등록된 회차 기록이 없습니다" : undefined}
-                >
-                  {data.playthroughs.map((run) => (
-                    <tr
-                      key={run.playthroughId}
-                      onClick={() => setDialog({ kind: "playthrough", run })}
-                      className="cursor-pointer transition-colors hover:bg-white/[0.05]"
-                    >
-                      <td className="num px-4 py-3 whitespace-nowrap text-white/90">
-                        {run.sequenceNo}회차
-                      </td>
-                      {/* 회차에서 제일 먼저 읽는 값이라 다른 칸보다 진하게. 줄바꿈을 막는다 */}
-                      <td className="num w-[38%] px-4 py-3 font-medium whitespace-nowrap text-white/95">
-                        {run.startedOn} ~ {run.finishedOn ?? ""}
-                      </td>
-                      <td
-                        className={`px-4 py-3 whitespace-nowrap ${PLAYTHROUGH_TONE[run.status] ?? "text-white/60"}`}
-                      >
-                        {PLAYTHROUGH_STATUS_LABEL[run.status]}
-                      </td>
-                      <td className="px-4 py-3 text-white/60">{accountOf(run)}</td>
-                      <td className="px-4 py-3 whitespace-nowrap text-white/50">
-                        {run.label ?? "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </DataTable>
-              </section>
+              <PlaythroughSection
+                playthroughs={data.playthroughs}
+                ongoingRun={ongoingRun}
+                onOpen={setDialog}
+              />
 
-              <section>
-                <h3 className="mb-4 flex items-center justify-between gap-3 text-base font-medium text-white/90 sm:text-lg">
-                  <span className="flex items-center gap-2">
-                    <SectionIcon name="purchase" />
-                    Purchase History
-                  </span>
-                  <span className="flex items-center gap-3">
-                    <span className="num text-xs text-white/30">
-                        {data.acquisitions.length}
-                        <Unit space>records</Unit>
-                      </span>
-                    <Button onClick={() => setDialog({ kind: "acquisition", item: null })}>
-                      기록 추가
-                    </Button>
-                  </span>
-                </h3>
-                <DataTable
-                  headers={["Method", "Price", "Date", "Store", "Label"]}
-                  empty={data.acquisitions.length === 0 ? "등록된 취득 기록이 없습니다" : undefined}
-                >
-                  {data.acquisitions.map((item) => (
-                    <tr
-                      key={item.acquisitionId}
-                      onClick={() => setDialog({ kind: "acquisition", item })}
-                      className="cursor-pointer transition-colors hover:bg-white/[0.05]"
-                    >
-                      <td className="px-4 py-3 text-white/90">
-                        {ACQUISITION_METHOD_LABEL[item.method]}
-                      </td>
-                      <td className="num px-4 py-3 text-white/60">
-                        <MoneyText money={item.price} />
-                      </td>
-                      <td className="num px-4 py-3 text-white/60">{item.acquiredOn ?? "—"}</td>
-                      <td className="px-4 py-3 text-white/60">
-                        {item.subscription?.serviceName ?? item.platform?.name ?? "—"}
-                      </td>
-                      <td className="px-4 py-3 text-white/50">{item.label ?? "—"}</td>
-                    </tr>
-                  ))}
-                </DataTable>
-              </section>
+              <PurchaseSection acquisitions={data.acquisitions} onOpen={setDialog} />
 
-              {/* 내 기록은 제일 아래 — 읽는 순서상 게임 정보를 다 본 뒤에 온다 */}
-              <section>
-                <h3 className="mb-4 flex items-center justify-between gap-3 text-base font-medium text-white/90 sm:text-lg">
-                  <span className="flex items-center gap-2">
-                    <SectionIcon name="note" />
-                    My Notes
-                  </span>
-                  {/*
-                    이 버튼만 오버라이드 색을 쓴다 (사용자 결정 2026-08-28) — 아래 내용이
-                    IGDB가 아니라 **내가 쓴 것**이라는 표시다. 호버 연출은 그대로 둔다
-                  */}
-                  <Button
-                    className="!text-teal-200/70"
-                    onClick={() => setDialog({ kind: "record" })}
-                  >
-                    내 기록 수정
-                  </Button>
-                </h3>
-                {/*
-                  노트도 접는다 (v1.2). 총평이 길면 스크린샷과 그 아래가 통째로 밀린다 —
-                  프로필의 목록들과 **같은 높이**라 화면 사이에서 눈이 안 흔들린다
-                */}
-                {personalRecord.memo ? (
-                  <Collapsible>
-                  <div className="rounded-lg border border-white/10 bg-white/5 p-6">
-                    {/*
-                      메모는 마크다운 원문이다 (`# 📝 총평` 헤더 + 중첩 불릿).
-                      스타일을 요소별로 직접 주는 이유 — 리셋이 h/ul 기본값을 다 지웠다
-                    */}
-                    <div className="markdown text-sm leading-relaxed font-light text-white/80">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{personalRecord.memo}</ReactMarkdown>
-                    </div>
-                  </div>
-                  </Collapsible>
-                ) : (
-                  <div className="rounded-lg border border-white/10 bg-white/5 p-6 text-sm text-white/30">
-                    작성된 메모가 없습니다.
-                  </div>
-                )}
-              </section>
+              <NotesSection memo={personalRecord.memo} onOpen={setDialog} />
 
               {/* 스크린샷은 메모 아래 — 글을 다 읽은 뒤에 오는 순서다 (v1.0 7단계) */}
               <ScreenshotSection entryId={Number(entryId)} />
@@ -427,111 +147,11 @@ function BacklogDetail() {
 
             {/* 우 — 게임 정보 · 사람들 클리어 시간 · 태그 · 액션 */}
             <div className="order-1 flex flex-col gap-8 lg:order-none">
-              <div className="rounded-lg border border-white/10 bg-black/20 p-6">
-                <h4 className="mb-4 flex items-center justify-between text-xs tracking-wider text-white/40 uppercase">
-                  <span className="flex items-center gap-2">
-                    <SectionIcon name="info" className="h-3.5 w-3.5" />
-                    Game Information
-                  </span>
-                  <EditButton onClick={() => setDialog({ kind: "overrides" })} label="게임 정보 덮어쓰기" />
-                </h4>
-                <div className="space-y-3 text-sm">
-                  <InfoRow
-                    label="Developer"
-                    value={formatList(resolved.developers)}
-                    overridden={overrides.developers.length > 0}
-                    first
-                  />
-                  <InfoRow
-                    label="Publisher"
-                    value={formatList(resolved.publishers)}
-                    overridden={overrides.publishers.length > 0}
-                  />
-                  <InfoRow
-                    label="Release Date"
-                    value={<span className="num">{resolved.releasedOn ?? "—"}</span>}
-                    overridden={overrides.releasedOn != null}
-                  />
-                  {/*
-                    개인 장르가 하나라도 있으면 마스터를 덮은 것이다 (§6.7).
-                    resolved.genres는 폴백이 끝난 값이라 여기서는 판단이 안 된다 —
-                    덮었는지는 원본(data.genres)이 비었는지로만 알 수 있다
-                  */}
-                  <InfoRow
-                    label="Genres"
-                    value={formatList(resolved.genres)}
-                    overridden={data.genres.length > 0}
-                  />
-                  {master.releasePlatforms.length > 0 && (
-                    <InfoRow label="Platforms" value={formatList(master.releasePlatforms)} />
-                  )}
-                </div>
-              </div>
+              <GameInformationCard data={data} onOpen={setDialog} />
 
-              {/*
-                남들이 얼마나 걸렸나 — 내 기록이 아니라 IGDB 집계다.
-                Game Information에 섞으면 "내 출시일 / 남의 시간"이 한 표에 붙어 뜻이 흐려진다
-              */}
-              <div className="rounded-lg border border-white/10 bg-black/20 p-6">
-                <h4 className="mb-1 flex items-center gap-2 text-xs tracking-wider text-white/40 uppercase">
-                  <SectionIcon name="clock" className="h-3.5 w-3.5" />
-                  How Long To Beat
-                </h4>
-                <p className="mb-4 text-[11px] text-white/25">
-                  다른 이용자의 평균 클리어 시간
-                  {master.timeToBeatSamples ? ` · 표본 ${master.timeToBeatSamples}건` : ""}
-                </p>
-                <div className="space-y-3 text-sm">
-                  <InfoRow
-                    label="Main Story"
-                    value={<span className="num">{hours(master.mainStoryHours)}</span>}
-                    first
-                  />
-                  <InfoRow
-                    label="Main + Extra"
-                    value={<span className="num">{hours(master.mainExtraHours)}</span>}
-                  />
-                  <InfoRow
-                    label="Completionist"
-                    value={<span className="num">{hours(master.completionistHours)}</span>}
-                  />
-                  {master.igdbRating != null && (
-                    <InfoRow
-                      label="IGDB Rating"
-                      value={
-                        <span className="inline-flex items-center gap-1">
-                          <StarIcon className="h-3.5 w-3.5 -translate-y-[0.5px] text-white/35" />
-                          <span className="num">
-                            {master.igdbRating.toFixed(1)}
-                            {master.igdbRatingCount ? ` (${master.igdbRatingCount})` : ""}
-                          </span>
-                        </span>
-                      }
-                    />
-                  )}
-                </div>
-              </div>
+              <HowLongToBeatCard master={master} />
 
-              {/*
-                개인 장르는 따로 안 보여준다 — 마스터를 *덮어쓰는* 값이라
-                헤더의 resolved.genres가 이미 그 결과다 (§6.7)
-              */}
-              <div className="rounded-lg border border-white/10 bg-black/20 p-6">
-                <h4 className="mb-4 flex items-center justify-between text-xs tracking-wider text-white/40 uppercase">
-                  <span className="flex items-center gap-2">
-                    <SectionIcon name="tag" className="h-3.5 w-3.5" />
-                    Tag
-                  </span>
-                  <EditButton onClick={() => setDialog({ kind: "tag" })} label="태그 수정" />
-                </h4>
-                <div className="flex flex-wrap gap-2">
-                  {data.tag ? (
-                    <Chip label={data.tag} rounded />
-                  ) : (
-                    <span className="text-xs text-white/25">지정된 태그 없음</span>
-                  )}
-                </div>
-              </div>
+              <TagCard tag={data.tag} onOpen={setDialog} />
 
               {/*
                 상태를 고르는 드롭다운이 없는 게 의도다 —
@@ -551,270 +171,13 @@ function BacklogDetail() {
         </div>
       </main>
 
-      {dialog?.kind === "record" && (
-        <PersonalRecordDialog
-          entryId={data.entryId}
-          record={personalRecord}
-          onClose={() => setDialog(null)}
-          onSaved={refresh}
-        />
-      )}
-
-      {dialog?.kind === "overrides" && (
-        <OverridesDialog detail={data} onClose={() => setDialog(null)} onSaved={refresh} />
-      )}
-
-      {dialog?.kind === "tag" && (
-        <TagGenreDialog
-          entryId={data.entryId}
-          kind="tag"
-          value={data.tag}
-          dictionary={options.data?.tagDictionary ?? []}
-          onClose={() => setDialog(null)}
-          onSaved={refresh}
-        />
-      )}
-
-      {dialog?.kind === "playthrough" && (
-        <PlaythroughDialog
-          entryId={data.entryId}
-          run={dialog.run}
-          options={options.data}
-          onClose={() => setDialog(null)}
-          onSaved={refresh}
-        />
-      )}
-
-      {dialog?.kind === "acquisition" && (
-        <AcquisitionDialog
-          entryId={data.entryId}
-          acquisition={dialog.item}
-          options={options.data}
-          onClose={() => setDialog(null)}
-          onSaved={refresh}
-        />
-      )}
-
-      {dialog?.kind === "cover" && (
-        <CoverDialog
-          entryId={data.entryId}
-          cover={resolved.cover}
-          onClose={() => setDialog(null)}
-          onSaved={refresh}
-        />
-      )}
-
-      {dialog?.kind === "delete" && (
-        <ConfirmDialog
-          title="항목 삭제"
-          message={
-            <>
-              <b className="text-white">{resolved.name}</b>을(를) 라이브러리에서 삭제하시겠습니까?
-              <br />
-              같은 게임을 다시 담으시면 <b className="text-white">복구하실 수 있으며</b>, 기록도 함께 돌아옵니다.
-            </>
-          }
-          onConfirm={async () => {
-            await api.del(`/api/backlog/${data.entryId}`);
-            /*
-             * 사이드바는 (app)/library/layout.tsx에 있어 목록↔상세를 오갈 때
-             * **언마운트되지 않는다.** 무효화가 없으면 방금 지운 게임이 왼쪽에 그대로 남아
-             * 누르면 에러 상세로 들어간다
-             */
-            invalidateQueries();
-            router.push("/library");
-          }}
-          onClose={() => setDialog(null)}
-        />
-      )}
+      <DetailDialogs
+        dialog={dialog}
+        data={data}
+        options={options.data}
+        onClose={() => setDialog(null)}
+        onSaved={refresh}
+      />
     </>
-  );
-}
-
-/** 시간 값 — null이면 대시 */
-/** 시간 표시. **단위 `h`는 본문 폰트로 뺀다** — 모노에서는 숫자보다 커 보인다 */
-function hours(value: number | null) {
-  if (value == null) return "—";
-  return (
-    <>
-      {value}
-      <Unit>h</Unit>
-    </>
-  );
-}
-
-/** 항목 삭제. 데스크탑은 우측 열 끝, 폰은 화면 맨 아래에 같은 버튼이 놓인다 */
-function DeleteEntryButton({ onClick }: { onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="w-full rounded py-2.5 text-sm text-red-400 transition-all hover:bg-white/5"
-    >
-      Delete Entry
-    </button>
-  );
-}
-
-function Stat({ label, value, unit }: { label: string; value: React.ReactNode; unit?: string }) {
-  return (
-    /*
-     * 폰에서는 칸이 반으로 줄어 날짜(2016-02-26)가 세 줄로 깨진다 — 글자와 좌우 여백을 줄인다.
-     *
-     * py는 **두 줄로 접힐 때만** 필요하다. 바깥 테두리는 컨테이너의 py-6만큼 떨어져 있는데
-     * 줄 사이 가로선만 위 숫자에 딱 붙어 어색했다. 한 줄이 되는 md부터는 다시 0
-     */
-    <div className="flex flex-col justify-center px-3 py-2.5 sm:px-6 md:py-0">
-      <div className="mb-1 text-[10px] tracking-wider text-white/40 uppercase sm:text-xs">{label}</div>
-      <div className="num text-lg font-normal sm:text-2xl">
-        {value}
-        {unit && <span className="ml-0.5 text-sm text-white/60 sm:text-lg">{unit}</span>}
-      </div>
-    </div>
-  );
-}
-
-function DetailSkeleton() {
-  return (
-    <main className="page-x page-top h-full overflow-y-auto">
-      <div className="mb-10 flex gap-8">
-        <Skeleton className="aspect-[3/4] w-48 shrink-0" />
-        <div className="flex-1 pt-16">
-          <Skeleton className="mb-3 h-6 w-40" />
-          <Skeleton className="mb-3 h-12 w-2/3" />
-          <Skeleton className="h-5 w-24" />
-        </div>
-      </div>
-      <Skeleton className="mb-10 h-24 w-full" />
-      <div className="grid grid-cols-1 gap-10 lg:grid-cols-3">
-        <Skeleton className="h-64 lg:col-span-2" />
-        <Skeleton className="h-64" />
-      </div>
-    </main>
-  );
-}
-
-
-/**
- * 계정 + 기기.
- *
- * 예전엔 칸을 둘로 나눴는데 노트북 폭에서 기간이 두 줄로 쪼개졌다. 한 칸에 합치면
- * **`Beene (한성컴퓨터 PC)`**로 같은 정보가 더 짧게 들어간다 — 계정만 있고 기기가 없으면
- * 괄호를 아예 안 붙인다
- */
-function accountOf(run: {
-  platformAccount?: { label: string } | null;
-  device?: { name: string } | null;
-  emulator?: { name: string } | null;
-}) {
-  const account = run.platformAccount?.label;
-  const machine = run.emulator?.name ?? run.device?.name;
-  if (account && machine) return `${account} (${machine})`;
-  return account ?? machine ?? "—";
-}
-
-/**
- * About — 소개문과 스토리라인을 **한 묶음으로** 다룬다 (2026-08-28).
- *
- * ## 원문을 지우지 않는다
- *
- * 번역이 이상할 때 원문을 볼 수 있어야 하고, 다시 번역하려면 원문이 있어야 한다.
- * 서버가 원문과 번역을 둘 다 내려주고 여기서 고른다.
- *
- * ## 토글과 버튼이 하나씩이다
- *
- * 소개문과 스토리라인을 따로 켰다 껐다 하면 **한쪽은 영어, 한쪽은 한국어**인 상태가
- * 생긴다. 같은 글의 두 부분이라 그건 읽는 데 방해만 된다.
- *
- * ## ⚠️ 번역은 돈이 드는 유일한 버튼이다
- *
- * IGDB 검색이나 스토리지 업로드는 한도를 넘으면 거절당하고 끝이지만, 번역은 넘으면
- * **요금이 청구된다.** 그래서 누르기 전에 **합계 글자 수**를 보여준다 —
- * 스토리라인은 실측 최대가 20,764자라 소개문만 보고 짐작하면 크게 어긋난다
- */
-function AboutBlock({
-  entryId,
-  master,
-  onTranslated,
-}: {
-  entryId: number;
-  master: {
-    summary: string | null;
-    summaryKo: string | null;
-    storyline: string | null;
-    storylineKo: string | null;
-  };
-  onTranslated: () => void;
-}) {
-  const [showOriginal, setShowOriginal] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const translated = Boolean(master.summaryKo || master.storylineKo);
-  const korean = translated && !showOriginal;
-  const chars = (master.summary?.length ?? 0) + (master.storyline?.length ?? 0);
-
-  const translate = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      await api.post(`/api/backlog/${entryId}/translate`, {});
-      setShowOriginal(false);
-      onTranslated();
-    } catch (caught) {
-      setError(errorMessage(caught, "번역하지 못했습니다."));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const summary = korean ? (master.summaryKo ?? master.summary) : master.summary;
-  const storyline = korean ? (master.storylineKo ?? master.storyline) : master.storyline;
-
-  return (
-    <div className="flex flex-col gap-5">
-      <p className="text-sm leading-relaxed font-light text-white/75">
-        {summary ?? <span className="text-white/25">등록된 요약이 없습니다.</span>}
-      </p>
-
-      {/* 스토리라인은 요약과 별개 필드다 — 없는 게임이 많아 자리를 항상 두되 비워둔다 */}
-      <div className="border-t border-white/5 pt-5">
-        <h4 className="mb-2 text-xs tracking-wider text-white/40 uppercase">Storyline</h4>
-        <p className="text-sm leading-relaxed font-light text-white/65">
-          {storyline ?? <span className="text-white/25">등록된 스토리라인이 없습니다.</span>}
-        </p>
-      </div>
-
-      {chars > 0 && (
-        <div className="flex flex-wrap items-center gap-3 border-t border-white/5 pt-4">
-          {translated && (
-            <button
-              onClick={() => setShowOriginal((v) => !v)}
-              className="text-[11px] tracking-wider text-white/35 uppercase transition-colors hover:text-white"
-            >
-              {showOriginal ? "번역 보기" : "원문 보기"}
-            </button>
-          )}
-
-          {(!translated || showOriginal) && (
-            <button
-              onClick={translate}
-              disabled={busy}
-              className="text-[11px] tracking-wider text-teal-200/70 uppercase transition-colors hover:text-teal-100 disabled:text-white/20"
-            >
-              {busy ? "번역 중…" : translated ? "다시 번역" : "번역"}
-              {/*
-                ⚠️ 합계를 보여준다 — 누르는 순간 이만큼이 이번 달 한도에서 빠진다.
-                스토리라인이 소개문보다 훨씬 길 수 있어 짐작으로는 어긋난다
-              */}
-              <span className="ml-1.5 normal-case opacity-60">
-                ({chars.toLocaleString()}자)
-              </span>
-            </button>
-          )}
-
-          {error && <span className="text-[11px] text-red-400">{error}</span>}
-        </div>
-      )}
-    </div>
   );
 }
