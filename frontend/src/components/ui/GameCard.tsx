@@ -3,7 +3,9 @@ import GameCover from "./GameCover";
 import StatusBadge from "./StatusBadge";
 import Chip from "./Chip";
 import StarIcon from "./StarIcon";
+import PlayTime from "./PlayTime";
 import { formatLastPlaythrough, formatRating } from "@/lib/labels";
+import { formatReleaseMonth } from "@/lib/format";
 import type { BacklogCard } from "@/lib/types";
 
 /**
@@ -12,8 +14,21 @@ import type { BacklogCard } from "@/lib/types";
  * 평점과 마지막 플레이 줄은 **없어도 자리를 차지한다** — 값이 빠진 카드가
  * 짧아지면 그리드 행이 들쭉날쭉해진다. 투명 텍스트로 높이만 남긴다
  */
-export default function GameCard({ card }: { card: BacklogCard }) {
-  const lastLine = formatLastPlaythrough(card.lastPlaythrough);
+export default function GameCard({ card, sort }: { card: BacklogCard; sort?: string }) {
+  /*
+   * 점수 아래 줄은 **정렬 기준을 따라간다** (v2 F3). 플레이 시간 순이면 시간, 출시일 순이면
+   * 출시 연월 — 정렬한 값이 카드에 안 보이면 순서가 맞는지 확인할 길이 없다.
+   * 서버가 그 필드를 안 실어 보낸 카드(`undefined`)는 기존 회차 줄로 둔다
+   */
+  const byPlayTime = sort === "playtime" && card.playTimeHours !== undefined;
+  const byRelease = sort === "releasedOn" && card.releasedOn !== undefined;
+  const lastLine: React.ReactNode = byPlayTime ? (
+    card.playTimeHours == null ? null : <PlayTime hours={card.playTimeHours} />
+  ) : byRelease ? (
+    formatReleaseMonth(card.releasedOn)
+  ) : (
+    formatLastPlaythrough(card.lastPlaythrough)
+  );
 
   return (
     <Link

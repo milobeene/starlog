@@ -261,7 +261,7 @@ function LibraryContent() {
             </div>
             <div className={GAME_GRID}>
               {cards.items.map((card) => (
-                <GameCard key={card.entryId} card={card} />
+                <GameCard key={card.entryId} card={card} sort={sort} />
               ))}
             </div>
             <Pagination page={page} totalPages={cards.totalPages} onChange={setPage} />

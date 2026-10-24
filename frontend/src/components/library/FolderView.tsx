@@ -3,9 +3,9 @@
 import { tagBackground, toneOf } from "@/lib/tagColors";
 import { useEffect, useMemo, useState } from "react";
 import GameCard from "@/components/ui/GameCard";
+import FolderCovers, { pickFolderCovers } from "@/components/library/FolderCovers";
 import EmptyState from "@/components/ui/EmptyState";
-import { CardGridSkeleton, Skeleton } from "@/components/ui/Skeleton";
-import { coverSrc } from "@/lib/cover";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { api } from "@/lib/api";
 import { invalidateQueries, useApi } from "@/lib/useApi";
 import { rememberLibrary, takeLibrary } from "@/lib/libraryState";
@@ -140,6 +140,10 @@ export default function FolderView({
       picked.sort((a, b) =>
         (b.lastPlaythrough?.startedOn ?? "").localeCompare(a.lastPlaythrough?.startedOn ?? ""),
       );
+    } else if (sort === "playtime" && picked.some((c) => c.playTimeHours !== undefined)) {
+      picked.sort((a, b) => (b.playTimeHours ?? -1) - (a.playTimeHours ?? -1));
+    } else if (sort === "releasedOn" && picked.some((c) => c.releasedOn !== undefined)) {
+      picked.sort((a, b) => (b.releasedOn ?? "").localeCompare(a.releasedOn ?? ""));
     } else {
       picked.sort((a, b) => a.displayName.localeCompare(b.displayName, "ko"));
     }
@@ -180,7 +184,7 @@ export default function FolderView({
         ) : (
           <div className={GAME_GRID}>
             {visible.map((card) => (
-              <GameCard key={card.entryId} card={card} />
+              <GameCard key={card.entryId} card={card} sort={sort} />
             ))}
           </div>
         )}
@@ -231,6 +235,7 @@ function FolderBox({
    * 지금은 앱 배경과 **같은 셰이더로 찍어둔 그림**이다 — CSS 그래디언트로는 그 결이 안 났다
    */
   const image = tagBackground(folder.color);
+  const hasCovers = pickFolderCovers(folder.cards).length > 0;
 
   return (
     <button
@@ -251,22 +256,36 @@ function FolderBox({
         over ? "border-white/60 ring-2 ring-white/30" : "border-white/10 hover:border-white/25"
       }`}
     >
+      {/*
+        배경 두 겹이 한 덩어리로 호버 확대된다 (v2 F3).
+        아래 = 폴더 안 게임 커버를 기울여 깐 체스판, 위 = 태그 색 셰이더 그림을 **아주 연하게**.
+        커버가 없으면 셰이더 그림만 원래 농도로 — 예전 모습 그대로다
+      */}
       <div
         aria-hidden
-        className="absolute inset-0 bg-cover bg-center transition-transform duration-700 ease-out group-hover:scale-110"
-        style={{ backgroundImage: `url(${image})` }}
-      />
+        className="absolute inset-0 overflow-hidden transition-transform duration-700 ease-out group-hover:scale-110"
+      >
+        <FolderCovers cards={folder.cards} />
+        <div
+          className={`absolute inset-0 bg-cover bg-center ${hasCovers ? "opacity-40" : ""}`}
+          style={{ backgroundImage: `url(${image})` }}
+        />
+      </div>
 
       {/* 움직이는 그레인 — 타일 한 장을 모든 폴더가 공유한다 */}
       <span aria-hidden className="grain-layer" />
 
       {/*
         한 겹 눌러 준다 (v1.2, 사용자 요청). 셰이더 그림이 밝아서 흰 대문자 라벨이
-        묻혔다 — 호버하면 걷혀서 원래 색이 드러난다
+        묻혔다 — 호버하면 걷혀서 원래 색이 드러난다. 커버가 깔리면 라벨 뒤를 더 눌러야 읽힌다
       */}
       <div
         aria-hidden
-        className="absolute inset-0 bg-black/40 transition-colors duration-300 group-hover:bg-black/20"
+        className={`absolute inset-0 transition-colors duration-300 ${
+          hasCovers
+            ? "bg-black/40 group-hover:bg-black/20"
+            : "bg-black/40 group-hover:bg-black/20"
+        }`}
       />
 
       {/* 이름이 주인공 — 박스를 가득 채우고 길면 줄바꿈해서 줄인다 */}

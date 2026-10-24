@@ -3,10 +3,11 @@
 import { toneOf } from "@/lib/tagColors";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { invalidateQueries, useApi } from "@/lib/useApi";
 import { api } from "@/lib/api";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { useDragAutoScroll } from "@/components/library/useDragAutoScroll";
 import { coverSrc } from "@/lib/cover";
 import type { BacklogCard, BacklogName, FacetsResponse } from "@/lib/types";
 
@@ -33,6 +34,10 @@ export default function LibrarySidebar() {
   const covers = useApi<BacklogCard[]>("/api/backlog/cards");
   /** 태그 순서를 받으려고 파셋도 받는다 — 사용자가 프로필에서 정한 순서다 (v1.1) */
   const facets = useApi<FacetsResponse>("/api/backlog/facets");
+  /* useMemo 의존성은 응답 객체의 멤버 접근이 아니라 꺼낸 값으로 둔다 */
+  const nameList = names.data;
+  const cardList = covers.data;
+  const facetTags = facets.data?.tags;
   // 상세 경로가 `/library/detail?entry=57`로 바뀌었다 (정적 내보내기 때문)
   const currentId = useSearchParams().get("entry") ?? undefined;
 
@@ -53,8 +58,84 @@ export default function LibrarySidebar() {
   /** 드래그가 얹혀 있는 그룹. 놓을 자리를 눈에 보이게 한다 */
   const [dropTarget, setDropTarget] = useState<string | null>(null);
 
+  const coverById = useMemo(() => {
+    const map = new Map<number, string | null>();
+    for (const card of cardList ?? []) {
+      map.set(card.entryId, coverSrc(card.coverUrl, card.coverImageId, "t_thumb"));
+    }
+    return map;
+  }, [cardList]);
+
+  const tagById = useMemo(() => {
+    const map = new Map<number, string | null>();
+    for (const card of cardList ?? []) map.set(card.entryId, card.tag);
+    return map;
+  }, [cardList]);
+
+  /*
+   * 제목 색을 상태로 가른다 (v1.1.3, 사용자 지정).
+   * **아직 손 안 댄 것(백로그·위시리스트)만 흐리게** 두고 나머지는 흰 글씨다 —
+   * 전부 흐리면 목록이 통째로 배경처럼 읽혀서 "내가 한 게임"이 눈에 안 들어온다
+   */
+  const statusById = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const card of cardList ?? []) map.set(card.entryId, card.status);
+    return map;
+  }, [cardList]);
+
+  /*
+   * 태그별로 묶는다. **정렬은 항상 이름순** — 그룹 안에서도, 그룹 자체도 (다른 정렬 옵션 없음).
+   * names가 이미 이름순으로 오므로 그룹 안은 순서를 그대로 쓰면 된다.
+   *
+   * 태그 없는 게임은 맨 아래 한 덩어리로 몬다. 실데이터는 태그 안 붙은 항목이 더 많아서
+   * 이 그룹이 없으면 게임이 사라져 보인다.
+   *
+   * ⚠️ **태그가 도착하기 전에는 그리지 않는다** (v1.2, 사용자 요청).
+   * 예전엔 목록을 먼저 띄우고 태그가 오면 재배치했는데, **전부 '태그 없음'으로 한 번
+   * 그려졌다가 흩어지는 게** 로딩이 아니라 고장으로 보였다. 스켈레톤이 낫다
+   */
+  const groups = useMemo(() => {
+    const buckets = new Map<string, BacklogName[]>();
+    for (const entry of nameList ?? []) {
+      const tag = tagById.get(entry.entryId) ?? null;
+      const key = tag ?? UNTAGGED;
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key)!.push(entry);
+    }
+
+    /*
+     * ⚠️ **파셋이 준 순서를 따른다** (v1.1). 이름순으로 정렬하면 프로필의 사전에서
+     * 끌어 옮긴 순서가 무시되고, 같은 목록이 화면마다 다르게 보인다.
+     * 파셋에 없는 태그(도착 전)는 뒤에 이름순으로 붙인다
+     */
+    const rank = new Map((facetTags ?? []).map((tag, index) => [tag.name, index]));
+    const tagged = [...buckets.keys()]
+      .filter((key) => key !== UNTAGGED)
+      .sort((a, b) => {
+        const ra = rank.get(a);
+        const rb = rank.get(b);
+        if (ra != null && rb != null) return ra - rb;
+        if (ra != null) return -1;
+        if (rb != null) return 1;
+        return a.localeCompare(b, "ko");
+      });
+
+    /*
+     * ⚠️ **'태그 없음'은 비어 있어도 항상 마지막에 둔다** (2026-08-29, 사용자 요청).
+     * 여기가 드롭 대상이기 때문이다 — 태그를 떼려면 놓을 자리가 있어야 하는데,
+     * 항목이 0이라고 사라지면 마지막 하나를 뗀 순간 뗄 곳이 없어진다
+     */
+    return [...tagged, UNTAGGED].map((key) => ({
+      key,
+      items: buckets.get(key) ?? [],
+    }));
+  }, [nameList, tagById, facetTags]);
+
   /**
    * 게임을 태그로 옮긴다 (2026-08-29).
+   *
+   * ⚠️ **`tagById` 아래에 둔다.** 위에 두면 아직 선언 전인 const를 클로저가 잡아서
+   * React Compiler가 아래 useMemo들의 메모를 못 지킨다 ("Existing memoization could not be preserved")
    *
    * ⚠️ **놓은 뒤 둘 다 새로 받는다.** 사이드바는 `names`와 `covers` 두 응답을 겹쳐 쓰는데
    * (태그가 covers에서 온다) 하나만 갱신하면 목록과 그룹이 어긋난 채로 남는다
@@ -80,78 +161,9 @@ export default function LibrarySidebar() {
     invalidateQueries();
   };
 
-  const coverById = useMemo(() => {
-    const map = new Map<number, string | null>();
-    covers.data?.forEach((card) =>
-      map.set(card.entryId, coverSrc(card.coverUrl, card.coverImageId, "t_thumb")),
-    );
-    return map;
-  }, [covers.data]);
-
-  const tagById = useMemo(() => {
-    const map = new Map<number, string | null>();
-    covers.data?.forEach((card) => map.set(card.entryId, card.tag));
-    return map;
-  }, [covers.data]);
-
-  /*
-   * 제목 색을 상태로 가른다 (v1.1.3, 사용자 지정).
-   * **아직 손 안 댄 것(백로그·위시리스트)만 흐리게** 두고 나머지는 흰 글씨다 —
-   * 전부 흐리면 목록이 통째로 배경처럼 읽혀서 "내가 한 게임"이 눈에 안 들어온다
-   */
-  const statusById = useMemo(() => {
-    const map = new Map<number, string>();
-    covers.data?.forEach((card) => map.set(card.entryId, card.status));
-    return map;
-  }, [covers.data]);
-
-  /*
-   * 태그별로 묶는다. **정렬은 항상 이름순** — 그룹 안에서도, 그룹 자체도 (다른 정렬 옵션 없음).
-   * names가 이미 이름순으로 오므로 그룹 안은 순서를 그대로 쓰면 된다.
-   *
-   * 태그 없는 게임은 맨 아래 한 덩어리로 몬다. 실데이터는 태그 안 붙은 항목이 더 많아서
-   * 이 그룹이 없으면 게임이 사라져 보인다.
-   *
-   * ⚠️ **태그가 도착하기 전에는 그리지 않는다** (v1.2, 사용자 요청).
-   * 예전엔 목록을 먼저 띄우고 태그가 오면 재배치했는데, **전부 '태그 없음'으로 한 번
-   * 그려졌다가 흩어지는 게** 로딩이 아니라 고장으로 보였다. 스켈레톤이 낫다
-   */
-  const groups = useMemo(() => {
-    const buckets = new Map<string, typeof names.data>();
-    (names.data ?? []).forEach((entry) => {
-      const tag = tagById.get(entry.entryId) ?? null;
-      const key = tag ?? UNTAGGED;
-      if (!buckets.has(key)) buckets.set(key, []);
-      buckets.get(key)!.push(entry);
-    });
-
-    /*
-     * ⚠️ **파셋이 준 순서를 따른다** (v1.1). 이름순으로 정렬하면 프로필의 사전에서
-     * 끌어 옮긴 순서가 무시되고, 같은 목록이 화면마다 다르게 보인다.
-     * 파셋에 없는 태그(도착 전)는 뒤에 이름순으로 붙인다
-     */
-    const rank = new Map((facets.data?.tags ?? []).map((tag, index) => [tag.name, index]));
-    const tagged = [...buckets.keys()]
-      .filter((key) => key !== UNTAGGED)
-      .sort((a, b) => {
-        const ra = rank.get(a);
-        const rb = rank.get(b);
-        if (ra != null && rb != null) return ra - rb;
-        if (ra != null) return -1;
-        if (rb != null) return 1;
-        return a.localeCompare(b, "ko");
-      });
-
-    /*
-     * ⚠️ **'태그 없음'은 비어 있어도 항상 마지막에 둔다** (2026-08-29, 사용자 요청).
-     * 여기가 드롭 대상이기 때문이다 — 태그를 떼려면 놓을 자리가 있어야 하는데,
-     * 항목이 0이라고 사라지면 마지막 하나를 뗀 순간 뗄 곳이 없어진다
-     */
-    return [...tagged, UNTAGGED].map((key) => ({
-      key,
-      items: buckets.get(key) ?? [],
-    }));
-  }, [names.data, tagById, facets.data]);
+  /* 끌고 있을 때 목록이 가장자리에서 저절로 밀린다 */
+  const listRef = useRef<HTMLDivElement>(null);
+  useDragAutoScroll(listRef);
 
   const allCollapsed = groups.length > 0 && collapsed.size >= groups.length;
   const toggleAll = () =>
@@ -223,7 +235,7 @@ export default function LibrarySidebar() {
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2">
+      <div ref={listRef} className="flex-1 overflow-y-auto p-2">
         {/* 태그(covers)까지 와야 그린다 — 하나라도 없으면 스켈레톤 */}
         {names.loading || covers.loading || !covers.data ? (
           <div className="flex flex-col gap-2 p-2">
@@ -237,9 +249,7 @@ export default function LibrarySidebar() {
               const isOpen = !collapsed.has(group.key);
               const label = group.key === UNTAGGED ? "태그 없음" : group.key;
               /* 파셋이 색을 준다. '태그 없음'과 아직 안 온 태그는 중립 */
-              const tone = toneOf(
-                (facets.data?.tags ?? []).find((t) => t.name === group.key)?.color,
-              );
+              const tone = toneOf((facetTags ?? []).find((t) => t.name === group.key)?.color);
               return (
                 <section
                   key={group.key}
