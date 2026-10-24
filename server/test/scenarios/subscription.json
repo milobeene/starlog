@@ -1,0 +1,214 @@
+{
+ "name": "subscription",
+ "steps": [
+  {
+   "name": "등록",
+   "method": "POST",
+   "path": "/api/me/subscriptions",
+   "body": {
+    "serviceName": "  Game Pass  ",
+    "startedOn": "2026-01-01",
+    "endedOn": null,
+    "fee": {
+     "amount": 13500.555,
+     "currency": "krw"
+    },
+    "billingCycle": "MONTHLY"
+   },
+   "save": {
+    "newId": "id"
+   }
+  },
+  {
+   "name": "등록 — 금액 없음",
+   "method": "POST",
+   "path": "/api/me/subscriptions",
+   "body": {
+    "serviceName": "PS Plus",
+    "startedOn": "2026-02-01",
+    "endedOn": "2026-02-01",
+    "billingCycle": "YEARLY"
+   }
+  },
+  {
+   "name": "등록 — 남겨둠 (정규화·반올림 결과를 DB 비교로 확인)",
+   "method": "POST",
+   "path": "/api/me/subscriptions",
+   "body": {
+    "serviceName": "  EA Play  ",
+    "startedOn": "2026-04-01",
+    "fee": {
+     "amount": "5990.005",
+     "currency": " usd "
+    },
+    "billingCycle": "MONTHLY"
+   }
+  },
+  {
+   "name": "등록 — 서비스명 공백",
+   "method": "POST",
+   "path": "/api/me/subscriptions",
+   "body": {
+    "serviceName": "   ",
+    "startedOn": "2026-01-01",
+    "billingCycle": "MONTHLY"
+   }
+  },
+  {
+   "name": "등록 — 서비스명 101자",
+   "method": "POST",
+   "path": "/api/me/subscriptions",
+   "body": {
+    "serviceName": "가나다라마바사아자차가나다라마바사아자차가나다라마바사아자차가나다라마바사아자차가나다라마바사아자차가나다라마바사아자차가나다라마바사아자차가나다라마바사아자차가나다라마바사아자차가나다라마바사아자차나",
+    "startedOn": "2026-01-01",
+    "billingCycle": "MONTHLY"
+   }
+  },
+  {
+   "name": "등록 — 시작일 없음",
+   "method": "POST",
+   "path": "/api/me/subscriptions",
+   "body": {
+    "serviceName": "X",
+    "billingCycle": "MONTHLY"
+   }
+  },
+  {
+   "name": "등록 — 주기 없음",
+   "method": "POST",
+   "path": "/api/me/subscriptions",
+   "body": {
+    "serviceName": "X",
+    "startedOn": "2026-01-01"
+   }
+  },
+  {
+   "name": "등록 — 없는 주기",
+   "method": "POST",
+   "path": "/api/me/subscriptions",
+   "body": {
+    "serviceName": "X",
+    "startedOn": "2026-01-01",
+    "billingCycle": "WEEKLY"
+   }
+  },
+  {
+   "name": "등록 — 종료일이 시작일보다 앞",
+   "method": "POST",
+   "path": "/api/me/subscriptions",
+   "body": {
+    "serviceName": "X",
+    "startedOn": "2026-03-01",
+    "endedOn": "2026-02-28",
+    "billingCycle": "MONTHLY"
+   }
+  },
+  {
+   "name": "등록 — 음수 금액",
+   "method": "POST",
+   "path": "/api/me/subscriptions",
+   "body": {
+    "serviceName": "X",
+    "startedOn": "2026-03-01",
+    "fee": {
+     "amount": -1,
+     "currency": "KRW"
+    },
+    "billingCycle": "MONTHLY"
+   }
+  },
+  {
+   "name": "등록 — 없는 통화",
+   "method": "POST",
+   "path": "/api/me/subscriptions",
+   "body": {
+    "serviceName": "X",
+    "startedOn": "2026-03-01",
+    "fee": {
+     "amount": 1,
+     "currency": "ABC"
+    },
+    "billingCycle": "MONTHLY"
+   }
+  },
+  {
+   "name": "등록 — 통화 없음",
+   "method": "POST",
+   "path": "/api/me/subscriptions",
+   "body": {
+    "serviceName": "X",
+    "startedOn": "2026-03-01",
+    "fee": {
+     "amount": 1
+    },
+    "billingCycle": "MONTHLY"
+   }
+  },
+  {
+   "name": "등록 — 깨진 JSON",
+   "method": "POST",
+   "path": "/api/me/subscriptions",
+   "rawBody": "{\"serviceName\": "
+  },
+  {
+   "name": "등록 — 잘못된 날짜",
+   "method": "POST",
+   "path": "/api/me/subscriptions",
+   "body": {
+    "serviceName": "X",
+    "startedOn": "2026-02-30",
+    "billingCycle": "MONTHLY"
+   }
+  },
+  {
+   "name": "수정",
+   "method": "PUT",
+   "path": "/api/me/subscriptions/${newId}",
+   "body": {
+    "serviceName": "Game Pass Ultimate",
+    "startedOn": "2026-01-01",
+    "endedOn": "2026-06-30",
+    "fee": {
+     "amount": "22900",
+     "currency": "KRW"
+    },
+    "billingCycle": "MONTHLY"
+   }
+  },
+  {
+   "name": "수정 — 없는 id",
+   "method": "PUT",
+   "path": "/api/me/subscriptions/999999",
+   "body": {
+    "serviceName": "X",
+    "startedOn": "2026-01-01",
+    "billingCycle": "MONTHLY"
+   }
+  },
+  {
+   "name": "수정 — id 형식 오류",
+   "method": "PUT",
+   "path": "/api/me/subscriptions/abc",
+   "body": {
+    "serviceName": "X",
+    "startedOn": "2026-01-01",
+    "billingCycle": "MONTHLY"
+   }
+  },
+  {
+   "name": "삭제",
+   "method": "DELETE",
+   "path": "/api/me/subscriptions/${newId}"
+  },
+  {
+   "name": "삭제 — 이미 없음",
+   "method": "DELETE",
+   "path": "/api/me/subscriptions/${newId}"
+  },
+  {
+   "name": "삭제 — 실데이터 구독 (참조 없음)",
+   "method": "DELETE",
+   "path": "/api/me/subscriptions/2"
+  }
+ ]
+}

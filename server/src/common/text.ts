@@ -1,0 +1,70 @@
+/**
+ * 문자열 규칙 — 자바 `TextValues`·`SortKeys`·`Slugs`를 그대로.
+ */
+import { InvalidInput } from "./errors";
+
+/**
+ * 앞뒤 공백 제거(`strip` — 유니코드 공백까지), 빈 문자열은 null로 수렴.
+ * 자바 `String.strip()`은 `Character.isWhitespace` 기준이다 — JS `trim()`과 거의 같지만
+ * NBSP(U+00A0)는 자바에선 공백이 아니고 JS `trim()`에선 공백이다. 자바 쪽에 맞춘다
+ */
+export function normalize(value: string | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  const stripped = javaStrip(value);
+  return stripped === "" ? null : stripped;
+}
+
+export function require(value: string | null | undefined, message: string): string {
+  const n = normalize(value);
+  if (n === null) throw new InvalidInput(message);
+  return n;
+}
+
+/** 목록 정리 — 정규화 후 null 제거 (`TextValues.replaceAll`) */
+export function normalizeAll(values: readonly (string | null | undefined)[] | null | undefined): string[] {
+  if (!values) return [];
+  return values.map(normalize).filter((v): v is string => v !== null);
+}
+
+// Character.isWhitespace: 공백 문자 중 NBSP(00A0, 2007, 202F) 제외 + 제어문자 09~0D, 1C~1F
+const JAVA_WS = /[\t\n\u000B\f\r\u001C-\u001F \u1680\u2000-\u2006\u2008-\u200A\u2028\u2029\u205F\u3000]/;
+function javaStrip(s: string): string {
+  let a = 0, b = s.length;
+  while (a < b && JAVA_WS.test(s[a]!)) a++;
+  while (b > a && JAVA_WS.test(s[b - 1]!)) b--;
+  return s.slice(a, b);
+}
+
+/**
+ * 정렬 키 — 숫자·기호 → 라틴 → 한글 → 나머지 순으로 묶고 소문자 이름을 붙인다 (`SortKeys.of`).
+ * 첫 글자로 그룹을 정한다
+ */
+export function sortKey(displayName: string | null | undefined): string | null {
+  if (displayName === null || displayName === undefined) return null;
+  const n = javaStrip(displayName);
+  if (n === "") return null;
+  const cp = n.codePointAt(0)!;
+  return group(cp) + "|" + n.toLowerCase();
+}
+
+function group(cp: number): string {
+  const ch = String.fromCodePoint(cp);
+  if (/\p{Nd}/u.test(ch) || !/\p{L}/u.test(ch)) return "0";
+  if (cp < 0x80) return "1";
+  if ((cp >= 0xac00 && cp <= 0xd7a3) || (cp >= 0x3131 && cp <= 0x318e)) return "2";
+  return "3";
+}
+
+/**
+ * 폴더 이름용 슬러그 (`Slugs.of`) — 결합 문자 제거, 소문자, 글자·숫자 아닌 건 `-`, 최대 80자.
+ * ⚠️ 한글은 NFD로 자모가 갈라졌다가 NFC로 다시 붙는다 — 결합 문자(\p{M})만 지우므로 한글은 살아남는다
+ */
+export function slug(name: string | null | undefined): string {
+  if (name === null || name === undefined || javaStrip(name) === "") return "untitled";
+  const decomposed = javaStrip(name).normalize("NFD").replace(/\p{M}/gu, "");
+  const s = decomposed.normalize("NFC").toLowerCase()
+    .replace(/[^\p{Alphabetic}\p{Nd}]+/gu, "-")
+    .replace(/^-+|-+$/g, "");
+  if (s === "") return "untitled";
+  return s.length > 80 ? s.slice(0, 80) : s;
+}
