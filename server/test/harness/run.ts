@@ -1,29 +1,30 @@
 /**
- * 비교 장치 — 같은 픽스처 위에서 자바(정답지)와 TS에 같은 요청을 보내고 결과를 대조한다.
+ * 회귀 테스트 장치 — 시나리오(요청 목록)를 TS 서버에 보내고 **녹화본(골든)**과 대조한다.
  *
- *   npx tsx test/harness/run.ts test/scenarios/<도메인>.json [--keep] [--only <이름 일부>]
+ *   npx tsx test/harness/run.ts test/scenarios/<도메인>.json            # 녹화본과 대조 (몇 초)
+ *   npx tsx test/harness/run.ts test/scenarios/<도메인>.json --update   # 의도한 동작 변경 뒤 다시 녹화
+ *   … --only <이름 일부>  /  --keep (작업 폴더·서버 로그 남김)
  *
- * 대조하는 것:
+ * ## 내력
+ *
+ * v2 이전(2026-10-24) 동안은 **자바 서버(정답지)와 TS를 나란히 띄워** 같은 요청의 응답·DB·파일을
+ * 대조했다 (도메인 전부 diff 0). 자바를 지우기 직전에 자바 쪽 결과를 녹화해 둔 게 `test/golden/`이다.
+ * 그래서 녹화본의 `recordedFrom: "java"`는 "자바와 같다고 확인된 동작"이라는 뜻이다.
+ * `--update`로 다시 녹화하면 `"ts"`가 된다 — **동작을 일부러 바꾼 뒤에만.**
+ *
+ * ## 대조하는 것
  *   1. 응답마다 — 상태코드, Location 헤더, 본문(JSON은 구조 비교 / 그 외는 해시)
- *   2. 끝나고 — **DB 전 테이블**(쓰기 동작의 진짜 검증), 데이터 루트 파일 트리
+ *   2. 끝나고 — **DB에서 바뀐 행**(시작 픽스처 대비), 데이터 루트 파일 트리
  *
- * 정규화:
- *   - 숫자는 값으로 (`12000.00` = `12000`)
- *   - 실행 중에 만들어진 시각(시작 시각 이후)은 `<NOW>` — 양쪽 다 "방금"이면 같다
- *   - 스프링 기본 오류 본문의 `timestamp`는 무시
- *   - `updated_at`만 다른 건 경고로 따로 센다 (값이 안 바뀐 수정에서 하이버네이트는 안 건드린다)
+ * 정규화: 숫자는 값으로(`12000.00` = `12000`), 실행 중 생긴 시각은 `<NOW>`, `updated_at`만 다른 건 경고.
  *
- * 필요한 것: 픽스처(`HARNESS_FIXTURE`, 기본은 스크래치 `fx-base`), 자바 jar(`../backend/build/libs/app.jar`)
- *
- * ## 골든 (자바가 사라진 뒤에도 시나리오를 살리는 법)
- *
- *   --record   위와 똑같이 비교하고, **통과하면** 자바 쪽 결과를 `test/golden/<시나리오>.json`에 녹화한다
- *   --golden   자바 없이 TS만 띄워 녹화본과 비교한다 (자바 제거 후의 회귀 테스트)
- *
- * 녹화본에는 응답과 **픽스처 대비 바뀐 행만** 담는다 — 테이블 전체를 담으면 시나리오마다 수백 KB다.
- * 의도해서 동작을 바꿨으면(자바 버그 수정 등) 고친 뒤 `--golden-update`로 TS 결과를 새 녹화본으로 쓴다
+ * ## 픽스처 (전부 로컬 전용 — 실데이터다)
+ *   real   `docs/backup-*-neon/`(Neon JSON 백업)에서 만든다 → `server/.dev/fixture`
+ *   fresh  주인 + 기본 카탈로그만 → `server/.dev/fixture-fresh`  (시나리오 `"fixture": "fresh"`)
+ *   없으면 처음 돌릴 때 만든다. `HARNESS_FIXTURE`로 덮을 수 있다.
+ *   ⚠️ 녹화본(`test/golden/`)도 실데이터가 들어 있어 gitignore다 — 저장소가 공개다
  */
-import { spawn, type ChildProcess } from "child_process";
+import { spawn, spawnSync, type ChildProcess } from "child_process";
 import crypto from "crypto";
 import fs from "fs";
 import net from "net";
@@ -49,52 +50,47 @@ interface Step {
 interface Scenario {
   name: string;
   steps: Step[];
-  /**
-   * 양쪽 서버에 넣을 환경변수. 값이 `$LOCAL:app.igdb.client-id`처럼 시작하면
-   * `backend/src/main/resources/application-local.yml`에서 그 키를 읽어 넣는다 — **비밀값을 시나리오에 적지 않는다**
-   */
+  /** 서버에 넣을 환경변수 — 예: 소유권 시험에 `{"STARLOG_PROFILE": "test"}` (`X-Member-Id`를 읽게) */
   env?: Record<string, string>;
-  /** 빈 DB에서 시작 — 주인 생성·기본 카탈로그 심기를 대조할 때 */
+  /** 시작 DB. 기본 `real`(실데이터) */
+  fixture?: "real" | "fresh";
+  /** 빈 DB(스키마만)에서 시작 */
   emptyDb?: boolean;
-}
-
-/** application-local.yml에서 점 경로로 값 하나 — 들여쓰기 기반 단순 파서 (이 파일 모양에만 맞춘다) */
-function localYml(key: string): string {
-  const file = path.resolve(ROOT, "../backend/src/main/resources/application-local.yml");
-  const lines = fs.readFileSync(file, "utf8").split("\n");
-  const want = key.split(".");
-  const stack: { indent: number; name: string }[] = [];
-  for (const line of lines) {
-    if (/^\s*(#|$)/.test(line)) continue;
-    const m = /^(\s*)([\w.-]+):\s*(.*)$/.exec(line);
-    if (!m) continue;
-    const indent = m[1]!.length;
-    while (stack.length && stack.at(-1)!.indent >= indent) stack.pop();
-    stack.push({ indent, name: m[2]! });
-    if (stack.map(x => x.name).join(".") === want.join(".") && m[3]) return m[3].trim();
-  }
-  throw new Error(`application-local.yml에 ${key}가 없다`);
-}
-
-function resolveEnv(env: Record<string, string> | undefined): Record<string, string> {
-  return Object.fromEntries(Object.entries(env ?? {}).map(([k, v]) => [k, v.startsWith("$LOCAL:") ? localYml(v.slice(7)) : v]));
 }
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
 const SCRATCH = process.env.HARNESS_SCRATCH ?? path.join(os.tmpdir(), "starlog-harness");
-const FIXTURE = process.env.HARNESS_FIXTURE
-  ?? "/private/tmp/claude-502/-Users-milo-projects-Practice-starlog/f498f61d-0a91-4b85-ab79-3f0fa7f29941/scratchpad/fx-base";
-const JAR = process.env.HARNESS_JAR ?? path.resolve(ROOT, "../backend/build/libs/app.jar");
-const JAVA = process.env.HARNESS_JAVA ?? "java";
+const DEV = path.join(ROOT, ".dev");
 
 const args = process.argv.slice(2);
 const scenarioPath = args.find(a => a.endsWith(".json"));
 const keep = args.includes("--keep");
-const mode: "compare" | "record" | "golden" | "golden-update" =
-  args.includes("--golden-update") ? "golden-update" : args.includes("--golden") ? "golden" : args.includes("--record") ? "record" : "compare";
-const usesJava = mode === "compare" || mode === "record";
+const update = args.includes("--update");
 const only = args.includes("--only") ? args[args.indexOf("--only") + 1] : undefined;
-if (!scenarioPath) { console.error("사용법: run.ts <scenario.json> [--keep] [--only 이름]"); process.exit(2); }
+if (!scenarioPath) { console.error("사용법: run.ts <scenario.json> [--update] [--keep] [--only 이름]"); process.exit(2); }
+
+/** 가장 최근 Neon 백업 폴더 (`docs/backup-YYYY-MM-DD-neon`) */
+function latestBackup(): string {
+  const docs = path.resolve(ROOT, "../docs");
+  const found = fs.existsSync(docs) ? fs.readdirSync(docs).filter(d => /^backup-.*-neon$/.test(d)).sort() : [];
+  if (!found.length) throw new Error("docs/backup-*-neon 이 없다 — 픽스처를 만들 실데이터 백업이 필요하다");
+  return path.join(docs, found.at(-1)!);
+}
+
+/** 픽스처 폴더. 없으면 만든다 */
+function fixture(kind: "real" | "fresh"): string {
+  if (process.env.HARNESS_FIXTURE) return process.env.HARNESS_FIXTURE;
+  const dir = path.join(DEV, kind === "fresh" ? "fixture-fresh" : "fixture");
+  if (fs.existsSync(path.join(dir, "PG_VERSION"))) return dir;
+  console.log(`픽스처 만드는 중 → ${path.relative(ROOT, dir)}`);
+  fs.mkdirSync(DEV, { recursive: true });   // PGlite는 상위 폴더까지는 안 만든다
+  const tsx = path.join(ROOT, "node_modules/.bin/tsx");
+  const r = kind === "fresh"
+    ? spawnSync(tsx, [path.join(ROOT, "scripts/build-fresh-fixture.ts"), dir], { stdio: "inherit" })
+    : spawnSync(tsx, [path.join(ROOT, "scripts/build-fixture.ts"), path.join(ROOT, "migrations"), latestBackup(), dir, "--with-flyway-history"], { stdio: "inherit" });
+  if (r.status !== 0) throw new Error("픽스처를 만들지 못했다");
+  return dir;
+}
 
 // ───────────── 준비 ─────────────
 const freePort = () => new Promise<number>((res) => {
@@ -228,25 +224,6 @@ function rowKey(r: Record<string, unknown>) {
   return "id" in r ? String(r.id) : JSON.stringify(Object.entries(r).filter(([k]) => !/_at$/.test(k)).sort());
 }
 
-function diffDbs(a: Record<string, Record<string, unknown>[]>, b: Record<string, Record<string, unknown>[]>) {
-  const errors: string[] = [], warnings: string[] = [];
-  for (const t of new Set([...Object.keys(a), ...Object.keys(b)])) {
-    const ra = new Map((a[t] ?? []).map(r => [rowKey(r), r])), rb = new Map((b[t] ?? []).map(r => [rowKey(r), r]));
-    for (const k of new Set([...ra.keys(), ...rb.keys()])) {
-      const x = ra.get(k), y = rb.get(k);
-      if (!x) { errors.push(`${t}[${k}]: TS에만 있음 ${JSON.stringify(y).slice(0, 200)}`); continue; }
-      if (!y) { errors.push(`${t}[${k}]: 자바에만 있음 ${JSON.stringify(x).slice(0, 200)}`); continue; }
-      for (const col of new Set([...Object.keys(x), ...Object.keys(y)])) {
-        const vx = normScalar(x[col]), vy = normScalar(y[col]);
-        if (JSON.stringify(vx) === JSON.stringify(vy)) continue;
-        const msg = `${t}[${k}].${col}: 자바=${JSON.stringify(vx)?.slice(0, 120)} TS=${JSON.stringify(vy)?.slice(0, 120)}`;
-        (col === "updated_at" ? warnings : errors).push(msg);
-      }
-    }
-  }
-  return { errors, warnings };
-}
-
 // ───────────── 골든 ─────────────
 interface GoldenStep { name: string; status: number; location: string | null; json?: unknown; hash?: string; text?: string }
 type Rows = Record<string, Record<string, unknown>[]>;
@@ -312,77 +289,65 @@ function fileTree(root: string) {
 // ───────────── 실행 ─────────────
 async function main() {
   const scenario: Scenario = JSON.parse(fs.readFileSync(scenarioPath!, "utf8"));
-  const work = fs.mkdtempSync(path.join(SCRATCH + "-"));
-  const javaDb = path.join(work, "java-db"), tsDb = path.join(work, "ts-db");
-  const javaData = path.join(work, "java-data"), tsData = path.join(work, "ts-data");
-  const golden: Golden | null = mode === "golden" ? JSON.parse(fs.readFileSync(goldenPath(scenario.name), "utf8")) : null;
+  const golden: Golden | null = update ? null : (() => {
+    const p = goldenPath(scenario.name);
+    if (!fs.existsSync(p)) throw new Error(`녹화본이 없다: ${path.relative(ROOT, p)} — 처음이면 --update로 녹화한다`);
+    return JSON.parse(fs.readFileSync(p, "utf8")) as Golden;
+  })();
+
+  fs.mkdirSync(path.dirname(SCRATCH), { recursive: true });
+  const work = fs.mkdtempSync(SCRATCH + "-");
+  const dbDir = path.join(work, "db"), dataDir = path.join(work, "data");
   if (scenario.emptyDb) {
-    /*
-     * 스키마만 있고 행은 없는 DB. 우리 러너로 깐다 — 자바 Flyway가 빈 PGlite에서 직접 돌면
-     * 잠금 연결과 작업 연결이 소켓 서버의 세션 하나에 몰려 서로를 기다린다.
-     * 이력 행의 체크섬이 Flyway와 같아서 자바도 "이미 적용됨"으로 받아들인다
-     */
-    for (const d of [javaDb, tsDb]) { const o = await openDb({ kind: "pglite", dir: d }); await migrate(o); await o.close(); }
+    const o = await openDb({ kind: "pglite", dir: dbDir }); await migrate(o); await o.close();
   } else {
-    fs.cpSync(FIXTURE, javaDb, { recursive: true });
-    fs.cpSync(FIXTURE, tsDb, { recursive: true });
+    // ⚠️ 픽스처는 **복사해서** 연다 — 원본을 열면 PGlite가 파일을 건드린다
+    fs.cpSync(fixture(scenario.fixture ?? "real"), dbDir, { recursive: true });
   }
-  fs.mkdirSync(javaData); fs.mkdirSync(tsData);
+  fs.mkdirSync(dataDir);
   // 시작 상태 — 녹화본은 이것 대비 바뀐 행만 담는다
-  const base = await dumpDbRaw(tsDb);
+  const base = await dumpDbRaw(dbDir);
 
-  const [pgPort, javaPort, tsPort] = [await freePort(), await freePort(), await freePort()];
+  const port = await freePort();
   runStartKst = kstNow();
-  const scenarioEnv = resolveEnv(scenario.env);
-
-  const pgLog: string[] = [], javaLog: string[] = [], tsLog: string[] = [];
-  const noop = { exitCode: 0 } as unknown as ChildProcess;
-  const pgsrv = !usesJava ? noop : spawn(path.join(ROOT, "node_modules/.bin/pglite-server"), [`--db=${javaDb}`, `--port=${pgPort}`, "--max-connections=4"], { stdio: ["ignore", "pipe", "pipe"] });
-  if (usesJava) await waitFor(pgsrv, pgLog, /listening/, 30000, "pglite-server");
-
-  const java = !usesJava ? noop : spawn(JAVA, ["-jar", JAR, `--server.port=${javaPort}`, "--spring.profiles.active=desktop",
-    `--spring.datasource.url=jdbc:postgresql://127.0.0.1:${pgPort}/postgres?sslmode=disable&prepareThreshold=0`,
-    "--spring.datasource.driver-class-name=org.postgresql.Driver", "--spring.datasource.hikari.maximum-pool-size=3"],
-    { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, SPRING_DATASOURCE_USERNAME: "postgres", SPRING_DATASOURCE_PASSWORD: "postgres", STARLOG_DATA_ROOT: javaData, ...scenarioEnv } });
-  const ts = spawn(path.join(ROOT, "node_modules/.bin/tsx"), [path.join(ROOT, "src/main.ts")],
-    { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, STARLOG_DB_DIR: tsDb, STARLOG_PORT: String(tsPort), STARLOG_DATA_ROOT: tsData, ...scenarioEnv } });
-
+  const log: string[] = [];
+  const server = spawn(path.join(ROOT, "node_modules/.bin/tsx"), [path.join(ROOT, "src/main.ts")],
+    { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, STARLOG_DB_DIR: dbDir, STARLOG_PORT: String(port), STARLOG_DATA_ROOT: dataDir, ...(scenario.env ?? {}) } });
   try {
-    await Promise.all([
-      usesJava ? waitFor(java, javaLog, /Started StarlogApplication/, 90000, "자바") : Promise.resolve(),
-      waitFor(ts, tsLog, /STARLOG_READY/, 30000, "TS"),
-    ]);
+    await waitFor(server, log, /STARLOG_READY/, 30000, "서버");
   } catch (e) {
-    await Promise.all([stop(java), stop(ts), stop(pgsrv)]);
+    await stop(server);
     throw e;
   }
 
-  const javaBase = `http://127.0.0.1:${javaPort}`, tsBase = `http://127.0.0.1:${tsPort}`;
+  const base_ = `http://127.0.0.1:${port}`;
   const vars: Record<string, unknown> = {};
   let fails = 0, passes = 0;
   const recorded: GoldenStep[] = [];
   for (const [i, step] of scenario.steps.entries()) {
     if (only && !step.name.includes(only)) continue;
-    let ja: Resp;
-    if (golden) {
-      const g = golden.steps[i];
-      if (!g || g.name !== step.name) throw new Error(`녹화본과 시나리오가 어긋난다 (${i}번 단계: ${step.name}) — 다시 녹화할 것`);
-      ja = { status: g.status, location: g.location, type: "", json: g.json, hash: g.hash, text: g.text };
-    } else if (mode === "golden-update") {
-      ja = await send(tsBase, step, vars);
-    } else {
-      ja = await send(javaBase, step, vars);
+    const got = await send(base_, step, vars);
+    recorded.push({ name: step.name, status: got.status, location: got.location,
+      ...(got.json !== undefined ? { json: JSON.parse(JSON.stringify(got.json, (_k, v) => normScalar(v))) } : {}),
+      ...(got.hash !== undefined ? { hash: got.hash } : {}), ...(got.text !== undefined ? { text: got.text } : {}) });
+    if (!golden) {
+      if (step.save) for (const [k, p] of Object.entries(step.save)) vars[k] = getPath(got.json, p);
+      console.log(`· ${step.name}  [${got.status}]`);
+      continue;
     }
-    const tb = mode === "golden-update" ? ja : await send(tsBase, step, vars);
-    recorded.push({ name: step.name, status: ja.status, location: ja.location,
-      ...(ja.json !== undefined ? { json: JSON.parse(JSON.stringify(ja.json, (_k, v) => normScalar(v))) } : {}),
-      ...(ja.hash !== undefined ? { hash: ja.hash } : {}), ...(ja.text !== undefined ? { text: ja.text } : {}) });
+    const want = golden.steps[i];
+    if (!want || want.name !== step.name) throw new Error(`녹화본과 시나리오가 어긋난다 (${i}번 단계: ${step.name}) — 시나리오를 바꿨으면 --update`);
     const problems: string[] = [];
-    if (ja.status !== tb.status) problems.push(`상태: 자바=${ja.status} TS=${tb.status}`);
-    if ((ja.location ?? null) !== (tb.location ?? null)) problems.push(`Location: 자바=${ja.location} TS=${tb.location}`);
-    if (ja.json !== undefined || tb.json !== undefined) diffJson(ja.json, tb.json, "$", problems, step.ignore ?? []);
-    else if (ja.hash !== tb.hash) problems.push(`본문: 자바=${ja.hash ?? ja.text ?? "(없음)"} TS=${tb.hash ?? tb.text ?? "(없음)"}`);
-    if (step.save) for (const [k, p] of Object.entries(step.save)) vars[k] = getPath(ja.json, p);
+    if (want.status !== got.status) problems.push(`상태: 녹화=${want.status} 지금=${got.status}`);
+    if ((want.location ?? null) !== (got.location ?? null)) problems.push(`Location: 녹화=${want.location} 지금=${got.location}`);
+    if (want.json !== undefined || got.json !== undefined) diffJson(want.json, got.json, "$", problems, step.ignore ?? []);
+    else if (want.hash !== got.hash) problems.push(`본문: 녹화=${want.hash ?? want.text ?? "(없음)"} 지금=${got.hash ?? got.text ?? "(없음)"}`);
+    /*
+     * 변수는 **지금 응답**에서 꺼낸다. 녹화본 값은 시각이 `<NOW>`로 정규화돼 있어서 그대로 다음 요청에
+     * 실으면 본문이 깨진다 (내보낸 덤프의 exportedAt을 덮어쓰기에 다시 싣는 member 시나리오에서 밟았다).
+     * 지금 응답이 녹화본과 다르면 이 단계에서 이미 차이로 잡힌다
+     */
+    if (step.save) for (const [k, p] of Object.entries(step.save)) vars[k] = getPath(got.json, p);
     if (problems.length) {
       fails++;
       console.log(`✗ ${step.name}  [${step.method} ${subst(step.path, vars)}]`);
@@ -390,51 +355,42 @@ async function main() {
       if (problems.length > 15) console.log(`    … 외 ${problems.length - 15}건`);
     } else {
       passes++;
-      console.log(`✓ ${step.name}  [${ja.status}]`);
+      if (!process.env.HARNESS_QUIET) console.log(`✓ ${step.name}  [${got.status}]`);
     }
   }
 
-  await Promise.all([stop(java), stop(ts)]);
-  await stop(pgsrv);
-  const db = await dumpDbRaw(tsDb);
-  const da = usesJava ? await dumpDbRaw(javaDb) : db;
-  const tsChanges = changes(base, db);
-  const { errors, warnings } = golden ? diffChanges(golden.db, tsChanges) : diffDbs(da, db);
-  const fb = fileTree(tsData);
-  const fa = golden ? golden.files : usesJava ? fileTree(javaData) : fb;
-  const fileDiffs = [...new Set([...Object.keys(fa), ...Object.keys(fb)])].filter(k => fa[k] !== fb[k])
-    .map(k => `${k}: 자바=${fa[k] ?? "(없음)"} TS=${fb[k] ?? "(없음)"}`);
+  await stop(server);
+  const after = await dumpDbRaw(dbDir);
+  const now = changes(base, after);
+  const files = fileTree(dataDir);
+  fs.writeFileSync(path.join(work, "server.log"), log.join(""));
+
+  if (!golden) {
+    if (only) { console.log("\n--only로는 녹화하지 않는다"); process.exit(2); }
+    const g: Golden = { scenario: scenario.name, recordedFrom: "ts", recordedAt: kstNow(), steps: recorded, db: now, files };
+    fs.mkdirSync(path.dirname(goldenPath(scenario.name)), { recursive: true });
+    fs.writeFileSync(goldenPath(scenario.name), JSON.stringify(g, null, 1) + "\n");
+    console.log(`\n녹화 → test/golden/${scenario.name}.json (${(fs.statSync(goldenPath(scenario.name)).size / 1024).toFixed(0)}KB)`);
+    if (!keep) fs.rmSync(work, { recursive: true, force: true });
+    return;
+  }
+
+  const { errors, warnings } = diffChanges(golden.db, now);
+  const fileDiffs = [...new Set([...Object.keys(golden.files), ...Object.keys(files)])].filter(k => golden.files[k] !== files[k])
+    .map(k => `${k}: 녹화=${golden.files[k] ?? "(없음)"} 지금=${files[k] ?? "(없음)"}`);
 
   console.log(`\n── 응답 ${passes} 통과 / ${fails} 실패`);
   console.log(`── DB ${errors.length ? `${errors.length}건 다름` : "같음"}${warnings.length ? ` (updated_at만 다름 ${warnings.length}건 — 경고)` : ""}`);
   for (const e of errors.slice(0, 30)) console.log(`    ${e}`);
-  if (errors.length > 30) console.log(`    … 외 ${errors.length - 30}건`);
   for (const w of warnings.slice(0, 5)) console.log(`    (경고) ${w}`);
   console.log(`── 파일 ${fileDiffs.length ? `${fileDiffs.length}건 다름` : "같음"}`);
   for (const f of fileDiffs.slice(0, 20)) console.log(`    ${f}`);
 
-  const ok = !fails && !errors.length && !fileDiffs.length;
-  if ((mode === "record" && ok && !only) || (mode === "golden-update" && !only)) {
-    const g: Golden = {
-      scenario: scenario.name, recordedFrom: mode === "record" ? "java" : "ts", recordedAt: kstNow(),
-      steps: recorded, db: mode === "record" ? changes(base, da) : tsChanges, files: mode === "record" ? fa : fb,
-    };
-    fs.mkdirSync(path.dirname(goldenPath(scenario.name)), { recursive: true });
-    fs.writeFileSync(goldenPath(scenario.name), JSON.stringify(g, null, 1) + "\n");
-    console.log(`\n녹화 → test/golden/${scenario.name}.json (${(fs.statSync(goldenPath(scenario.name)).size / 1024).toFixed(0)}KB)`);
-  } else if (mode === "record" && !ok) {
-    console.log("\n녹화 안 함 — 비교가 실패했다");
-  }
-
-  fs.writeFileSync(path.join(work, "java.log"), javaLog.join(""));
-  fs.writeFileSync(path.join(work, "ts.log"), tsLog.join(""));
-  if (keep) console.log(`\n작업 폴더 유지: ${work}  (java.log · ts.log · java-db · ts-db · *-data)`);
+  if (keep) console.log(`\n작업 폴더 유지: ${work}  (server.log · db · data)`);
   else fs.rmSync(work, { recursive: true, force: true });
   if (fails || errors.length || fileDiffs.length) {
-    if (!keep) {
-      const errLines = (javaLog.join("") + tsLog.join("")).split("\n").filter(l => /ERROR|Exception|에러|처리 못 한/.test(l)).slice(0, 10);
-      if (errLines.length) console.log(`\n서버 로그의 오류 줄:\n${errLines.join("\n")}`);
-    }
+    const errLines = log.join("").split("\n").filter(l => /Error|에러|처리 못 한/.test(l)).slice(0, 10);
+    if (errLines.length) console.log(`\n서버 로그의 오류 줄:\n${errLines.join("\n")}`);
     process.exit(1);
   }
 }

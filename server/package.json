@@ -4,8 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "dev": "node scripts/dev.mjs",
+    "gen": "tsx scripts/gen-migrations.ts",
+    "typecheck": "tsx scripts/gen-migrations.ts && tsc --noEmit -p .",
+    "test": "vitest run",
+    "test:golden": "node scripts/golden-all.mjs",
+    "bundle": "tsx scripts/gen-migrations.ts && node scripts/bundle.mjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.11",

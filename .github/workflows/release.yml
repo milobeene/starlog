@@ -1,10 +1,12 @@
-# 배포물 빌드 (v1.0 10단계)
+# 배포물 빌드 (v1.0 10단계 → v2)
 #
 # ## 왜 잡을 나누는가
 #
-# jar는 **OS를 안 탄다** — 프론트 정적 파일까지 그 안에 들어 있다. 우분투에서 한 번만
-# 만들어 넘긴다. 그러면 윈도우 러너는 **jlink와 NSIS만** 하면 된다:
-# 그래들과 Next를 git bash에서 돌리는 게 제일 잘 깨지는 지점이라 아예 안 시킨다.
+# 정적 프론트와 서버 번들은 **OS를 안 탄다** — 둘 다 JS(서버의 DB는 PGlite WASM)다.
+# 우분투에서 한 번만 만들어 넘긴다. 그러면 OS별 러너는 **electron-builder만** 하면 된다:
+# Next 빌드를 git bash에서 돌리는 게 제일 잘 깨지는 지점이라 아예 안 시킨다.
+#
+# v2: 자바 시절의 그래들 테스트·bootJar·번들 JRE(jlink) 단계가 통째로 사라졌다.
 #
 # ## 트리거가 둘이다
 #
@@ -22,8 +24,8 @@ permissions:
   contents: write
 
 jobs:
-  jar:
-    name: 프론트 + jar (OS 무관)
+  bundle:
+    name: 프론트 + 서버 번들 (OS 무관)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -32,51 +34,39 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: |
+            frontend/package-lock.json
+            server/package-lock.json
 
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 21
-          cache: gradle
+      - name: 의존성
+        run: |
+          npm ci --prefix frontend
+          npm ci --prefix server
 
-      - name: 프론트 의존성
-        working-directory: frontend
-        run: npm ci
+      # ⚠️ **검사를 여기서 돌린다.** 안 돌리고 넘어가면 아무도 못 잡는다
+      - name: 서버 타입 검사 · 테스트
+        working-directory: server
+        run: |
+          npx tsx scripts/gen-migrations.ts
+          npx tsc --noEmit -p .
+          npx vitest run --passWithNoTests
 
-      # ⚠️ **테스트를 여기서 돌린다.** 예전에는 bootJar만 돌려서 375개가 개발자 로컬에서만
-      # 검증됐다 — 안 돌리고 넘어가면 아무도 못 잡는다.
-      # ubuntu 러너엔 도커가 있으므로 PostgresSchemaTest(실 PostgreSQL 검증)도 함께 돈다
-      - name: 테스트
-        working-directory: backend
-        run: ./gradlew test
-
-      # 실패했을 때 리포트를 남긴다 — 로그만으로 부족한 경우가 있다
-      - name: 테스트 리포트
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-report
-          path: backend/build/reports/tests/test
-          retention-days: 7
-
-      - name: 정적 빌드 + bootJar
+      - name: 정적 빌드 + 서버 번들
         run: ./tools/build-desktop.sh
 
-      # ⚠️ desktop/web도 같이 넘긴다 — **입구 화면**이라 jar 안이 아니라 앱 옆에 있어야 한다.
-      # gitignore라 체크아웃만으로는 절대 안 생긴다
+      # ⚠️ 둘 다 gitignore라 체크아웃만으로는 절대 안 생긴다
       - uses: actions/upload-artifact@v4
         with:
-          name: jar
+          name: bundle
           path: |
-            backend/build/libs/app.jar
             desktop/web
+            desktop/server
           retention-days: 7
 
   package:
     name: ${{ matrix.label }}
-    needs: jar
-    # 한쪽이 깨져도 다른 쪽 결과는 받아본다 — 윈도우가 처음이라 특히
+    needs: bundle
+    # 한쪽이 깨져도 다른 쪽 결과는 받아본다
     strategy:
       fail-fast: false
       matrix:
@@ -94,24 +84,14 @@ jobs:
       # 받은 것을 저장소 구조 그대로 되돌려 놓는다
       - uses: actions/download-artifact@v4
         with:
-          name: jar
-          path: .
-
-      # build-jre.sh가 JAVA_HOME을 본다. 여기가 Temurin을 꽂아주므로 내려받기를 안 탄다
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 21
+          name: bundle
+          path: desktop
 
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: desktop/package-lock.json
-
-      - name: 번들 JRE
-        shell: bash
-        run: ./tools/build-jre.sh
 
       - name: 배포물
         shell: bash

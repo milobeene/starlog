@@ -1,6 +1,6 @@
 {
  "name": "member-fresh",
- "note": "⚠️ 주인 + 기본 카탈로그만 있는 픽스처가 필요하다 (HARNESS_FIXTURE). 자바는 빈 Postgres에서 주인을 못 만든다(OwnerService readOnly 버그) — 그래서 주인을 미리 넣어 둔 픽스처로 '빈 세이브'를 흉내 낸다. 만드는 법은 member 보고서. X-Member-Id 단계 때문에 test 프로필",
+ "note": "빈 세이브(주인+기본 카탈로그) 픽스처에서 시작한다 — fixture: fresh",
  "env": {
   "STARLOG_PROFILE": "test",
   "SPRING_PROFILES_INCLUDE": "test"
@@ -24043,5 +24043,6 @@
    "method": "GET",
    "path": "/api/me/export"
   }
- ]
+ ],
+ "fixture": "fresh"
 }
