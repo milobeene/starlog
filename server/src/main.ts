@@ -24,6 +24,24 @@ function emit(msg: Record<string, unknown>) {
   if (parentPort) parentPort.postMessage(msg);
 }
 
+/*
+ * 종료 요청은 **기동 첫 줄부터** 받는다. DB를 여는 도중에 일렉트론이 "내려가라"고 하면
+ * (빠르게 다른 세이브파일을 고른 경우) 그 요청이 묻히면 안 된다 — 묻히면 일렉트론은
+ * 25초를 기다렸다 강제로 죽이고, 그 사이 세이브파일 잠금이 그대로 남는다.
+ *
+ * ⚠️ 윈도우에서 `utilityProcess.kill()`은 TerminateProcess(강제)다. PGlite가 닫힐 틈이 없다.
+ * 그래서 일렉트론은 정상 종료를 **메시지**로 보낸다. 신호(SIGTERM)는 비교 장치·개발용
+ */
+let shutdownRequested: string | null = null;
+let shutdownNow: ((why: string) => void) | null = null;
+function requestShutdown(why: string) {
+  if (shutdownNow) shutdownNow(why);
+  else shutdownRequested = why;
+}
+process.on("SIGTERM", () => requestShutdown("SIGTERM"));
+process.on("SIGINT", () => requestShutdown("SIGINT"));
+parentPort?.on("message", (e) => { if ((e.data as { type?: string })?.type === "shutdown") requestShutdown("parent"); });
+
 /**
  * 로컬 세이브파일 잠금. **두 프로세스가 같은 PGlite 폴더를 열면 망가진다** — H2는 파일 잠금이
  * 막아줬지만(`DB_IN_USE`) PGlite는 그런 게 없다. 살아 있는 pid가 쥐고 있으면 거절한다.
@@ -55,7 +73,7 @@ async function open(cfg: ReturnType<typeof loadConfig>): Promise<OpenDb> {
   } catch (e) {
     if (e instanceof DiagnosticFailure) throw e;
     // 폴더가 있는데 못 열면 깨진 것 — 자바 시절 잘린 `.mv.db`(90028)와 같은 자리
-    if (cfg.db.kind === "pglite" && fs.existsSync(path.join(cfg.db.dir, "PG_VERSION"))) throw new DiagnosticFailure("DB_CORRUPTED", e);
+    if (cfg.db.kind === "pglite" && !cfg.db.dir.startsWith("memory://") && fs.existsSync(path.join(cfg.db.dir, "PG_VERSION"))) throw new DiagnosticFailure("DB_CORRUPTED", e);
     throw new DiagnosticFailure(classify(e), e);
   }
   const problem = await inspectSchema(opened.db).catch((e) => { throw new DiagnosticFailure(classify(e), e); });
@@ -66,10 +84,18 @@ async function open(cfg: ReturnType<typeof loadConfig>): Promise<OpenDb> {
 async function main() {
   const cfg = loadConfig();
   setConfig(cfg);
-  const unlock = cfg.db.kind === "pglite" ? lock(cfg.db.dir) : () => {};
+  // `memory://`는 연결 시험용 일회성 DB다 (자바 시절 `jdbc:h2:mem:probe`) — 잠글 파일이 없다
+  const unlock = cfg.db.kind === "pglite" && !cfg.db.dir.startsWith("memory://") ? lock(cfg.db.dir) : () => {};
 
   const opened = await open(cfg);
   setDb(opened);
+  if (shutdownRequested) {
+    // 여는 도중에 내려가라는 요청이 왔다 — 마이그레이션도 리슨도 하지 않고 곱게 닫는다
+    await opened.close().catch(() => {});
+    unlock();
+    emit({ type: "closed" });
+    process.exit(0);
+  }
   const { applied } = await migrate(opened);
   if (applied.length) console.log(`마이그레이션 적용: V${applied.join(", V")}`);
   await runStartupTasks();
@@ -91,9 +117,8 @@ async function main() {
     emit({ type: "closed" });
     process.exit(0);
   };
-  process.on("SIGTERM", () => void shutdown("SIGTERM"));
-  process.on("SIGINT", () => void shutdown("SIGINT"));
-  parentPort?.on("message", (e) => { if ((e.data as { type?: string })?.type === "shutdown") void shutdown("parent"); });
+  shutdownNow = (why) => void shutdown(why);
+  if (shutdownRequested) void shutdown(shutdownRequested);
 
   /*
    * 부모 감시 — 자바 `ParentWatchdog` 자리. 일렉트론이 강제 종료되면 고아로 살아남아 세이브파일을
