@@ -4,6 +4,7 @@ import GameCover from "@/components/ui/GameCover";
 import StatusBadge from "@/components/ui/StatusBadge";
 import Chip from "@/components/ui/Chip";
 import StarIcon from "@/components/ui/StarIcon";
+import QuickPlayButtons from "@/components/detail/QuickPlayButtons";
 import type { DetailDialog } from "@/components/detail/detailDialog";
 import { formatRating } from "@/lib/labels";
 import type { BacklogDetail } from "@/lib/types";
@@ -50,8 +51,9 @@ export default function DetailHero({
 
       {/* 커버 아래쪽에 바닥을 맞춘다 — items-end + 여기서는 패딩을 주지 않는다 */}
       <div className="flex-1 pb-1">
-        <div className="mb-2">
+        <div className="mb-2 flex flex-wrap items-center gap-3">
           <StatusBadge status={data.status} size="md" />
+          <QuickPlayButtons data={data} onOpen={onOpen} />
         </div>
 
         <h1 className="mb-3 text-4xl font-semibold tracking-tight text-white drop-shadow-md md:text-5xl">

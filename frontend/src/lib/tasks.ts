@@ -25,7 +25,11 @@ export type TaskKind =
   | "resync"
   | "save-transfer"
   /** 게임 담기 (2026-08-29). 담고 나서 "보러가기 / 이어서 담기"가 이어진다 */
-  | "add-game";
+  | "add-game"
+  /** 스크린샷 복사·저장 결과 (F5) */
+  | "media-share"
+  /** 플레이 시작·완료·중단 같은 한 번 누르기 (v2 U2). 결과 한 줄만 띄우고 5초 뒤 닫힌다 */
+  | "quick-play";
 
 export type Task = {
   id: string;

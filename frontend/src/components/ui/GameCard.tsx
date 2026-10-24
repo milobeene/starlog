@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import CardContextMenu from "@/components/library/CardContextMenu";
 import GameCover from "./GameCover";
 import StatusBadge from "./StatusBadge";
 import Chip from "./Chip";
@@ -20,6 +23,11 @@ export default function GameCard({ card, sort }: { card: BacklogCard; sort?: str
    * 출시 연월 — 정렬한 값이 카드에 안 보이면 순서가 맞는지 확인할 길이 없다.
    * 서버가 그 필드를 안 실어 보낸 카드(`undefined`)는 기존 회차 줄로 둔다
    */
+  const router = useRouter();
+  // 우클릭 메뉴 (v2 U2) — 마우스 자리. 카드마다 상태를 들고 있어도 열려 있는 건 하나뿐이다
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const detailHref = `/library/detail?entry=${card.entryId}`;
+
   const byPlayTime = sort === "playtime" && card.playTimeHours !== undefined;
   const byRelease = sort === "releasedOn" && card.releasedOn !== undefined;
   const lastLine: React.ReactNode = byPlayTime ? (
@@ -31,8 +39,13 @@ export default function GameCard({ card, sort }: { card: BacklogCard; sort?: str
   );
 
   return (
+    <>
     <Link
-      href={`/library/detail?entry=${card.entryId}`}
+      href={detailHref}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setMenu({ x: e.clientX, y: e.clientY });
+      }}
       /*
        * 폴더로 끌어다 놓아 태그를 옮긴다 (2026-08-29). 사이드바 항목과 같은 키를 쓴다 —
        * 받는 쪽이 하나면 보내는 쪽도 하나여야 헷갈리지 않는다
@@ -117,5 +130,16 @@ export default function GameCard({ card, sort }: { card: BacklogCard; sort?: str
         {lastLine ?? "—"}
       </div>
     </Link>
+    {menu && (
+      <CardContextMenu
+        entryId={card.entryId}
+        status={card.status}
+        x={menu.x}
+        y={menu.y}
+        onClose={() => setMenu(null)}
+        onOpenDetail={() => router.push(detailHref)}
+      />
+    )}
+    </>
   );
 }
