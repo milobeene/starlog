@@ -12,6 +12,7 @@ import { Conflict, InvalidInput } from "../../common/errors";
 import { ldt, page as pageOf } from "../../common/json";
 import { amountJson } from "../../common/money";
 import { normalize } from "../../common/text";
+import { coverPublicUrl } from "./media";
 import type { BacklogStatus } from "./shared";
 import { findOwnedAlive404, findOwnedIncludingDeleted, moneyResponse, type EntryRow } from "./shared";
 
@@ -203,16 +204,6 @@ async function gameValues(d: Db, table: "game_developer" | "game_publisher" | "g
   const list = await rows<{ gameId: number; v: string }>(d, sql`select game_id as "gameId", ${sql.identifier(column)} as v
     from ${sql.identifier(table)} where game_id in ${gameIds}`);
   return new Map([...groupBy(list, (x) => x.gameId)].map(([k, v]) => [k, v.map((x) => x.v)]));
-}
-
-/**
- * 커버 표시 주소. LOCAL은 우리 엔드포인트, EXTERNAL은 버킷 공개 URL.
- * `?v=`는 교체했을 때 브라우저가 옛 그림을 붙들지 않게 하려는 값이다
- */
-function coverPublicUrl(cover: { entryId: number; storageKey: string; location: string }): string | null {
-  if (cover.location === "LOCAL") return `/api/backlog/${cover.entryId}/cover/file?v=${cover.storageKey}`;
-  // TODO(P2 backlog phase 2): common/storage의 공개 URL. 지금은 미설정 경로(UnconfiguredFileStorage → null)만
-  return null;
 }
 
 /** 주소를 못 만드는 커버(EXTERNAL + 스토리지 미설정)는 빼고 그린다 — 화면이 마스터 커버로 폴백한다 */

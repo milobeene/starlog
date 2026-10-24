@@ -1,0 +1,97 @@
+{
+ "name": "backlog-external",
+ "env": {
+  "APP_IGDB_CLIENT_ID": "$LOCAL:app.igdb.client-id",
+  "APP_IGDB_CLIENT_SECRET": "$LOCAL:app.igdb.client-secret",
+  "APP_STORAGE_ENDPOINT": "$LOCAL:app.storage.endpoint",
+  "APP_STORAGE_BUCKET": "$LOCAL:app.storage.bucket",
+  "APP_STORAGE_ACCESS_KEY": "$LOCAL:app.storage.access-key",
+  "APP_STORAGE_SECRET_KEY": "$LOCAL:app.storage.secret-key",
+  "APP_STORAGE_PUBLIC_BASE_URL": "$LOCAL:app.storage.public-base-url",
+  "STARLOG_MEDIA_USE_STORAGE_FOR_COVERS": "true"
+ },
+ "steps": [
+  {
+   "name": "담기 — 캐시 안 된 externalId (실제 IGDB)",
+   "method": "POST",
+   "path": "/api/backlog",
+   "body": {
+    "externalId": " 11198 "
+   },
+   "save": {
+    "e1": "id"
+   }
+  },
+  {
+   "name": "담기 — 방금 캐시된 externalId",
+   "method": "POST",
+   "path": "/api/backlog",
+   "body": {
+    "externalId": "11198"
+   }
+  },
+  {
+   "name": "담기 — IGDB에 없는 id",
+   "method": "POST",
+   "path": "/api/backlog",
+   "body": {
+    "externalId": "999999999"
+   }
+  },
+  {
+   "name": "담기 — 상세",
+   "method": "GET",
+   "path": "/api/backlog/${e1}"
+  },
+  {
+   "name": "담기 — 회사 사전 (새 게임 개발사)",
+   "method": "GET",
+   "path": "/api/backlog/companies"
+  },
+  {
+   "name": "커버 — 상세 88 (버킷 공개 URL)",
+   "method": "GET",
+   "path": "/api/backlog/88"
+  },
+  {
+   "name": "커버 — 목록 (버킷 공개 URL)",
+   "method": "GET",
+   "path": "/api/backlog?q=%EB%A0%88%EB%93%9C"
+  },
+  {
+   "name": "커버 — 전량 카드",
+   "method": "GET",
+   "path": "/api/backlog/cards"
+  },
+  {
+   "name": "커버 허가증 — EXTERNAL",
+   "method": "POST",
+   "path": "/api/backlog/81/cover/upload-url",
+   "body": {
+    "fileName": "Cover.PNG",
+    "sizeBytes": 73
+   },
+   "ignore": [
+    "uploadUrl",
+    "storageKey"
+   ],
+   "note": "서명 시각·uuid가 요청마다 다르다 — 모양과 mode·contentType·expiresInSeconds만 대조"
+  },
+  {
+   "name": "커버 확정 — 버킷에 없는 key (HEAD 404 → 기록 + 400)",
+   "method": "PUT",
+   "path": "/api/backlog/81/cover",
+   "body": {
+    "storageKey": "covers/1/81/does-not-exist.png"
+   }
+  },
+  {
+   "name": "커버 확정 — 형식이 다른 key도 HEAD가 먼저",
+   "method": "PUT",
+   "path": "/api/backlog/81/cover",
+   "body": {
+    "storageKey": "covers/1/81/does-not-exist.gif"
+   }
+  }
+ ]
+}

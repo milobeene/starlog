@@ -4,7 +4,7 @@
  * ⚠️ 고정 경로(`/api/backlog/cards` 등)를 변수 경로(`/api/backlog/:entryId`)보다 **먼저** 건다.
  * 스프링은 리터럴을 고르지만 Hono는 등록 순서다.
  *
- * 2차로 미룬 것(게임 생성·커버·스크린샷·번역)은 경로만 걸어 두고 `P2 backlog phase 2`로 던진다.
+ * 커버·스크린샷 파일 처리는 `media.ts`, 멀티파트·Range 응답은 `http.ts`.
  */
 import { Hono, type Context } from "hono";
 import { z } from "zod";
@@ -25,12 +25,20 @@ import {
 import { purge, revive, softDelete, toMoney, updateOverrides, updatePersonalRecord } from "./entry";
 import { changeTag, replaceGenres } from "../tag/service";
 import { addPlaythrough, deletePlaythrough, updatePlaythrough } from "./playthrough";
+import { addToBacklog } from "./entry";
+import {
+  confirmExternalCover, deleteCover, deleteScreenshots, listScreenshots, mediaContentTypeOf, prepareCover, readLocalCover,
+  resolveScreenshot, saveLocalCover, saveScreenshot, screenshotFolderPath,
+} from "./media";
+import { firstFile, firstText, missingPart, multipartFile, multipartForm, parseLongParam, sendFile } from "./http";
+import { findOwnedAlive404 } from "./shared";
+import { resolveGame } from "../game/service";
+import { translateGame } from "../system/service";
+import { fileStorage } from "../../common/storage";
 import { addAcquisition, deleteAcquisition, updateAcquisition } from "./acquisition";
 
 export const routes = new Hono<AppEnv>();
 
-/** 2차에서 채울 자리 — 게임 생성(game)·저장소(common/storage)·번역(system)이 생긴 뒤 */
-const phase2 = () => { throw new Error("P2 backlog phase 2"); };
 
 // ───────────── 요청 모양 ─────────────
 
@@ -50,6 +58,10 @@ const OverrideUpdateRequest = z.object({
   listPrice: zMoney,
 });
 
+const BacklogAddRequest = z.object({ gameId: opt(zLong), externalId: opt(zText) });
+/** `long sizeBytes`(원시형) — Jackson 3은 없거나 null이면 읽기 실패다 (FAIL_ON_NULL_FOR_PRIMITIVES) */
+const CoverUploadUrlRequest = z.object({ fileName: opt(zText), sizeBytes: zLong });
+const CoverConfirmRequest = z.object({ storageKey: opt(zText) });
 const TagUpdateRequest = z.object({ name: opt(zText) });
 const NameListRequest = z.object({ names: zStringList });
 
@@ -165,37 +177,131 @@ routes.get("/api/backlog/deleted/:entryId", async (c) => {
 routes.delete("/api/backlog/deleted/:entryId", async (c) => {
   const entryId = pathId(c, "entryId");
   const coverKey = await db().transaction((tx) => purge(tx, c.get("memberId"), entryId));
-  if (coverKey !== null) {
-    // TODO(P2 backlog phase 2): 커밋 뒤 스토리지에서 지운다 (`fileStorage.delete`, 실패는 삼킨다).
-    // 미설정 스토리지에서는 자바도 아무것도 안 한다
-  }
+  // 커밋 뒤에 스토리지에서 지운다 (실패는 삼킨다). ⚠️ 자바 버그 그대로 — LOCAL 커버여도 스토리지 쪽을 부르고
+  // 호출 기록도 안 남긴다. 로컬 파일은 고아로 남는다
+  if (coverKey !== null) await fileStorage().delete(coverKey);
   return c.body(null, 204);
 });
 
 routes.get("/api/backlog/companies", async (c) => c.json(await db().transaction((tx) => findCompanies(tx, c.get("memberId")))));
 
-/** 담기 — 게임 해석(IGDB 캐시)이 트랜잭션 밖에서 먼저 돈다 */
-routes.post("/api/backlog", phase2);
+/**
+ * 담기. 게임 해석(IGDB 캐시 — 외부 호출과 호출 기록)이 **트랜잭션 밖에서** 먼저 돈다.
+ * 외부가 죽으면 거기서 502로 끝나 백로그 쪽은 아무것도 안 쓴다 (FR-SYS-04)
+ */
+routes.post("/api/backlog", async (c) => {
+  const memberId = c.get("memberId");
+  const r = await readBodyExact(c, BacklogAddRequest);
+  // `@AssertTrue isTargetPresent()` — 프로퍼티 이름이 targetPresent가 된다
+  violations().when(r.gameId === null && normalize(r.externalId) === null,
+    "targetPresent", "gameId 또는 externalId 중 하나는 필요합니다").throwIfAny();
+  const gameId = await resolveGame(db(), r.gameId, r.externalId);
+  const entryId = await db().transaction((tx) => addToBacklog(tx, memberId, gameId));
+  c.header("Location", `/api/backlog/${entryId}`);
+  return c.json({ id: entryId }, 201);
+});
 
 routes.get("/api/backlog/:entryId", async (c) => {
   const entryId = pathId(c, "entryId");
   return c.json(await db().transaction((tx) => findDetail(tx, c.get("memberId"), entryId)));
 });
 
-// ───────────── 커버·스크린샷·번역 (2차) ─────────────
+// ───────────── 커버 ─────────────
 
-routes.post("/api/backlog/:entryId/cover/upload-url", phase2);
-routes.put("/api/backlog/:entryId/cover", phase2);
-routes.post("/api/backlog/:entryId/cover/file", phase2);
-routes.get("/api/backlog/:entryId/cover/file", phase2);
-routes.delete("/api/backlog/:entryId/cover", phase2);
-routes.get("/api/backlog/:entryId/screenshots", phase2);
-routes.post("/api/backlog/:entryId/screenshots", phase2);
-// `folder`가 `{fileName}`보다 먼저
-routes.get("/api/backlog/:entryId/screenshots/folder", phase2);
-routes.get("/api/backlog/:entryId/screenshots/:fileName", phase2);
-routes.post("/api/backlog/:entryId/screenshots/delete", phase2);
-routes.post("/api/backlog/:entryId/translate", phase2);
+/** 1단계 — 어디에 어떻게 올릴지. EXTERNAL이면 프론트는 응답의 contentType 그대로 PUT해야 한다 (서명에 들어 있다) */
+routes.post("/api/backlog/:entryId/cover/upload-url", async (c) => {
+  const entryId = pathId(c, "entryId");
+  const r = await readBodyExact(c, CoverUploadUrlRequest);
+  violations()
+    .notBlank("fileName", r.fileName, "파일 이름은 필수입니다")
+    .positive("sizeBytes", r.sizeBytes, "파일 크기가 올바르지 않습니다")
+    .throwIfAny();
+  return c.json(await prepareCover(c.get("memberId"), entryId, r.fileName, r.sizeBytes));
+});
+
+/** 2단계 — EXTERNAL 확정. 같은 key로 여러 번 불러도 결과가 같아서 PUT */
+routes.put("/api/backlog/:entryId/cover", async (c) => {
+  const entryId = pathId(c, "entryId");
+  const r = await readBodyExact(c, CoverConfirmRequest);
+  violations().notBlank("storageKey", r.storageKey, "storageKey는 필수입니다").throwIfAny();
+  await confirmExternalCover(c.get("memberId"), entryId, r.storageKey);
+  return c.body(null, 200);
+});
+
+/** LOCAL 업로드 — 바이트가 백엔드를 지나간다 */
+routes.post("/api/backlog/:entryId/cover/file", async (c) => {
+  const entryId = pathId(c, "entryId");
+  const file = await multipartFile(c, "file");
+  if (!file) return missingPart(c);
+  await saveLocalCover(c.get("memberId"), entryId, file.name, new Uint8Array(await file.arrayBuffer()));
+  return c.body(null, 200);
+});
+
+/** LOCAL 원본. `?v=`는 서버가 안 읽는다 — 교체해도 주소가 같아서 브라우저 캐시를 깨려고 붙인 값이다 */
+routes.get("/api/backlog/:entryId/cover/file", async (c) => {
+  const entryId = pathId(c, "entryId");
+  const file = await readLocalCover(c.get("memberId"), entryId);
+  return c.body(new Uint8Array(file.bytes), 200, {
+    "Content-Type": file.contentType,
+    "Cache-Control": "private, max-age=31536000, immutable",
+  });
+});
+
+/** 삭제 — 마스터 커버로 폴백된다 */
+routes.delete("/api/backlog/:entryId/cover", async (c) => {
+  const entryId = pathId(c, "entryId");
+  await deleteCover(c.get("memberId"), entryId);
+  return c.body(null, 204);
+});
+
+// ───────────── 스크린샷 (DB를 안 본다 — 폴더가 곧 목록) ─────────────
+
+routes.get("/api/backlog/:entryId/screenshots", async (c) => {
+  const entryId = pathId(c, "entryId");
+  return c.json(await listScreenshots(c.get("memberId"), entryId));
+});
+
+/** 한 장 저장. `takenAt`은 브라우저가 읽은 원본 파일의 수정시각 (스프링은 쿼리와 폼 필드를 같이 본다) */
+routes.post("/api/backlog/:entryId/screenshots", async (c) => {
+  const entryId = pathId(c, "entryId");
+  const form = await multipartForm(c);
+  const file = firstFile(form, "file");
+  if (!file) return missingPart(c);
+  const takenAtRaw = c.req.query("takenAt") ?? firstText(form, "takenAt");
+  const takenAt = takenAtRaw === undefined || takenAtRaw.trim() === "" ? null : parseLongParam("takenAt", takenAtRaw);
+  return c.json(await saveScreenshot(c.get("memberId"), entryId, file.name, new Uint8Array(await file.arrayBuffer()), takenAt));
+});
+
+/** 탐색기로 열 경로 — `{fileName}`보다 먼저 건다 */
+routes.get("/api/backlog/:entryId/screenshots/folder", async (c) => {
+  const entryId = pathId(c, "entryId");
+  return c.json({ path: await screenshotFolderPath(c.get("memberId"), entryId) });
+});
+
+/**
+ * 원본. 영상이 200MB까지라 통째로 읽지 않고 흘려보내고, **Range를 받는다** — 안 받으면 재생 막대를 못 끈다
+ * (자바는 `Resource`를 돌려줘 스프링이 Range를 처리했다)
+ */
+routes.get("/api/backlog/:entryId/screenshots/:fileName", async (c) => {
+  const entryId = pathId(c, "entryId");
+  const fileName = c.req.param("fileName");
+  const file = await resolveScreenshot(c.get("memberId"), entryId, fileName);
+  return sendFile(c, file, mediaContentTypeOf(fileName));
+});
+
+/** 일괄 삭제. DELETE에 본문을 싣는 건 회색지대라 POST */
+routes.post("/api/backlog/:entryId/screenshots/delete", async (c) => {
+  const entryId = pathId(c, "entryId");
+  const names = await readBodyExact(c, z.array(zText.nullable()));
+  return c.json({ deleted: await deleteScreenshots(c.get("memberId"), entryId, names) });
+});
+
+/** 소개문 번역 — 항목 경로라 소유권 검증이 따라온다. 남의 항목 번호로는 못 부른다 */
+routes.post("/api/backlog/:entryId/translate", async (c) => {
+  const entryId = pathId(c, "entryId");
+  const gameId = await db().transaction(async (tx) => (await findOwnedAlive404(tx, c.get("memberId"), entryId)).gameId);
+  return c.json(await translateGame(gameId));   // 구글 호출은 트랜잭션 밖
+});
 
 // ───────────── 항목 쓰기 ─────────────
 

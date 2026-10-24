@@ -164,6 +164,99 @@
    }
   },
   {
+   "name": "남의 것 — 커버 허가증",
+   "method": "POST",
+   "path": "/api/backlog/81/cover/upload-url",
+   "headers": {
+    "X-Member-Id": "999"
+   },
+   "body": {
+    "fileName": "a.png",
+    "sizeBytes": 10
+   }
+  },
+  {
+   "name": "남의 것 — 커버 확정",
+   "method": "PUT",
+   "path": "/api/backlog/81/cover",
+   "headers": {
+    "X-Member-Id": "999"
+   },
+   "body": {
+    "storageKey": "covers/999/81/a.png"
+   }
+  },
+  {
+   "name": "남의 것 — 커버 원본",
+   "method": "GET",
+   "path": "/api/backlog/81/cover/file",
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "남의 것 — 커버 삭제",
+   "method": "DELETE",
+   "path": "/api/backlog/88/cover",
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "남의 것 — 스크린샷 목록",
+   "method": "GET",
+   "path": "/api/backlog/81/screenshots",
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "남의 것 — 스크린샷 원본",
+   "method": "GET",
+   "path": "/api/backlog/81/screenshots/001.jpg",
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "남의 것 — 스크린샷 폴더",
+   "method": "GET",
+   "path": "/api/backlog/81/screenshots/folder",
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "남의 것 — 스크린샷 삭제",
+   "method": "POST",
+   "path": "/api/backlog/81/screenshots/delete",
+   "headers": {
+    "X-Member-Id": "999"
+   },
+   "body": [
+    "001.jpg"
+   ]
+  },
+  {
+   "name": "남의 것 — 번역",
+   "method": "POST",
+   "path": "/api/backlog/81/translate",
+   "headers": {
+    "X-Member-Id": "999"
+   }
+  },
+  {
+   "name": "남의 회원 — 담기 (회원 없음)",
+   "method": "POST",
+   "path": "/api/backlog",
+   "headers": {
+    "X-Member-Id": "999"
+   },
+   "body": {
+    "gameId": 2
+   }
+  },
+  {
    "name": "남의 회원 — 목록 (비었음)",
    "method": "GET",
    "path": "/api/backlog",

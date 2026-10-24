@@ -1,13 +1,13 @@
 /**
  * 항목 쓰기 — 자바 `BacklogService`. 항목에 붙는 태그·장르는 tag 도메인(`changeTag`·`replaceGenres`)이 맡는다.
  */
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Db } from "../../db/client";
 import {
   acquisition, backlogDeveloperOverride, backlogEntry, backlogEntryGenre, backlogPublisherOverride,
-  coverImage, game, playthrough,
+  coverImage, game, member, playthrough,
 } from "../../db/schema";
-import { Conflict, InvalidInput } from "../../common/errors";
+import { Conflict, InvalidInput, NotFound, Revivable } from "../../common/errors";
 import { nowKst } from "../../common/clock";
 import { money, type Money } from "../../common/money";
 import { normalize, normalizeAll, sortKey } from "../../common/text";
@@ -15,6 +15,37 @@ import {
   acquisitionCount, bigDecimalText, compareDecimal, deriveState, findOwned, findOwnedIncludingDeleted,
   playthroughsOf, saveEntryIfChanged, setScale,
 } from "./shared";
+
+// ───────────── 담기 (FR-BL-01) ─────────────
+
+/**
+ * 게임을 내 백로그에 담는다. 게임 해석(`resolveGame`)은 부르는 쪽이 **트랜잭션 밖에서** 먼저 끝낸다.
+ * §7.4 3분기 — 삭제된 항목이 있으면 되살리기 제안(409 REVIVABLE), 살아 있으면 409, 없으면 새로
+ */
+export async function addToBacklog(d: Db, memberId: number, gameId: number): Promise<number> {
+  const [m] = await d.select({ id: member.id }).from(member).where(eq(member.id, memberId));
+  if (!m) throw new NotFound(`회원을 찾을 수 없습니다. id=${memberId}`);
+  const [g] = await d.select({ name: game.name, releasedOn: game.releasedOn }).from(game).where(eq(game.id, gameId));
+  if (!g) throw new NotFound(`게임을 찾을 수 없습니다. id=${gameId}`);
+
+  const [existing] = await d.select({ id: backlogEntry.id, deletedAt: backlogEntry.deletedAt }).from(backlogEntry)
+    .where(and(eq(backlogEntry.memberId, memberId), eq(backlogEntry.gameId, gameId)));
+  if (existing) {
+    if (existing.deletedAt !== null) {
+      throw new Revivable(`삭제된 항목이 있습니다. 복원하시겠습니까? id=${existing.id}`, existing.id, `/api/backlog/${existing.id}/revive`);
+    }
+    throw new Conflict(`이미 담은 게임입니다. gameId=${gameId}`);
+  }
+
+  // 담을 때 취득 정보가 없으니 WISHLIST. 표시값은 마스터에서 (오버라이드가 아직 없다)
+  const now = nowKst();
+  const [row] = await d.insert(backlogEntry).values({
+    memberId, gameId, status: "WISHLIST",
+    displayName: g.name, displayNameSortKey: sortKey(g.name), releasedOnResolved: g.releasedOn,
+    createdAt: now, updatedAt: now,
+  }).returning({ id: backlogEntry.id });
+  return row!.id;
+}
 
 // ───────────── 개인 기록 (FR-BL-05~07) ─────────────
 

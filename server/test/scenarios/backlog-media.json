@@ -1,0 +1,773 @@
+{
+ "name": "backlog-media",
+ "steps": [
+  {
+   "name": "담기 — 수동 게임 만들기",
+   "method": "POST",
+   "path": "/api/games",
+   "body": {
+    "name": "Backlog Test Game",
+    "releasedOn": "2024-01-02"
+   },
+   "save": {
+    "gid": "id"
+   }
+  },
+  {
+   "name": "담기 — 새 게임",
+   "method": "POST",
+   "path": "/api/backlog",
+   "body": {
+    "gameId": "${gid}"
+   },
+   "save": {
+    "newEntry": "id"
+   }
+  },
+  {
+   "name": "담기 — 이미 담음",
+   "method": "POST",
+   "path": "/api/backlog",
+   "body": {
+    "gameId": "${gid}"
+   }
+  },
+  {
+   "name": "담기 — 실데이터 게임 (이미 담음)",
+   "method": "POST",
+   "path": "/api/backlog",
+   "body": {
+    "gameId": 2
+   }
+  },
+  {
+   "name": "담기 — 캐시된 externalId (이미 담음)",
+   "method": "POST",
+   "path": "/api/backlog",
+   "body": {
+    "externalId": " 40477 "
+   }
+  },
+  {
+   "name": "담기 — 둘 다 없음",
+   "method": "POST",
+   "path": "/api/backlog",
+   "body": {}
+  },
+  {
+   "name": "담기 — externalId 공백",
+   "method": "POST",
+   "path": "/api/backlog",
+   "body": {
+    "externalId": "   "
+   }
+  },
+  {
+   "name": "담기 — 없는 게임",
+   "method": "POST",
+   "path": "/api/backlog",
+   "body": {
+    "gameId": 999999
+   }
+  },
+  {
+   "name": "담기 — gameId 형식 오류",
+   "method": "POST",
+   "path": "/api/backlog",
+   "body": {
+    "gameId": "abc"
+   }
+  },
+  {
+   "name": "담기 — 캐시 안 된 externalId (IGDB 미설정)",
+   "method": "POST",
+   "path": "/api/backlog",
+   "body": {
+    "externalId": "999999999"
+   }
+  },
+  {
+   "name": "담기 — 삭제 준비",
+   "method": "DELETE",
+   "path": "/api/backlog/86"
+  },
+  {
+   "name": "담기 — 삭제된 항목이 있음 (되살리기 제안)",
+   "method": "POST",
+   "path": "/api/backlog",
+   "body": {
+    "gameId": 7
+   }
+  },
+  {
+   "name": "담기 — 새 항목 상세",
+   "method": "GET",
+   "path": "/api/backlog/${newEntry}"
+  },
+  {
+   "name": "커버 허가증 — LOCAL",
+   "method": "POST",
+   "path": "/api/backlog/81/cover/upload-url",
+   "body": {
+    "fileName": "cover.png",
+    "sizeBytes": 73
+   }
+  },
+  {
+   "name": "커버 허가증 — 대문자 확장자·공백",
+   "method": "POST",
+   "path": "/api/backlog/81/cover/upload-url",
+   "body": {
+    "fileName": "  My Cover.JPEG ",
+    "sizeBytes": 5242880
+   }
+  },
+  {
+   "name": "커버 허가증 — 이름 없음",
+   "method": "POST",
+   "path": "/api/backlog/81/cover/upload-url",
+   "body": {
+    "fileName": "  ",
+    "sizeBytes": 10
+   }
+  },
+  {
+   "name": "커버 허가증 — 크기 0",
+   "method": "POST",
+   "path": "/api/backlog/81/cover/upload-url",
+   "body": {
+    "fileName": "a.png",
+    "sizeBytes": 0
+   }
+  },
+  {
+   "name": "커버 허가증 — 크기 없음 (원시형)",
+   "method": "POST",
+   "path": "/api/backlog/81/cover/upload-url",
+   "body": {
+    "fileName": "a.png"
+   }
+  },
+  {
+   "name": "커버 허가증 — 크기 null",
+   "method": "POST",
+   "path": "/api/backlog/81/cover/upload-url",
+   "body": {
+    "fileName": "a.png",
+    "sizeBytes": null
+   }
+  },
+  {
+   "name": "커버 허가증 — 너무 큼",
+   "method": "POST",
+   "path": "/api/backlog/81/cover/upload-url",
+   "body": {
+    "fileName": "a.png",
+    "sizeBytes": 5242881
+   }
+  },
+  {
+   "name": "커버 허가증 — 형식",
+   "method": "POST",
+   "path": "/api/backlog/81/cover/upload-url",
+   "body": {
+    "fileName": "a.gif",
+    "sizeBytes": 10
+   }
+  },
+  {
+   "name": "커버 허가증 — 확장자 없음",
+   "method": "POST",
+   "path": "/api/backlog/81/cover/upload-url",
+   "body": {
+    "fileName": "cover.",
+    "sizeBytes": 10
+   }
+  },
+  {
+   "name": "커버 허가증 — 없는 항목 (형식보다 먼저)",
+   "method": "POST",
+   "path": "/api/backlog/999999/cover/upload-url",
+   "body": {
+    "fileName": "a.gif",
+    "sizeBytes": 10
+   }
+  },
+  {
+   "name": "커버 확정 — key 없음",
+   "method": "PUT",
+   "path": "/api/backlog/81/cover",
+   "body": {
+    "storageKey": " "
+   }
+  },
+  {
+   "name": "커버 확정 — 남의 경로",
+   "method": "PUT",
+   "path": "/api/backlog/81/cover",
+   "body": {
+    "storageKey": "covers/1/82/x.png"
+   }
+  },
+  {
+   "name": "커버 확정 — 스토리지 미설정 (502)",
+   "method": "PUT",
+   "path": "/api/backlog/81/cover",
+   "body": {
+    "storageKey": "  covers/1/81/x.png "
+   }
+  },
+  {
+   "name": "커버 확정 — 없는 항목",
+   "method": "PUT",
+   "path": "/api/backlog/999999/cover",
+   "body": {
+    "storageKey": "covers/1/999999/x.png"
+   }
+  },
+  {
+   "name": "커버 올리기 — LOCAL",
+   "method": "POST",
+   "path": "/api/backlog/81/cover/file",
+   "multipart": {
+    "file": {
+     "file": "backlog-media/cover.png"
+    }
+   }
+  },
+  {
+   "name": "커버 원본",
+   "method": "GET",
+   "path": "/api/backlog/81/cover/file?v=x"
+  },
+  {
+   "name": "커버 — 상세에 반영",
+   "method": "GET",
+   "path": "/api/backlog/81",
+   "ignore": [
+    "resolved.cover.url"
+   ],
+   "note": "LOCAL 커버 파일명은 uuid라 양쪽이 다르다 — 주소만 무시하고, 바이트는 GET cover/file로 대조한다"
+  },
+  {
+   "name": "커버 — 목록에 반영",
+   "method": "GET",
+   "path": "/api/backlog?q=%EC%8A%AC%EB%A0%88%EC%9D%B4",
+   "ignore": [
+    "items.*.coverUrl"
+   ],
+   "note": "LOCAL 커버 파일명은 uuid라 양쪽이 다르다 — 주소만 무시하고, 바이트는 GET cover/file로 대조한다"
+  },
+  {
+   "name": "커버 올리기 — 교체",
+   "method": "POST",
+   "path": "/api/backlog/81/cover/file",
+   "multipart": {
+    "file": {
+     "file": "backlog-media/cover2.png",
+     "filename": "cover two.PNG"
+    }
+   }
+  },
+  {
+   "name": "커버 원본 — 교체 뒤",
+   "method": "GET",
+   "path": "/api/backlog/81/cover/file"
+  },
+  {
+   "name": "커버 올리기 — 위장 파일",
+   "method": "POST",
+   "path": "/api/backlog/81/cover/file",
+   "multipart": {
+    "file": {
+     "file": "backlog-media/fake.png"
+    }
+   }
+  },
+  {
+   "name": "커버 올리기 — 빈 파일",
+   "method": "POST",
+   "path": "/api/backlog/81/cover/file",
+   "multipart": {
+    "file": {
+     "file": "backlog-media/empty.png"
+    }
+   }
+  },
+  {
+   "name": "커버 올리기 — 지원 안 하는 형식",
+   "method": "POST",
+   "path": "/api/backlog/81/cover/file",
+   "multipart": {
+    "file": {
+     "file": "backlog-media/shot.jpg",
+     "filename": "x.gif"
+    }
+   }
+  },
+  {
+   "name": "커버 올리기 — webp",
+   "method": "POST",
+   "path": "/api/backlog/82/cover/file",
+   "multipart": {
+    "file": {
+     "file": "backlog-media/web.webp"
+    }
+   }
+  },
+  {
+   "name": "커버 올리기 — 파일 파트 없음",
+   "method": "POST",
+   "path": "/api/backlog/81/cover/file",
+   "multipart": {
+    "other": "x"
+   }
+  },
+  {
+   "name": "커버 올리기 — 없는 항목",
+   "method": "POST",
+   "path": "/api/backlog/999999/cover/file",
+   "multipart": {
+    "file": {
+     "file": "backlog-media/cover.png"
+    }
+   }
+  },
+  {
+   "name": "커버 원본 — 커버 없음",
+   "method": "GET",
+   "path": "/api/backlog/83/cover/file"
+  },
+  {
+   "name": "커버 원본 — EXTERNAL 커버",
+   "method": "GET",
+   "path": "/api/backlog/88/cover/file"
+  },
+  {
+   "name": "커버 원본 — 없는 항목",
+   "method": "GET",
+   "path": "/api/backlog/999999/cover/file"
+  },
+  {
+   "name": "커버 삭제 — LOCAL",
+   "method": "DELETE",
+   "path": "/api/backlog/81/cover"
+  },
+  {
+   "name": "커버 삭제 — webp",
+   "method": "DELETE",
+   "path": "/api/backlog/82/cover"
+  },
+  {
+   "name": "커버 원본 — 지운 뒤",
+   "method": "GET",
+   "path": "/api/backlog/81/cover/file"
+  },
+  {
+   "name": "커버 삭제 — EXTERNAL (미설정 → 호출 기록만)",
+   "method": "DELETE",
+   "path": "/api/backlog/88/cover"
+  },
+  {
+   "name": "커버 삭제 — 없음",
+   "method": "DELETE",
+   "path": "/api/backlog/83/cover"
+  },
+  {
+   "name": "커버 삭제 — 없는 항목",
+   "method": "DELETE",
+   "path": "/api/backlog/999999/cover"
+  },
+  {
+   "name": "커버 — 상세 88 (마스터로 폴백)",
+   "method": "GET",
+   "path": "/api/backlog/88"
+  },
+  {
+   "name": "스크린샷 — 비었음",
+   "method": "GET",
+   "path": "/api/backlog/81/screenshots"
+  },
+  {
+   "name": "스크린샷 — 올리기 (원본 시각)",
+   "method": "POST",
+   "path": "/api/backlog/81/screenshots?takenAt=1700000000000",
+   "multipart": {
+    "file": {
+     "file": "backlog-media/shot.jpg"
+    }
+   }
+  },
+  {
+   "name": "스크린샷 — 영상",
+   "method": "POST",
+   "path": "/api/backlog/81/screenshots?takenAt=1700000001234",
+   "multipart": {
+    "file": {
+     "file": "backlog-media/clip.mp4"
+    }
+   }
+  },
+  {
+   "name": "스크린샷 — webp (시각 없음)",
+   "method": "POST",
+   "path": "/api/backlog/81/screenshots",
+   "multipart": {
+    "file": {
+     "file": "backlog-media/web.webp"
+    }
+   }
+  },
+  {
+   "name": "스크린샷 — 대문자 확장자·공백",
+   "method": "POST",
+   "path": "/api/backlog/81/screenshots?takenAt=0",
+   "multipart": {
+    "file": {
+     "file": "backlog-media/shot.jpg",
+     "filename": "Shot 1.JPG "
+    }
+   }
+  },
+  {
+   "name": "스크린샷 — 시각을 폼 필드로",
+   "method": "POST",
+   "path": "/api/backlog/81/screenshots",
+   "multipart": {
+    "file": {
+     "file": "backlog-media/shot.jpg"
+    },
+    "takenAt": "1600000000000"
+   }
+  },
+  {
+   "name": "스크린샷 — 위장 파일",
+   "method": "POST",
+   "path": "/api/backlog/81/screenshots",
+   "multipart": {
+    "file": {
+     "file": "backlog-media/fake.png"
+    }
+   }
+  },
+  {
+   "name": "스크린샷 — 빈 파일",
+   "method": "POST",
+   "path": "/api/backlog/81/screenshots",
+   "multipart": {
+    "file": {
+     "file": "backlog-media/empty.png"
+    }
+   }
+  },
+  {
+   "name": "스크린샷 — 확장자 없음",
+   "method": "POST",
+   "path": "/api/backlog/81/screenshots",
+   "multipart": {
+    "file": {
+     "file": "backlog-media/shot.jpg",
+     "filename": "noext"
+    }
+   }
+  },
+  {
+   "name": "스크린샷 — 형식",
+   "method": "POST",
+   "path": "/api/backlog/81/screenshots",
+   "multipart": {
+    "file": {
+     "file": "backlog-media/shot.jpg",
+     "filename": "a.gif"
+    }
+   }
+  },
+  {
+   "name": "스크린샷 — 파일 파트 없음",
+   "method": "POST",
+   "path": "/api/backlog/81/screenshots",
+   "multipart": {
+    "x": "y"
+   }
+  },
+  {
+   "name": "스크린샷 — takenAt 형식 오류",
+   "method": "POST",
+   "path": "/api/backlog/81/screenshots?takenAt=abc",
+   "multipart": {
+    "file": {
+     "file": "backlog-media/shot.jpg"
+    }
+   }
+  },
+  {
+   "name": "스크린샷 — 없는 항목",
+   "method": "POST",
+   "path": "/api/backlog/999999/screenshots",
+   "multipart": {
+    "file": {
+     "file": "backlog-media/shot.jpg"
+    }
+   }
+  },
+  {
+   "name": "스크린샷 — 없는 항목 + 위장 파일 (검증이 먼저)",
+   "method": "POST",
+   "path": "/api/backlog/999999/screenshots",
+   "multipart": {
+    "file": {
+     "file": "backlog-media/fake.png"
+    }
+   }
+  },
+  {
+   "name": "스크린샷 — 처음 올리는 게임 (폴더 이름 정함)",
+   "method": "POST",
+   "path": "/api/backlog/113/screenshots",
+   "multipart": {
+    "file": {
+     "file": "backlog-media/shot.jpg"
+    }
+   }
+  },
+  {
+   "name": "스크린샷 — 목록",
+   "method": "GET",
+   "path": "/api/backlog/81/screenshots"
+  },
+  {
+   "name": "스크린샷 — 원본",
+   "method": "GET",
+   "path": "/api/backlog/81/screenshots/001.jpg"
+  },
+  {
+   "name": "스크린샷 — 영상 원본",
+   "method": "GET",
+   "path": "/api/backlog/81/screenshots/002.mp4"
+  },
+  {
+   "name": "스크린샷 — Range",
+   "method": "GET",
+   "path": "/api/backlog/81/screenshots/002.mp4",
+   "headers": {
+    "Range": "bytes=0-15"
+   }
+  },
+  {
+   "name": "스크린샷 — Range 열린 끝",
+   "method": "GET",
+   "path": "/api/backlog/81/screenshots/002.mp4",
+   "headers": {
+    "Range": "bytes=200-"
+   }
+  },
+  {
+   "name": "스크린샷 — Range 접미",
+   "method": "GET",
+   "path": "/api/backlog/81/screenshots/002.mp4",
+   "headers": {
+    "Range": "bytes=-10"
+   }
+  },
+  {
+   "name": "스크린샷 — Range 넘침",
+   "method": "GET",
+   "path": "/api/backlog/81/screenshots/002.mp4",
+   "headers": {
+    "Range": "bytes=5000-"
+   }
+  },
+  {
+   "name": "스크린샷 — 없는 파일",
+   "method": "GET",
+   "path": "/api/backlog/81/screenshots/999.jpg"
+  },
+  {
+   "name": "스크린샷 — 폴더 없는 게임",
+   "method": "GET",
+   "path": "/api/backlog/82/screenshots/001.jpg"
+  },
+  {
+   "name": "스크린샷 — 이름에 공백 (인코딩)",
+   "method": "GET",
+   "path": "/api/backlog/81/screenshots/no%20such.png"
+  },
+  {
+   "name": "스크린샷 — 없는 항목",
+   "method": "GET",
+   "path": "/api/backlog/999999/screenshots"
+  },
+  {
+   "name": "스크린샷 삭제 — 하나 + 없는 것",
+   "method": "POST",
+   "path": "/api/backlog/81/screenshots/delete",
+   "body": [
+    "002.mp4",
+    "nope.png"
+   ]
+  },
+  {
+   "name": "스크린샷 삭제 — 폴더 탈출 시도",
+   "method": "POST",
+   "path": "/api/backlog/81/screenshots/delete",
+   "body": [
+    "../../covers/x.png"
+   ]
+  },
+  {
+   "name": "스크린샷 삭제 — 폴더 없는 게임",
+   "method": "POST",
+   "path": "/api/backlog/84/screenshots/delete",
+   "body": [
+    "001.jpg"
+   ]
+  },
+  {
+   "name": "스크린샷 삭제 — 본문이 배열 아님",
+   "method": "POST",
+   "path": "/api/backlog/81/screenshots/delete",
+   "body": {
+    "names": [
+     "001.jpg"
+    ]
+   }
+  },
+  {
+   "name": "스크린샷 — 지운 뒤 번호 (최대 + 1)",
+   "method": "POST",
+   "path": "/api/backlog/81/screenshots",
+   "multipart": {
+    "file": {
+     "file": "backlog-media/shot.jpg"
+    }
+   }
+  },
+  {
+   "name": "스크린샷 — 목록 끝",
+   "method": "GET",
+   "path": "/api/backlog/81/screenshots"
+  },
+  {
+   "name": "스크린샷 — 폴더 경로 (만든다)",
+   "method": "GET",
+   "path": "/api/backlog/82/screenshots/folder",
+   "ignore": [
+    "path"
+   ],
+   "note": "절대 경로 — 데이터 루트가 양쪽이 다르다"
+  },
+  {
+   "name": "스크린샷 — 폴더 경로 (이미 있음)",
+   "method": "GET",
+   "path": "/api/backlog/81/screenshots/folder",
+   "ignore": [
+    "path"
+   ],
+   "note": "절대 경로 — 데이터 루트가 양쪽이 다르다"
+  },
+  {
+   "name": "스크린샷 — 폴더 경로 없는 항목",
+   "method": "GET",
+   "path": "/api/backlog/999999/screenshots/folder"
+  },
+  {
+   "name": "스크린샷 — 삭제된 항목 (404)",
+   "method": "GET",
+   "path": "/api/backlog/86/screenshots"
+  },
+  {
+   "name": "폴더 찾기 — 게임 A",
+   "method": "POST",
+   "path": "/api/games",
+   "body": {
+    "name": "Twin Folder"
+   },
+   "save": {
+    "twinA": "id"
+   }
+  },
+  {
+   "name": "폴더 찾기 — A 담기",
+   "method": "POST",
+   "path": "/api/backlog",
+   "body": {
+    "gameId": "${twinA}"
+   },
+   "save": {
+    "twinEntryA": "id"
+   }
+  },
+  {
+   "name": "폴더 찾기 — A에 올리기",
+   "method": "POST",
+   "path": "/api/backlog/${twinEntryA}/screenshots",
+   "multipart": {
+    "file": {
+     "file": "backlog-media/shot.jpg"
+    }
+   }
+  },
+  {
+   "name": "폴더 찾기 — A 삭제",
+   "method": "DELETE",
+   "path": "/api/backlog/${twinEntryA}"
+  },
+  {
+   "name": "폴더 찾기 — A 완전 삭제",
+   "method": "DELETE",
+   "path": "/api/backlog/deleted/${twinEntryA}"
+  },
+  {
+   "name": "폴더 찾기 — 게임 A 삭제",
+   "method": "DELETE",
+   "path": "/api/games/${twinA}"
+  },
+  {
+   "name": "폴더 찾기 — 같은 이름 게임 B",
+   "method": "POST",
+   "path": "/api/games",
+   "body": {
+    "name": "Twin Folder"
+   },
+   "save": {
+    "twinB": "id"
+   }
+  },
+  {
+   "name": "폴더 찾기 — B 담기",
+   "method": "POST",
+   "path": "/api/backlog",
+   "body": {
+    "gameId": "${twinB}"
+   },
+   "save": {
+    "twinEntryB": "id"
+   }
+  },
+  {
+   "name": "폴더 찾기 — B 목록 (있던 파일이 보인다)",
+   "method": "GET",
+   "path": "/api/backlog/${twinEntryB}/screenshots"
+  },
+  {
+   "name": "폴더 찾기 — B 원본",
+   "method": "GET",
+   "path": "/api/backlog/${twinEntryB}/screenshots/001.jpg"
+  },
+  {
+   "name": "번역 — 키 없음",
+   "method": "POST",
+   "path": "/api/backlog/81/translate"
+  },
+  {
+   "name": "번역 — 없는 항목",
+   "method": "POST",
+   "path": "/api/backlog/999999/translate"
+  },
+  {
+   "name": "번역 — 삭제된 항목",
+   "method": "POST",
+   "path": "/api/backlog/86/translate"
+  }
+ ]
+}
