@@ -1,23 +1,22 @@
 /**
- * STARLOG 데스크탑 — v1.0 5단계.
+ * STARLOG 데스크탑 — v1.0 5단계, v2에서 서버를 자바 → TS(`utilityProcess`)로.
  *
  * ## 순서가 뒤집혀 있다
  *
  * 보통은 서버를 띄우고 화면을 연다. 여기는 **화면을 먼저 열고 서버를 나중에** 띄운다.
- * 스프링은 부팅할 때 DataSource·커넥션풀·JPA 메타모델·Flyway를 한 번에 조립하는데,
- * 조립이 끝난 뒤 DB를 바꾸는 건 엔진 돌아가는 중에 엔진을 가는 것과 같다.
+ * 서버는 기동할 때 DB 연결·마이그레이션을 한 번에 조립한다 — 조립이 끝난 뒤 DB를 바꾸는 건
+ * 엔진 돌아가는 중에 엔진을 가는 것과 같다. (자바 시절에 세운 원칙이고 v2도 그대로다)
  *
  *   1. 일렉트론이 뜬다                    ← 백엔드 없음
  *   2. 입구 화면을 app:// 로 로드          ← 순수 프론트, DB 필요 없음
  *   3. 사용자가 모드와 대상을 고른다
- *   4. 빈 포트를 찾아 스프링을 spawn       ← 설정을 인자·환경변수로 주입
+ *   4. 빈 포트를 찾아 서버를 띄운다        ← utilityProcess, 설정은 전부 환경변수로
  *   5. 진단 통과하면 창을 본 앱으로 이동
  *
- * **스프링은 매번 "이미 정해진 DB"만 본다 → 백엔드 코드가 한 줄도 안 바뀐다.**
+ * **서버는 매번 "이미 정해진 DB"만 본다 → 서버 코드는 모드를 모른다.**
  * → docs/v1.0-architecture.md §2
  */
-const { app, BrowserWindow, Menu, dialog, ipcMain, protocol, shell } = require("electron");
-const { spawn } = require("child_process");
+const { app, BrowserWindow, Menu, dialog, ipcMain, protocol, shell, utilityProcess } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const net = require("net");
@@ -26,14 +25,20 @@ const http = require("http");
 const paths = require("./paths");
 const store = require("./settings");
 const backup = require("./backup");
+const saveFiles = require("./saveFiles");
 
 /**
- * 백엔드 jar와 자바는 **패키징 여부에 따라 자리가 다르다** (10단계) → `paths.js`가 정한다.
+ * 서버 번들은 **패키징 여부에 따라 자리가 다르다** (10단계) → `paths.js`가 정한다.
  * 상수로 굳혀두면 개발 경로에만 맞고 `.dmg`에서는 못 찾는다
  */
-const JAR = paths.jarPath();
-/** 입구 화면용 정적 파일. build-desktop.sh가 jar 안과 여기 둘 다에 넣는다 */
+const SERVER = paths.serverEntry();
+/**
+ * 정적 프론트. 입구(app://)와 본 앱(서버가 http로) **둘 다 이 한 벌을 쓴다** —
+ * 자바 시절엔 jar 안과 여기, 두 곳에 복사해야 했다
+ */
 const WEB = path.join(__dirname, "web");
+/** 서버(utilityProcess)에게 줄 실제 경로. 패키징되면 asar 밖(`app.asar.unpacked`)에 있다 */
+const WEB_FOR_SERVER = WEB.replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
 
 let backend = null;
 let backendPort = null;
@@ -250,30 +255,27 @@ function waitForBackend(port, timeoutMs = 90_000, isAlive = () => backend !== nu
 }
 
 /**
- * 백엔드를 띄운다.
+ * ## 설정은 전부 환경변수로 넘긴다
  *
- * ## 인자와 환경변수를 갈라 쓴다
- *
- * 포트·프로필은 인자로, **DB 비번과 스토리지 키는 환경변수로** 넘긴다.
- * `--spring.datasource.password=...`로 주면 `ps`에 그대로 찍히기 때문이다.
- * 스프링은 두 경로를 똑같이 읽으므로(relaxed binding) 여기만의 규칙이 아니다.
- *
- * 진단(`--starlog.diagnose=true`)은 일렉트론이 띄울 때만 켠다 —
- * 개발자가 `bootRun`으로 띄우는 길에는 안 끼어든다
+ * 자바 시절엔 포트·DB 주소를 인자로 줬는데, 인자는 `ps`로 같은 계정의 다른 프로세스에 보인다.
+ * v2 서버는 **환경변수만** 읽는다 (`server/src/config.ts`).
  */
 /**
- * 자바를 띄우는 **단 한 곳** (2026-08-28에 하나로 합쳤다).
+ * 서버를 띄우는 **단 한 곳** (2026-08-28에 하나로 합쳤다).
  *
- * 예전엔 `startBackend`와 `spawnProbe`가 인자·환경변수 조립을 **두 벌** 갖고 있었고,
- * 그래서 jar 존재 검사가 한쪽에만 있었다. 갈라진 두 벌은 반드시 어긋난다.
+ * 예전엔 `startBackend`와 `spawnProbe`가 조립을 **두 벌** 갖고 있었고, 그래서 실행 파일
+ * 존재 검사가 한쪽에만 있었다. 갈라진 두 벌은 반드시 어긋난다.
  *
- * ## ⚠️ `error` 이벤트를 반드시 받는다
+ * ## `utilityProcess` (v2)
  *
- * `spawn`은 실행 파일을 못 찾으면 `'error'`를 쏘는데, **아무도 안 받으면 Node가 그걸
- * 던진다** — 일렉트론 메인 프로세스가 통째로 죽어서 창이 안내도 없이 사라진다.
- * 직접 재현했다: `Error: spawn java ENOENT / Unhandled 'error' event`, 종료코드 1.
- * PATH에 자바가 없으면 그냥 일어나는 일이고, 10단계에서 JRE를 번들해도 **경로가 틀리면
- * 똑같다.** 여기서 받아 `exit`과 같은 모양(진단 코드)으로 바꿔 흘려보낸다
+ * 자바는 `child_process.spawn`으로 JVM을 띄웠다. 이제 서버는 Node 코드라 일렉트론 안의 Node로
+ * 바로 돈다 — JRE를 실을 필요도, 몇 초짜리 JVM 기동도 없다. 별도 프로세스인 건 그대로라서
+ * 무거운 쿼리에 창이 얼지 않고, 아래 수명 관리(죽이고 await 후 새로 띄우기)도 그대로 산다.
+ *
+ * 돌려주는 `proc`은 자바 시절 `ChildProcess`와 **같은 모양**(`kill(sig)`·`once("exit")`)으로 감쌌다.
+ * ⚠️ `kill("SIGTERM")`은 신호가 아니라 **메시지로 종료를 요청한다.** 윈도우에서
+ * `utilityProcess.kill()`은 TerminateProcess(강제)라 PGlite가 닫힐 틈이 없다 —
+ * 강제로 죽은 데이터 폴더는 망가질 수 있다. 강제는 `kill("SIGKILL")`일 때만
  */
 /**
  * 로그가 너무 커졌으면 한 번 밀어둔다.
@@ -292,77 +294,75 @@ function rotateLog() {
   } catch { /* 없으면 밀 것도 없다 */ }
 }
 
-function spawnJava(port, config) {
+function spawnServer(port, config) {
   rotateLog();
   const out = fs.createWriteStream(paths.LOG_FILE, { flags: "a" });
   out.write(`\n===== ${new Date().toISOString()} port=${port} mode=${config.mode} =====\n`);
 
-  if (!fs.existsSync(JAR)) {
-    out.end(`STARLOG_DIAGNOSTIC: JAR_MISSING (${JAR})\n`);
-    return { proc: null, exited: Promise.resolve({ code: -1, diagnostic: "JAR_MISSING" }) };
+  if (!fs.existsSync(SERVER)) {
+    out.end(`STARLOG_DIAGNOSTIC: SERVER_MISSING (${SERVER})\n`);
+    return { proc: null, exited: Promise.resolve({ code: -1, diagnostic: "SERVER_MISSING" }) };
   }
 
-  const args = [
-    "-jar", JAR,
-    `--server.port=${port}`,
-    "--spring.profiles.active=desktop",
-    "--starlog.diagnose=true",
-    /*
-     * ⚠️ **부모가 죽으면 스스로 내려가라는 지시다** (`ParentWatchdog`).
-     * 이게 없으면 일렉트론이 강제 종료됐을 때 자바가 고아로 살아남아 세이브파일을 쥔다 —
-     * 그러면 다음 실행의 자동 백업이 **쓰는 중인 파일을 복사해** 찢어진 백업을 남긴다
-     */
-    "--starlog.parent-watch=true",
-    `--spring.datasource.url=${config.url}`,
-    `--spring.datasource.driver-class-name=${config.driver}`,
-  ];
-
-  const env = { ...process.env };
-  env.SPRING_DATASOURCE_USERNAME = config.username ?? "";
-  env.SPRING_DATASOURCE_PASSWORD = config.password ?? "";
+  const env = {
+    ...process.env,
+    STARLOG_PORT: String(port),
+    STARLOG_HOST: "127.0.0.1",
+    STARLOG_STATIC_DIR: WEB_FOR_SERVER,
+  };
   for (const [key, value] of Object.entries(config.env ?? {})) {
     if (value) env[key] = value;
   }
 
-  /*
-   * ⚠️ **stdin을 파이프로 연다.** 아무것도 안 보내지만, 우리가 죽으면 이 파이프의 쓰는 쪽이
-   * 닫혀서 자바의 `read()`가 EOF를 본다 — 그게 "부모가 사라졌다"의 신호다.
-   * `"ignore"`였을 때는 자바가 부모의 죽음을 알 방법이 아예 없었다
-   */
-  const proc = spawn(paths.javaBin(), args, { stdio: ["pipe", "pipe", "pipe"], env });
+  let child;
+  try {
+    child = utilityProcess.fork(SERVER, [], { env, stdio: "pipe", serviceName: "STARLOG 서버" });
+  } catch (e) {
+    out.end(`STARLOG_DIAGNOSTIC: BACKEND_DIED (${e.message})\n`);
+    return { proc: null, exited: Promise.resolve({ code: -1, diagnostic: "BACKEND_DIED" }) };
+  }
 
-  /*
-   * 진단 결과를 stdout에서 긁는다. 로그 파일로도 그대로 흘려보내므로
-   * 나중에 사람이 로그만 봐도 같은 줄이 있다
-   */
   let diagnostic = null;
-  proc.stdout.on("data", (chunk) => {
+  // 진단은 두 길로 온다 — 메시지(정상)와 stdout 한 줄(메시지가 가기 전에 죽었을 때)
+  child.on("message", (m) => {
+    if (m && m.type === "diagnostic") diagnostic = m.code;
+  });
+  child.stdout?.on("data", (chunk) => {
     const found = chunk.toString().match(/STARLOG_DIAGNOSTIC:\s*([A-Z_]+)/);
     if (found) diagnostic = found[1];
   });
-  proc.stdout.pipe(out);
-  proc.stderr.pipe(out);
+  child.stdout?.pipe(out, { end: false });
+  child.stderr?.pipe(out, { end: false });
 
   const exited = new Promise((resolve) => {
-    const finish = (result) => {
+    child.once("exit", (code) => {
       // 로그 스트림을 닫는다 — 안 닫으면 기동·연결테스트마다 fd가 하나씩 샌다
       out.end();
-      resolve(result);
-    };
-    proc.once("error", (e) => {
-      const code = e.code === "ENOENT" ? "JAVA_NOT_FOUND" : "BACKEND_DIED";
-      out.write(`STARLOG_DIAGNOSTIC: ${code} (${e.message})\n`);
-      finish({ code: -1, diagnostic: diagnostic ?? code });
+      resolve({ code, diagnostic });
     });
-    proc.once("exit", (code) => finish({ code, diagnostic }));
   });
 
+  const proc = {
+    pid: child.pid,
+    kill(signal) {
+      if (signal === "SIGKILL") {
+        try { process.kill(child.pid, "SIGKILL"); } catch { try { child.kill(); } catch { /* 이미 없다 */ } }
+        return true;
+      }
+      try { child.postMessage({ type: "shutdown" }); } catch { /* 이미 내려가는 중 */ }
+      return true;
+    },
+    once(event, fn) {
+      if (event === "exit") exited.then((r) => fn(r.code));
+      return proc;
+    },
+  };
   return { proc, exited };
 }
 
 function startBackend(port, config) {
   stoppingOnPurpose = false;
-  const { proc, exited } = spawnJava(port, config);
+  const { proc, exited } = spawnServer(port, config);
   backend = proc;
   backendPort = proc ? port : null;
 
@@ -411,7 +411,7 @@ function onBackendDied(code, diagnostic) {
  * 붙이면 매번 "서버가 예기치 않게 종료됐습니다"가 뜬다
  */
 function spawnProbe(port, config) {
-  const { proc, exited } = spawnJava(port, config);
+  const { proc, exited } = spawnServer(port, config);
 
   let running = proc !== null;
   const done = exited.then((result) => {
@@ -424,7 +424,7 @@ function spawnProbe(port, config) {
     isAlive: () => running,
     /**
      * ⚠️ **끝까지 기다린다.** 예전엔 신호만 보내고 넘어갔는데, 이제 이걸 **로컬 세이브파일을
-     * 만드는 데도 쓴다** — H2가 `.mv.db` 잠금을 놓기 전에 돌아가면 사용자가 곧바로 열었을 때
+     * 만드는 데도 쓴다** — 서버가 세이브파일 잠금을 놓기 전에 돌아가면 사용자가 곧바로 열었을 때
      * `DB_IN_USE`다. `stopBackend`가 본 백엔드에 대해 하는 것과 같은 이유다.
      *
      * SIGKILL 타이머도 여기서 지운다. 안 지우면 이미 죽은 pid에 3초 뒤 신호를 쏜다
@@ -447,7 +447,7 @@ function spawnProbe(port, config) {
 /**
  * 백엔드를 내리고 **완전히 죽을 때까지 기다린다.**
  *
- * ⚠️ **기다리는 게 요점이다.** 신호만 보내고 넘어가면 H2가 아직 `.mv.db` 잠금을 쥔 채인데
+ * ⚠️ **기다리는 게 요점이다.** 신호만 보내고 넘어가면 서버가 아직 세이브파일(PGlite 폴더)을 쥔 채인데
  * 곧바로 같은 파일로 다시 띄우게 되고, 그러면 `DB_IN_USE`로 간헐적으로 실패한다.
  * 재현이 잘 안 되는 부류라 처음부터 기다리게 만든다.
  *
@@ -478,10 +478,11 @@ function stopBackend() {
     proc.kill("SIGTERM");
 
     /*
-     * 얌전히 안 죽으면 강제로. 그래도 H2 MVStore는 크래시에 견디게 만들어져 있다.
+     * 얌전히 안 죽으면 강제로. PGlite는 Postgres라 WAL로 크래시를 견디지만,
+     * 강제 종료는 **마지막 수단**이다 — 정상 종료(메시지)가 데이터 폴더를 닫을 시간을 넉넉히 준다.
      *
-     * ⚠️ **graceful shutdown보다 넉넉해야 한다.** 백엔드는 하던 요청을 마치는 데 최대 20초를
-     * 쓰는데(`application-desktop.yml`), 5초에 SIGKILL을 쏘면 그 설정이 무의미해진다
+     * ⚠️ **서버가 하던 요청을 마칠 시간보다 넉넉해야 한다.** 5초에 SIGKILL을 쏘면
+     * 업로드 중인 요청이 잘리고 PGlite가 닫히지 못한다
      */
     killer = setTimeout(() => {
       try { proc.kill("SIGKILL"); } catch { /* 이미 죽었으면 무시 */ }
@@ -582,13 +583,10 @@ async function pourInto(saveName, dump) {
   } catch (e) {
     await probe.stop();
     /*
-     * ⚠️ **반쯤 만들어진 세이브파일을 치운다.** Flyway가 스키마까지는 만들어놨으므로
-     * 파일이 남는데, 그러면 같은 이름으로 다시 시도할 수가 없다 — "이미 있습니다"만 뜬다
+     * ⚠️ **반쯤 만들어진 세이브파일을 치운다.** 마이그레이션이 스키마까지는 만들어놨으므로
+     * 폴더가 남는데, 그러면 같은 이름으로 다시 시도할 수가 없다 — "이미 있습니다"만 뜬다
      */
-    for (const suffix of [".mv.db", ".trace.db"]) {
-      const file = path.join(dirs.saves, `${saveName}${suffix}`);
-      if (fs.existsSync(file)) fs.rmSync(file, { force: true });
-    }
+    saveFiles.remove(dirs, saveName);
     const result = await probe.exited;
     throw new Error(result?.diagnostic
       ? `세이브파일을 만들지 못했습니다 (${result.diagnostic})`
@@ -655,7 +653,7 @@ function registerIpc() {
     const dirs = ["saves", "backups", "covers", "media"];
     const ready = exists && dirs.every((d) => fs.existsSync(path.join(resolved, d)));
     const saveCount = ready
-      ? fs.readdirSync(path.join(resolved, "saves")).filter((f) => f.endsWith(".mv.db")).length
+      ? saveFiles.list(paths.subPaths(resolved)).length
       : 0;
 
     return { ok: true, path: resolved, exists, ready, saveCount };
@@ -698,30 +696,17 @@ function registerIpc() {
     shell.openPath(resolved);
   });
 
-  ipcMain.handle("saves:list", () => {
-    const { saves } = dataDirs();
-    return fs.readdirSync(saves)
-      .filter((f) => f.endsWith(".mv.db"))
-      .map((f) => {
-        const stat = fs.statSync(path.join(saves, f));
-        return {
-          name: f.replace(/\.mv\.db$/, ""),
-          sizeBytes: stat.size,
-          modifiedAt: stat.mtime.toISOString(),
-        };
-      })
-      .sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
-  });
+  ipcMain.handle("saves:list", () => saveFiles.list(dataDirs()));
 
   /*
-   * 파일을 미리 만들지 않는다 — H2가 첫 접속에 만든다.
-   * 여기서 빈 파일을 찍으면 H2가 "손상된 DB"로 보고 거부한다.
+   * 폴더를 미리 만들지 않는다 — 서버(PGlite)가 첫 기동에 만든다.
+   * 여기서 빈 폴더를 만들면 서버가 "남의 DB"인지 "새 DB"인지 헷갈린다.
    * 그래서 이 핸들러가 하는 일은 **이름 검사와 중복 확인**뿐이다
    */
   ipcMain.handle("saves:create", (_e, name) => {
     const clean = assertSaveName(name);
     const { saves } = dataDirs();
-    if (fs.existsSync(path.join(saves, `${clean}.mv.db`))) {
+    if (saveFiles.taken({ saves }, clean)) {
       throw new Error("같은 이름의 세이브파일이 이미 있습니다");
     }
     return clean;
@@ -747,10 +732,10 @@ function registerIpc() {
     if (oldName === newName) return newName;
 
     const dirs = dataDirs();
-    if (fs.existsSync(path.join(dirs.saves, `${newName}.mv.db`))) {
+    if (saveFiles.taken(dirs, newName)) {
       throw new Error("같은 이름의 세이브파일이 이미 있습니다");
     }
-    if (!fs.existsSync(path.join(dirs.saves, `${oldName}.mv.db`))) {
+    if (!saveFiles.exists(dirs, oldName)) {
       throw new Error("세이브파일을 찾을 수 없습니다");
     }
 
@@ -759,12 +744,7 @@ function registerIpc() {
       await stopBackend();
     }
 
-    for (const suffix of [".mv.db", ".trace.db"]) {
-      const src = path.join(dirs.saves, `${oldName}${suffix}`);
-      if (fs.existsSync(src)) {
-        fs.renameSync(src, path.join(dirs.saves, `${newName}${suffix}`));
-      }
-    }
+    saveFiles.rename(dirs, oldName, newName);
 
     const oldBackups = path.join(dirs.backups, oldName);
     if (fs.existsSync(oldBackups)) {
@@ -800,18 +780,14 @@ function registerIpc() {
     }
 
     const dirs = dataDirs();
-    // .trace.db는 H2가 오류를 남기는 곁다리 파일이다. 같이 지운다
-    for (const suffix of [".mv.db", ".trace.db"]) {
-      const file = path.join(dirs.saves, `${clean}${suffix}`);
-      if (fs.existsSync(file)) fs.rmSync(file);
-    }
+    saveFiles.remove(dirs, clean);
     // 백업도 함께. 남겨두면 주인 없는 폴더가 쌓이고, 목록에서 지운 것이 되살아난 것처럼 보인다
     backup.removeAll(dirs, clean);
 
     /*
      * ⚠️ **[최근 접속]도 같이 지운다.** 개명(`saves:rename`)에는 있는데 여기만 빠져 있었다.
      * 지운 뒤에도 입구에 [최근 접속]이 남아서, 누르면 **없는 파일을 열려다 같은 이름으로
-     * 빈 세이브를 새로 만든다** — H2는 파일이 없으면 그냥 만들기 때문이다.
+     * 빈 세이브를 새로 만든다** — DB는 파일이 없으면 그냥 만들기 때문이다 (H2도 PGlite도).
      * 사용자 눈에는 "지운 세이브가 되살아났는데 안이 텅 비었다"로 보인다. 실제로 겪었다
      */
     const settings = store.getSettings();
@@ -898,18 +874,23 @@ function registerIpc() {
      * 그런데 그 백엔드를 **사용자의 DB로** 띄우면, DB가 틀렸을 때 스토리지는 멀쩡한데도
      * "확인 실패"가 뜬다 — 섹션을 따로 시험하는 뜻이 사라진다.
      *
-     * 메모리 H2로 띄우면 DB와 완전히 무관해진다. 어차피 이 백엔드는 버킷에 한 번
-     * 손을 대보고 죽는 것뿐이라 담을 데이터가 없다
+     * 메모리 DB로 띄우면 DB와 완전히 무관해진다. 어차피 이 백엔드는 버킷에 한 번
+     * 손을 대보고 죽는 것뿐이라 담을 데이터가 없다 (자바 땐 `jdbc:h2:mem:`, 이제 PGlite `memory://`)
      */
+    const base = cloudConfig(profile);
     const config = scope === "storage"
       ? {
-          ...cloudConfig(profile),
-          url: "jdbc:h2:mem:probe;DB_CLOSE_DELAY=-1;MODE=PostgreSQL",
-          driver: "org.h2.Driver",
-          username: "sa",
-          password: "",
+          ...base,
+          env: {
+            ...base.env,
+            STARLOG_DB_URL: undefined,
+            STARLOG_DB_USER: undefined,
+            STARLOG_DB_PASSWORD: undefined,
+            STARLOG_DB_SCHEMA: undefined,
+            STARLOG_DB_DIR: "memory://",
+          },
         }
-      : cloudConfig(profile);
+      : base;
     const port = await freePort();
     const probe = spawnProbe(port, config);
 
@@ -1000,7 +981,7 @@ function registerIpc() {
      * ⚠️ **먼저 옛 백엔드를 죽이고 기다린다.**
      *
      * 입구로 나가도 백엔드를 안 죽이기로 하면서 여기가 위험해졌다 — 살아 있는 놈이
-     * `.mv.db`를 쥔 채로 같은 파일을 다시 열면 `DB_IN_USE`다.
+     * 세이브파일을 쥔 채로 같은 폴더를 다시 열면 `DB_IN_USE`다.
      * 다른 세이브를 골랐더라도 마찬가지로 죽인다: 백엔드는 한 번에 하나면 충분하고,
      * 둘을 살려두면 "지금 보고 있는 게 어느 쪽이냐"가 흐려진다
      */
@@ -1085,7 +1066,7 @@ function registerIpc() {
     }
     const clean = assertSaveName(saveName);
     const dirs = dataDirs();
-    if (fs.existsSync(path.join(dirs.saves, `${clean}.mv.db`))) {
+    if (saveFiles.taken(dirs, clean)) {
       throw new Error("같은 이름의 세이브파일이 이미 있습니다");
     }
 
@@ -1127,7 +1108,7 @@ function registerIpc() {
     }
     const clean = assertSaveName(saveName);
     const dirs = dataDirs();
-    if (!fs.existsSync(path.join(dirs.saves, `${clean}.mv.db`))) {
+    if (!saveFiles.exists(dirs, clean)) {
       throw new Error("세이브파일을 찾을 수 없습니다");
     }
 
@@ -1137,7 +1118,7 @@ function registerIpc() {
      */
     const stamp = new Date().toISOString().slice(0, 16).replace(/[-T:]/g, "").replace(/^(\d{8})/, "$1_");
     let safety = names.fit(`덮어쓰기 전 ${session.target} ${stamp}`);
-    for (let i = 2; fs.existsSync(path.join(dirs.saves, `${safety}.mv.db`)); i += 1) {
+    for (let i = 2; saveFiles.taken(dirs, safety); i += 1) {
       safety = names.fit(`덮어쓰기 전 ${session.target} ${stamp}`, `-${i}`);
     }
     const before = await getJson(backendPort, "/api/me/export");
@@ -1203,22 +1184,15 @@ function localConfig(saveName) {
   const { dataRoot } = store.getSettings();
   return {
     mode: "local",
-    url: paths.saveFileUrl(dataRoot, saveName),
-    driver: "org.h2.Driver",
-    username: "sa",
-    password: "",
-    /*
-     * 로컬 모드에도 커버 폴더 경로는 넘긴다. 6단계에서 스프링이 이 값을 읽어
-     * 커버를 여기에 쓴다 — 지금은 백엔드가 무시하지만, 경로를 정하는 주체가
-     * 일렉트론이라는 구조는 지금 세워둔다
-     */
-    /*
-     * 로컬 모드에는 스토리지가 아예 없다 — 명시적으로 꺼서 넘긴다.
-     * 안 넘기면 스프링 기본값(false)에 기대게 되는데, **기본값에 기대는 것과
-     * 값을 정해서 주는 것은 다르다** — 기본값이 바뀌면 조용히 동작이 바뀐다
-     */
     env: {
+      // 세이브파일 = PGlite 데이터 폴더 (v2). 자바 시절엔 `jdbc:h2:file:...` 주소였다
+      STARLOG_DB_DIR: saveFiles.dirOf(paths.subPaths(dataRoot), saveName),
       STARLOG_DATA_ROOT: dataRoot,
+      /*
+       * 로컬 모드에는 스토리지가 아예 없다 — 명시적으로 꺼서 넘긴다.
+       * 안 넘기면 서버 기본값(false)에 기대게 되는데, **기본값에 기대는 것과
+       * 값을 정해서 주는 것은 다르다** — 기본값이 바뀌면 조용히 동작이 바뀐다
+       */
       STARLOG_MEDIA_USE_STORAGE_FOR_COVERS: "false",
       STARLOG_MEDIA_USE_STORAGE_FOR_SCREENSHOTS: "false",
     },
@@ -1229,22 +1203,23 @@ function cloudConfig(profile) {
   const db = profile.db ?? {};
   const storage = profile.storage ?? {};
   const { dataRoot } = store.getSettings();
-  /*
-   * 스키마 지정은 URL 파라미터로 붙인다 (결정 60). 이게 있으면 남의 테이블과
-   * 한 DB에서 공존해 DB_NOT_EMPTY가 아예 안 생긴다
-   */
-  const url = db.schema ? appendParam(db.url, `currentSchema=${db.schema}`) : db.url;
   return {
     mode: "cloud",
-    url,
-    driver: "org.postgresql.Driver",
-    username: db.user,
-    password: db.password,
     env: {
+      /*
+       * 주소는 연결 설정에 저장된 그대로(`jdbc:postgresql://...`) 넘긴다 — 서버가 `jdbc:`를 뗀다.
+       * 사용자·비번·스키마는 따로. 스키마 지정(결정 60)은 자바 땐 URL의 `currentSchema`였고,
+       * 이제 서버가 연결마다 `search_path`로 건다. 있으면 남의 테이블과 한 DB에서 공존해
+       * DB_NOT_EMPTY가 아예 안 생긴다
+       */
+      STARLOG_DB_URL: db.url,
+      STARLOG_DB_USER: db.user,
+      STARLOG_DB_PASSWORD: db.password,
+      STARLOG_DB_SCHEMA: db.schema,
       STARLOG_DATA_ROOT: dataRoot,
       /*
        * 무엇을 스토리지에 올릴지 (사용자 결정 2026-08-28).
-       * 체크 안 한 것은 데이터 루트에 저장된다. **자격증명이 없으면 백엔드가 무시한다** —
+       * 체크 안 한 것은 데이터 루트에 저장된다. **자격증명이 없으면 서버가 무시한다** —
        * 올릴 데가 없는데 켜져 있으면 업로드가 502로 실패할 뿐이다 (MediaTargets)
        */
       STARLOG_MEDIA_USE_STORAGE_FOR_COVERS: String(!!profile.mediaTargets?.covers),
@@ -1261,13 +1236,8 @@ function cloudConfig(profile) {
        * 앱 안(`app_setting`)에서 넣은 값이 있으면 그게 이긴다
        */
       TRANSLATE_API_KEY: profile.translate?.apiKey,
-      ...(db.schema ? { SPRING_FLYWAY_SCHEMAS: db.schema } : {}),
     },
   };
-}
-
-function appendParam(url, param) {
-  return url.includes("?") ? `${url}&${param}` : `${url}?${param}`;
 }
 
 // ───────────────────────── 수명 ─────────────────────────
@@ -1345,10 +1315,10 @@ app.whenReady().then(() => {
 app.on("window-all-closed", () => app.quit());
 
 /**
- * 나가기 전에 **자바가 정말 죽을 때까지 기다린다.**
+ * 나가기 전에 **서버가 정말 내려갈 때까지 기다린다.**
  *
  * 예전엔 `app.on("before-quit", stopBackend)`였는데, 일렉트론은 핸들러가 돌려준 Promise를
- * 기다려주지 않는다 — 신호만 보내고 자기는 즉시 끝났다. H2가 `.mv.db` 잠금을 놓기 전에
+ * 기다려주지 않는다 — 신호만 보내고 자기는 즉시 끝났다. 서버가 세이브파일 잠금을 놓기 전에
  * 일렉트론이 사라지므로, **끄고 바로 다시 켜면 `DB_IN_USE`가 났다.** 재현이 들쭉날쭉해서
  * "가끔 안 열린다"로만 보이는 부류다.
  *
@@ -1364,8 +1334,8 @@ app.on("before-quit", (event) => {
 });
 
 /**
- * 최후 방어선. `before-quit`을 안 거치는 종료(크래시, 터미널의 Ctrl+C)에서 좀비 자바가
- * 남지 않게 한다.
+ * 최후 방어선. `before-quit`을 안 거치는 종료(크래시, 터미널의 Ctrl+C)에서 고아 서버가
+ * 남지 않게 한다. (서버도 부모 pid를 감시하다 사라지면 스스로 내려간다 — `server/src/main.ts`)
  *
  * ⚠️ **`exit` 핸들러에서는 동기 코드만 돈다** — `stopBackend`의 기다리는 부분은 여기서
  * 절대 실행되지 않는다. 그래도 `kill`은 동기라 신호는 나간다. 기다리는 건 위가 맡는다

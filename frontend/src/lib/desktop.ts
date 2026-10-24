@@ -227,7 +227,7 @@ export function getBridge(): StarlogBridge | undefined {
 /**
  * 진단 코드를 사람 말로.
  *
- * **백엔드는 코드만 넘기고 문장은 여기 있다** (`DiagnosticCode.java`).
+ * **백엔드는 코드만 넘기고 문장은 여기 있다** (`server/src/diagnose.ts`).
  * 예외 메시지를 그대로 보여주면 "Connection to ep-xxx.neon.tech:5432 refused"가 뜬다 —
  * 맞는 말이지만 뭘 고쳐야 하는지는 안 알려준다
  */
@@ -283,14 +283,11 @@ export const DIAGNOSTIC_MESSAGE: Record<string, { title: string; hint: string }>
     hint: "다시 시도해 주세요. 반복되면 로그 파일을 확인해 주세요.",
   },
   /*
-   * 아래 둘은 DB가 아니라 **앱이 자기 몸을 못 찾는** 경우다 (2026-08-28).
-   * 예전엔 이 상황에서 일렉트론이 그냥 죽어 창이 안내도 없이 사라졌다
+   * DB가 아니라 **앱이 자기 몸을 못 찾는** 경우다 (2026-08-28).
+   * 예전엔 이 상황에서 일렉트론이 그냥 죽어 창이 안내도 없이 사라졌다.
+   * v2: 자바 시절의 `JAVA_NOT_FOUND`·`JAR_MISSING` 둘이 이거 하나가 됐다 — 서버가 일렉트론 안의 Node로 돈다
    */
-  JAVA_NOT_FOUND: {
-    title: "자바를 찾지 못했습니다",
-    hint: "STARLOG를 실행하려면 자바 21 이상이 필요합니다. 설치 후 앱을 다시 열어 주세요.",
-  },
-  JAR_MISSING: {
+  SERVER_MISSING: {
     title: "앱 서버 파일이 없습니다",
     hint: "설치가 온전하지 않습니다. 앱을 다시 설치해 주세요.",
   },

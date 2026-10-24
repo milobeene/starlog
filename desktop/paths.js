@@ -127,57 +127,18 @@ function ensureDataRoot(dataRoot) {
 }
 
 /**
- * 세이브파일 경로 → JDBC URL.
+ * 서버 번들 (v2) — `server/scripts/bundle.mjs`가 만든다.
  *
- * H2는 `.mv.db`를 자기가 붙이므로 **확장자를 뺀 경로**를 준다.
- * `MODE=PostgreSQL`은 마이그레이션 SQL 한 벌로 H2와 PostgreSQL을 다 태우기 위한 것이고,
- * 이건 지금 dev에서 이미 쓰고 있는 설정 그대로다
+ * 자바 시절엔 jar와 번들 JRE(54MB)를 extraResources로 실었다. 이제 서버는 일렉트론 안의 Node로
+ * 도는 JS 파일 하나라 둘 다 사라졌다.
+ *
+ * ⚠️ 패키징되면 asar **밖**(`app.asar.unpacked`)에 있어야 한다 — `utilityProcess.fork`에 주는 경로와,
+ * 서버가 `import`하는 PGlite(wasm 파일을 실제 경로로 읽는다)가 진짜 파일이어야 해서다.
+ * `electron-builder.yml`의 `asarUnpack`이 그 짝이다
  */
-function saveFileUrl(dataRoot, saveName) {
-  const base = path.join(subPaths(dataRoot).saves, saveName);
-  return `jdbc:h2:file:${base};MODE=PostgreSQL`;
-}
-
-/**
- * 자바 실행 파일 — **번들 JRE가 먼저다** (10단계).
- *
- * 사용자 PC에 자바가 깔려 있으리라는 가정을 버렸다. `tools/build-jre.sh`가 만든
- * 54MB짜리 런타임을 앱 안에 넣고 그걸 쓴다.
- *
- * ⚠️ **찾는 순서가 곧 우선순위다.** PATH의 자바를 먼저 쓰면 사용자 PC에 깔린
- * 자바 17에 걸려 죽는다 — 우리는 21이 필요하다. 번들이 있으면 무조건 그것부터.
- *
- * 마지막 수단으로 이름만 돌려주는 건 **개발 중(`npm start`, 번들 없음)**을 위해서다.
- * 이때는 `spawn`이 PATH에서 찾고, 없으면 `JAVA_NOT_FOUND` 진단이 뜬다
- */
-function javaBin() {
-  const exe = process.platform === "win32" ? "java.exe" : "java";
-  const candidates = [
-    // 패키징된 앱: extraResources로 들어간 자리
-    process.resourcesPath && path.join(process.resourcesPath, "runtime", "bin", exe),
-    // 개발 중에 build-jre.sh를 돌렸을 때
-    path.join(__dirname, "runtime", "bin", exe),
-  ];
-  for (const bin of candidates) {
-    if (bin && fs.existsSync(bin)) {
-      return bin;
-    }
-  }
-  return exe;
-}
-
-/**
- * 백엔드 jar — 패키징 여부에 따라 자리가 다르다.
- *
- * 개발 중에는 그래들이 뱉은 자리를 그대로 본다. 그래야 `build-desktop.sh` 돌리고
- * 바로 `npm start`가 된다 — 복사 단계가 하나 더 끼면 **고친 걸 안 고친 채로 돌린다**
- */
-function jarPath() {
-  const packaged = process.resourcesPath && path.join(process.resourcesPath, "app.jar");
-  if (packaged && fs.existsSync(packaged)) {
-    return packaged;
-  }
-  return path.join(__dirname, "..", "backend", "build", "libs", "app.jar");
+function serverEntry() {
+  const unpacked = __dirname.replace(`app.asar`, `app.asar.unpacked`);
+  return path.join(unpacked, "server", "main.mjs");
 }
 
 module.exports = {
@@ -189,7 +150,5 @@ module.exports = {
   DEFAULT_DATA_ROOT,
   subPaths,
   ensureDataRoot,
-  saveFileUrl,
-  javaBin,
-  jarPath,
+  serverEntry,
 };
