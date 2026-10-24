@@ -7,11 +7,9 @@ import { playthrough } from "../../db/schema";
 import { Conflict, InvalidInput, NotFound } from "../../common/errors";
 import { nowKst } from "../../common/clock";
 import { normalize } from "../../common/text";
-import {
-  acquisitionCount, deriveState, findOwnedForUpdate, playthroughsOf, saveEntryIfChanged, saveIfChanged,
-  type EntryRow, type PlaythroughRow, type PlaythroughStatus,
-} from "./shared";
+import { acquisitionCount, deriveState, findOwnedForUpdate, playthroughsOf, saveEntryIfChanged, type EntryRow, type PlaythroughRow, type PlaythroughStatus } from "./shared";
 import { belongsTo, findAccount, findDevice, findEmulator, findInputMethod, findPlatform } from "./refs";
+import { saveIfChanged } from "../../db/changes";
 
 export interface PlaythroughCommand {
   startedOn: string | null;

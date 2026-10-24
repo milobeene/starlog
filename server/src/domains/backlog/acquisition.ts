@@ -10,8 +10,9 @@ import { nowKst } from "../../common/clock";
 import { money } from "../../common/money";
 import { normalize } from "../../common/text";
 import { findOwnedSubscription } from "../subscription/routes";
-import { deriveState, findOwned, playthroughsOf, saveEntryIfChanged, saveIfChanged, type EntryRow } from "./shared";
+import { deriveState, findOwned, playthroughsOf, saveEntryIfChanged, type EntryRow } from "./shared";
 import { belongsTo, findAccount, findPlatform } from "./refs";
+import { saveIfChanged } from "../../db/changes";
 
 export interface AcquisitionCommand {
   method: string | null;

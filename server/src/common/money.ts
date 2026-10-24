@@ -4,7 +4,7 @@
  * **부동소수 계산 금지.** 문자열 ↔ 정수(센트, BigInt)로만 다룬다. JSON으로 들어온 숫자는
  * `String(n)`으로 받는다 — JS의 가장 짧은 왕복 표기라 원래 JSON 글자와 같다.
  */
-import { InvalidInput } from "./errors";
+import { InvalidInput, Unreadable } from "./errors";
 
 const CURRENCIES = new Set(Intl.supportedValuesOf("currency"));
 
@@ -66,3 +66,49 @@ function numberToPlain(n: number): string {
   if (!/e/i.test(s)) return s;
   return n.toLocaleString("en-US", { useGrouping: false, maximumFractionDigits: 20 });
 }
+
+// ───────────── 임의 자릿수 BigDecimal (본문에서 온 소수 — 평점·플레이타임 등) ─────────────
+
+export const DECIMAL = /^[+-]?(\d+(\.\d*)?|\.\d+)$/;
+
+/** 값 비교용 정규형 — 앞 0·뒤 0·부호 없는 0을 걷어낸다 */
+export function decimalKey(s: string): string {
+  const neg = s.startsWith("-");
+  const [i = "", f = ""] = s.replace(/^[+-]/, "").split(".");
+  const int = i.replace(/^0+/, "") || "0";
+  const frac = f.replace(/0+$/, "");
+  const zero = int === "0" && frac === "";
+  return `${neg && !zero ? "-" : ""}${int}${frac ? "." + frac : ""}`;
+}
+
+/** `setScale(n, HALF_UP)` — 부동소수 없이 */
+export function setScale(input: string, n: number): string {
+  const m = /^([+-]?)(\d*)(?:\.(\d*))?$/.exec(input.trim());
+  if (!m || (m[2] === "" && (m[3] ?? "") === "")) throw new Unreadable();
+  const neg = m[1] === "-";
+  const frac = m[3] ?? "";
+  const pow = 10n ** BigInt(n);
+  let v = BigInt(m[2] || "0") * pow + BigInt((frac + "0".repeat(n)).slice(0, n) || "0");
+  if ((frac[n] ?? "0") >= "5") v += 1n;            // HALF_UP — 크기 기준으로 올린다
+  const s = `${v / pow}${n > 0 ? "." + (v % pow).toString().padStart(n, "0") : ""}`;
+  return neg && v !== 0n ? "-" + s : s;
+}
+
+/** 자바 `BigDecimal.toString()` — 오류 메시지에 원래 값이 그대로 실린다 (`150.0`은 `150.0`) */
+export function bigDecimalText(input: string): string {
+  const m = /^([+-]?)(\d*)(?:\.(\d*))?$/.exec(input.trim());
+  if (!m) return input;
+  const frac = m[3] ?? "";
+  const digits = (BigInt((m[2] || "0") + frac)).toString();
+  const neg = m[1] === "-" && digits !== "0";
+  const body = frac.length === 0 ? digits
+    : (() => { const p = digits.padStart(frac.length + 1, "0"); return `${p.slice(0, -frac.length)}.${p.slice(-frac.length)}`; })();
+  return (neg ? "-" : "") + body;
+}
+
+export function compareDecimal(a: string, b: string): number {
+  const scale = Math.max(fracLen(a), fracLen(b));
+  const x = BigInt(setScale(a, scale).replace(".", "")), y = BigInt(setScale(b, scale).replace(".", ""));
+  return x < y ? -1 : x > y ? 1 : 0;
+}
+const fracLen = (s: string) => (s.split(".")[1] ?? "").length;

@@ -20,6 +20,7 @@ import { nowKst } from "../../common/clock";
 import { ldt } from "../../common/json";
 import { config } from "../../config";
 import { coversDir, folderSize, mediaDir, storageHasCredentials } from "../../common/storage";
+import { isJavaBlank, javaStrip } from "../../common/text";
 
 // ───────────── 호출 기록 (자바 `ApiCallRecorder`) ─────────────
 
@@ -50,31 +51,6 @@ export const SETTING = {
   /** 구글 콘솔에 걸어둔 하루 할당량의 **사본**. 우리가 강제하는 값이 아니다 */
   TRANSLATE_DAILY_CHARS: "translate.dailyChars",
 } as const;
-
-/**
- * 자바 `Character.isWhitespace` — 공백 문자 중 NBSP(00A0·2007·202F) 제외 + 제어문자 09~0D·1C~1F.
- * 정규식으로 안 쓰는 이유: U+2028·2029가 줄바꿈이라 글자째 들어가면 정규식 리터럴이 깨진다
- */
-export function isJavaWhitespace(c: number): boolean {
-  return (c >= 0x09 && c <= 0x0d) || (c >= 0x1c && c <= 0x20) || c === 0x1680
-    || (c >= 0x2000 && c <= 0x2006) || (c >= 0x2008 && c <= 0x200a)
-    || c === 0x2028 || c === 0x2029 || c === 0x205f || c === 0x3000;
-}
-
-/** 자바 `String.isBlank()` (null도 빈 것으로) */
-export function isJavaBlank(v: string | null | undefined): boolean {
-  if (v === null || v === undefined) return true;
-  for (let i = 0; i < v.length; i++) if (!isJavaWhitespace(v.charCodeAt(i))) return false;
-  return true;
-}
-
-/** 자바 `String.strip()` */
-export function javaStrip(s: string): string {
-  let a = 0, b = s.length;
-  while (a < b && isJavaWhitespace(s.charCodeAt(a))) a++;
-  while (b > a && isJavaWhitespace(s.charCodeAt(b - 1))) b--;
-  return s.slice(a, b);
-}
 
 const blankToNull = (v: string | null | undefined) => (isJavaBlank(v) ? null : v!);
 

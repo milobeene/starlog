@@ -100,3 +100,37 @@ export const DEFAULT_MSG = {
   min: (v: number) => `${v} 이상이어야 합니다`,
   max: (v: number) => `${v} 이하여야 합니다`,
 } as const;
+
+// ───────────── 원문 숫자를 그대로 읽는 본문 ─────────────
+
+type Reviver = (key: string, value: unknown, context?: { source?: string }) => unknown;
+const parseWithSource = JSON.parse as (text: string, reviver: Reviver) => unknown;
+
+/**
+ * `readBody`와 같은 규칙인데 **JSON 숫자를 원문 글자 그대로** 넘긴다.
+ *
+ * Jackson은 BigDecimal을 JSON 글자에서 바로 만든다 — `150.0`은 `150.0`이다. `JSON.parse`는
+ * `150`으로 뭉개서 "평점은 0.0 ~ 100.0 범위여야 합니다: 150.0" 같은 메시지가 갈린다.
+ * 숫자 칸 스키마(`zDecimal`·`zLong`)는 숫자 문자열도 받으므로 그대로 통과한다.
+ * 덤으로 문자열 칸에 숫자가 오면 문자열로 받는다 — Jackson도 그렇게 강제 변환한다
+ */
+export async function readBodyExact<S extends z.ZodType>(c: Context, schema: S): Promise<z.output<S>> {
+  let raw: unknown;
+  try {
+    const text = await c.req.text();
+    if (text.trim() === "") throw new Unreadable();
+    raw = parseWithSource(text, (_k, v, ctx) => (typeof v === "number" && ctx?.source !== undefined ? ctx.source : v));
+  } catch {
+    throw new Unreadable();
+  }
+  const r = schema.safeParse(raw);
+  if (!r.success) throw new Unreadable();
+  return r.data;
+}
+
+/** Bean Validation의 컨테이너 원소 제약 — 필드 이름이 `names[0]` 꼴이다 (SpringValidatorAdapter) */
+export function elementSizeViolations(field: string, values: readonly (string | null)[] | null, max: number, message: string) {
+  const out: string[] = [];
+  values?.forEach((v, i) => { if (v !== null && v.length > max) out.push(`${field}[${i}]: ${message}`); });
+  return out;
+}

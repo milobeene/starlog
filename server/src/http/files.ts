@@ -4,7 +4,7 @@
 import fs from "fs";
 import { Readable } from "stream";
 import type { Context } from "hono";
-import { InvalidInput } from "../../common/errors";
+import { InvalidInput } from "../common/errors";
 
 type Form = Record<string, string | File | (string | File)[]>;
 

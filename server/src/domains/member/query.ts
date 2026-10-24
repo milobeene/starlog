@@ -8,15 +8,14 @@ import { desc, eq } from "drizzle-orm";
 import type { Db } from "../../db/client";
 import { member, subscription } from "../../db/schema";
 import { InvalidInput, NotFound } from "../../common/errors";
-import { normalize } from "../../common/text";
+import { isJavaBlank, normalize } from "../../common/text";
 import {
   accountFindSelectable, deviceFindSelectable, deviceOptionLabel, emulatorFindSelectable,
   inputMethodFindSelectable, platformFindSelectable,
 } from "../platform/service";
 import { findGenreDictionary, findTagDictionary } from "../tag/service";
-import { isJavaBlank } from "../system/service";
-import { saveIfChanged } from "../backlog/shared";
-import { moneyOut } from "./dump";
+import { saveIfChanged } from "../../db/changes";
+import { moneyJson } from "../../common/json";
 
 export type MemberRow = typeof member.$inferSelect;
 
@@ -72,7 +71,7 @@ export async function findMe(d: Db, memberId: number) {
       serviceName: s.serviceName,
       startedOn: s.startedOn,
       endedOn: s.endedOn,
-      fee: moneyOut(s.feeAmount, s.feeCurrency),
+      fee: moneyJson(s.feeAmount, s.feeCurrency),
       billingCycle: s.billingCycle,
       active: s.endedOn === null,
     })),

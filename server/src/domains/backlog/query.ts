@@ -9,12 +9,12 @@ import { sql, type SQL } from "drizzle-orm";
 import type { Db } from "../../db/client";
 import { rows, one } from "../../db/raw";
 import { Conflict, InvalidInput } from "../../common/errors";
-import { ldt, page as pageOf } from "../../common/json";
+import { ldt, moneyJson, page as pageOf } from "../../common/json";
 import { amountJson } from "../../common/money";
 import { normalize } from "../../common/text";
 import { coverPublicUrl } from "./media";
 import type { BacklogStatus } from "./shared";
-import { findOwnedAlive404, findOwnedIncludingDeleted, moneyResponse, type EntryRow } from "./shared";
+import { findOwnedAlive404, findOwnedIncludingDeleted, type EntryRow } from "./shared";
 
 const MAX_SIZE = 100;
 export const normalizeSize = (size: number) => Math.min(Math.max(size, 1), MAX_SIZE);
@@ -404,8 +404,8 @@ export async function findDetail(d: Db, memberId: number, entryId: number) {
       where backlog_entry_id = ${e.id}`)).map((x) => x.v);
   const personal = (await personalGenres(d, [e.id])).get(e.id) ?? [];
 
-  const masterPrice = moneyResponse(g.listPriceAmount as string | null, g.listPriceCurrency as string | null);
-  const overridePrice = moneyResponse(e.listPriceOverrideAmount, e.listPriceOverrideCurrency);
+  const masterPrice = moneyJson(g.listPriceAmount as string | null, g.listPriceCurrency as string | null);
+  const overridePrice = moneyJson(e.listPriceOverrideAmount, e.listPriceOverrideCurrency);
   const masterCover = g.coverImageId as string | null;
 
   const playthroughs = await rows<Record<string, unknown>>(d, sql`select p.id as "playthroughId", p.sequence_no as "sequenceNo",
@@ -504,7 +504,7 @@ export async function findDetail(d: Db, memberId: number, entryId: number) {
       platform: a.platformId === null ? null : { platformId: a.platformId, name: a.platformName },
       platformAccount: a.accountId === null ? null : { accountId: a.accountId, label: a.accountLabel },
       subscription: a.subscriptionId === null ? null : { subscriptionId: a.subscriptionId, serviceName: a.serviceName },
-      price: moneyResponse(a.priceAmount as string | null, a.priceCurrency as string | null),
+      price: moneyJson(a.priceAmount as string | null, a.priceCurrency as string | null),
       acquiredOn: a.acquiredOn,
       label: a.label,
     })),

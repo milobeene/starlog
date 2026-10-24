@@ -10,11 +10,9 @@ import { readBody } from "../../http/body";
 import { zText } from "../../common/schemas";
 import { InvalidInput } from "../../common/errors";
 import { fileStorage } from "../../common/storage";
-import {
-  allSettings, GUARD_MONTHLY_CHARS, grouped, igdbCredentials, javaStrip, parseJavaLong, putSetting,
-  SETTING, systemStatus, translateApiKey, translationUsage,
-} from "./service";
+import { allSettings, GUARD_MONTHLY_CHARS, grouped, igdbCredentials, parseJavaLong, putSetting, SETTING, systemStatus, translateApiKey, translationUsage } from "./service";
 import { testIgdb, testTranslate } from "./testers";
+import { javaStrip } from "../../common/text";
 
 const optStr = zText.nullish().transform((v) => v ?? null);
 

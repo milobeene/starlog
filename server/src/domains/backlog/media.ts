@@ -20,7 +20,8 @@ import {
 } from "../../common/storage";
 import { recordApiCall } from "../system/service";
 import { assignMediaFolder, uniqueMediaSlug } from "../game/service";
-import { findOwned, findOwnedAlive404, saveIfChanged } from "./shared";
+import { findOwned, findOwnedAlive404 } from "./shared";
+import { saveIfChanged } from "../../db/changes";
 
 const MB = (n: number) => Math.floor(n / 1024 / 1024);
 

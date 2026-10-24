@@ -13,13 +13,13 @@ import {
   device, emulator, game, genre, inputMethod, platform, platformAccount, playthrough, subscription, tag,
 } from "../../db/schema";
 import { nowKst } from "../../common/clock";
-import { ldt } from "../../common/json";
+import { ldt, moneyJson } from "../../common/json";
 import {
   accountFindSelectable, deviceFindSelectable, emulatorFindSelectable, inputMethodFindSelectable,
   platformFindSelectable, type SelectableAccount,
 } from "../platform/service";
 import { gameCollections, type GameRow } from "../game/service";
-import { FORMAT_VERSION, moneyOut, npe } from "./dump";
+import { FORMAT_VERSION, npe } from "./dump";
 import { colorsOf, findMember, subscriptionsOf, type MemberRow } from "./query";
 
 /** IGDB id가 있으면 그것, 없으면(수동 등록) 이름. 새 DB에서 항목이 게임을 찾는 열쇠다 */
@@ -75,7 +75,7 @@ export async function exportData(d: Db, memberId: number) {
       publisherOverrides: (await d.select().from(backlogPublisherOverride)
         .where(eq(backlogPublisherOverride.backlogEntryId, e.id))).map((r) => r.publisher!),
       releasedOnOverride: e.releasedOnOverride,
-      listPriceOverride: moneyOut(e.listPriceOverrideAmount, e.listPriceOverrideCurrency),
+      listPriceOverride: moneyJson(e.listPriceOverrideAmount, e.listPriceOverrideCurrency),
       rating: e.rating === null ? null : Number(e.rating),
       playTimeHours: e.playTimeHours === null ? null : Number(e.playTimeHours),
       memo: e.memo,
@@ -122,7 +122,7 @@ async function catalog(d: Db, memberId: number, tags: string[], genres: string[]
       serviceName: s.serviceName,
       startedOn: s.startedOn,
       endedOn: s.endedOn,
-      fee: moneyOut(s.feeAmount, s.feeCurrency),
+      fee: moneyJson(s.feeAmount, s.feeCurrency),
       billingCycle: s.billingCycle,
     })),
     tags,
@@ -139,7 +139,7 @@ function toGame(g: GameRow, c: { developers: string[]; publishers: string[]; mas
     publishers: c.publishers,
     masterGenres: c.masterGenres,
     releasedOn: g.releasedOn,
-    listPrice: moneyOut(g.listPriceAmount, g.listPriceCurrency),
+    listPrice: moneyJson(g.listPriceAmount, g.listPriceCurrency),
     coverImageId: g.coverImageId,
     bannerImageId: g.bannerImageId,
     summary: g.summary,
@@ -222,7 +222,7 @@ async function acquisitions(d: Db, entryId: number) {
     platformAccount: r.account,
     platformAccountPlatform: r.account === null ? null : ownerName(r.ap, r.ae),
     subscription: r.subscription,
-    price: moneyOut(r.a.priceAmount, r.a.priceCurrency),
+    price: moneyJson(r.a.priceAmount, r.a.priceCurrency),
     acquiredOn: r.a.acquiredOn,
     label: r.a.label,
   }));

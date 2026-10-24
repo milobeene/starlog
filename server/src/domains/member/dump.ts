@@ -106,11 +106,6 @@ export type DumpGame = z.output<typeof Game>;
 export type DumpEntry = z.output<typeof Entry>;
 export type DumpCover = z.output<typeof Cover>;
 
-/** 응답용 금액 — 하이버네이트 임베디드는 두 칸이 다 null이면 객체 자체가 null이다 */
-export function moneyOut(amount: string | null, currency: string | null) {
-  if (amount === null && currency === null) return null;
-  return { amount: amount === null ? null : Number(amount), currency };
-}
 
 /** 자바 `NullPointerException` 자리 — 전역 핸들러가 못 잡아 스프링 기본 500 본문이 나간다 */
 export function npe(what: string): never {

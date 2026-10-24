@@ -10,14 +10,12 @@ import { Hono, type Context } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../../http/env";
 import { db } from "../../db/client";
-import { violations, DEFAULT_MSG } from "../../http/body";
+import { DEFAULT_MSG, elementSizeViolations, readBodyExact, violations } from "../../http/body";
 import { pathId, query } from "../../http/params";
 import { InvalidInput } from "../../common/errors";
 import { normalize } from "../../common/text";
 import { opt, zDate, zDecimal, zLong, zMoney, zText } from "../../common/schemas";
-import {
-  ACQUISITION_METHODS, BACKLOG_STATUSES, PLAYTHROUGH_STATUSES, elementSizeViolations, readBodyExact,
-} from "./shared";
+import { ACQUISITION_METHODS, BACKLOG_STATUSES, PLAYTHROUGH_STATUSES } from "./shared";
 import {
   findAllCards, findCompanies, findDeleted, findDeletedDetail, findDetail, findFacets, findNames, search, sortFrom,
   type SearchCondition,
@@ -30,7 +28,7 @@ import {
   confirmExternalCover, deleteCover, deleteScreenshots, listScreenshots, mediaContentTypeOf, prepareCover, readLocalCover,
   resolveScreenshot, saveLocalCover, saveScreenshot, screenshotFolderPath,
 } from "./media";
-import { firstFile, firstText, missingPart, multipartFile, multipartForm, parseLongParam, sendFile } from "./http";
+import { firstFile, firstText, missingPart, multipartFile, multipartForm, parseLongParam, sendFile } from "../../http/files";
 import { findOwnedAlive404 } from "./shared";
 import { resolveGame } from "../game/service";
 import { translateGame } from "../system/service";

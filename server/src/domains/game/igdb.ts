@@ -10,7 +10,8 @@
  */
 import { ExternalApi, NotFound, TooManyRequests } from "../../common/errors";
 import { scale2 } from "../../common/money";
-import { igdbCredentials, igdbCredentialsPresent, isJavaBlank, javaStrip, recordApiCall, type IgdbCredentials } from "../system/service";
+import { igdbCredentials, igdbCredentialsPresent, recordApiCall, type IgdbCredentials } from "../system/service";
+import { isJavaBlank, javaStrip } from "../../common/text";
 
 // ───────────── 설정 (자바 `IgdbProperties` 기본값) ─────────────
 

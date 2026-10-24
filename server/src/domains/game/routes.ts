@@ -11,7 +11,7 @@ import { readBody, violations } from "../../http/body";
 import { pathId, query } from "../../http/params";
 import { money, type Money } from "../../common/money";
 import { opt, zDate, zMoney, zText } from "../../common/schemas";
-import { isJavaBlank } from "../system/service";
+import { isJavaBlank } from "../../common/text";
 import {
   deleteGame, masterPage, outdatedGames, registerManual, resyncGame, searchGames, syncMasterInfo, updateGameName,
 } from "./service";

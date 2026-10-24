@@ -5,7 +5,7 @@
  * 둘 다 호출 기록(`api_call_log`)을 남기지 않는다 — 자바도 안 남겼다.
  */
 import { IGDB, RestFailure, restCall, tokenUrl } from "../game/igdb";
-import { isJavaBlank, javaStrip } from "./service";
+import { isJavaBlank, javaStrip } from "../../common/text";
 
 export interface IgdbTestResult { ok: boolean; tokenIssued: boolean; searchWorks: boolean; message: string }
 
