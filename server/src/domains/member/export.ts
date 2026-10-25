@@ -1,9 +1,11 @@
 /**
  * 데이터 내보내기. 파일 형식은 `dump.ts`.
  *
- * 항목마다 회차·취득·장르를 따로 읽는다 (하루 한 번 도는 백업이라 정확함이 속도보다 먼저).
- * 특히 **장르 연결은 `where backlog_entry_id = ?`, 정렬 없음 모양**으로 읽는다 —
- * 정렬이 없어 물리 순서가 곧 출력 순서이고, 조인으로 묶으면 실행 계획이 바뀌어 기존 파일과 순서가 갈릴 수 있다.
+ * **표를 통째로 읽어 메모리에서 묶는다** — 주인이 한 명이라 표가 작고, 클라우드(Neon)에서는 쿼리 하나가
+ * 인터넷 왕복이라 항목마다 따로 읽던 때(항목 145개에 쿼리 1,900여 개)는 몇 분씩 걸렸다.
+ *
+ * 순서는 예전과 같아야 한다 (같은 DB면 같은 파일). 장르 연결·오버라이드·게임 컬렉션처럼 **정렬이 없는 것은
+ * `where` 없이 통째로 읽어 물리 순서를 그대로** 쓴다 — 같은 키끼리의 상대 순서는 키로 거른 읽기와 같다
  */
 import { alias } from "drizzle-orm/pg-core";
 import { asc, eq } from "drizzle-orm";
@@ -40,12 +42,32 @@ function nowLdt(): string {
 export const backupFileName = (today: string) => `starlog-backup-${today.replaceAll("-", "")}.json`;
 
 export async function exportData(d: Db) {
+  const t0 = performance.now();
   const m = await findProfile(d);
 
   // 삭제된 항목까지 — 백업은 휴지통까지 재현해야 한다
   const entries = await d.select({ e: backlogEntry, g: game }).from(backlogEntry)
     .innerJoin(game, eq(game.id, backlogEntry.gameId))
     .orderBy(asc(backlogEntry.id));
+
+  // 차례로 읽는다 — 열 번 남짓이라 느리지 않고, 풀 연결을 하나만 쓴다 (동시에 열면 이득보다 변수가 크다)
+  const collections = await gameCollections(d, [...new Set(entries.map(({ g }) => g.id))]);
+  const genreLinks = await d.select().from(backlogEntryGenre);
+  const tagNames = await d.select({ id: tag.id, name: tag.name }).from(tag);
+  const genreNames = await d.select({ id: genre.id, name: genre.name }).from(genre);
+  const devOverrides = await d.select().from(backlogDeveloperOverride);
+  const pubOverrides = await d.select().from(backlogPublisherOverride);
+  const covers = await d.select().from(coverImage);
+  const pts = await playthroughs(d);
+  const acqs = await acquisitions(d);
+  const tagById = new Map(tagNames.map((t) => [t.id, t.name]));
+  const genreById = new Map(genreNames.map((x) => [x.id, x.name]));
+  const genresOf = groupBy(genreLinks, (l) => l.backlogEntryId);
+  const developersOf = groupBy(devOverrides, (r) => r.backlogEntryId);
+  const publishersOf = groupBy(pubOverrides, (r) => r.backlogEntryId);
+  // 항목당 하나(uk)지만 예전처럼 **첫 행**을 쓴다
+  const coverOf = new Map<number, (typeof covers)[number]>();
+  for (const c of covers) if (!coverOf.has(c.backlogEntryId)) coverOf.set(c.backlogEntryId, c);
 
   // 여러 항목이 같은 게임을 가리킬 수는 없지만(uk) 순서를 지키며 중복을 걷는다
   const games = new Map<string, ReturnType<typeof toGame>>();
@@ -56,24 +78,22 @@ export async function exportData(d: Db) {
 
   for (const { e, g } of entries) {
     const key = gameKeyOf(g);
-    if (!games.has(key)) games.set(key, toGame(g, (await gameCollections(d, [g.id])).get(g.id)!));
+    if (!games.has(key)) games.set(key, toGame(g, collections.get(g.id)!));
 
-    const genres = await genreNames(d, e.id);
+    const genres = (genresOf.get(e.id) ?? []).map((l) => genreById.get(l.genreId)!);
     genres.forEach((n) => usedGenres.add(n));
 
-    const tagName = e.tagId === null ? null
-      : (await d.select({ name: tag.name }).from(tag).where(eq(tag.id, e.tagId)))[0]!.name;
+    const tagName = e.tagId === null ? null : tagById.get(e.tagId)!;
     if (tagName !== null) usedTags.add(tagName);
 
+    const c = coverOf.get(e.id);
     exported.push({
       gameKey: key,
       createdAt: ldt(e.createdAt),
       deletedAt: ldt(e.deletedAt),
       nameOverride: e.nameOverride,
-      developerOverrides: (await d.select().from(backlogDeveloperOverride)
-        .where(eq(backlogDeveloperOverride.backlogEntryId, e.id))).map((r) => r.developer!),
-      publisherOverrides: (await d.select().from(backlogPublisherOverride)
-        .where(eq(backlogPublisherOverride.backlogEntryId, e.id))).map((r) => r.publisher!),
+      developerOverrides: (developersOf.get(e.id) ?? []).map((r) => r.developer!),
+      publisherOverrides: (publishersOf.get(e.id) ?? []).map((r) => r.publisher!),
       releasedOnOverride: e.releasedOnOverride,
       listPriceOverride: moneyJson(e.listPriceOverrideAmount, e.listPriceOverrideCurrency),
       rating: e.rating === null ? null : Number(e.rating),
@@ -81,13 +101,13 @@ export async function exportData(d: Db) {
       memo: e.memo,
       tag: tagName,
       genres,
-      cover: await cover(d, e.id),
-      playthroughs: await playthroughs(d, e.id),
-      acquisitions: await acquisitions(d, e.id),
+      cover: c ? { storageKey: c.storageKey, contentType: c.contentType, sizeBytes: c.sizeBytes, location: c.location } : null,
+      playthroughs: pts.get(e.id) ?? [],
+      acquisitions: acqs.get(e.id) ?? [],
     });
   }
 
-  return {
+  const dump = {
     formatVersion: FORMAT_VERSION,
     exportedAt: nowLdt(),
     profile: profile(m),
@@ -95,6 +115,20 @@ export async function exportData(d: Db) {
     games: [...games.values()],
     entries: exported,
   };
+  // 오래 걸리면 어디서 걸렸는지 로그로 보이게 (클라우드는 왕복이 느리다)
+  console.log(`내보내기 완료 — 항목 ${exported.length} · ${((performance.now() - t0) / 1000).toFixed(1)}초`);
+  return dump;
+}
+
+/** 키별로 묶으며 모양을 바꾼다 — 각 묶음 안의 순서는 들어온 순서 그대로다 */
+function groupBy<R, V = R>(rows: R[], keyOf: (r: R) => number, shape: (r: R) => V = (r) => r as unknown as V): Map<number, V[]> {
+  const out = new Map<number, V[]>();
+  for (const r of rows) {
+    const k = keyOf(r);
+    const list = out.get(k);
+    if (list) list.push(shape(r)); else out.set(k, [shape(r)]);
+  }
+  return out;
 }
 
 /** 형식 4부터 이메일이 없다(V14 — 로그인 칸이 사라졌다) */
@@ -154,20 +188,6 @@ function toGame(g: GameRow, c: { developers: string[]; publishers: string[]; mas
   };
 }
 
-/** 연결 행 순서 그대로 장르를 하나씩 */
-async function genreNames(d: Db, entryId: number): Promise<string[]> {
-  const links = await d.select().from(backlogEntryGenre).where(eq(backlogEntryGenre.backlogEntryId, entryId));
-  const out: string[] = [];
-  for (const l of links) out.push((await d.select({ name: genre.name }).from(genre).where(eq(genre.id, l.genreId)))[0]!.name);
-  return out;
-}
-
-/** 실물은 스토리지·데이터 루트에 남는다 — 키와 위치만 */
-async function cover(d: Db, entryId: number) {
-  const [c] = await d.select().from(coverImage).where(eq(coverImage.backlogEntryId, entryId));
-  return c ? { storageKey: c.storageKey, contentType: c.contentType, sizeBytes: c.sizeBytes, location: c.location } : null;
-}
-
 const accountPlatform = alias(platform, "account_platform");
 const accountEmulator = alias(emulator, "account_emulator");
 
@@ -180,7 +200,8 @@ const accountOwner = (account: string | null, p: { name: string } | null, e: { n
   platformAccountEmulator: account === null ? null : e?.name ?? null,
 });
 
-async function playthroughs(d: Db, entryId: number) {
+/** 항목 번호별로. 회차 번호 순 (한 항목 안에서) */
+async function playthroughs(d: Db) {
   const rows = await d.select({
     p: playthrough, device: device.label, account: platformAccount.accountLabel,
     ap: accountPlatform, ae: accountEmulator, emulator: emulator.name, input: inputMethod.name,
@@ -191,9 +212,8 @@ async function playthroughs(d: Db, entryId: number) {
     .leftJoin(accountEmulator, eq(accountEmulator.id, platformAccount.emulatorId))
     .leftJoin(emulator, eq(emulator.id, playthrough.emulatorId))
     .leftJoin(inputMethod, eq(inputMethod.id, playthrough.inputMethodId))
-    .where(eq(playthrough.backlogEntryId, entryId))
-    .orderBy(asc(playthrough.sequenceNo));
-  return rows.map((r) => ({
+    .orderBy(asc(playthrough.backlogEntryId), asc(playthrough.sequenceNo));
+  return groupBy(rows, (r) => r.p.backlogEntryId, (r) => ({
     sequenceNo: r.p.sequenceNo,
     startedOn: r.p.startedOn,
     finishedOn: r.p.finishedOn,
@@ -208,7 +228,7 @@ async function playthroughs(d: Db, entryId: number) {
 }
 
 /** `platform`은 **취득 자체의** 플랫폼이고, `platformAccountPlatform`·`…Emulator`는 **계정의** 소속이다 */
-async function acquisitions(d: Db, entryId: number) {
+async function acquisitions(d: Db) {
   const rows = await d.select({
     a: acquisition, platform: platform.name, account: platformAccount.accountLabel,
     ap: accountPlatform, ae: accountEmulator, subscription: subscription.serviceName,
@@ -218,9 +238,8 @@ async function acquisitions(d: Db, entryId: number) {
     .leftJoin(accountPlatform, eq(accountPlatform.id, platformAccount.platformId))
     .leftJoin(accountEmulator, eq(accountEmulator.id, platformAccount.emulatorId))
     .leftJoin(subscription, eq(subscription.id, acquisition.subscriptionId))
-    .where(eq(acquisition.backlogEntryId, entryId))
     .orderBy(asc(acquisition.id));
-  return rows.map((r) => ({
+  return groupBy(rows, (r) => r.a.backlogEntryId, (r) => ({
     method: r.a.method,
     platform: r.platform,
     platformAccount: r.account,

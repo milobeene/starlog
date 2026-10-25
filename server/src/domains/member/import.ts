@@ -65,6 +65,7 @@ const javaJoin = (values: (string | null)[]) => values.map((v) => (v === null ? 
  * `d`는 트랜잭션이어야 한다 (덮어쓰기는 지운 직후 같은 트랜잭션에서 부른다)
  */
 export async function importInto(d: Db, data: MemberDump): Promise<ImportResult> {
+  const t0 = performance.now();
   if (data.entries === null) throw new InvalidInput("가져올 데이터가 비어 있습니다");
   // 옛 형식(1~3)도 읽는다 — 없는 칸은 null(계정이면 플랫폼 계정, 프리셋이면 그대로 둠)로 읽힌다. 위쪽(미래 파일)만 막는다
   const version = data.formatVersion;
@@ -93,7 +94,7 @@ export async function importInto(d: Db, data: MemberDump): Promise<ImportResult>
     acquisitions += item.acquisitions?.length ?? 0;
   }
 
-  console.log(`가져오기 완료 — 게임 ${games.size} / 항목 ${data.entries.length} / 회차 ${playthroughs} / 취득 ${acquisitions}`);
+  console.log(`가져오기 완료 — 게임 ${games.size} / 항목 ${data.entries.length} / 회차 ${playthroughs} / 취득 ${acquisitions} · ${((performance.now() - t0) / 1000).toFixed(1)}초`);
   return { games: games.size, entries: data.entries.length, playthroughs, acquisitions };
 }
 
