@@ -26,6 +26,7 @@ files:
   - saveFiles.js
   - tarball.js
   - media.js
+  - csp.js
   - web/**/*
   - server/main.mjs
   - server/THIRD_PARTY_LICENSES.txt

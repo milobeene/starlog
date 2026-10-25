@@ -411,6 +411,93 @@ async function securitySteps(port) {
   }
 }
 
+// ── CSP (보안 점검 3단계, 2026-10-25) ──
+
+/** 창 콘솔에 찍힌 CSP 위반. 크로미움은 막을 때마다 콘솔에 "Content Security Policy"를 남긴다 */
+const cspViolations = [];
+function watchCsp() {
+  win.webContents.on("console-message", (e, _level, message) => {
+    const msg = String(e?.message ?? message ?? "");
+    if (/Content Security Policy/i.test(msg)) cspViolations.push(`${win.webContents.getURL()} :: ${msg.slice(0, 300)}`);
+  });
+}
+const cspHeader = () => js("fetch(location.href).then((r) => r.headers.get('content-security-policy'))");
+
+async function cspSteps(port, entryId) {
+  const csp = require(path.join(ROOT, "desktop/csp.js"));
+  const appCsp = await cspHeader();
+  const has = (p, d, v) => new RegExp(`(^|; )${d} [^;]*${v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`).test(p ?? "");
+  check("CSP — app:// 문서에 헤더 (script-src는 'self'+해시, unsafe-inline·unsafe-eval 없음)",
+    !!appCsp && has(appCsp, "script-src", "'sha256-") && !/unsafe-(inline|eval)/.test(appCsp)
+      && has(appCsp, "object-src", "'none'") && has(appCsp, "frame-ancestors", "'none'") && has(appCsp, "base-uri", "'none'"), appCsp);
+
+  // 서버가 서빙하는 http 사본 — 같은 정책, 해시는 그 바이트에서
+  const res = await fetch(`http://127.0.0.1:${port}/dashboard`);
+  const html = await res.text();
+  const httpCsp = res.headers.get("content-security-policy");
+  const hashes = csp.inlineScriptHashes(html);
+  check("CSP — http 사본에도 헤더, 인라인 스크립트 해시가 본문과 맞다",
+    res.status === 200 && hashes.length >= 2 && hashes.every((h) => httpCsp?.includes(h)) && !/unsafe-(inline|eval)/.test(httpCsp ?? ""), `${res.status} ${httpCsp}`);
+  const asset = await fetch(`http://127.0.0.1:${port}/icon.svg`);
+  check("CSP — HTML이 아닌 응답에는 안 단다", asset.status === 200 && !asset.headers.get("content-security-policy"));
+
+  // 화면 전부 — 위반이 하나도 없어야 한다 (대시보드·라이브러리·상세는 위에서 이미 열었다)
+  for (const p of ["/", "/settings", "/system", "/add", `/library/detail?entry=${entryId}`]) await goto(`app://starlog${p}`);
+  // 상세의 스크린샷 썸네일 — 로컬 서버(127.0.0.1)에서 실제로 그려졌나
+  const localImgs = await js(`[...document.images].filter((i) => i.src.startsWith("http://127.0.0.1:") && i.complete && i.naturalWidth > 0).length`);
+  check("CSP — 상세의 로컬 서버 이미지(스크린샷 썸네일)가 그려진다", localImgs >= 1, `${localImgs}장`);
+  await goto("app://starlog/dashboard");
+  const webgl = await js("!!document.querySelector('canvas') && !!document.createElement('canvas').getContext('webgl')");
+  const fonts = await js("document.fonts.ready.then(() => [...document.fonts].filter((f) => f.status === 'loaded').map((f) => f.family))");
+  check("CSP — 입구·대시보드·라이브러리·상세·설정·시스템·추가에서 위반 0 (WebGL 배경·글꼴 포함)",
+    cspViolations.length === 0 && webgl && fonts.length >= 1, `${cspViolations.join(" | ")} webgl=${webgl} fonts=${fonts.join(",")}`);
+
+  // 주입된 인라인 스크립트·이벤트 핸들러는 못 돈다
+  const injected = await js(`(async () => {
+    const seen = [];
+    document.addEventListener("securitypolicyviolation", (e) => seen.push(e.violatedDirective));
+    const s = document.createElement("script"); s.textContent = "window.__cspInline = 1"; document.head.append(s);
+    const d = document.createElement("div"); d.innerHTML = '<img src="data:," onerror="window.__cspHandler = 1">'; document.body.append(d);
+    const blocked = await fetch("https://example.invalid/x").then(() => "통과", () => "막힘");
+    // 영상: 로컬 서버는 열려 있고(없는 파일이라 네트워크 오류일 뿐) 남의 주소는 정책이 막는다
+    // 이미지: IGDB는 열려 있고 남의 주소는 막힌다 (없는 파일이라 IGDB는 404일 뿐)
+    for (const src of ["https://images.igdb.com/igdb/image/upload/t_thumb/csp-e2e.jpg", "https://example.invalid/x.png"]) {
+      const i = new Image(); i.src = src;
+    }
+    for (const src of ["http://127.0.0.1:${port}/none.mp4", "https://example.invalid/v.mp4"]) {
+      const v = document.createElement("video"); v.muted = true; v.src = src; document.body.append(v); v.load(); setTimeout(() => v.remove(), 250);
+    }
+    await new Promise((r) => setTimeout(r, 300));
+    d.remove();
+    return { inline: window.__cspInline ?? null, handler: window.__cspHandler ?? null, blocked, seen };
+  })()`);
+  check("CSP — 주입한 <script>·onerror는 안 돌고, 허용 밖 출처로는 fetch가 막힌다",
+    injected.inline === null && injected.handler === null && injected.blocked === "막힘"
+      && injected.seen.some((d) => d.startsWith("script-src")) && injected.seen.some((d) => d.startsWith("connect-src")), JSON.stringify(injected));
+  check("CSP — 영상은 로컬 서버만, 이미지는 IGDB까지 (남의 주소 각 1건만 위반)",
+    injected.seen.filter((d) => d === "media-src").length === 1 && injected.seen.filter((d) => d === "img-src").length === 1, JSON.stringify(injected.seen));
+
+  // 메모의 HTML은 react-markdown이 글자로 낸다 — 정책과 별개로 애초에 스크립트가 안 생긴다
+  await api(port, "PUT", "/api/me/profile", { nickname: "e2e", memo: "메모<script>window.__memo = 1</script><img src=x onerror=\"window.__memo = 2\">" });
+  await goto("app://starlog/settings");
+  const memo = await js(`({ ran: window.__memo ?? null, scripts: [...document.querySelectorAll(".markdown script, .markdown img[onerror]")].length })`);
+  check("마크다운 — 메모의 <script>·onerror는 요소가 안 된다", memo.ran === null && memo.scripts === 0, JSON.stringify(memo));
+  cspViolations.length = 0;
+}
+
+/** 연결 설정을 저장한 뒤 받은 문서의 CSP에 그 스토리지 주소가 들어간다 (가짜 주소 — 붙지 않는다) */
+async function cspStorageSteps() {
+  await goto("app://starlog/");
+  const p = await cspHeader();
+  const imgSrc = /img-src ([^;]*)/.exec(p ?? "")?.[1] ?? "";
+  const connectSrc = /connect-src ([^;]*)/.exec(p ?? "")?.[1] ?? "";
+  check("CSP — 저장된 연결의 공개 주소는 img-src, 엔드포인트는 connect-src에 (출처만)",
+    imgSrc.includes("https://203.0.113.3") && connectSrc.includes("https://203.0.113.2") && !connectSrc.includes("https://203.0.113.3"), p);
+  const csp = require(path.join(ROOT, "desktop/csp.js"));
+  check("CSP — 연결 주소에 섞인 ; 공백은 정책에 못 끼어든다",
+    csp.originOf("https://a.example/x; script-src *") === "https://a.example" && csp.originOf("javascript:alert(1)") === null);
+}
+
 /** 데이터 루트·openPath·백업 이름 */
 async function pathSteps(save) {
   const dirs = await js("window.starlog.settings.get().then((s) => s.dirs)");
@@ -480,6 +567,7 @@ async function connectionSteps() {
   const disk = fs.readFileSync(CONN, "utf8");
   check("connections.json — 디스크에 평문 비밀이 없다 (safeStorage로 sealed)", SECRETS.every((x) => !disk.includes(x)) && disk.includes("\"sealed\""), disk.slice(0, 160));
   check("connections.json — 0600", (fs.statSync(CONN).mode & 0o777) === 0o600);
+  await cspStorageSteps();
 
   // 가린 값 그대로 저장 → 진짜 값 유지. 눈 버튼으로 칸 하나씩
   await js(`window.starlog.connections.list().then((l) => window.starlog.connections.save({ ...l[0], db: { ...l[0].db, user: "u2" } }))`);
@@ -519,6 +607,9 @@ async function connectionSteps() {
 realElectron.app.whenReady().then(async () => {
   try {
     await waitWindowLoaded();
+    watchCsp();
+    // 첫 로드는 감시를 붙이기 전이었다 — 한 번 더 받는다
+    await goto("app://starlog/");
     check("입구 화면 로드 (app://)", win.webContents.getURL().startsWith("app://"), win.webContents.getURL());
     check("브리지 있음", await js("typeof window.starlog?.launch === 'function'"));
 
@@ -556,6 +647,8 @@ realElectron.app.whenReady().then(async () => {
     check("상세 화면", (await js("document.body.innerText")).includes("E2E 테스트 게임"));
 
     await mediaSteps(port, entry.json?.id);
+    // 스크린샷·영상이 생긴 뒤에 — 상세의 갤러리 썸네일·<video>까지 정책 안에서 뜨는지
+    await cspSteps(port, entry.json?.id);
     await securitySteps(port);
     await pathSteps(SAVE);
 
@@ -599,7 +692,8 @@ realElectron.app.whenReady().then(async () => {
     const failed = results.filter((r) => !r.ok).length;
     console.log(`\n── ${results.length - failed} 통과 / ${failed} 실패  (임시 폴더: ${TMP})`);
     console.log(`── 서버 로그: ${path.join(TMP, "appData/starlog/backend.log")}`);
-    process.exitCode = failed ? 1 : 0;
+    // 일렉트론은 `process.exitCode`를 안 본다 — 실패가 있어도 0으로 끝나 CI·스크립트가 못 잡았다
+    realElectron.app.exit(failed ? 1 : 0);
   });
   realElectron.app.quit();
 });

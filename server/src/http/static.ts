@@ -9,6 +9,7 @@
 import fs from "fs";
 import path from "path";
 import type { Context } from "hono";
+import { cspForHtml } from "./csp";
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8",
@@ -35,7 +36,9 @@ export function serveStatic(root: string) {
   const send = (c: Context, file: string) => {
     const type = MIME[path.extname(file).toLowerCase()] ?? "application/octet-stream";
     const body = fs.readFileSync(file);
-    return c.body(body, 200, { "Content-Type": type, "Content-Length": String(body.length) });
+    const headers: Record<string, string> = { "Content-Type": type, "Content-Length": String(body.length) };
+    if (type.startsWith("text/html")) headers["Content-Security-Policy"] = cspForHtml(body.toString("utf8"));
+    return c.body(body, 200, headers);
   };
   return (c: Context) => {
     let rel: string;

@@ -377,8 +377,23 @@ async function revealSecret(name, field) {
   return getField(found, field);
 }
 
+/**
+ * 저장된 연결들의 스토리지 주소(엔드포인트·공개 주소) — CSP용. 비밀 칸이 아니라 키체인을 안 거친다.
+ * 문서를 서빙할 때마다 불리므로 **동기·부작용 없음**: 못 읽으면 빈 목록(덮어쓰기·격리는 `readJson`의 몫)
+ */
+function storageUrls() {
+  try {
+    const c = JSON.parse(fs.readFileSync(CONNECTIONS_FILE, "utf8"));
+    const profiles = Array.isArray(c?.profiles) ? c.profiles : [];
+    return profiles.map((p) => ({ endpoint: p?.storage?.endpoint ?? null, publicBaseUrl: p?.storage?.publicBaseUrl ?? null }));
+  } catch {
+    return [];
+  }
+}
+
 module.exports = {
   getSettings,
+  storageUrls,
   patchSettings,
   getConnections,
   listMasked,

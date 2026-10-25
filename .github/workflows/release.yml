@@ -19,18 +19,22 @@ on:
   push:
     tags: ["v*"]
 
-# gh release가 쓴다. 태그로 들어왔을 때만 실제로 필요하다
+# 기본은 읽기만. 쓰기는 릴리스를 만드는 잡 하나에만 준다 — 빌드 잡은 의존성 설치 스크립트를 돌린다.
+# 액션은 태그 대신 커밋 SHA로 고정한다(태그는 옮겨질 수 있다). 옆 주석의 태그는 사람이 읽으라고 둔다
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   bundle:
     name: 프론트 + 서버 번들 (OS 무관)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 (= v4.4.0)
+        with:
+          # 토큰을 .git/config에 남기지 않는다 — 뒤 단계(npm 설치 스크립트 등)가 집어 갈 수 없게
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4 (= v4.4.0)
         with:
           node-version: 24
           cache: npm
@@ -55,7 +59,7 @@ jobs:
         run: ./tools/build-desktop.sh
 
       # ⚠️ 둘 다 gitignore라 체크아웃만으로는 절대 안 생긴다
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 (= v4.6.2)
         with:
           name: bundle
           path: |
@@ -79,15 +83,18 @@ jobs:
             label: "Windows (x64)"
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 (= v4.4.0)
+        with:
+          # 토큰을 .git/config에 남기지 않는다 — 뒤 단계(npm 설치 스크립트 등)가 집어 갈 수 없게
+          persist-credentials: false
 
       # 받은 것을 저장소 구조 그대로 되돌려 놓는다
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4 (= v4.3.0)
         with:
           name: bundle
           path: desktop
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4 (= v4.4.0)
         with:
           node-version: 24
           cache: npm
@@ -102,7 +109,7 @@ jobs:
           # 올리는 건 아래 release 잡이 gh로 한다
           npx electron-builder ${{ matrix.args }} --publish never
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 (= v4.6.2)
         with:
           name: dist-${{ matrix.os }}
           path: |
@@ -116,11 +123,17 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: package
     runs-on: ubuntu-latest
+    # gh release create가 쓴다
+    permissions:
+      contents: write
     steps:
       # 릴리스 본문 파일(.github/release-notes.md)을 읽어야 하므로 체크아웃한다
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 (= v4.4.0)
+        with:
+          # 토큰을 .git/config에 남기지 않는다 — 뒤 단계(npm 설치 스크립트 등)가 집어 갈 수 없게
+          persist-credentials: false
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4 (= v4.3.0)
         with:
           pattern: dist-*
           merge-multiple: true

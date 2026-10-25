@@ -89,8 +89,13 @@ export function useEntryFlow() {
    *
    * 이제 포트만 받아서 API 주소로 세우고 **같은 문서 안에서 라우팅**한다
    */
-  const enter = (port: number | null | undefined) => {
+  const enter = (port: number | null | undefined, reload = false) => {
     setBackendPort(port);
+    // CSP는 문서를 받을 때 정해진다 — 문서보다 늦게 생긴 연결의 스토리지 주소는 새로 받아야 열린다
+    if (reload && typeof window !== "undefined") {
+      window.location.href = "app://starlog/dashboard";
+      return;
+    }
     /*
      * ⚠️ **`app://`가 아니면 통째로 옮긴다** (v1.2).
      *
@@ -126,8 +131,12 @@ export function useEntryFlow() {
    * 세션 캐시는 안 버린다 — 같은 세이브파일로 돌아가는 것이라 프로필이 그대로다.
    * 오히려 버리면 헤더가 한 번 비었다 다시 채워진다
    */
-  const resumeInto = (port: number | null | undefined) => {
+  const resumeInto = (port: number | null | undefined, reload = false) => {
     setBackendPort(port);
+    if (reload && typeof window !== "undefined") {
+      window.location.href = takeAppPath();
+      return;
+    }
     router.push(takeAppPath());
   };
 
@@ -137,7 +146,7 @@ export function useEntryFlow() {
     if (session.alive) {
       const alive = await getBridge()!.session.resume();
       if (alive) {
-        resumeInto(alive.port);
+        resumeInto(alive.port, alive.reload);
         return;
       }
     }
@@ -156,7 +165,7 @@ export function useEntryFlow() {
      */
     try {
       const result = await getBridge()!.launch({ mode, target });
-      if (result?.ok) enter(result.port);
+      if (result?.ok) enter(result.port, result.reload);
     } catch (e) {
       setProgress({
         phase: "error",

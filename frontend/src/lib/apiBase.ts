@@ -85,7 +85,15 @@ function origin(): string {
  * API 호출 주소 — `lib/api.ts`만 쓴다. 토큰은 머리글로 싣으므로 주소엔 안 붙인다
  */
 export function apiUrl(path: string): string {
-  return isAbsolute(path) ? path : origin() + path;
+  if (isAbsolute(path)) return path;
+  /*
+   * 다리는 있는데 포트가 없다 = 입구 화면, 서버가 아직 없다. 개발용 8080으로 떨어뜨리면
+   * 같은 맥의 남의 서버를 두드리게 되고 CSP가 막으며 위반을 남긴다 → fetch가 실패할 때와 같은 TypeError로 끝낸다
+   */
+  if (!SAME_ORIGIN && cached === null && bridge() && !bridge()?.backendPort?.()) {
+    throw new TypeError("백엔드가 아직 안 떴습니다");
+  }
+  return origin() + path;
 }
 
 const isAbsolute = (path: string) => /^[a-z][a-z0-9+.-]*:/i.test(path) || path.startsWith("//");

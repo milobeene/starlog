@@ -237,7 +237,7 @@ export interface StarlogBridge {
      *
      * **창을 옮기지 않는다** — 포트만 준다. 옮기는 건 화면 라우터의 일이다
      */
-    resume(): Promise<{ port: number } | null>;
+    resume(): Promise<{ port: number; reload?: boolean } | null>;
     /**
      * 지금 서버의 API 토큰 (**동기**). 서버를 띄울 때마다 바뀐다. 옛 preload에는 없다.
      * `lib/api.ts`가 `X-Starlog-Token`에, 미디어 주소에는 `t=`로 싣는다
@@ -257,11 +257,14 @@ export interface StarlogBridge {
     games: number;
     safetySaveName: string;
   }>;
-  /** 성공하면 `port`가 온다. 그 포트로 API 주소를 세우고 화면이 스스로 들어간다 */
+  /**
+   * 성공하면 `port`가 온다. 그 포트로 API 주소를 세우고 화면이 스스로 들어간다.
+   * `reload`면 지금 문서의 CSP에 이 연결의 스토리지 주소가 없다 — 문서를 새로 받아야 커버가 뜬다
+   */
   launch(request: {
     mode: LaunchMode;
     target: string;
-  }): Promise<{ ok: boolean; code?: string; port?: number }>;
+  }): Promise<{ ok: boolean; code?: string; port?: number; reload?: boolean }>;
   onProgress(callback: (p: LaunchProgress) => void): () => void;
   backToEntry(): Promise<boolean>;
   /**

@@ -3,8 +3,14 @@
 Thumbs.db
 
 ### Secrets ###
-.env
-.env.local
+.env*
+!.env.example
+# 앱 설정·연결 파일(앱데이터에 산다) — 디버깅하다 저장소로 복사돼도 안 올라가게
+connections.json
+connections.json.*
+settings.json
+# 백업(세이브파일 묶음)은 실데이터다
+*.tar.gz
 *.pem
 *.key
 *.p12

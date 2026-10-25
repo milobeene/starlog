@@ -29,6 +29,7 @@ const store = require("./settings");
 const backup = require("./backup");
 const saveFiles = require("./saveFiles");
 const media = require("./media");
+const csp = require("./csp");
 
 /**
  * 서버 번들은 **패키징 여부에 따라 자리가 다르다** (10단계) → `paths.js`가 정한다.
@@ -127,14 +128,33 @@ function resolveWebFile(pathname) {
   return null;
 }
 
+/** 지금 백엔드가 붙은 스토리지 출처 — 연결 설정을 그 뒤에 고쳤어도 떠 있는 서버는 옛 주소를 쓴다 */
+let backendStorage = { img: [], connect: [] };
+/** 창의 문서가 받은 CSP에 들어간 스토리지 출처. 기동·복귀 때 모자라면 `reload`를 실어 보낸다 */
+let documentStorage = { img: [], connect: [] };
+
 function serveWeb(request) {
   const file = resolveWebFile(new URL(request.url).pathname);
   if (!file) {
     return new Response("Not Found", { status: 404 });
   }
-  return new Response(fs.readFileSync(file), {
-    headers: { "content-type": MIME[path.extname(file)] ?? "application/octet-stream" },
-  });
+  const body = fs.readFileSync(file);
+  const headers = { "content-type": MIME[path.extname(file)] ?? "application/octet-stream" };
+  if (path.extname(file) === ".html") {
+    const saved = csp.storageOrigins(store.storageUrls());
+    const storage = {
+      img: [...new Set([...saved.img, ...backendStorage.img])],
+      connect: [...new Set([...saved.connect, ...backendStorage.connect])],
+    };
+    // HTML은 문서로만 받는다(Next의 소프트 이동은 .txt) — 받은 게 곧 창이 쥔 정책이다
+    documentStorage = storage;
+    headers["content-security-policy"] = csp.buildCsp({
+      scriptHashes: csp.inlineScriptHashes(body.toString("utf8")),
+      imgOrigins: storage.img,
+      connectOrigins: storage.connect,
+    });
+  }
+  return new Response(body, { headers });
 }
 
 /** 포트 0으로 열면 OS가 빈 포트를 준다. 직접 고르면 경합을 우리가 떠안는다 */
@@ -1417,11 +1437,13 @@ function registerIpc() {
     session = { mode: request.mode, target: request.target };
     store.patchSettings({ lastMode: request.mode, lastTarget: request.target });
     progress({ phase: "ready" });
+    backendStorage = csp.storageOrigins([{ endpoint: config.env.APP_STORAGE_ENDPOINT, publicBaseUrl: config.env.APP_STORAGE_PUBLIC_BASE_URL }]);
     /*
      * **창을 안 옮긴다.** 포트만 알려주고 화면이 스스로 `/dashboard`로 라우팅한다 —
-     * 같은 문서 안의 이동이라 배경도 알림도 안 끊긴다
+     * 같은 문서 안의 이동이라 배경도 알림도 안 끊긴다.
+     * 단, 지금 문서의 CSP에 이 연결의 스토리지가 없으면(문서를 받은 뒤 만든 연결) 커버가 막힌다 → 한 번 새로 받게 한다
      */
-    return { ok: true, port };
+    return csp.covers(documentStorage, backendStorage) ? { ok: true, port } : { ok: true, port, reload: true };
   });
 
   /**
@@ -1568,8 +1590,8 @@ function registerIpc() {
     if (!session || !backendPort) {
       return null;
     }
-    // 창을 옮기지 않는다. 포트만 주면 화면이 알아서 들어간다
-    return { port: backendPort };
+    // 창을 옮기지 않는다. 포트만 주면 화면이 알아서 들어간다 (CSP가 모자랄 때만 새로 받기 — launch와 같은 이유)
+    return csp.covers(documentStorage, backendStorage) ? { port: backendPort } : { port: backendPort, reload: true };
   });
 }
 
