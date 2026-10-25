@@ -1,6 +1,6 @@
 # STARLOG 서버 (v2)
 
-일렉트론 안에서 `utilityProcess`로 도는 HTTP 서버. 화면(`frontend/`)이 부르는 `/api/*` 86개와 정적 화면 서빙.
+일렉트론 안에서 `utilityProcess`로 도는 HTTP 서버. 화면(`frontend/`)이 부르는 `/api/*` 90개와 정적 화면 서빙.
 2026-10-24 자바(Spring Boot)에서 1:1로 옮겼다 — 계획·결정·자바 버그 목록은 `docs/v2-plan.md`.
 
 ```bash
@@ -15,7 +15,7 @@ npm run bundle         # → ../desktop/server/main.mjs
 
 잠금(세이브파일 옆 `.lock`) → DB 열기 + 진단(`src/diagnose.ts`, 실패 시 `STARLOG_DIAGNOSTIC: <코드>`) →
 마이그레이션(`migrations/V*.sql`, `flyway_schema_history` 이어 쓰기) → 프로필(빈 DB면 한 행 + 기본 선택지) → 미디어 폴더 →
-기동 정리(30일 지난 API 기록) → 리슨 → `STARLOG_READY port=<n>`. 종료는 SIGTERM 또는 부모의 `{type: "shutdown"}` 메시지 — PGlite를 닫고 잠금을 푼다.
+기동 정리(30일 지난 API 기록 · 플레이타임 합계 다시 맞춤) → 리슨 → `STARLOG_READY port=<n>`. 종료는 SIGTERM 또는 부모의 `{type: "shutdown"}` 메시지 — PGlite를 닫고 잠금을 푼다.
 
 **CORS (`src/http/cors.ts`)** — 창은 평생 `app://starlog`이고 화면 → API는 교차 출처다. `app://starlog`만 열고
 다른 출처는 403. dev·test 프로필에서는 끈다(프론트 개발 서버 프록시). ⚠️ 빼면 앱이 **배경만 남은 검은 화면**이 된다.
@@ -45,6 +45,7 @@ npm run bundle         # → ../desktop/server/main.mjs
 | 금액 | `money(amount, currency)`·`scale2`·`amountJson`·`compareAmount` — **부동소수 금지** |
 | 시각 | `nowKst()`·`todayKst()` — **DB `now()` 금지** (세션 시간대가 UTC면 9시간 밀린다) |
 | 응답 | `ldt()`(timestamp → `"…T…"`)·`page()` (`src/common/json.ts`) |
+| 플레이타임 | `domains/backlog/playtime.ts` — **기록(`play_record`) + 끝난 homeops 일정(`homeops_play_log`)의 합이 원본**, `backlog_entry.play_time_hours`는 캐시. 기록을 바꾸면 `syncPlayTime`, 기동 때 `syncAllPlayTimes`. 계산은 0.1분 정수(BigInt) |
 | 프로필 | `findProfile(d)` (`domains/member/profile.ts`) — `member` 테이블의 **한 행**. 주인·소유권 개념이 없다 (V14) |
 
 ## 함정 (이전하면서 실측으로 찾은 것)
@@ -70,6 +71,9 @@ npm run bundle         # → ../desktop/server/main.mjs
 - **Jackson은 String 필드에 숫자·불리언을 받는다** → `z.string()` 말고 `zText`
 - **`@NotBlank`는 전각 공백(U+3000)도 공백이다** → `violations().notBlank`가 그렇게 본다 (2026-10-24 고침)
 - **위반 메시지가 둘 이상이면 자바 순서가 실행마다 바뀐다** → 시나리오는 위반 하나씩
+- **`play_time_hours`에 직접 쓰지 않는다** (v2 S4) — 기록을 넣고 `syncPlayTime`. 항목을 지우는 경로(완전 삭제·마스터 삭제·덮어쓰기)는
+  `play_record`를 먼저 지운다. `homeops_play_log`는 **STARLOG가 쓰지 않는 표**다 — 항목이 지워질 때 FK cascade로만 사라진다
+- **정수 칸의 `sum()`은 int8이라 숫자로 온다** — 소수 계산에 넘길 거면 `::text`로 받는다
 - **N+1 걱정은 덜어도 된다** (로컬 DB). 단 목록 응답이 수백 건이면 묶어서 조회
 
 ## 회귀 테스트 — 시나리오와 녹화본
@@ -85,6 +89,8 @@ npx tsx test/harness/run.ts test/scenarios/<도메인>.json --update   # 동작�
 - 픽스처는 `server/.dev/`에 실데이터 백업(`docs/backup-*-neon`)에서 자동으로 만든다
 - ⚠️ 녹화본·픽스처는 실데이터라 **gitignore** — 이 테스트는 백업이 있는 맥에서만 돈다
 - 빈 세이브에서 시작하려면 `"fixture": "fresh"` (프로필 + 기본 카탈로그만)
+- API로 못 만드는 행(homeops 일정)은 시나리오의 `"sql": [...]` — 픽스처 복사본을 최신 버전까지 올린 뒤, 시작 상태를 뜨기 전에 넣는다
+- 정규화: 실행 중 생긴 시각은 `<NOW>`(지금 **이후** 시각 전부 — 먼 미래 날짜도), 서버가 채운 오늘 날짜는 `<TODAY>`
 - 실데이터 픽스처는 **백업 시점의 버전까지** SQL을 돌려 행을 넣고, 그 뒤 버전(V14…)은 앱 러너로 올린다 —
   새 마이그레이션이 픽스처를 만들 때마다 실데이터 위에서 시험된다. 마이그레이션을 바꾸면 `.dev/fixture*`를 지우고 다시 돌릴 것
 

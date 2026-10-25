@@ -13,7 +13,7 @@ import { and, asc, count, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { db, type Db } from "../../db/client";
 import {
   acquisition, backlogDeveloperOverride, backlogEntry, backlogEntryGenre, backlogPublisherOverride,
-  coverImage, game, gameDeveloper, gameMasterGenre, gamePublisher, gameReleasePlatform, playthrough,
+  coverImage, game, gameDeveloper, gameMasterGenre, gamePublisher, gameReleasePlatform, playRecord, playthrough,
 } from "../../db/schema";
 import { InvalidInput, NotFound, isIntegrityViolation } from "../../common/errors";
 import { normalize, normalizeAll, slug, sortKey } from "../../common/text";
@@ -500,6 +500,8 @@ export async function deleteGame(gameId: number): Promise<number> {
     await tx.delete(coverImage).where(inArray(coverImage.backlogEntryId, entryIds));
     await tx.delete(acquisition).where(inArray(acquisition.backlogEntryId, entryIds));
     await tx.delete(playthrough).where(inArray(playthrough.backlogEntryId, entryIds));
+    // homeops 일정은 항목을 지우면 cascade로 같이 간다 — 여기서 그 표에 쓰지 않는다
+    await tx.delete(playRecord).where(inArray(playRecord.backlogEntryId, entryIds));
     await tx.delete(backlogDeveloperOverride).where(inArray(backlogDeveloperOverride.backlogEntryId, entryIds));
     await tx.delete(backlogPublisherOverride).where(inArray(backlogPublisherOverride.backlogEntryId, entryIds));
     await tx.delete(backlogEntry).where(eq(backlogEntry.gameId, gameId));

@@ -12,7 +12,7 @@ import { asc, eq } from "drizzle-orm";
 import type { Db } from "../../db/client";
 import {
   acquisition, backlogDeveloperOverride, backlogEntry, backlogEntryGenre, backlogPublisherOverride, coverImage,
-  device, emulator, game, genre, inputMethod, platform, platformAccount, playthrough, subscription, tag,
+  device, emulator, game, genre, inputMethod, platform, platformAccount, playRecord, playthrough, subscription, tag,
 } from "../../db/schema";
 import { nowKst } from "../../common/clock";
 import { ldt, moneyJson } from "../../common/json";
@@ -60,6 +60,8 @@ export async function exportData(d: Db) {
   const covers = await d.select().from(coverImage);
   const pts = await playthroughs(d);
   const acqs = await acquisitions(d);
+  const records = groupBy(await d.select().from(playRecord).orderBy(asc(playRecord.id)), (r) => r.backlogEntryId,
+    (r) => ({ kind: r.kind, minutes: Number(r.minutes), playedOn: r.playedOn, note: r.note }));
   const tagById = new Map(tagNames.map((t) => [t.id, t.name]));
   const genreById = new Map(genreNames.map((x) => [x.id, x.name]));
   const genresOf = groupBy(genreLinks, (l) => l.backlogEntryId);
@@ -104,6 +106,7 @@ export async function exportData(d: Db) {
       cover: c ? { storageKey: c.storageKey, contentType: c.contentType, sizeBytes: c.sizeBytes, location: c.location } : null,
       playthroughs: pts.get(e.id) ?? [],
       acquisitions: acqs.get(e.id) ?? [],
+      playRecords: records.get(e.id) ?? [],
     });
   }
 

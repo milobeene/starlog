@@ -16,7 +16,7 @@
  *   1. 응답마다 — 상태코드, Location 헤더, 본문(JSON은 구조 비교 / 그 외는 해시)
  *   2. 끝나고 — **DB에서 바뀐 행**(시작 픽스처 대비), 데이터 루트 파일 트리
  *
- * 정규화: 숫자는 값으로(`12000.00` = `12000`), 실행 중 생긴 시각은 `<NOW>`, `updated_at`만 다른 건 경고.
+ * 정규화: 숫자는 값으로(`12000.00` = `12000`), 실행 중 생긴 시각은 `<NOW>`, 실행한 날의 날짜는 `<TODAY>`, `updated_at`만 다른 건 경고.
  *
  * ## 픽스처 (전부 로컬 전용 — 실데이터다)
  *   real   `docs/backup-*-neon/`(Neon JSON 백업)에서 만든다 → `server/.dev/fixture`
@@ -56,6 +56,11 @@ interface Scenario {
   fixture?: "real" | "fresh";
   /** 빈 DB(스키마만)에서 시작 */
   emptyDb?: boolean;
+  /**
+   * 서버를 띄우기 전에 픽스처 복사본에 직접 넣을 SQL (최신 마이그레이션까지 올린 뒤, 시작 상태를 뜨기 전).
+   * API로는 못 만드는 행용 — homeops가 쓰는 `homeops_play_log`처럼 STARLOG가 쓰지 않는 표
+   */
+  sql?: string[];
 }
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
@@ -127,6 +132,8 @@ function kstNow(d = new Date()) {
 }
 
 function normScalar(v: unknown): unknown {
+  // 서버가 "오늘"로 채운 날짜(플레이 기록의 기본 날짜 등) — 녹화한 날과 다음 날 결과가 갈리지 않게
+  if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && v === runStartKst.slice(0, 10)) return "<TODAY>";
   if (typeof v === "string" && TS_RE.test(v)) {
     // 실행 중에 생긴 시각만 <NOW>. UTC 표기(Z)는 스프링 오류 본문 timestamp뿐이라 그것도 <NOW>
     if (/Z$|[+-]\d{2}:\d{2}$/.test(v)) return "<NOW>";
@@ -303,6 +310,12 @@ async function main() {
   } else {
     // ⚠️ 픽스처는 **복사해서** 연다 — 원본을 열면 PGlite가 파일을 건드린다
     fs.cpSync(fixture(scenario.fixture ?? "real"), dbDir, { recursive: true });
+  }
+  if (scenario.sql?.length) {
+    const o = await openDb({ kind: "pglite", dir: dbDir });
+    await migrate(o);
+    await o.execScript(scenario.sql.join(";\n"));
+    await o.close();
   }
   fs.mkdirSync(dataDir);
   // 시작 상태 — 녹화본은 이것 대비 바뀐 행만 담는다

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import MemoDialog from "@/components/detail/MemoDialog";
 import StatsDialog from "@/components/detail/StatsDialog";
+import PlayRecordDialog from "@/components/detail/PlayRecordDialog";
 import OverridesDialog from "@/components/library/OverridesDialog";
 import PlaythroughDialog from "@/components/library/PlaythroughDialog";
 import AcquisitionDialog from "@/components/library/AcquisitionDialog";
@@ -46,6 +47,15 @@ export default function DetailDialogs({
         <StatsDialog
           entryId={data.entryId}
           record={personalRecord}
+          onClose={() => onClose()}
+          onSaved={onSaved}
+        />
+      )}
+
+      {dialog?.kind === "playRecord" && (
+        <PlayRecordDialog
+          entryId={data.entryId}
+          record={dialog.record}
           onClose={() => onClose()}
           onSaved={onSaved}
         />

@@ -5,14 +5,16 @@ import { eq } from "drizzle-orm";
 import type { Db } from "../../db/client";
 import {
   acquisition, backlogDeveloperOverride, backlogEntry, backlogEntryGenre, backlogPublisherOverride,
-  coverImage, game, playthrough,
+  coverImage, game, playRecord, playthrough,
 } from "../../db/schema";
 import { Conflict, InvalidInput, NotFound, Revivable } from "../../common/errors";
 import { nowKst } from "../../common/clock";
 import type { CoverLocation } from "../../common/storage";
 import { bigDecimalText, compareDecimal, money, setScale, type Money } from "../../common/money";
 import { normalize, normalizeAll, sortKey } from "../../common/text";
-import { acquisitionCount, deriveState, findAliveEntry, findEntryIncludingDeleted, playthroughsOf, saveEntryIfChanged } from "./shared";
+import { acquisitionCount, deriveState, findAliveEntry, findAliveEntryForUpdate, findEntryIncludingDeleted, playthroughsOf, saveEntryIfChanged } from "./shared";
+import { recordPlayTimeChange, syncPlayTime, tenthsFromHours, tenthsOf } from "./playtime";
+import { sameValue } from "../../db/changes";
 
 // ───────────── 담기 (FR-BL-01) ─────────────
 
@@ -64,14 +66,41 @@ function validatePlayTimeHours(v: string | null): string | null {
   return scaled;
 }
 
+/** 화면이 보내는 합계(분). 0 ~ 99999.99시간 */
+function validatePlayTimeMinutes(v: string | null): bigint | null {
+  if (v === null) return null;
+  const t = tenthsOf(v);
+  if (t < 0n || t > tenthsFromHours("99999.99")) {
+    throw new InvalidInput(`플레이 시간은 0 ~ 99999.99시간 범위여야 합니다: ${bigDecimalText(v)}분`);
+  }
+  return t;
+}
+
+export interface PlayTimeInput {
+  /** 옛 모양 — 합계(시간). **null이면 플레이타임을 안 건드린다** (기록이 원본이라 "지움"이 없다) */
+  hours: string | null;
+  /** 합계(분) — 오면 `hours`보다 우선. 정수 분을 시간으로 반올림하지 않으려고 따로 받는다 */
+  minutes: string | null;
+  /** 이번에 한 만큼(분) → ADD 기록 */
+  addMinutes: string | null;
+}
+
+/**
+ * 평점·메모는 덮어쓰고, 플레이타임은 **기록으로** 남긴다 — 합계가 바뀌면 차이만큼 ADJUST, 더하기는 ADD.
+ * 옛 모양(`hours`)은 지금 캐시와 같으면 안 건드린다 — 분으로 쌓인 합(140분)이 시간 캐시(2.33)로 반올림돼 있어서,
+ * 그대로 되돌려 보낸 값(메모 저장)을 다시 분으로 바꿔 비교하면 0.2분짜리 가짜 수정이 생긴다
+ */
 export async function updatePersonalRecord(d: Db, entryId: number,
-                                           rating: string | null, playTimeHours: string | null, memo: string | null) {
-  const e = await findAliveEntry(d, entryId);
-  await saveEntryIfChanged(d, e, {
-    rating: normalizeRating(rating),
-    playTimeHours: validatePlayTimeHours(playTimeHours),
-    memo: normalize(memo),
-  });
+                                           rating: string | null, playTime: PlayTimeInput, memo: string | null) {
+  const e = await findAliveEntryForUpdate(d, entryId);
+  const scaledRating = normalizeRating(rating);
+  const hours = validatePlayTimeHours(playTime.hours);
+  const minutes = validatePlayTimeMinutes(playTime.minutes);
+  const add = playTime.addMinutes === null ? null : tenthsOf(playTime.addMinutes);
+  const target = minutes !== null ? minutes
+    : hours !== null && !sameValue(hours, e.playTimeHours) ? tenthsFromHours(hours) : null;
+  await recordPlayTimeChange(d, e, target, add);
+  await syncPlayTime(d, e, { rating: scaledRating, memo: normalize(memo) });
 }
 
 // ───────────── 오버라이드 (FR-BL-03, 04) ─────────────
@@ -144,6 +173,8 @@ export async function revive(d: Db, entryId: number) {
 /**
  * 완전 삭제. **휴지통을 거친 것만** — 살아 있는 게임이 한 방에 사라지는 경로를 안 만든다.
  *
+ * homeops 일정(`homeops_play_log`)은 FK의 `on delete cascade`가 지운다 — STARLOG 코드는 그 표에 쓰지 않는다.
+ *
  * 순서가 전부다. 항목 ↔ 회차가 서로를 참조해서(lastPlaythrough) **항목의 참조를 먼저 끊어야**
  * 회차를 지울 수 있다. 개발사·유통사 오버라이드는 항목보다 먼저 지운다.
  *
@@ -161,6 +192,7 @@ export async function purge(d: Db, entryId: number): Promise<{ storageKey: strin
   await d.delete(coverImage).where(eq(coverImage.backlogEntryId, entryId));
   await d.delete(acquisition).where(eq(acquisition.backlogEntryId, entryId));
   await d.delete(playthrough).where(eq(playthrough.backlogEntryId, entryId));
+  await d.delete(playRecord).where(eq(playRecord.backlogEntryId, entryId));
   await d.delete(backlogDeveloperOverride).where(eq(backlogDeveloperOverride.backlogEntryId, entryId));
   await d.delete(backlogPublisherOverride).where(eq(backlogPublisherOverride.backlogEntryId, entryId));
   await d.delete(backlogEntry).where(eq(backlogEntry.id, entryId));

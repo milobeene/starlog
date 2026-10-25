@@ -145,8 +145,35 @@ export interface OverrideInfo {
 
 export interface PersonalRecord {
   rating: number | null;
+  /** 플레이타임 기록의 합계(캐시). 기록이 없으면 null — 기록은 `PlayRecord` */
   playTimeHours: number | null;
   memo: string | null;
+}
+
+/* ── 플레이타임 기록 (GET /api/backlog/{entryId}/play-records, v2 S4) ── */
+
+/**
+ * BASELINE 기존 기록(이전 때 합계 한 줄) · ADJUST 직접 수정(차이) · ADD 추가 — STARLOG가 쓴다.
+ * HOMEOPS — homeops 캘린더가 쓴 일정. 여기서 못 고친다
+ */
+export type PlayRecordKind = "BASELINE" | "ADJUST" | "ADD" | "HOMEOPS";
+
+export interface PlayRecord {
+  /** STARLOG 기록이면 `/api/play-records/{recordId}`로 고친다. homeops 일정 번호는 다른 표라 그 경로가 없다 */
+  recordId: number;
+  source: "STARLOG" | "HOMEOPS";
+  kind: PlayRecordKind;
+  /** 부호 있는 분. 기존 기록은 `142.8`처럼 소수가 있을 수 있다 */
+  minutes: number;
+  /** `YYYY-MM-DD`. homeops는 시작 시각의 날짜 */
+  playedOn: string;
+  startedAt: string | null;
+  endedAt: string | null;
+  /** STARLOG는 메모, homeops는 일정 이름 */
+  note: string | null;
+  editable: boolean;
+  /** 합계에 들어갔는가 — 아직 안 끝난 일정은 false */
+  counted: boolean;
 }
 
 export interface DeviceRef {

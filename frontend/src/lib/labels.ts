@@ -4,6 +4,7 @@ import type {
   EntryStatus,
   GameSource,
   Money,
+  PlayRecordKind,
   PlaythroughStatus,
 } from "./types";
 
@@ -23,6 +24,13 @@ export const PLAYTHROUGH_STATUS_LABEL: Record<PlaythroughStatus, string> = {
   PAUSED: "일시 중단",
   DROPPED: "중도 포기",
   COMPLETED: "완료",
+};
+
+export const PLAY_RECORD_KIND_LABEL: Record<PlayRecordKind, string> = {
+  BASELINE: "기존 기록",
+  ADJUST: "직접 수정",
+  ADD: "추가",
+  HOMEOPS: "일정",
 };
 
 export const ACQUISITION_METHOD_LABEL: Record<AcquisitionMethod, string> = {

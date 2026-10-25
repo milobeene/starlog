@@ -17,7 +17,7 @@ import type { Db } from "../../db/client";
 import {
   acquisition, backlogDeveloperOverride, backlogEntry, backlogEntryGenre, backlogPublisherOverride, coverImage,
   device, emulator, game, gameDeveloper, gameMasterGenre, gamePublisher, gameReleasePlatform, genre, inputMethod,
-  platform, platformAccount, playthrough, subscription, tag,
+  platform, platformAccount, playRecord, playthrough, subscription, tag,
 } from "../../db/schema";
 import { Conflict, InvalidInput } from "../../common/errors";
 import { nowKst } from "../../common/clock";
@@ -29,7 +29,8 @@ import { findIgdbGame, searchGamesByName, type GameRow } from "../game/service";
 import type { PlatformAccountRow, PlatformRow } from "../platform/service";
 import { ACQUISITION_METHODS, PLAYTHROUGH_STATUSES, deriveState } from "../backlog/shared";
 import { belongsTo } from "../backlog/refs";
-import { FORMAT_VERSION, npe, valueOf, type DumpCatalog, type DumpCover, type DumpEntry, type DumpGame, type DumpMoney, type DumpProfile, type MemberDump } from "./dump";
+import { FORMAT_VERSION, npe, valueOf, type DumpCatalog, type DumpCover, type DumpEntry, type DumpGame, type DumpMoney, type DumpPlayRecord, type DumpProfile, type MemberDump } from "./dump";
+import { PLAY_RECORD_KINDS, hoursText, minutesText, tenthsFromHours, tenthsOf } from "../backlog/playtime";
 import { presetsValue, profileValues, saveProfile } from "./query";
 import { findProfile, type ProfileRow } from "./profile";
 
@@ -440,6 +441,7 @@ async function importEntry(d: Db, g: GameRow, item: DumpEntry, c: Catalog) {
   }
 
   if (item.cover !== null) await attachCover(d, entryId, item.cover, now);
+  const playTotal = await importPlayRecords(d, entryId, item.playRecords, playTimeHours, item.createdAt, now);
 
   // 파생 상태는 회차·취득을 다 붙인 다음에 — 순서가 바뀌면 status가 위시리스트로 굳는다
   const displayName = nameOverride ?? g.name;
@@ -448,7 +450,7 @@ async function importEntry(d: Db, g: GameRow, item: DumpEntry, c: Catalog) {
     releasedOnOverride: item.releasedOnOverride,
     listPriceOverrideAmount: listPrice?.amount ?? null,
     listPriceOverrideCurrency: listPrice?.currency ?? null,
-    rating, playTimeHours, memo,
+    rating, playTimeHours: playTotal, memo,
     tagId: tagRow?.id ?? null,
     // 삭제 상태도 그대로 옮긴다 — 백업은 휴지통까지 재현해야 한다
     deletedAt: item.deletedAt === null ? null : ldtToDb(item.deletedAt),
@@ -465,6 +467,47 @@ async function importEntry(d: Db, g: GameRow, item: DumpEntry, c: Catalog) {
   if (publishers.length) {
     await d.insert(backlogPublisherOverride).values(publishers.map((publisher) => ({ backlogEntryId: entryId, publisher })));
   }
+}
+
+/**
+ * 플레이타임 기록을 넣고 합계 캐시 값을 돌려준다. **가져온 합계는 파일의 합계(`playTimeHours`)와 같아야 한다** —
+ * 기록의 합과 다르면(homeops 일정 몫은 파일에 없다, 또는 기록이 없는 옛 파일) 차이를 한 줄로 메운다.
+ * 기록이 없으면 BASELINE(기존 기록), 있으면 ADJUST(직접 수정). 합계가 null인데 기록이 있으면 기록을 믿는다
+ */
+async function importPlayRecords(d: Db, entryId: number, records: (DumpPlayRecord | null)[] | null,
+                                 hours: string | null, createdAt: string | null, now: string): Promise<string | null> {
+  let sum = 0n;
+  let count = 0;
+  for (const r of records ?? []) {
+    if (r === null) npe("playRecord");
+    const kind = valueOf(PLAY_RECORD_KINDS, r.kind, "PlayRecordKind");
+    if (r.minutes === null) throw new InvalidInput("플레이 기록의 시간(분)은 필수입니다");
+    if (r.playedOn === null) throw new InvalidInput("플레이 기록의 날짜는 필수입니다");
+    const t = tenthsOf(r.minutes);
+    if (kind === "ADD" && t <= 0n) throw new InvalidInput("추가하는 플레이 시간은 0분보다 커야 합니다");
+    await d.insert(playRecord).values({
+      backlogEntryId: entryId, kind, minutes: minutesText(t), playedOn: r.playedOn, note: normalize(r.note),
+      createdAt: now, updatedAt: now,
+    });
+    sum += t;
+    count++;
+  }
+  if (hours === null) return count === 0 ? null : hoursText(sum < 0n ? 0n : sum);
+  // 분으로 쌓인 합은 시간 칸에서 반올림돼 있다(140분 → 2.33) — 반올림해서 같으면 차이가 아니다.
+  // 합이 0 밑이면(homeops 몫을 빼 둔 직접 수정) 반올림 비교가 0으로 잘린 값을 보므로 차이로 친다
+  if (count > 0 && sum >= 0n && compareDecimal(hoursText(sum), hours) === 0) return hours;
+
+  // 시간 칸은 0.6분 단위라 차이가 135.2분처럼 나온다 — 정수 분으로 맞춰도 같은 합계면 그쪽으로 (일정은 분 단위다)
+  const exact = tenthsFromHours(hours) - sum;
+  const whole = ((exact < 0n ? exact - 5n : exact + 5n) / 10n) * 10n;
+  const gap = sum + whole >= 0n && compareDecimal(hoursText(sum + whole), hours) === 0 ? whole : exact;
+  await d.insert(playRecord).values({
+    backlogEntryId: entryId, kind: count === 0 ? "BASELINE" : "ADJUST", minutes: minutesText(gap),
+    // 기록이 없던 옛 파일은 항목을 담은 날로 — V15가 실데이터에 한 것과 같은 결
+    playedOn: (createdAt ?? now).slice(0, 10), note: count === 0 ? null : "가져온 합계에 맞춤",
+    createdAt: now, updatedAt: now,
+  });
+  return hours;
 }
 
 /**
@@ -506,6 +549,8 @@ async function wipe(d: Db) {
   await d.delete(coverImage);
   await d.delete(acquisition);
   await d.delete(playthrough);
+  // homeops 일정(`homeops_play_log`)은 항목을 지울 때 cascade로 같이 사라진다 — 새 항목은 번호가 달라 이어 붙일 수 없다
+  await d.delete(playRecord);
   // 개발사·유통사 오버라이드 테이블도 항목을 가리키는 FK라 항목보다 먼저
   await d.delete(backlogDeveloperOverride);
   await d.delete(backlogPublisherOverride);

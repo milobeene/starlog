@@ -16,6 +16,7 @@ import DetailSkeleton from "@/components/detail/DetailSkeleton";
 import { GameInformationCard, HowLongToBeatCard, TagCard } from "@/components/detail/InfoCards";
 import NotesSection from "@/components/detail/NotesSection";
 import PlaythroughSection from "@/components/detail/PlaythroughSection";
+import PlaytimeSection from "@/components/detail/PlaytimeSection";
 import PurchaseSection from "@/components/detail/PurchaseSection";
 import SummaryStats from "@/components/detail/SummaryStats";
 import type { DetailDialog } from "@/components/detail/detailDialog";
@@ -113,7 +114,7 @@ function BacklogDetail() {
               "이 게임이 뭔지"를 보려고 한참 스크롤해야 한다. 게임 정보를 위로 올린다.
               **삭제만 예외로 맨 아래** — 위에 두면 실수로 누른다
             */}
-            {/* 좌 — About · 회차 · 구매 · 메모 (설계서 §2.9 순서) */}
+            {/* 좌 — About · 회차 · 플레이 기록 · 구매 · 메모 (설계서 §2.9 순서 + v2 S4) */}
             <div className="order-2 flex flex-col gap-10 lg:order-none lg:col-span-2">
               <section>
                 <h3 className="mb-4 flex items-center gap-2 text-base font-medium text-white/90 sm:text-lg">
@@ -136,6 +137,9 @@ function BacklogDetail() {
                 ongoingRun={ongoingRun}
                 onOpen={setDialog}
               />
+
+              {/* 회차 바로 아래 — 둘 다 "언제 얼마나 했나"라 붙어 있어야 읽힌다 (v2 S4) */}
+              <PlaytimeSection entryId={data.entryId} onOpen={setDialog} />
 
               <PurchaseSection acquisitions={data.acquisitions} onOpen={setDialog} />
 

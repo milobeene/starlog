@@ -8,22 +8,25 @@ import PlayTime from "@/components/ui/PlayTime";
 import { api, errorMessage } from "@/lib/api";
 import {
   EMPTY_SEGS,
+  MAX_MINUTES,
+  minutesFromSegs,
   minutesToHours,
   segsFromHours,
-  sumSegs,
   type DurSegs,
 } from "@/lib/playtimeInput";
 import type { PersonalRecord } from "@/lib/types";
 
 /**
- * 점수 · 플레이타임 수정 — 상세 맨 위 요약 줄의 연필이 연다.
+ * 점수 · 플레이타임 수정 — 상세 맨 위 요약 줄의 연필, 카드 우클릭, [완료] 뒤 토스트가 연다.
  *
- * 플레이타임은 칸이 둘이다: **지금까지**(현재 합계를 고친다)와 **+ 더하기**(이번에 한 만큼).
- * 더하기 칸을 채우면 저장 때 합계에 더한다 — `10시간 45분`에 `+1시간 15분`이면 12.00으로 저장.
- * 합치는 건 **저장 때 한 번**이다 (칸을 떠날 때 합치면 고치는 중에 값이 튄다). 위쪽 미리보기가
- * 저장될 값을 항상 보여 준다.
+ * 플레이타임은 칸이 둘이고, 저장하면 **기록이 남는다** (v2 S4 — 합계는 기록의 합이다):
+ *   - **지금까지**를 고치면 → 서버가 지금 합계와의 차이를 "직접 수정" 한 줄로 (`playTimeMinutes`)
+ *   - **+ 더하기**를 채우면 → "추가" 한 줄 (`addMinutes`)
+ * 둘 다 한 번의 저장(한 트랜잭션)이다. 미리보기는 "고친 합계 + 더한 시간"을 보여 준다.
+ * 지금까지 칸을 비우거나 그대로 두면 합계는 안 건드린다 — 기록을 지우려면 상세의 기록 표에서.
+ * 분은 정수 분 그대로 보낸다 — 시간(소수 둘째 자리)으로 바꿔 보내면 20분이 0.33시간(19.8분)이 된다
  *
- * ⚠️ 서버 PUT은 세 값을 통째로 받는다 (빠진 값은 null = 지움). 안 건드린 메모를 현재 값 그대로 보낸다
+ * ⚠️ 서버 PUT은 점수·메모를 통째로 받는다 (빠진 값은 null = 지움). 안 건드린 메모를 현재 값 그대로 보낸다
  */
 export default function StatsDialog({
   entryId,
@@ -48,8 +51,14 @@ export default function StatsDialog({
     firstRef.current?.focus();
   }, []);
 
-  const { minutes, over } = sumSegs(base, add);
-  const adding = add.h !== "" || add.m !== "";
+  const [initialBase] = useState(() => minutesFromSegs(segsFromHours(record.playTimeHours)));
+  const baseMinutes = minutesFromSegs(base);
+  const baseChanged = baseMinutes != null && baseMinutes !== initialBase;
+  const addMinutes = minutesFromSegs(add);
+  const adding = addMinutes != null && addMinutes > 0;
+  // 저장 뒤 합계 미리보기. 둘 다 안 건드렸으면 null
+  const minutes = baseChanged || adding ? (baseChanged ? baseMinutes : (initialBase ?? 0)) + (adding ? addMinutes : 0) : null;
+  const over = minutes != null && minutes > MAX_MINUTES;
   const ratingNumber = rating === "" ? null : Number(rating);
   const ratingBad = ratingNumber != null && (!Number.isFinite(ratingNumber) || ratingNumber < 0 || ratingNumber > 100);
 
@@ -60,7 +69,8 @@ export default function StatsDialog({
     try {
       await api.put(`/api/backlog/${entryId}/personal-record`, {
         rating: ratingNumber,
-        playTimeHours: minutes == null ? null : minutesToHours(minutes),
+        playTimeMinutes: baseChanged ? baseMinutes : null,
+        addMinutes: adding ? addMinutes : null,
         memo: record.memo,
       });
       onSaved();
@@ -118,12 +128,12 @@ export default function StatsDialog({
           <p className={`min-h-4 text-[11px] ${over ? "text-red-400" : "text-white/45"}`}>
             {over ? (
               "99,999시간 59분을 넘을 수 없습니다"
-            ) : adding && minutes != null ? (
+            ) : minutes != null ? (
               <>
                 저장될 값 <span className="text-white/80"><PlayTime hours={minutesToHours(minutes)} /></span>
               </>
             ) : (
-              "↑↓로 증감 · 분이 59를 넘으면 시간이 1 올라갑니다"
+              "고치면 '직접 수정', 더하면 '추가' 기록으로 남습니다 · ↑↓로 증감"
             )}
           </p>
         </Field>

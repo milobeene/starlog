@@ -433,3 +433,45 @@ export const apiCallLog = pgTable("api_call_log", {
 	index("idx_api_call_log_provider_called").using("btree", table.provider.asc().nullsLast().op("text_ops"), table.calledAt.asc().nullsLast().op("text_ops")),
 	index("idx_api_call_log_provider_called_at").using("btree", table.provider.asc().nullsLast().op("text_ops"), table.calledAt.asc().nullsLast().op("text_ops")),
 ]);
+
+export const playRecord = pgTable("play_record", {
+	id: bigint({ mode: "number" }).primaryKey().generatedByDefaultAsIdentity({ name: "play_record_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 9223372036854775807, cache: 1 }),
+	backlogEntryId: bigint("backlog_entry_id", { mode: "number" }).notNull(),
+	kind: varchar({ length: 20 }).notNull(),
+	minutes: numeric({ precision: 8, scale:  1 }).notNull(),
+	playedOn: date("played_on").notNull(),
+	note: varchar({ length: 100 }),
+	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }),
+	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }),
+}, (table) => [
+	index("idx_play_record_entry").using("btree", table.backlogEntryId.asc().nullsLast().op("date_ops"), table.playedOn.asc().nullsLast().op("date_ops")),
+	foreignKey({
+			columns: [table.backlogEntryId],
+			foreignColumns: [backlogEntry.id],
+			name: "fk_play_record_entry"
+		}),
+	check("chk_play_record_kind", sql`(kind)::text = ANY ((ARRAY['BASELINE'::character varying, 'ADJUST'::character varying, 'ADD'::character varying])::text[])`),
+	check("chk_play_record_add_positive", sql`((kind)::text <> 'ADD'::text) OR (minutes > (0)::numeric)`),
+]);
+
+export const homeopsPlayLog = pgTable("homeops_play_log", {
+	id: bigint({ mode: "number" }).primaryKey().generatedByDefaultAsIdentity({ name: "homeops_play_log_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 9223372036854775807, cache: 1 }),
+	backlogEntryId: bigint("backlog_entry_id", { mode: "number" }).notNull(),
+	externalId: varchar("external_id", { length: 200 }).notNull(),
+	startedAt: timestamp("started_at", { precision: 6, mode: 'string' }).notNull(),
+	endedAt: timestamp("ended_at", { precision: 6, mode: 'string' }).notNull(),
+	minutes: integer().notNull(),
+	label: varchar({ length: 200 }),
+	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }),
+	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }),
+}, (table) => [
+	index("idx_homeops_play_log_entry").using("btree", table.backlogEntryId.asc().nullsLast().op("int8_ops")),
+	foreignKey({
+			columns: [table.backlogEntryId],
+			foreignColumns: [backlogEntry.id],
+			name: "fk_homeops_play_log_entry"
+		}).onDelete("cascade"),
+	unique("uk_homeops_play_log_external").on(table.externalId),
+	check("chk_homeops_play_log_minutes", sql`minutes >= 0`),
+	check("chk_homeops_play_log_range", sql`ended_at >= started_at`),
+]);

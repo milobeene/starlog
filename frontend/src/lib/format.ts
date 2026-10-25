@@ -26,6 +26,14 @@ export function formatPlayTime(hours: number | null | undefined): string | null 
   return parts.minutes === 0 ? `${h}시간` : `${h}시간 ${parts.minutes}분`;
 }
 
+/** 플레이 기록 한 줄의 양 — `+1시간 30분` · `-30분` (분 단위 부호). 0은 부호 없이 `0분` */
+export function formatSignedMinutes(minutes: number): string {
+  const text = formatPlayTime(Math.abs(minutes) / 60) ?? "0분";
+  const rounded = Math.round(Math.abs(minutes));
+  if (rounded === 0) return text;
+  return `${minutes < 0 ? "−" : "+"}${text}`;
+}
+
 /** 입력 두 칸("지금까지" + "이번에")을 합칠 때 쓴다. 0.1 + 0.2 = 0.30000000000000004 방지 */
 export function roundHours(value: number): number {
   return Math.round(value * 100) / 100;

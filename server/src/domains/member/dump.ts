@@ -18,6 +18,10 @@ import { opt, zDate, zDecimal, zLong, zText } from "../../common/schemas";
  *     올린 이유 — 옛 앱이 이 파일을 읽으면 에뮬 계정을 플랫폼 계정으로 만들려다 엉뚱한 400이 난다
  * 4 — 프로필에서 `email`이 빠지고 `backgroundPresets`가 들어왔다 (V14, 2026-10-24). 읽기는 1~3도 그대로 —
  *     옛 파일의 `email`은 버리고, 프리셋이 없으면 지금 프리셋을 건드리지 않는다
+ *
+ * 항목의 `playRecords`(플레이타임 기록, v2 S4)는 **번호를 안 올리고** 더했다 — 양쪽으로 안전해서다.
+ * 옛 앱은 모르는 키를 버리고 `playTimeHours`(합계, 그대로 싣는다)를 쓰고, 새 앱은 `playRecords`가 없는
+ * 옛 파일을 합계에서 BASELINE 한 줄로 만든다
  */
 export const FORMAT_VERSION = 4;
 
@@ -89,12 +93,16 @@ const Acquisition = z.object({
   subscription: text, price: Money, acquiredOn: opt(zDate), label: text,
 });
 
+/** STARLOG 기록만 — homeops 일정은 homeops 쪽 데이터라 안 싣는다(합계 차이는 가져올 때 메운다) */
+const PlayRecord = z.object({ kind: text, minutes: decimal, playedOn: opt(zDate), note: text });
+
 const Entry = z.object({
   gameKey: text, createdAt: opt(zLdt), deletedAt: opt(zLdt),
   nameOverride: text, developerOverrides: texts, publisherOverrides: texts,
   releasedOnOverride: opt(zDate), listPriceOverride: Money,
   rating: decimal, playTimeHours: decimal, memo: text, tag: text, genres: texts,
   cover: opt(Cover), playthroughs: list(Playthrough), acquisitions: list(Acquisition),
+  playRecords: list(PlayRecord),
 });
 
 /** 요청 본문 */
@@ -114,6 +122,7 @@ export type DumpProfile = NonNullable<MemberDump["profile"]>;
 export type DumpGame = z.output<typeof Game>;
 export type DumpEntry = z.output<typeof Entry>;
 export type DumpCover = z.output<typeof Cover>;
+export type DumpPlayRecord = z.output<typeof PlayRecord>;
 
 
 /** 의도된 500 — 값이 null인 채 꺼내 쓰이던 자리. 전역 핸들러가 못 잡아 기본 500 본문이 나간다 */

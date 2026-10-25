@@ -33,6 +33,7 @@ import { findAliveEntry404 } from "./shared";
 import { resolveGame } from "../game/service";
 import { translateGame } from "../system/service";
 import { addAcquisition, deleteAcquisition, updateAcquisition } from "./acquisition";
+import { addPlayRecord, deletePlayRecord, listPlayRecords, updatePlayRecord } from "./playtime";
 
 export const routes = new Hono();
 
@@ -45,7 +46,26 @@ const PersonalRecordRequest = z.object({
   rating: opt(zDecimal.transform(String)),
   playTimeHours: opt(zDecimal.transform(String)),
   memo: opt(zText),
+  /** 합계(분) — 오면 playTimeHours보다 우선 (v2 S4) */
+  playTimeMinutes: opt(zDecimal.transform(String)),
+  /** 이번에 한 만큼(분) → 추가 기록 */
+  addMinutes: opt(zDecimal.transform(String)),
 });
+
+const PlayRecordRequest = z.object({
+  minutes: opt(zDecimal.transform(String)),
+  playedOn: opt(zDate),
+  note: opt(zText),
+});
+
+async function playRecordBody(c: Context) {
+  const r = await readBodyExact(c, PlayRecordRequest);
+  violations()
+    .notNull("minutes", r.minutes, DEFAULT_MSG.notNull)
+    .size("note", r.note, 0, 100, DEFAULT_MSG.size(0, 100))
+    .throwIfAny();
+  return r;
+}
 
 const OverrideUpdateRequest = z.object({
   name: opt(zText),
@@ -338,7 +358,8 @@ routes.put("/api/backlog/:entryId/personal-record", async (c) => {
   const r = await readBodyExact(c, PersonalRecordRequest);
   // TEXT 컬럼이라 도메인 제한이 아니라 폭주 방지 상한이다
   violations().size("memo", r.memo, 0, 5000, DEFAULT_MSG.size(0, 5000)).throwIfAny();
-  await db().transaction((tx) => updatePersonalRecord(tx, entryId, r.rating, r.playTimeHours, r.memo));
+  await db().transaction((tx) => updatePersonalRecord(tx, entryId, r.rating,
+    { hours: r.playTimeHours, minutes: r.playTimeMinutes, addMinutes: r.addMinutes }, r.memo));
   return c.body(null, 200);
 });
 
@@ -375,6 +396,37 @@ routes.put("/api/backlog/:entryId/genres", async (c) => {
   if (errors.length) throw new InvalidInput(errors.join(", "));
   await db().transaction((tx) => replaceGenres(tx, entryId, r.names!));
   return c.body(null, 200);
+});
+
+// ───────────── 플레이타임 기록 (v2 S4) ─────────────
+
+/** STARLOG 기록 + homeops 일정, 최신순. homeops 것은 `editable: false` — 고치는 길이 아예 없다(표가 다르다) */
+routes.get("/api/backlog/:entryId/play-records", async (c) => {
+  const entryId = pathId(c, "entryId");
+  return c.json(await db().transaction((tx) => listPlayRecords(tx, entryId)));
+});
+
+/** 추가(ADD)만. 직접 수정(ADJUST)은 개인 기록 저장에서 합계가 바뀔 때 생긴다 */
+routes.post("/api/backlog/:entryId/play-records", async (c) => {
+  const entryId = pathId(c, "entryId");
+  const r = await playRecordBody(c);
+  const id = await db().transaction((tx) => addPlayRecord(tx, entryId, r));
+  c.header("Location", `/api/play-records/${id}`);
+  return c.json({ id }, 201);
+});
+
+/** STARLOG 기록만 (`play_record`). homeops 일정 번호는 다른 표라 여기서 찾지 않는다 */
+routes.put("/api/play-records/:recordId", async (c) => {
+  const recordId = pathId(c, "recordId");
+  const r = await playRecordBody(c);
+  await db().transaction((tx) => updatePlayRecord(tx, recordId, r));
+  return c.body(null, 200);
+});
+
+routes.delete("/api/play-records/:recordId", async (c) => {
+  const recordId = pathId(c, "recordId");
+  await db().transaction((tx) => deletePlayRecord(tx, recordId));
+  return c.body(null, 204);
 });
 
 // ───────────── 회차 ─────────────

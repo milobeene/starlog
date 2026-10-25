@@ -364,7 +364,8 @@
     "rating": 85.55,
     "playTimeHours": 12.345,
     "memo": "  좋았다  "
-   }
+   },
+   "note": "합계 16.5 → 12.35시간은 덮어쓰지 않고 직접 수정(ADJUST -249분) 한 줄로 남는다 (v2 S4)"
   },
   {
    "name": "개인 기록 — 같은 값 (변경 없음)",
@@ -384,7 +385,8 @@
     "rating": null,
     "playTimeHours": null,
     "memo": "   "
-   }
+   },
+   "note": "v2 S4부터 playTimeHours null은 '플레이타임 그대로'다 (기록이 원본이라 '지움'이 없다). 평점·메모만 비워진다"
   },
   {
    "name": "개인 기록 — -0.04는 0.0",
@@ -393,7 +395,8 @@
    "body": {
     "rating": -0.04,
     "playTimeHours": 0
-   }
+   },
+   "note": "기록이 없던 항목에 0시간 — '안 적음'과 달라서 0분짜리 직접 수정이 남는다 (v2 S4)"
   },
   {
    "name": "개인 기록 — 평점 150.0",
@@ -441,7 +444,8 @@
    "path": "/api/backlog/87/personal-record",
    "body": {
     "rating": " 77.25 "
-   }
+   },
+   "note": "playTimeHours가 빠졌다 — S4 전에는 합계가 지워졌고, 이제는 그대로다"
   },
   {
    "name": "개인 기록 — 평점 깨진 값",
@@ -2047,6 +2051,295 @@
     "platformAccountId": 7
    },
    "note": "에뮬 B의 id가 9여야 의미가 있다(녹화본에서 확인) — 예전엔 숫자만 비교해 통과했다"
+  },
+  {
+   "name": "플레이 기록 — 81 목록 (기존 기록 + 반올림 수정이 남긴 직접 수정)",
+   "method": "GET",
+   "path": "/api/backlog/81/play-records",
+   "save": {
+    "adj81": "0.recordId",
+    "base81": "1.recordId"
+   },
+   "note": "앞의 '개인 기록 — 반올림'이 16.5시간 → 12.35시간을 ADJUST -249분으로 남겼다"
+  },
+  {
+   "name": "플레이 기록 — 추가 90분 (메모 strip)",
+   "method": "POST",
+   "path": "/api/backlog/81/play-records",
+   "body": {
+    "minutes": 90,
+    "playedOn": "2026-01-02",
+    "note": "  주말  "
+   },
+   "save": {
+    "add81": "id"
+   }
+  },
+  {
+   "name": "플레이 기록 — 추가, 날짜 없음 → 오늘 · 소수 둘째 자리 반올림",
+   "method": "POST",
+   "path": "/api/backlog/81/play-records",
+   "body": {
+    "minutes": "30.04"
+   },
+   "save": {
+    "add81b": "id"
+   }
+  },
+  {
+   "name": "플레이 기록 — 추가 0분 (거절)",
+   "method": "POST",
+   "path": "/api/backlog/81/play-records",
+   "body": {
+    "minutes": 0
+   }
+  },
+  {
+   "name": "플레이 기록 — 추가 음수 (거절)",
+   "method": "POST",
+   "path": "/api/backlog/81/play-records",
+   "body": {
+    "minutes": -5
+   }
+  },
+  {
+   "name": "플레이 기록 — 분 없음",
+   "method": "POST",
+   "path": "/api/backlog/81/play-records",
+   "body": {
+    "playedOn": "2026-01-02"
+   }
+  },
+  {
+   "name": "플레이 기록 — 메모 101자",
+   "method": "POST",
+   "path": "/api/backlog/81/play-records",
+   "body": {
+    "minutes": 1,
+    "note": "가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가"
+   }
+  },
+  {
+   "name": "플레이 기록 — 날짜 형식 오류",
+   "method": "POST",
+   "path": "/api/backlog/81/play-records",
+   "body": {
+    "minutes": 1,
+    "playedOn": "2026-02-30"
+   }
+  },
+  {
+   "name": "플레이 기록 — 깨진 JSON",
+   "method": "POST",
+   "path": "/api/backlog/81/play-records",
+   "rawBody": "{"
+  },
+  {
+   "name": "플레이 기록 — 상한 넘김 (합계 99,999시간 59분)",
+   "method": "POST",
+   "path": "/api/backlog/81/play-records",
+   "body": {
+    "minutes": 6000000
+   }
+  },
+  {
+   "name": "플레이 기록 — 수정 (양·날짜·메모)",
+   "method": "PUT",
+   "path": "/api/play-records/${add81}",
+   "body": {
+    "minutes": 45,
+    "playedOn": "2026-01-03",
+    "note": null
+   }
+  },
+  {
+   "name": "플레이 기록 — 같은 값으로 수정 (변경 없음)",
+   "method": "PUT",
+   "path": "/api/play-records/${add81}",
+   "body": {
+    "minutes": "45.0",
+    "playedOn": "2026-01-03",
+    "note": "  "
+   }
+  },
+  {
+   "name": "플레이 기록 — 추가 기록을 0분으로 (거절)",
+   "method": "PUT",
+   "path": "/api/play-records/${add81}",
+   "body": {
+    "minutes": 0,
+    "playedOn": "2026-01-03"
+   }
+  },
+  {
+   "name": "플레이 기록 — 기존 기록을 음수로 (거절)",
+   "method": "PUT",
+   "path": "/api/play-records/${base81}",
+   "body": {
+    "minutes": -10,
+    "playedOn": "2026-01-01"
+   }
+  },
+  {
+   "name": "플레이 기록 — 기존 기록 삭제 → 합계가 0 밑 (거절)",
+   "method": "DELETE",
+   "path": "/api/play-records/${base81}"
+  },
+  {
+   "name": "플레이 기록 — 직접 수정을 크게 줄임 → 0 밑 (거절)",
+   "method": "PUT",
+   "path": "/api/play-records/${adj81}",
+   "body": {
+    "minutes": -2000,
+    "playedOn": "2026-01-01"
+   }
+  },
+  {
+   "name": "플레이 기록 — 직접 수정 삭제 (합계가 늘어난다)",
+   "method": "DELETE",
+   "path": "/api/play-records/${adj81}"
+  },
+  {
+   "name": "플레이 기록 — 두 번째 추가 삭제",
+   "method": "DELETE",
+   "path": "/api/play-records/${add81b}"
+  },
+  {
+   "name": "개인 기록 — 합계(분)를 10시간으로 → 직접 수정",
+   "method": "PUT",
+   "path": "/api/backlog/81/personal-record",
+   "body": {
+    "rating": 85.6,
+    "playTimeMinutes": 600,
+    "memo": "좋았다"
+   }
+  },
+  {
+   "name": "개인 기록 — 옛 모양, 지금 합계 그대로 (변경 없음)",
+   "method": "PUT",
+   "path": "/api/backlog/81/personal-record",
+   "body": {
+    "rating": 85.6,
+    "playTimeHours": 10,
+    "memo": "좋았다"
+   }
+  },
+  {
+   "name": "개인 기록 — 더하기 15분만",
+   "method": "PUT",
+   "path": "/api/backlog/81/personal-record",
+   "body": {
+    "rating": 85.6,
+    "playTimeHours": 10,
+    "addMinutes": 15,
+    "memo": "좋았다"
+   }
+  },
+  {
+   "name": "개인 기록 — 합계 + 더하기 (직접 수정 뒤 추가)",
+   "method": "PUT",
+   "path": "/api/backlog/81/personal-record",
+   "body": {
+    "rating": 85.6,
+    "playTimeMinutes": 700,
+    "addMinutes": 20,
+    "memo": "좋았다"
+   }
+  },
+  {
+   "name": "개인 기록 — 더하기 0분 (거절)",
+   "method": "PUT",
+   "path": "/api/backlog/81/personal-record",
+   "body": {
+    "rating": 85.6,
+    "addMinutes": 0,
+    "memo": "좋았다"
+   }
+  },
+  {
+   "name": "개인 기록 — 합계(분) 음수 (거절)",
+   "method": "PUT",
+   "path": "/api/backlog/81/personal-record",
+   "body": {
+    "rating": 85.6,
+    "playTimeMinutes": -1,
+    "memo": "좋았다"
+   }
+  },
+  {
+   "name": "개인 기록 — 합계(분) 상한 초과 (거절)",
+   "method": "PUT",
+   "path": "/api/backlog/81/personal-record",
+   "body": {
+    "rating": 85.6,
+    "playTimeMinutes": 6000000,
+    "memo": "좋았다"
+   }
+  },
+  {
+   "name": "플레이 기록 — 81 목록 끝",
+   "method": "GET",
+   "path": "/api/backlog/81/play-records"
+  },
+  {
+   "name": "상세 81 — 플레이 기록 뒤",
+   "method": "GET",
+   "path": "/api/backlog/81"
+  },
+  {
+   "name": "플레이 기록 — 실데이터 다른 항목 목록 (기존 기록 하나 — V15가 만든 것)",
+   "method": "GET",
+   "path": "/api/backlog/89/play-records"
+  },
+  {
+   "name": "플레이 기록 — 기록 없는 항목 목록 (빈 배열)",
+   "method": "GET",
+   "path": "/api/backlog/95/play-records"
+  },
+  {
+   "name": "플레이 기록 — 없는 항목 목록",
+   "method": "GET",
+   "path": "/api/backlog/999999/play-records"
+  },
+  {
+   "name": "플레이 기록 — 삭제된 항목 목록 (404)",
+   "method": "GET",
+   "path": "/api/backlog/108/play-records"
+  },
+  {
+   "name": "플레이 기록 — 삭제된 항목에 추가 (409)",
+   "method": "POST",
+   "path": "/api/backlog/108/play-records",
+   "body": {
+    "minutes": 10
+   }
+  },
+  {
+   "name": "플레이 기록 — 없는 항목에 추가",
+   "method": "POST",
+   "path": "/api/backlog/999999/play-records",
+   "body": {
+    "minutes": 10
+   }
+  },
+  {
+   "name": "플레이 기록 — 없는 기록 수정",
+   "method": "PUT",
+   "path": "/api/play-records/999999",
+   "body": {
+    "minutes": 10,
+    "playedOn": "2026-01-01"
+   }
+  },
+  {
+   "name": "플레이 기록 — 없는 기록 삭제",
+   "method": "DELETE",
+   "path": "/api/play-records/999999"
+  },
+  {
+   "name": "플레이 기록 — 번호가 숫자 아님",
+   "method": "DELETE",
+   "path": "/api/play-records/abc"
   }
  ]
 }

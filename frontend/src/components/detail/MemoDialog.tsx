@@ -10,8 +10,8 @@ import type { PersonalRecord } from "@/lib/types";
 /**
  * 메모 수정. 점수·플레이타임은 맨 위 요약 줄의 `StatsDialog`로 옮겼다.
  *
- * ⚠️ 서버 PUT은 세 값을 **통째로 받는다** (빠진 값은 null = 지움). 안 건드린 점수·플레이타임을
- * 현재 값 그대로 같이 보낸다
+ * ⚠️ 서버 PUT은 점수·메모를 **통째로 받는다** (빠진 값은 null = 지움). 안 건드린 점수를 현재 값 그대로 보낸다.
+ * 플레이타임은 기록의 합이라 null이면 그대로다 (v2 S4) — 보내지 않는다
  */
 export default function MemoDialog({
   entryId,
@@ -34,7 +34,6 @@ export default function MemoDialog({
     try {
       await api.put(`/api/backlog/${entryId}/personal-record`, {
         rating: record.rating,
-        playTimeHours: record.playTimeHours,
         memo: memo.trim() === "" ? null : memo,
       });
       onSaved();

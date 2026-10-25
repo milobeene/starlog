@@ -1,0 +1,301 @@
+{
+ "name": "play-records",
+ "note": "플레이타임 기록 (v2 S4) — homeops 일정은 API로 못 만들어서 `sql`로 넣는다. 미래 일정의 시각은 장치가 <NOW>로 접는다(지금 이후 시각). 끝난 일정만 합계에 들어가는지, 고칠 길이 없는지, 0 밑 가드, 내보내기·덮어쓰기",
+ "fixture": "fresh",
+ "sql": [
+  "insert into game (source, name, created_at, updated_at) values ('MANUAL', 'Log Alpha', '2026-01-01 09:00:00', '2026-01-01 09:00:00'), ('MANUAL', 'Log Beta', '2026-01-01 09:00:00', '2026-01-01 09:00:00')",
+  "insert into backlog_entry (game_id, status, display_name, display_name_sort_key, created_at, updated_at) select id, 'WISHLIST', name, '1|' || lower(name), '2026-01-01 09:00:00', '2026-01-01 09:00:00' from game where name in ('Log Alpha', 'Log Beta') order by name",
+  "insert into homeops_play_log (backlog_entry_id, external_id, started_at, ended_at, minutes, label, created_at, updated_at) select b.id, v.ext, v.s::timestamp, v.e::timestamp, v.m, v.l, '2026-01-01 09:00:00', '2026-01-01 09:00:00' from backlog_entry b join (values ('Log Alpha', 'evt-a1', '2026-01-10 20:00:00', '2026-01-10 21:30:00', 90, '저녁 플레이'), ('Log Alpha', 'evt-a2', '2026-01-11 13:00:00', '2026-01-11 13:45:00', 45, null), ('Log Alpha', 'evt-a3', '2999-01-01 20:00:00', '2999-01-01 22:00:00', 120, '먼 미래'), ('Log Beta', 'evt-b1', '2999-02-01 20:00:00', '2999-02-01 21:00:00', 60, null)) as v(name, ext, s, e, m, l) on v.name = b.display_name"
+ ],
+ "steps": [
+  {
+   "name": "준비 — 카드 (기동 때 합계: 끝난 일정 둘 = 135분)",
+   "method": "GET",
+   "path": "/api/backlog/cards",
+   "save": {
+    "a": "0.entryId",
+    "b": "1.entryId"
+   }
+  },
+  {
+   "name": "상세 A — 끝난 일정만 합계에 (2.25시간)",
+   "method": "GET",
+   "path": "/api/backlog/${a}"
+  },
+  {
+   "name": "상세 B — 안 끝난 일정뿐 → 합계 없음(null)",
+   "method": "GET",
+   "path": "/api/backlog/${b}"
+  },
+  {
+   "name": "목록 A — 일정 3줄, 고칠 수 없음, 미래 것은 counted=false",
+   "method": "GET",
+   "path": "/api/backlog/${a}/play-records"
+  },
+  {
+   "name": "목록 B — 미래 일정 하나",
+   "method": "GET",
+   "path": "/api/backlog/${b}/play-records"
+  },
+  {
+   "name": "일정 번호로 수정 — STARLOG 기록 표에 없다 (404)",
+   "method": "PUT",
+   "path": "/api/play-records/1",
+   "body": {
+    "minutes": 10,
+    "playedOn": "2026-01-01"
+   }
+  },
+  {
+   "name": "일정 번호로 삭제 — 404",
+   "method": "DELETE",
+   "path": "/api/play-records/2"
+  },
+  {
+   "name": "개인 기록 — 합계를 1시간으로 (일정 몫까지 본 차이 -75분)",
+   "method": "PUT",
+   "path": "/api/backlog/${a}/personal-record",
+   "body": {
+    "rating": null,
+    "playTimeMinutes": 60,
+    "memo": null
+   },
+   "note": "StatsDialog가 보내는 모양 — 지금까지 칸을 고친 경우"
+  },
+  {
+   "name": "상세 A — 1시간",
+   "method": "GET",
+   "path": "/api/backlog/${a}"
+  },
+  {
+   "name": "추가 — 30분 (오늘)",
+   "method": "POST",
+   "path": "/api/backlog/${a}/play-records",
+   "body": {
+    "minutes": 30,
+    "note": "짧게"
+   },
+   "save": {
+    "r30": "id"
+   }
+  },
+  {
+   "name": "개인 기록 — 더하기만 20분",
+   "method": "PUT",
+   "path": "/api/backlog/${a}/personal-record",
+   "body": {
+    "rating": null,
+    "addMinutes": 20,
+    "memo": null
+   }
+  },
+  {
+   "name": "개인 기록 — 합계 0으로 (일정 몫 135분을 상쇄)",
+   "method": "PUT",
+   "path": "/api/backlog/${a}/personal-record",
+   "body": {
+    "rating": null,
+    "playTimeMinutes": 0,
+    "memo": null
+   }
+  },
+  {
+   "name": "0 밑 — 추가 기록 삭제 (거절, 일정 몫 포함 합으로 본다)",
+   "method": "DELETE",
+   "path": "/api/play-records/${r30}"
+  },
+  {
+   "name": "0 밑 — 추가를 1분으로 줄임 (거절)",
+   "method": "PUT",
+   "path": "/api/play-records/${r30}",
+   "body": {
+    "minutes": 1,
+    "playedOn": "2026-01-12"
+   }
+  },
+  {
+   "name": "늘리는 쪽 — 추가 10분 (받는다)",
+   "method": "POST",
+   "path": "/api/backlog/${a}/play-records",
+   "body": {
+    "minutes": 10,
+    "playedOn": "2026-01-12"
+   }
+  },
+  {
+   "name": "목록 A — 끝 (일정 + 직접 수정·추가)",
+   "method": "GET",
+   "path": "/api/backlog/${a}/play-records"
+  },
+  {
+   "name": "상세 A — 10분",
+   "method": "GET",
+   "path": "/api/backlog/${a}"
+  },
+  {
+   "name": "B에 기록 — 일정만 있던 항목에 추가",
+   "method": "POST",
+   "path": "/api/backlog/${b}/play-records",
+   "body": {
+    "minutes": 15,
+    "playedOn": "2026-01-05"
+   }
+  },
+  {
+   "name": "내보내기 — homeops 일정은 안 실린다",
+   "method": "GET",
+   "path": "/api/me/export",
+   "save": {
+    "fv": "formatVersion",
+    "prof": "profile",
+    "cat": "catalog",
+    "games": "games",
+    "entries": "entries"
+   }
+  },
+  {
+   "name": "덮어쓰기 — 같은 파일 (일정 몫은 '가져온 합계에 맞춤' 한 줄로, 일정 행은 항목과 함께 사라진다)",
+   "method": "POST",
+   "path": "/api/me/replace",
+   "body": {
+    "formatVersion": "${fv}",
+    "profile": "${prof}",
+    "catalog": "${cat}",
+    "games": "${games}",
+    "entries": "${entries}"
+   }
+  },
+  {
+   "name": "덮어쓴 뒤 — 카드 (합계가 그대로)",
+   "method": "GET",
+   "path": "/api/backlog/cards",
+   "save": {
+    "a2": "0.entryId"
+   }
+  },
+  {
+   "name": "덮어쓴 뒤 — 목록 A",
+   "method": "GET",
+   "path": "/api/backlog/${a2}/play-records"
+  },
+  {
+   "name": "옛 파일 — 기록 없이 합계만 (BASELINE 한 줄)",
+   "method": "POST",
+   "path": "/api/me/replace",
+   "body": {
+    "formatVersion": 4,
+    "catalog": {
+     "tags": [],
+     "genres": []
+    },
+    "games": [
+     {
+      "externalId": null,
+      "source": "MANUAL",
+      "name": "Log Gamma"
+     }
+    ],
+    "entries": [
+     {
+      "gameKey": "name:Log Gamma",
+      "createdAt": "2026-03-04T10:00:00",
+      "playTimeHours": 2.38
+     }
+    ]
+   }
+  },
+  {
+   "name": "옛 파일 뒤 — 카드",
+   "method": "GET",
+   "path": "/api/backlog/cards",
+   "save": {
+    "g": "0.entryId"
+   }
+  },
+  {
+   "name": "옛 파일 뒤 — 목록 (정수 분 143분으로 메운다 — 합계 2.38시간은 그대로)",
+   "method": "GET",
+   "path": "/api/backlog/${g}/play-records"
+  },
+  {
+   "name": "가져오기 — 기록 종류 모름 (500, 다른 enum과 같다)",
+   "method": "POST",
+   "path": "/api/me/replace",
+   "body": {
+    "formatVersion": 4,
+    "games": [
+     {
+      "externalId": null,
+      "source": "MANUAL",
+      "name": "Log Gamma"
+     }
+    ],
+    "entries": [
+     {
+      "gameKey": "name:Log Gamma",
+      "playRecords": [
+       {
+        "kind": "MAGIC",
+        "minutes": 10,
+        "playedOn": "2026-01-01"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "가져오기 — 추가 기록 0분 (400, 롤백)",
+   "method": "POST",
+   "path": "/api/me/replace",
+   "body": {
+    "formatVersion": 4,
+    "games": [
+     {
+      "externalId": null,
+      "source": "MANUAL",
+      "name": "Log Gamma"
+     }
+    ],
+    "entries": [
+     {
+      "gameKey": "name:Log Gamma",
+      "playRecords": [
+       {
+        "kind": "ADD",
+        "minutes": 0,
+        "playedOn": "2026-01-01"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "가져오기 — 기록 날짜 없음 (400)",
+   "method": "POST",
+   "path": "/api/me/replace",
+   "body": {
+    "formatVersion": 4,
+    "games": [
+     {
+      "externalId": null,
+      "source": "MANUAL",
+      "name": "Log Gamma"
+     }
+    ],
+    "entries": [
+     {
+      "gameKey": "name:Log Gamma",
+      "playRecords": [
+       {
+        "kind": "ADD",
+        "minutes": 5
+       }
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}
