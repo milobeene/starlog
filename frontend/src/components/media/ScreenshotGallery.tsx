@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import Dropdown from "@/components/ui/Dropdown";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -11,7 +11,7 @@ import MediaViewer from "@/components/library/MediaViewer";
 import { api, errorMessage, qs } from "@/lib/api";
 import { backendUrl } from "@/lib/apiBase";
 import { getBridge } from "@/lib/desktop";
-import { applyPick } from "@/lib/pick";
+import { usePick } from "@/lib/usePick";
 import { putTask } from "@/lib/tasks";
 import { invalidateQueries } from "@/lib/useApi";
 import type { GalleryItem, GalleryResponse } from "@/lib/types";
@@ -64,13 +64,13 @@ export default function ScreenshotGallery({
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
 
-  const [selectMode, setSelectMode] = useState(false);
-  const [selected, setSelected] = useState<Set<number>>(new Set());
-  const anchor = useRef<number | null>(null);
   const [viewing, setViewing] = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const media = getBridge()?.media;
+  /* 선택 상태는 상세의 스크린샷 구역과 같은 훅이다. 목록이 올 때 비우는 건 아래 fetch가 한다 */
+  const { selectMode, setSelectMode, selected, allSelected, pick, toggleAll, clear: clearPick, cancel: cancelSelect } =
+    usePick(data?.items.length ?? 0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -84,8 +84,7 @@ export default function ScreenshotGallery({
       .then((response) => {
         if (controller.signal.aborted) return;
         setData(response);
-        setSelected(new Set());
-        anchor.current = null;
+        clearPick();
         setLoading(false);
       })
       .catch((caught: unknown) => {
@@ -94,11 +93,10 @@ export default function ScreenshotGallery({
         setLoading(false);
       });
     return () => controller.abort();
-  }, [entryId, kind, nonce]);
+  }, [entryId, kind, nonce, clearPick]);
 
   const games = data?.games;
   const items = useMemo(() => data?.items ?? [], [data]);
-  const order = useMemo(() => items.map((_, index) => index), [items]);
 
   /* 고르고 있던 게임의 파일이 전부 지워지면 드롭다운에 없는 값이 남는다 — 전체로 돌아간다 */
   useEffect(() => {
@@ -129,44 +127,6 @@ export default function ScreenshotGallery({
       document.body.style.overflow = previous;
     };
   }, [dialogOpen, onClose]);
-
-  const cancelSelect = () => {
-    setSelectMode(false);
-    setSelected(new Set());
-    anchor.current = null;
-  };
-
-  const allSelected = items.length > 0 && selected.size === items.length;
-
-  const pick = (index: number, event: React.MouseEvent) => {
-    const shift = event.shiftKey;
-    const toggle = event.metaKey || event.ctrlKey;
-    if (shift && anchor.current !== null && selected.has(index)) {
-      /*
-       * 이미 켜진 칸을 Shift로 누르면 범위를 **끈다** (사용자 요구: 범위 일괄 선택/해제).
-       * `applyPick`은 켜는 쪽만 알아서 이 한 갈래만 여기서 푼다
-       */
-      const from = order.indexOf(anchor.current);
-      const range = order.slice(Math.min(from, index), Math.max(from, index) + 1);
-      setSelected((prev) => {
-        const next = new Set(prev);
-        range.forEach((i) => next.delete(i));
-        return next;
-      });
-      return;
-    }
-    /*
-     * 체크박스 화면이라 일반 클릭도 "그 칸만 토글"이다(`row: false`). Shift는 기존 선택에
-     * 범위를 더한다(`toggle: true`) — 파일 관리자처럼 교체하면 앞서 고른 것이 사라진다
-     */
-    const result = applyPick(selected, order, anchor.current, index, {
-      shift,
-      toggle: shift || toggle,
-      row: false,
-    });
-    anchor.current = result.anchor;
-    setSelected(result.next);
-  };
 
   const onTile = (index: number, event: React.MouseEvent) => {
     if (selectMode) pick(index, event);
@@ -322,10 +282,7 @@ export default function ScreenshotGallery({
             {selectMode && (
               <Button
                 disabled={items.length === 0}
-                onClick={() => {
-                  setSelected(allSelected ? new Set() : new Set(order));
-                  anchor.current = null;
-                }}
+                onClick={toggleAll}
               >
                 {allSelected ? "전체 선택 해제" : "전체 선택"}
               </Button>

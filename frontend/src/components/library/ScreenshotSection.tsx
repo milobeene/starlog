@@ -5,10 +5,12 @@ import { useState } from "react";
 import DropZone from "@/components/media/DropZone";
 import SectionIcon from "@/components/ui/SectionIcon";
 import { Button } from "@/components/ui/Field";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { api, errorMessage } from "@/lib/api";
 import { useApi } from "@/lib/useApi";
 import { uploadScreenshot } from "@/lib/upload";
 import { backendUrl } from "@/lib/apiBase";
+import { usePick } from "@/lib/usePick";
 import { getBridge } from "@/lib/desktop";
 import MediaViewer from "./MediaViewer";
 import MediaThumb, { PlayBadge } from "@/components/media/MediaThumb";
@@ -46,10 +48,10 @@ export default function ScreenshotSection({ entryId }: { entryId: number }) {
   const [canCollapse, setCanCollapse] = useState(false);
   /* 조회는 화면 전체가 쓰는 훅에 맡긴다 — 로딩·에러·재조회가 이미 한 벌로 들어 있다 */
   const list = useApi<Shot[]>(`/api/backlog/${entryId}/screenshots`);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [viewing, setViewing] = useState<number | null>(null);
   /** 전체 화면 갤러리 — 이 게임으로 걸러서 연다 (F5) */
   const [galleryOpen, setGalleryOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -71,6 +73,13 @@ export default function ScreenshotSection({ entryId }: { entryId: number }) {
         .map((shot) => ({ ...shot, url: backendUrl(shot.url) }))
     : null;
 
+  /*
+   * 선택은 갤러리와 같은 훅이다 (선택/취소·Shift 범위·⌘ 토글). 위치로 들기 때문에
+   * 목록이 새로 오면(업로드·삭제·갤러리에서 지움) 비운다 — `list.data`가 바뀔 때가 그때다
+   */
+  const { selectMode, setSelectMode, selected, allSelected, pick, toggleAll, clear, cancel } =
+    usePick(shots?.length ?? 0, list.data);
+
   const add = async (files: File[]) => {
     setBusy(true);
     setError(null);
@@ -89,26 +98,15 @@ export default function ScreenshotSection({ entryId }: { entryId: number }) {
   };
 
   const removeSelected = async () => {
-    if (selected.size === 0) return;
-    setBusy(true);
+    // ConfirmDialog가 실패를 받아 보여주도록 던진다
+    const names = [...selected].sort((x, y) => x - y).map((i) => shots?.[i]?.fileName).filter(Boolean);
     try {
-      await api.post(`/api/backlog/${entryId}/screenshots/delete`, [...selected]);
-      setSelected(new Set());
-      list.reload();
-    } catch (caught) {
-      setError(errorMessage(caught, "삭제하지 못했습니다."));
+      await api.post(`/api/backlog/${entryId}/screenshots/delete`, names);
     } finally {
-      setBusy(false);
+      clear();
+      list.reload();
     }
   };
-
-  const toggle = (name: string) =>
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
-      return next;
-    });
 
   const openFolder = async () => {
     const { path } = await api.get<{ path: string }>(
@@ -124,10 +122,20 @@ export default function ScreenshotSection({ entryId }: { entryId: number }) {
           <SectionIcon name="note" />
           Screenshots
         </span>
-        <span className="flex items-center gap-3">
-          {selected.size > 0 && (
-            <Button variant="danger" onClick={removeSelected} disabled={busy}>
-              {selected.size}장 삭제
+        {/* 칸을 음수 마진으로 넓히지 않는다 — 이웃 버튼 히트박스가 겹친다. 간격은 gap으로만 */}
+        <span className="flex flex-wrap items-center justify-end gap-1.5">
+          {selectMode && <span className="num mr-1 text-xs font-normal text-white/50">{selected.size}개 선택</span>}
+          {selectMode && (
+            <Button onClick={toggleAll}>{allSelected ? "전체 선택 해제" : "전체 선택"}</Button>
+          )}
+          {selectMode && (
+            <Button variant="danger" disabled={selected.size === 0 || busy} onClick={() => setConfirmDelete(true)}>
+              삭제
+            </Button>
+          )}
+          {shots && shots.length > 0 && (
+            <Button onClick={() => (selectMode ? cancel() : setSelectMode(true))}>
+              {selectMode ? "취소" : "선택"}
             </Button>
           )}
           {/*
@@ -138,7 +146,7 @@ export default function ScreenshotSection({ entryId }: { entryId: number }) {
             <button
               type="button"
               onClick={openFolder}
-              className="-mx-2 rounded-md px-2 py-2 text-[11px] font-normal text-white/35 transition-colors hover:bg-white/5 hover:text-white"
+              className="rounded-md px-2.5 py-2 text-[11px] font-normal text-white/35 transition-colors hover:bg-white/5 hover:text-white"
             >
               폴더 열기
             </button>
@@ -147,7 +155,7 @@ export default function ScreenshotSection({ entryId }: { entryId: number }) {
             <button
               type="button"
               onClick={() => setGalleryOpen(true)}
-              className="-mx-2 rounded-md px-2 py-2 text-[11px] font-normal text-white/50 transition-colors hover:bg-white/5 hover:text-white"
+              className="rounded-md px-2.5 py-2 text-[11px] font-normal text-white/50 transition-colors hover:bg-white/5 hover:text-white"
             >
               전체 화면
             </button>
@@ -173,9 +181,9 @@ export default function ScreenshotSection({ entryId }: { entryId: number }) {
       {/* 스크린샷도 접는다 (v1.2) — 수십 장이면 화면 아래가 통째로 밀린다 */}
       {shots && shots.length > 0 && (
         <Collapsible open={expanded} onOverflowChange={setCanCollapse}>
-        <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+        <div className={`mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 ${selectMode ? "select-none" : ""}`}>
           {shots.map((shot, index) => {
-            const picked = selected.has(shot.fileName);
+            const picked = selected.has(index);
             return (
               <div
                 key={shot.fileName}
@@ -186,29 +194,38 @@ export default function ScreenshotSection({ entryId }: { entryId: number }) {
                 {/* 목록은 썸네일, 크게 보기(MediaViewer)는 원본이다. 영상은 목록에서 재생하지 않는다 */}
                 <button
                   type="button"
-                  onClick={() => setViewing(index)}
-                  aria-label={`${shot.fileName} 크게 보기`}
-                  className="block h-full w-full cursor-zoom-in"
+                  onClick={(event) => (selectMode ? pick(index, event) : setViewing(index))}
+                  aria-label={selectMode ? `${shot.fileName} 선택` : `${shot.fileName} 크게 보기`}
+                  aria-pressed={selectMode ? picked : undefined}
+                  className={`block h-full w-full ${selectMode ? "cursor-pointer" : "cursor-zoom-in"}`}
                 >
                   <MediaThumb
                     thumbUrl={shot.thumbUrl}
                     url={shot.url}
                     isVideo={Boolean(shot.contentType?.startsWith("video/"))}
                     alt={shot.fileName}
+                    className={picked ? "opacity-70" : ""}
                   />
                 </button>
                 {shot.contentType?.startsWith("video/") && <PlayBadge />}
                 {/*
-                  체크는 늘 보이지 않는다 — 넉 장만 있어도 화면이 체크박스로 뒤덮인다.
-                  고른 것은 계속 보이고, 나머지는 마우스를 올렸을 때만
+                  선택 모드가 아닐 때 체크는 마우스를 올렸을 때만 — 넉 장만 있어도 화면이 체크박스로
+                  뒤덮인다. 눌러서 선택 모드로 들어가는 지름길이기도 하다.
+                  선택 모드에서는 늘 보인다 (갤러리와 같다)
                 */}
                 <button
-                  onClick={() => toggle(shot.fileName)}
+                  type="button"
+                  onClick={(event) => {
+                    setSelectMode(true);
+                    pick(index, event);
+                  }}
                   aria-label={`${shot.fileName} 선택`}
                   className={`absolute top-2 left-2 flex h-5 w-5 items-center justify-center rounded border text-[10px] transition-opacity ${
                     picked
                       ? "border-white bg-white text-black opacity-100"
-                      : "border-white/60 bg-black/40 text-transparent opacity-0 group-hover:opacity-100"
+                      : selectMode
+                        ? "border-white/70 bg-black/40 text-transparent opacity-100"
+                        : "border-white/60 bg-black/40 text-transparent opacity-0 group-hover:opacity-100"
                   }`}
                 >
                   ✓
@@ -229,6 +246,16 @@ export default function ScreenshotSection({ entryId }: { entryId: number }) {
       >
         {busy ? <p className="text-sm text-white/60">올리는 중…</p> : undefined}
       </DropZone>
+
+      {confirmDelete && (
+        <ConfirmDialog
+          title="삭제"
+          message={`선택한 ${selected.size}개를 삭제합니다. 썸네일도 함께 지워지며 되돌릴 수 없습니다.`}
+          confirmLabel={`${selected.size}개 삭제`}
+          onConfirm={removeSelected}
+          onClose={() => setConfirmDelete(false)}
+        />
+      )}
 
       {viewing !== null && shots && (
         <MediaViewer

@@ -5,7 +5,7 @@ import Chip from "@/components/ui/Chip";
 import StarIcon from "@/components/ui/StarIcon";
 import SectionIcon from "@/components/ui/SectionIcon";
 import InfoRow from "@/components/library/InfoRow";
-import { EditButton } from "@/components/ui/Field";
+import EditPencil from "@/components/ui/EditPencil";
 import type { DetailDialog } from "@/components/detail/detailDialog";
 import { formatList } from "@/lib/labels";
 import type { BacklogDetail } from "@/lib/types";
@@ -27,7 +27,7 @@ export function GameInformationCard({
           <SectionIcon name="info" className="h-3.5 w-3.5" />
           Game Information
         </span>
-        <EditButton onClick={() => onOpen({ kind: "overrides" })} label="게임 정보 덮어쓰기" />
+        <EditPencil className="-my-2 -mr-2" onClick={() => onOpen({ kind: "overrides" })} label="게임 정보 덮어쓰기" />
       </h4>
       <div className="space-y-3 text-sm">
         <InfoRow
@@ -130,7 +130,7 @@ export function TagCard({
           <SectionIcon name="tag" className="h-3.5 w-3.5" />
           Tag
         </span>
-        <EditButton onClick={() => onOpen({ kind: "tag" })} label="태그 수정" />
+        <EditPencil className="-my-2 -mr-2" onClick={() => onOpen({ kind: "tag" })} label="태그 수정" />
       </h4>
       <div className="flex flex-wrap gap-2">
         {tag ? (

@@ -1,6 +1,6 @@
 "use client";
 
-import { EditButton } from "@/components/ui/Field";
+import EditPencil from "@/components/ui/EditPencil";
 import StarIcon from "@/components/ui/StarIcon";
 import PlayTime from "@/components/ui/PlayTime";
 import { formatRating } from "@/lib/labels";
@@ -25,8 +25,8 @@ export default function SummaryStats({
   return (
     // 연필은 격자 밖에 둔다 — 칸이 늘면 nth-child 선 규칙이 어긋난다
     <div className="relative mb-10">
-      <div className="absolute top-1 right-0 z-10 sm:top-1.5">
-        <EditButton label="점수·플레이타임 수정" onClick={() => onOpen({ kind: "stats" })} />
+      <div className="absolute top-1 right-0 z-10">
+        <EditPencil label="점수·플레이타임 수정" onClick={() => onOpen({ kind: "stats" })} />
       </div>
     <div className="grid grid-cols-2 border-t-line border-b-line py-6 md:grid-cols-4 [&>*]:border-white/15 [&>*:nth-child(2n)]:border-l [&>*:nth-child(n+3)]:border-t md:[&>*]:border-l md:[&>*:first-child]:border-l-0 md:[&>*:nth-child(n+3)]:border-t-0">
       <Stat
