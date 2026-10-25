@@ -1,7 +1,7 @@
 "use client";
 
 import { Collapsible } from "@/components/settings/SettingsSection";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import DropZone from "@/components/media/DropZone";
 import SectionIcon from "@/components/ui/SectionIcon";
 import { Button } from "@/components/ui/Field";
@@ -16,6 +16,8 @@ import MediaViewer from "./MediaViewer";
 import MediaThumb, { PlayBadge } from "@/components/media/MediaThumb";
 import ScreenshotGallery from "@/components/media/ScreenshotGallery";
 import ShareMenu from "@/components/media/ShareMenu";
+import { onMediaChanged } from "@/lib/mediaEvents";
+import { useIdlePreload, useWindowedGrid } from "@/lib/useWindowedGrid";
 
 /**
  * 게임별 스크린샷 (v1.0 7단계, architecture §10-1).
@@ -40,6 +42,8 @@ type Shot = {
   takenAt: string | null;
   /** 저화질 썸네일. 없으면 원본으로 폴백한다 (MediaThumb) */
   thumbUrl: string | null;
+  /** 흐린 자리표시 (옛 서버에는 없다) */
+  placeholder?: string | null;
 };
 
 export default function ScreenshotSection({ entryId, gameName }: { entryId: number; gameName?: string }) {
@@ -68,11 +72,20 @@ export default function ScreenshotSection({ entryId, gameName }: { entryId: numb
    * `src={shot.url}`을 쓰는 자리마다 감싸지 않고 **목록을 만드는 이 한 곳**에서 바꾼다 —
    * 자리마다 감싸면 소비처가 하나 늘 때 또 깨진다 (지금도 목록·뷰어 네 군데다)
    */
-  const shots = list.data
+  const shots = useMemo(() => list.data
     ? [...list.data]
         .sort((a, b) => (a.takenAt ?? "9").localeCompare(b.takenAt ?? "9"))
         .map((shot) => ({ ...shot, url: backendUrl(shot.url), thumbUrl: shot.thumbUrl ? backendUrl(shot.thumbUrl) : null }))
-    : null;
+    : null, [list.data]);
+
+  /* 탐색기로 넣고 지운 것 — 일렉트론이 폴더 감시로 알려 준다 */
+  const reload = list.reload;
+  useEffect(() => onMediaChanged(reload), [reload]);
+
+  /* 수백 장이면 보이는 줄만 그린다 (펼쳤을 때 800칸 × 노드 여럿). 나머지 썸네일은 한가할 때 미리 받는다 */
+  const { attachOuter, attachGrid, start: winStart, end: winEnd, top: winTop, height: winHeight } = useWindowedGrid(shots?.length ?? 0);
+  const thumbUrls = useMemo(() => shots?.map((shot) => shot.thumbUrl) ?? [], [shots]);
+  useIdlePreload(thumbUrls, expanded && viewing === null);
 
   /*
    * 선택은 갤러리와 같은 훅이다 (선택/취소·Shift 범위·⌘ 토글). 위치로 들기 때문에
@@ -189,8 +202,15 @@ export default function ScreenshotSection({ entryId, gameName }: { entryId: numb
       {/* 스크린샷도 접는다 (v1.2) — 수십 장이면 화면 아래가 통째로 밀린다 */}
       {shots && shots.length > 0 && (
         <Collapsible open={expanded} onOverflowChange={setCanCollapse}>
-        <div className={`mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 ${selectMode ? "select-none" : ""}`}>
-          {shots.map((shot, index) => {
+        <div ref={attachOuter} className="relative mb-4" style={winHeight === null ? undefined : { height: winHeight }}>
+        <div
+          ref={attachGrid}
+          data-count={shots.length}
+          style={{ top: winTop }}
+          className={`absolute inset-x-0 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 ${selectMode ? "select-none" : ""}`}
+        >
+          {shots.slice(winStart, winEnd).map((shot, offset) => {
+            const index = winStart + offset;
             const picked = selected.has(index);
             return (
               <div
@@ -212,6 +232,7 @@ export default function ScreenshotSection({ entryId, gameName }: { entryId: numb
                     url={shot.url}
                     isVideo={Boolean(shot.contentType?.startsWith("video/"))}
                     alt={shot.fileName}
+                    placeholder={shot.placeholder}
                     className={picked ? "opacity-70" : ""}
                   />
                 </button>
@@ -241,6 +262,7 @@ export default function ScreenshotSection({ entryId, gameName }: { entryId: numb
               </div>
             );
           })}
+        </div>
         </div>
         </Collapsible>
       )}

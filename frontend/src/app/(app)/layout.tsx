@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Field";
 import { useCloudBackupToasts } from "@/lib/cloudBackup";
 import { getBridge } from "@/lib/desktop";
 import { rememberAppPath } from "@/lib/lastAppPath";
+import { attachMediaEvents } from "@/lib/mediaEvents";
 import { refreshSession, useSession } from "@/lib/session";
 
 /**
@@ -32,6 +33,9 @@ const STUCK_AFTER_MS = 8_000;
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const session = useSession();
   const router = useRouter();
+
+  // 배경 썸네일 진행·폴더 감시 알림 (일렉트론). 문서에 한 번만 붙는다
+  useEffect(() => attachMediaEvents(), []);
 
   /*
    * 백엔드가 혼자 죽으면 입구로 돌아간다.

@@ -38,8 +38,9 @@ export function buildCsp(opts: { scriptHashes: string[]; imgOrigins: string[]; c
     // 인라인 style 속성·<style>이 내보낸 HTML에 없다. React의 style={...}은 CSSOM으로 들어가 CSP 대상이 아니다
     "style-src 'self'",
     // 커버: IGDB · 로컬 서버(LOCAL 커버·스크린샷·썸네일) · 스토리지 공개 주소(EXTERNAL 커버)
-    `img-src ${list("'self'", "data:", "blob:", "https://images.igdb.com", "http://127.0.0.1:*", ...opts.imgOrigins)}`,
-    "media-src 'self' blob: http://127.0.0.1:*",
+    // `starlog-media:` — 일렉트론 메인이 내주는 스크린샷 원본·썸네일 (`desktop/mediaProtocol.js`). 사진·영상 칸에만 연다
+    `img-src ${list("'self'", "data:", "blob:", "https://images.igdb.com", "http://127.0.0.1:*", "starlog-media:", ...opts.imgOrigins)}`,
+    "media-src 'self' blob: http://127.0.0.1:* starlog-media:",
     // 스토리지 엔드포인트 — EXTERNAL 커버는 브라우저가 서명된 주소로 직접 PUT한다
     `connect-src ${list("'self'", "http://127.0.0.1:*", ...opts.connectOrigins)}`,
     "font-src 'self'",

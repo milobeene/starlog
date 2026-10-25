@@ -569,8 +569,16 @@ export interface ScreenshotResponse {
   contentType: string;
   /** 찍은 시각(파일 수정 시각, UTC ISO) */
   takenAt: string;
-  /** 저화질 썸네일. 일렉트론 밖(개발 서버)이거나 아직 안 만들어졌으면 null — 원본 `url`로 폴백한다 */
+  /**
+   * 저화질 썸네일. 일렉트론 밖(개발 서버)이거나 아직 안 만들어졌으면 null — 원본 `url`로 폴백한다.
+   * 일렉트론이면 `url`·`thumbUrl`이 `starlog-media://…`(메인이 디스크에서 바로 내준다)다
+   */
   thumbUrl: string | null;
+  /** 흐린 자리표시 `"<w>x<h>:<RGB base64>"` (8px 안팎). 썸네일을 만들 때 생긴다 — 없으면 null */
+  placeholder: string | null;
+  /** 원본 크기 (EXIF 회전 적용). 모르면 null */
+  width: number | null;
+  height: number | null;
 }
 
 /** GET /api/screenshots — 전 게임 미디어 모아보기 (갤러리). `items`는 최신순 */
@@ -587,6 +595,10 @@ export interface GalleryItem {
   takenAt: string | null;
   url: string;
   thumbUrl: string | null;
+  /** `ScreenshotResponse`와 같다 */
+  placeholder: string | null;
+  width: number | null;
+  height: number | null;
 }
 
 export interface GalleryResponse {

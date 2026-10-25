@@ -28,7 +28,8 @@ export function thumbPathOf(folder: string, fileName: string): string {
 /** 클라이언트가 준 이름이 썸네일 폴더를 가리키나 — 스크린샷처럼 읽히거나 지워지면 안 된다 */
 export function pointsIntoThumbs(fileName: string): boolean {
   const first = path.normalize(fileName).split(/[\\/]/).find((s) => s !== "" && s !== ".");
-  return first === THUMB_DIR;
+  // 윈도우는 대소문자를 안 가린다 — `.THUMBS/x.jpg`도 같은 폴더다
+  return (process.platform === "win32" ? first?.toLowerCase() : first) === THUMB_DIR;
 }
 
 /** 원본 수정시각(ms, 정수). 썸네일 쪽에 심고 비교하는 값 */

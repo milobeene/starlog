@@ -64,8 +64,10 @@ const RealWindow = realElectron.BrowserWindow;
 let win = null;
 class HiddenWindow extends RealWindow {
   constructor(options = {}) {
-    super({ ...options, show: false });
-    win = this;
+    // 숨긴 창은 타이머가 늦춰진다 — 키 반복(33ms) 시험이 늦춰진 타이머를 재게 된다
+    super({ ...options, show: false, webPreferences: { ...(options.webPreferences ?? {}), backgroundThrottling: false } });
+    // 썸네일 공장(숨긴 창, `thumbPool.js`)은 본 창이 아니다
+    if (!String(options?.webPreferences?.preload ?? "").includes("thumbPreload")) win = this;
   }
   show() {}
   showInactive() {}
@@ -105,11 +107,18 @@ const fakeMode = (ctl) => fs.writeFileSync(FAKE_CTL, JSON.stringify(ctl ?? {}));
 const spawnLog = () => (fs.existsSync(FAKE_LOG) ? fs.readFileSync(FAKE_LOG, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)) : []);
 fakeMode({});
 
+/** `starlog-media://`로 온 요청 주소 — 뷰어가 이웃 원본을 미리 받는지 본다 (메인의 핸들러를 감싸 적기만 한다) */
+const mediaRequests = [];
+const fakeProtocol = new Proxy(realElectron.protocol, {
+  get: (t, k) => (k === "handle"
+    ? (scheme, fn) => t.handle(scheme, scheme === "starlog-media" ? (req) => { mediaRequests.push(req.url); return fn(req); } : fn)
+    : typeof t[k] === "function" ? t[k].bind(t) : t[k]),
+});
 const load = Module._load;
 Module._load = function (request, ...rest) {
   const m = load.call(this, request, ...rest);
   if (request === "electron") {
-    return new Proxy(m, { get: (t, k) => (k === "BrowserWindow" ? HiddenWindow : k === "shell" ? fakeShell : t[k]) });
+    return new Proxy(m, { get: (t, k) => (k === "BrowserWindow" ? HiddenWindow : k === "shell" ? fakeShell : k === "protocol" ? fakeProtocol : t[k]) });
   }
   if (request === "./paths" && typeof m?.serverEntry === "function") {
     return { ...m, serverEntry: () => FAKE_SERVER };
@@ -152,6 +161,7 @@ async function api(port, method, p, body) {
 // ── 스크린샷 관리자: 썸네일(서버 → 메인) · 클립보드 · 내보내기 (P6 S2) ──
 
 const media = require(path.join(ROOT, "desktop/media.js"));
+const thumbs = require(path.join(ROOT, "desktop/thumbs.js"));
 const MEDIA_ROOT = path.join(TMP, "appData/starlog/data/media");
 
 /** 시험 파일 — 가로 PNG·세로 JPEG·정사각 PNG는 nativeImage로, WebP·MP4는 숨긴 창의 캔버스로 만든다 */
@@ -222,20 +232,28 @@ async function mediaSteps(port, entryId) {
   await sleep(1500);
   const folder = path.dirname(fs.realpathSync(path.join(MEDIA_ROOT, fs.readdirSync(MEDIA_ROOT)[0], stored["land.png"])));
   const thumbsDir = path.join(folder, ".thumbs");
-  const made = fs.existsSync(thumbsDir) ? fs.readdirSync(thumbsDir).sort() : [];
+  const made = fs.existsSync(thumbsDir) ? fs.readdirSync(thumbsDir).filter((f) => f.endsWith(".jpg")).sort() : [];
   check("올릴 때 썸네일을 미리 만든다 (깨진 것 빼고 5장)", made.length === 5 && !made.includes(`${stored["broken.png"]}.jpg`), made.join(","));
   const srcMtime = fs.statSync(path.join(folder, stored["land.png"])).mtimeMs;
   const thumbMtime = fs.statSync(path.join(thumbsDir, `${stored["land.png"]}.jpg`)).mtimeMs;
   check("썸네일 수정시각 = 원본 수정시각 (신선도 표시)", Math.abs(srcMtime - thumbMtime) <= 1, `${srcMtime} / ${thumbMtime}`);
 
-  // 썸네일을 지우고 다시 부르면 이 요청에서 만든다 (지연 생성) — 시간을 잰다
+  check("목록 주소는 starlog-media:// (원본·썸네일)", items.every((i) => i.url.startsWith("starlog-media://shot/") && (i.thumbUrl === null || i.thumbUrl.startsWith("starlog-media://thumb/"))),
+    items.map((i) => i.thumbUrl).join(" "));
+  const index = JSON.parse(fs.readFileSync(path.join(thumbsDir, "index.json"), "utf8"));
+  check("폴더 색인 — 만든 것은 자리표시·원본 크기·t=1, 깨진 것은 t=0",
+    /^8x5:/.test(index.files[stored["land.png"]]?.p ?? "") && index.files[stored["land.png"]]?.w === 2560 && index.files[stored["land.png"]]?.t === 1
+      && index.files[stored["port.jpg"]]?.w === 1080 && index.files[stored["port.jpg"]]?.h === 1920 && index.files[stored["broken.png"]]?.t === 0,
+    JSON.stringify(index.files[stored["land.png"]]));
+
+  // 썸네일을 지우고 다시 부르면 이 요청에서 만든다 (지연 생성, http 길 — 서버가 메인에 부탁한다) — 시간을 잰다
   fs.rmSync(thumbsDir, { recursive: true, force: true });
   const sizes = {};
   for (const [name] of plan) {
     const item = items.find((i) => i.fileName === stored[name]);
-    if (!item?.thumbUrl) { sizes[name] = "thumbUrl 없음"; continue; }
+    if (!item?.thumbUrl && name !== "broken.png") { sizes[name] = "thumbUrl 없음"; continue; }
     const t = Date.now();
-    const res = await fetch(`http://127.0.0.1:${port}${item.thumbUrl}`, { headers: await auth() });
+    const res = await fetch(`http://127.0.0.1:${port}/api/backlog/${entryId}/screenshots/${encodeURIComponent(stored[name])}/thumb`, { headers: await auth() });
     const ms = Date.now() - t;
     if (res.status !== 200) { sizes[name] = `${res.status} ${ms}ms`; continue; }
     const buf = Buffer.from(await res.arrayBuffer());
@@ -246,9 +264,10 @@ async function mediaSteps(port, entryId) {
   check("가로 사진 → 480×270", sizes["land.png"]?.startsWith("480x270"));
   check("세로 사진 → 270×480 (자르지 않고 박스에 맞춘다)", sizes["port.jpg"]?.startsWith("270x480"));
   check("정사각 → 480×480", sizes["square.png"]?.startsWith("480x480"));
-  check("WebP → QuickLook으로 (nativeImage가 못 푼다)", /^480x270/.test(sizes["pic.webp"] ?? ""));
+  check("WebP → 공장(워커 createImageBitmap)이 푼다", /^480x270/.test(sizes["pic.webp"] ?? ""));
   check("MP4 → 실제 장면 480×270", /^480x270/.test(sizes["clip.mp4"] ?? ""));
   check("깨진 이미지 → 썸네일 404 (아이콘을 썸네일로 쓰지 않는다)", /^404/.test(sizes["broken.png"] ?? ""));
+  await sleep(1200);   // 색인은 0.8초 모아 쓴다
   const again = await api(port, "GET", "/api/screenshots");
   check("깨진 이미지는 다음 목록부터 thumbUrl null",
     again.json?.items?.find((i) => i.fileName === stored["broken.png"])?.thumbUrl === null);
@@ -263,7 +282,7 @@ async function mediaSteps(port, entryId) {
   check("메인 경로 검사 — 밖을 가리키는 심볼릭 링크 거절", media.mediaFileInside(MEDIA_ROOT, path.join(folder, "link.png")) === null);
   check("메인 경로 검사 — 썸네일 폴더 거절", media.mediaFileInside(MEDIA_ROOT, path.join(thumbsDir, `${stored["land.png"]}.jpg`)) === null);
   check("메인 경로 검사 — 정상 파일 통과", media.mediaFileInside(MEDIA_ROOT, path.join(folder, stored["land.png"])) !== null);
-  const ok = await media.makeThumbnail({ source: outside }, MEDIA_ROOT);
+  const ok = await thumbs.makeThumbnail({ source: outside }, MEDIA_ROOT);
   check("메인 — 밖의 파일로는 썸네일을 안 만든다", ok === false && !fs.existsSync(path.join(TMP, ".thumbs")));
   fs.rmSync(path.join(folder, "link.png"));
   // `.thumbs`를 밖을 가리키는 링크로 바꿔치기 — 링크를 따라가 밖에 쓰면 안 된다
@@ -272,10 +291,13 @@ async function mediaSteps(port, entryId) {
   fs.mkdirSync(trap);
   fs.renameSync(thumbsDir, realThumbs);
   fs.symlinkSync(trap, thumbsDir);
-  const viaLink = await media.makeThumbnail({ source: path.join(folder, stored["square.png"]) }, MEDIA_ROOT);
+  fs.rmSync(path.join(realThumbs, `${stored["square.png"]}.jpg`), { force: true });
+  const viaLink = await thumbs.makeThumbnail({ source: path.join(folder, stored["square.png"]) }, MEDIA_ROOT);
   check("메인 — .thumbs가 심볼릭 링크면 썸네일을 안 쓴다", viaLink === false && fs.readdirSync(trap).length === 0, String(viaLink));
   fs.rmSync(thumbsDir);
   fs.renameSync(realThumbs, thumbsDir);
+
+  await mediaProtocolSteps(port, entryId, folder, stored, items);
 
   // ── 클립보드 (사용자 클립보드를 잠깐 빌린다 — 끝나면 되돌린다) ──
   // 일렉트론 44부터 읽기는 전부 `clipboard.read()` 하나다 (readImage·readBuffer·availableFormats가 없어졌다)
@@ -396,6 +418,181 @@ async function mediaSteps(port, entryId) {
   left.join(","));
 }
 
+// ── starlog-media:// (메인이 디스크에서 바로 내준다) · 뷰어 ──
+
+async function mediaProtocolSteps(port, entryId, folder, stored, items) {
+  const { net, nativeImage } = realElectron;
+  const get = async (u, headers = {}) => {
+    try {
+      const r = await net.fetch(u, { headers });
+      return { status: r.status, type: r.headers.get("content-type"), range: r.headers.get("content-range"), body: Buffer.from(await r.arrayBuffer()) };
+    } catch (e) { return { status: -1, error: String(e?.message ?? e) }; }
+  };
+  const slug = encodeURIComponent(path.basename(folder));
+  const at = (kind, f, n) => `starlog-media://${kind}/${f}/${n}`;
+  const land = encodeURIComponent(stored["land.png"]);
+  const shot = await get(at("shot", slug, land));
+  check("프로토콜 — 원본 (image/png, 파일 그대로)", shot.status === 200 && shot.type === "image/png"
+    && shot.body.equals(fs.readFileSync(path.join(folder, stored["land.png"]))), `${shot.status} ${shot.type}`);
+  fs.rmSync(path.join(folder, ".thumbs", `${stored["square.png"]}.jpg`), { force: true });
+  const th = await get(at("thumb", slug, encodeURIComponent(stored["square.png"])));
+  const thSize = th.body ? nativeImage.createFromBuffer(th.body).getSize() : null;
+  check("프로토콜 — 썸네일이 없으면 그 요청에서 만든다 (image/jpeg 480)", th.status === 200 && th.type === "image/jpeg" && thSize?.width === 480,
+    `${th.status} ${JSON.stringify(thSize)}`);
+  const clip = encodeURIComponent(stored["clip.mp4"]);
+  const size = fs.statSync(path.join(folder, stored["clip.mp4"])).size;
+  const part = await get(at("shot", slug, clip), { Range: "bytes=0-99" });
+  const tail = await get(at("shot", slug, clip), { Range: "bytes=-10" });
+  const bad = await get(at("shot", slug, clip), { Range: `bytes=${size + 5}-` });
+  check("프로토콜 — 영상 Range (206·Content-Range, 끝 구간, 범위 밖 416)",
+    part.status === 206 && part.body.length === 100 && part.range === `bytes 0-99/${size}` && part.type === "video/mp4"
+      && tail.status === 206 && tail.body.length === 10 && bad.status === 416, `${part.status} ${part.range} ${tail.status} ${bad.status}`);
+
+  // 거절 — 전부 404. 밖의 파일·링크·썸네일 폴더·하위 경로·모르는 형식·윈도우식 이름
+  const outside = path.join(TMP, "outside-proto.png");
+  fs.copyFileSync(path.join(folder, stored["square.png"]), outside);
+  fs.symlinkSync(outside, path.join(folder, "link-proto.png"));
+  fs.writeFileSync(path.join(folder, "notes.txt"), "hello");
+  fs.writeFileSync(path.join(folder, "fake.txt.png"), "x");
+  fs.mkdirSync(path.join(folder, "sub"), { recursive: true });
+  fs.copyFileSync(outside, path.join(folder, "sub", "in-sub.png"));
+  const otherRoot = path.join(TMP, "appData/starlog/data/covers");
+  const tries = {
+    traversal: at("shot", slug, "..%2F..%2Fsaves"),
+    dotdot: `starlog-media://shot/${slug}/../../outside-proto.png`,
+    backslash: at("shot", slug, "..%5C..%5Coutside-proto.png"),
+    encodedSlash: at("shot", `${slug}%2Fsub`, "in-sub.png"),
+    sub: `starlog-media://shot/${slug}/sub/in-sub.png`,
+    symlink: at("shot", slug, "link-proto.png"),
+    thumbsDir: at("shot", ".thumbs", land + ".jpg"),
+    thumbsAsFile: at("shot", slug, encodeURIComponent(`.thumbs/${stored["land.png"]}.jpg`)),
+    unknownType: at("shot", slug, "notes.txt"),
+    ads: at("shot", slug, `${land}%3Astream`),
+    trailingDot: at("shot", slug, `${land}.`),
+    nul: at("shot", slug, `${land}%00.png`),
+    otherHost: `starlog-media://evil/${slug}/${land}`,
+    absolute: at("shot", encodeURIComponent(otherRoot), land),
+    missing: at("thumb", slug, "nope.png"),
+  };
+  const got = {};
+  for (const [k, u] of Object.entries(tries)) got[k] = (await get(u)).status;
+  check("프로토콜 — 경로 탈출·링크·하위 폴더·.thumbs·모르는 형식·ADS·끝 점·NUL·다른 호스트는 전부 404",
+    Object.values(got).every((x) => x === 404), JSON.stringify(got));
+  const post = await net.fetch(at("shot", slug, land), { method: "POST", body: "x" }).then((r) => r.status, () => -1);
+  check("프로토콜 — GET·HEAD만", post === 405 || post === -1, String(post));
+  const fake = await get(at("shot", slug, "fake.txt.png"));
+  check("프로토콜 — Content-Type은 확장자로, nosniff", fake.status === 200 && fake.type === "image/png", `${fake.status} ${fake.type}`);
+  fs.rmSync(path.join(folder, "link-proto.png"));
+  fs.rmSync(path.join(folder, "notes.txt"));
+  fs.rmSync(path.join(folder, "fake.txt.png"));
+  fs.rmSync(path.join(folder, "sub"), { recursive: true });
+
+  // 창에서 실제로 그려지는가 (CSP img-src starlog-media:)
+  const drawn = await js(`new Promise((r) => { const i = new Image(); i.onload = () => r(i.naturalWidth); i.onerror = () => r(-1); i.src = ${JSON.stringify(items.find((i) => i.fileName === stored["land.png"]).thumbUrl)}; })`);
+  check("프로토콜 — app:// 창의 <img>가 그린다 (CSP)", drawn === 480, String(drawn));
+
+  await viewerSteps(entryId);
+}
+
+/** 뷰어 — 누르고 있기는 초당 ~8장(120ms), 열면 진행 방향 원본을 미리 받는다 */
+async function viewerSteps(entryId) {
+  await goto(`app://starlog/library/detail?entry=${entryId}`);
+  await js(`[...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "전체 화면").click()`);
+  await sleep(800);
+  const tiles = await js(`document.querySelectorAll('[aria-label="스크린샷 갤러리"] .grid button[aria-label]').length`);
+  mediaRequests.length = 0;
+  await js(`document.querySelectorAll('[aria-label="스크린샷 갤러리"] .grid button[aria-label]')[0].click()`);
+  await sleep(1200);
+  const prefetched = mediaRequests.filter((u) => u.startsWith("starlog-media://shot/")).map((u) => decodeURIComponent(u.split("/").pop().split("?")[0]));
+  const items = await js(`(async () => (await (await fetch("http://127.0.0.1:" + window.starlog.backendPort() + "/api/screenshots", { headers: { "X-Starlog-Token": window.starlog.session.token() } })).json()).items.map((i) => [i.fileName, i.kind]))()`);
+  // 0번을 열었다 → 1·2·3번(영상은 빼고) + 맨 끝 한 장
+  const want = [1, 2, 3, items.length - 1].map((i) => items[i]).filter((x) => x && x[1] === "IMAGE").map((x) => x[0]);
+  check("뷰어 — 열면 이웃 원본을 미리 받는다 (진행 방향 3 + 반대 1, 영상 제외)",
+    want.length > 0 && want.every((n) => prefetched.includes(n)), `타일 ${tiles} · 받음 ${prefetched.join(",")} · 기대 ${want.join(",")}`);
+  const hold = await js(`(async () => {
+    const viewer = () => [...document.querySelectorAll('[role=dialog][aria-modal=true]')].find((x) => x.className.includes('z-[200]'));
+    let steps = 0, last = viewer()?.getAttribute('aria-label'); const at = [];
+    const mo = new MutationObserver(() => { const l = viewer()?.getAttribute('aria-label'); if (l !== last) { steps++; last = l; at.push(performance.now()); } });
+    mo.observe(document.body, { attributes: true, subtree: true, attributeFilter: ['aria-label'] });
+    const t0 = performance.now(); let i = 0;
+    while (performance.now() - t0 < 1000) { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', repeat: i++ > 0, bubbles: true })); await new Promise((r) => setTimeout(r, 33)); }
+    document.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowRight', bubbles: true }));
+    await new Promise((r) => setTimeout(r, 50));
+    mo.disconnect();
+    const gaps = at.slice(1).map((x, k) => Math.round(x - at[k]));
+    return { events: i, steps, minGap: gaps.length ? Math.min(...gaps) : null };
+  })()`);
+  check("뷰어 — 누르고 있으면 초당 ~8장 (120ms 간격, 키 반복 30/s를 거른다)",
+    hold.events >= 20 && hold.steps >= 6 && hold.steps <= 10 && hold.minGap >= 100, JSON.stringify(hold));
+  await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+  await sleep(200);
+  await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+}
+
+/**
+ * 배경 일 — 서버를 내린 사이 탐색기로 넣은 파일을 다음 세션이 알아서 만든다, 주소는 기동이 바뀌어도 같다,
+ * 세션 중에 넣은 파일은 감시가 잡는다
+ */
+async function mediaBackgroundSteps(save, entryId) {
+  const folder = path.join(MEDIA_ROOT, fs.readdirSync(MEDIA_ROOT).filter((n) => !n.startsWith("."))[0]);
+  let port = await js("window.starlog.backendPort()");
+  const before = (await api(port, "GET", `/api/backlog/${entryId}/screenshots`)).json;
+  const sample = before.find((i) => i.contentType === "image/png") ?? before[0];
+  await js("window.starlog.cancelLaunch()");   // 서버를 내린다 (= 앱을 끈 사이)
+  const src = path.join(folder, sample.fileName);
+  for (let i = 1; i <= 24; i++) fs.copyFileSync(src, path.join(folder, `drop-${String(i).padStart(2, "0")}.png`));
+  fs.rmSync(path.join(folder, ".thumbs"), { recursive: true, force: true });
+  await js(`window.__media = { progress: [], changed: [] }; window.starlog.media.onProgress((p) => __media.progress.push(p)); window.starlog.media.onChanged((c) => __media.changed.push(c)); 0`);
+  // 숨긴 창은 포커스가 없다 — 배경 일은 사용자가 STARLOG를 보고 있을 때만 돈다 (`mediaGate.js`). 보고 있다고 친다
+  win.emit("focus");
+  const l = await js(`window.starlog.launch({ mode: "local", target: ${JSON.stringify(save)} })`);
+  port = l.port;
+  const total = fs.readdirSync(folder).filter((n) => !n.startsWith(".")).length;
+  const countThumbs = () => (fs.existsSync(path.join(folder, ".thumbs")) ? fs.readdirSync(path.join(folder, ".thumbs")).filter((f) => f.endsWith(".jpg")).length : 0);
+  const t0 = Date.now();
+  // 깨진 파일 하나는 못 만든다
+  while (Date.now() - t0 < 20000 && countThumbs() < total - 1) await sleep(200);
+  await sleep(1200);
+  const progress = await js("__media.progress");
+  check("배경 썸네일 — 서버가 없던 사이 넣은 파일·지운 썸네일을 세션을 열면 채운다", countThumbs() >= total - 1, `${countThumbs()}/${total} ${Date.now() - t0}ms`);
+  check("배경 썸네일 — 진행 알림 (run → done, total)", progress.some((p) => p.phase === "run") && progress.at(-1)?.phase === "done" && progress.at(-1)?.total >= 24,
+    JSON.stringify(progress.slice(-2)));
+  const index = JSON.parse(fs.readFileSync(path.join(folder, ".thumbs", "index.json"), "utf8"));
+  const after = (await api(port, "GET", `/api/backlog/${entryId}/screenshots`)).json;
+  check("폴더 색인 — 도장이 찍히고 목록에 자리표시·크기가 실린다", index.dir !== null && after.filter((i) => i.placeholder).length >= total - 1
+    && after.find((i) => i.fileName === "drop-01.png")?.width > 0, `dir=${JSON.stringify(index.dir)} ph=${after.filter((i) => i.placeholder).length}`);
+  const again = after.find((i) => i.fileName === sample.fileName);
+  check("썸네일 주소가 다시 켜도 같다 (포트·토큰 없음)", again?.thumbUrl === sample.thumbUrl && again?.url === sample.url && l.port !== undefined, `${sample.thumbUrl} → ${again?.thumbUrl}`);
+
+  // 세션 중에 탐색기로 넣기 → 감시가 잡아 썸네일을 만들고 화면에 알린다
+  await js("__media.changed.length = 0");
+  fs.copyFileSync(src, path.join(folder, "watched.png"));
+  const thumb = path.join(folder, ".thumbs", "watched.png.jpg");
+  const w0 = Date.now();
+  while (Date.now() - w0 < 8000 && !fs.existsSync(thumb)) await sleep(100);
+  await sleep(300);
+  const changed = await js("__media.changed");
+  check("감시 — 넣은 파일의 썸네일이 바로 생기고 화면에 '바뀜'을 알린다", fs.existsSync(thumb) && changed.length >= 1, `${Date.now() - w0}ms ${JSON.stringify(changed)}`);
+  // 다른 창(게임)으로 가면 배경 썸네일이 멈추고, 돌아오면 이어서 한다. 화면이 부르는 썸네일이 섞이지 않게 대시보드로
+  await goto("app://starlog/dashboard");
+  await js("window.starlog.cancelLaunch()");
+  for (let i = 1; i <= 24; i++) fs.copyFileSync(src, path.join(folder, `drop2-${String(i).padStart(2, "0")}.png`));
+  fs.rmSync(path.join(folder, ".thumbs"), { recursive: true, force: true });
+  win.emit("blur");
+  const l2 = await js(`window.starlog.launch({ mode: "local", target: ${JSON.stringify(save)} })`);
+  port = l2.port;
+  await sleep(4000);
+  const whileAway = countThumbs();
+  win.emit("focus");
+  const f0 = Date.now();
+  const total2 = fs.readdirSync(folder).filter((n) => !n.startsWith(".")).length;
+  while (Date.now() - f0 < 20000 && countThumbs() < total2 - 1) await sleep(200);
+  check("배경 썸네일 — 창이 포커스를 잃으면 멈추고(4초간 0장), 돌아오면 이어서 채운다",
+    whileAway === 0 && countThumbs() >= total2 - 1, `떠나 있는 동안 ${whileAway}장 → 돌아와서 ${countThumbs()}/${total2} ${Date.now() - f0}ms`);
+  for (const f of fs.readdirSync(folder)) if (/^drop2?-\d+\.png$|^watched\.png$/.test(f)) fs.rmSync(path.join(folder, f));
+  return port;
+}
+
 // ── 보안 점검 회귀 (2026-10-25): 창 이동 잠금 · 새 창 · 권한 · 마크다운 · 데이터 루트 · openPath ──
 
 async function securitySteps(port) {
@@ -493,8 +690,8 @@ async function cspSteps(port, entryId) {
   // 화면 전부 — 위반이 하나도 없어야 한다 (대시보드·라이브러리·상세는 위에서 이미 열었다)
   for (const p of ["/", "/settings", "/system", "/add", `/library/detail?entry=${entryId}`]) await goto(`app://starlog${p}`);
   // 상세의 스크린샷 썸네일 — 로컬 서버(127.0.0.1)에서 실제로 그려졌나
-  const localImgs = await js(`[...document.images].filter((i) => i.src.startsWith("http://127.0.0.1:") && i.complete && i.naturalWidth > 0).length`);
-  check("CSP — 상세의 로컬 서버 이미지(스크린샷 썸네일)가 그려진다", localImgs >= 1, `${localImgs}장`);
+  const localImgs = await js(`[...document.images].filter((i) => i.src.startsWith("starlog-media://thumb/") && i.complete && i.naturalWidth > 0).length`);
+  check("CSP — 상세의 스크린샷 썸네일(starlog-media://)이 그려진다", localImgs >= 1, `${localImgs}장`);
   await goto("app://starlog/dashboard");
   const webgl = await js("!!document.querySelector('canvas') && !!document.createElement('canvas').getContext('webgl')");
   const fonts = await js("document.fonts.ready.then(() => [...document.fonts].filter((f) => f.status === 'loaded').map((f) => f.family))");
@@ -1205,7 +1402,7 @@ realElectron.app.whenReady().then(async () => {
     let t = Date.now();
     const launched = await js(`window.starlog.launch({ mode: "local", target: ${JSON.stringify(SAVE)} })`);
     check("로컬 기동", launched.ok === true, `${Date.now() - t}ms, port=${launched.port}`);
-    const port = launched.port;
+    let port = launched.port;
 
     const me = await api(port, "GET", "/api/me");
     check("주인 계정 자동 생성", me.status === 200, `nickname=${me.json?.nickname ?? me.json?.profile?.nickname}`);
@@ -1249,6 +1446,7 @@ realElectron.app.whenReady().then(async () => {
       `${detachDisabled} ${sysText.split("\n").filter((l) => l.includes("외부")).join(" | ")}`);
 
     await mediaSteps(port, entry.json?.id);
+    port = await mediaBackgroundSteps(SAVE, entry.json?.id);
     await coverDbSteps(port, entry.json?.id);
     await coverResizeSteps(port, entry.json?.id);
     // 스크린샷·영상이 생긴 뒤에 — 상세의 갤러리 썸네일·<video>까지 정책 안에서 뜨는지
@@ -1261,11 +1459,13 @@ realElectron.app.whenReady().then(async () => {
     await connectionSteps();
     await cloudBackupFolderSteps();
     await coverTargetSteps();
+    // 배경 일 시험이 서버를 한 번 내렸다 올렸다 — 그때 자동 백업이 하나 생긴다
+    const usageBefore = await js(`window.starlog.backups.usage(${JSON.stringify(SAVE)})`);
     t = Date.now();
     const backup = await js(`window.starlog.backups.create(${JSON.stringify(SAVE)})`);
     check("백업 만들기", /\.tar\.gz$/.test(backup.fileName), `${backup.fileName}, ${Date.now() - t}ms`);
     const usage = await js(`window.starlog.backups.usage(${JSON.stringify(SAVE)})`);
-    check("백업 목록", usage.count === 1, `${(usage.totalBytes / 1024 / 1024).toFixed(1)}MB`);
+    check("백업 목록", usage.count === usageBefore.count + 1, `${usageBefore.count} → ${usage.count}, ${(usage.totalBytes / 1024 / 1024).toFixed(1)}MB`);
 
     const restored = await js(`window.starlog.backups.restore(${JSON.stringify(SAVE)}, ${JSON.stringify(backup.fileName)})`);
     const saves = await js("window.starlog.saves.list()");

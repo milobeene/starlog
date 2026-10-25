@@ -37,7 +37,16 @@ export interface Config {
   /**
    * 커버를 어디에 둘지 (연결 설정이 고른다). 고른 대로 못 하면 `coverTarget()`(common/storage)이 db로 떨어진다
    */
-  media: { coverTarget: CoverTargetSetting };
+  media: {
+    coverTarget: CoverTargetSetting;
+    /**
+     * 스크린샷 원본·썸네일 주소의 스킴. 일렉트론이 `starlog-media`를 넣으면 목록이 `starlog-media://…`를 낸다 —
+     * 그 주소는 일렉트론 메인이 디스크에서 바로 내준다(`desktop/mediaProtocol.js`). 없으면 예전 http 주소
+     */
+    scheme: "starlog-media" | null;
+    /** `[media-timing]` 줄을 로그에 남긴다 (윈도우 실기 측정용) */
+    timing: boolean;
+  };
   translateApiKey: string | null;
   /**
    * 연결 시험 — 열어서 진단(`select 1`·스키마 검사)까지만 하고 내려간다. **마이그레이션을 안 돈다** —
@@ -76,6 +85,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     },
     media: {
       coverTarget: coverTargetOf(env),
+      // 아는 값 하나만 — 아무 글자나 주소 앞에 붙지 않게
+      scheme: env.STARLOG_MEDIA_SCHEME === "starlog-media" ? "starlog-media" : null,
+      timing: env.STARLOG_MEDIA_TIMING === "1",
     },
     translateApiKey: blank(env.TRANSLATE_API_KEY),
     checkOnly: flag(env.STARLOG_CHECK_ONLY),

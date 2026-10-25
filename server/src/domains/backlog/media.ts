@@ -20,8 +20,10 @@ import {
   type CoverLocation,
 } from "../../common/storage";
 import {
-  canMakeThumbs, dropThumb, ensureThumb, isFresh, knownFailure, mtimeMsOf, pointsIntoThumbs, pruneOrphans, thumbPathOf, warmThumb,
+  canMakeThumbs, dropThumb, ensureThumb, isFresh, knownFailure, pointsIntoThumbs, pruneOrphans, thumbPathOf, warmThumb,
 } from "../../common/storage/thumbs";
+import { entryFor, readFolderIndex, type FolderIndex, type IndexEntry } from "../../common/storage/mediaIndex";
+import { config } from "../../config";
 import { recordApiCall } from "../system/service";
 import { assignMediaFolder, mediaSlugGiven, uniqueMediaSlug } from "../game/service";
 import { findAliveEntry, findAliveEntry404 } from "./shared";
@@ -294,16 +296,31 @@ function instantText(ns: bigint): string {
 
 const screenshotUrl = (entryId: number, name: string) => `/api/backlog/${entryId}/screenshots/${encodePathSegment(name)}`;
 
+/** 원본 판 — 파일을 stat한 것이든 폴더 색인에서 꺼낸 것이든 */
+interface Version { mtimeNs: bigint; size: number }
+const versionOf = (st: fs.BigIntStats): Version => ({ mtimeNs: st.mtimeNs, size: Number(st.size) });
+
+/**
+ * 일렉트론 스킴 주소 — `starlog-media://shot|thumb/<게임 폴더>/<파일>?v=<원본 ms>`.
+ * 항목 번호·포트·토큰이 없어 **기동이 바뀌어도 같은 주소**다 (캐시가 이어진다). 경로 검사는 메인이 다시 한다
+ */
+const schemeUrl = (scheme: string, kind: "shot" | "thumb", folder: string, name: string, ms: bigint) =>
+  `${scheme}://${kind}/${encodeURIComponent(path.basename(folder))}/${encodeURIComponent(name)}?v=${ms}`;
+
 /**
  * 썸네일 주소 — 신선한 게 있거나, 지금 만들 수 있고 전에 실패한 적이 없을 때만.
  * 일렉트론 없이 도는 서버면 null → 화면이 원본(`url`)을 쓴다.
- * `?v=`는 원본 수정시각이다 — 같은 이름에 다른 파일이 들어오면 주소가 바뀌어 캐시가 깨진다
+ * `?v=`는 원본 수정시각이다 — 같은 이름에 다른 파일이 들어오면 주소가 바뀌어 캐시가 깨진다.
+ * 스킴 주소면 메인이 그 요청에서 만든다 — 색인에 "이 판은 못 만듦"이 있을 때만 null
  */
-function thumbUrlOf(entryId: number, folder: string, name: string, st: fs.BigIntStats): string | null {
+function thumbUrlOf(entryId: number, folder: string, name: string, v: Version, entry: IndexEntry | null): string | null {
   const kind = mediaKindOf(name);
-  if (kind === null) return null;
-  const ms = mtimeMsOf(st);
-  const ready = isFresh(thumbPathOf(folder, name), ms) || (canMakeThumbs() && !knownFailure(path.join(folder, name), ms, st.size));
+  if (kind === null || entry?.t === 0) return null;
+  const ms = v.mtimeNs / 1_000_000n;
+  const scheme = config().media.scheme;
+  if (scheme) return schemeUrl(scheme, "thumb", folder, name, ms);
+  const ready = entry?.t === 1 || isFresh(thumbPathOf(folder, name), ms)
+    || (canMakeThumbs() && !knownFailure(path.join(folder, name), ms, BigInt(v.size)));
   return ready ? `${screenshotUrl(entryId, name)}/thumb?v=${ms}` : null;
 }
 
@@ -311,26 +328,63 @@ function statOf(folder: string, name: string): fs.BigIntStats {
   try { return fs.statSync(path.join(folder, name), { bigint: true }); } catch (e) { throw new FileIo(e); }
 }
 
-function describe(entryId: number, folder: string, name: string, st: fs.BigIntStats = statOf(folder, name)) {
+function describe(entryId: number, folder: string, name: string, v: Version = versionOf(statOf(folder, name)),
+                  entry: IndexEntry | null = null) {
+  const ms = v.mtimeNs / 1_000_000n;
+  const scheme = config().media.scheme;
   return {
     fileName: name,
     // 원본도 1년 immutable 캐시라 버전을 단다 — 마지막 번호를 지우고 다시 올리면 같은 이름이 돌아와 옛 그림이 떴다
-    url: `${screenshotUrl(entryId, name)}?v=${mtimeMsOf(st)}`,
-    sizeBytes: Number(st.size),
+    url: scheme ? schemeUrl(scheme, "shot", folder, name, ms) : `${screenshotUrl(entryId, name)}?v=${ms}`,
+    sizeBytes: v.size,
     contentType: mediaContentTypeOf(name),
-    takenAt: instantText(st.mtimeNs),
-    thumbUrl: thumbUrlOf(entryId, folder, name, st),
+    takenAt: instantText(v.mtimeNs),
+    thumbUrl: thumbUrlOf(entryId, folder, name, v, entry),
+    /** 흐린 자리표시 `"<w>x<h>:<RGB base64>"` — 썸네일이 오기 전에 칸을 채운다. 메인이 썸네일을 만들 때 생긴다 */
+    placeholder: entry?.p ?? null,
+    /** 원본 크기 (회전 적용). 모르면 null */
+    width: entry?.w ?? null,
+    height: entry?.h ?? null,
   };
 }
 
-export async function listScreenshots(entryId: number) {
-  const folder = await db().transaction((tx) => folderOf(tx, entryId, false, false));
-  if (folder === null) return [];
+/**
+ * 폴더 하나의 미디어 — `[이름, 판, 색인 항목]`. 색인 도장이 맞으면 **stat 없이** 색인에서,
+ * 아니면 예전처럼 파일마다 stat하고 판이 같은 색인 값만 쓴다 (그때만 고아 썸네일도 치운다 — 도장이 맞으면 메인이 이미 치웠다)
+ */
+function folderMedia(folder: string): { name: string; v: Version; entry: IndexEntry | null }[] {
+  let raw: string[];
+  try { raw = isDirectory(folder) ? fs.readdirSync(folder) : []; } catch (e) { throw new FileIo(e); }
+  const index: FolderIndex | null = raw.length ? readFolderIndex(folder, raw) : null;
+  if (index?.trusted) {
+    return raw.filter((n) => n in index.files && isServableName(n)).sort()
+      .map((name) => { const e = index.files[name]!; return { name, v: { mtimeNs: BigInt(e.m), size: e.s }, entry: e }; });
+  }
   const all = localList(folder);
   // 목록 읽기는 썸네일 폴더 청소를 겸한다 — 읽는 요청이지만 DB가 아니라 캐시만 만진다 (유지)
   pruneOrphans(folder, new Set(all));
-  // 서빙할 수 없는 이름(점 파일·`.DS_Store`·미디어 아닌 것)은 목록에도 내지 않는다 — 눌러도 열리지 않는 항목이 된다
-  return all.filter(isServableName).map((name) => describe(entryId, folder, name));
+  const out: { name: string; v: Version; entry: IndexEntry | null }[] = [];
+  for (const name of all) {
+    // 서빙할 수 없는 이름(점 파일·`.DS_Store`·미디어 아닌 것)은 목록에도 내지 않는다 — 눌러도 열리지 않는 항목이 된다
+    if (!isServableName(name)) continue;
+    let st: fs.BigIntStats;
+    try { st = fs.statSync(path.join(folder, name), { bigint: true }); } catch { continue; }   // 읽는 사이 지워짐
+    out.push({ name, v: versionOf(st), entry: entryFor(index, name, st) });
+  }
+  return out;
+}
+
+function timingLog(event: string, data: Record<string, unknown>) {
+  if (config().media.timing) console.log(`[media-timing] ${JSON.stringify({ event, ...data })}`);
+}
+
+export async function listScreenshots(entryId: number) {
+  const t0 = performance.now();
+  const folder = await db().transaction((tx) => folderOf(tx, entryId, false, false));
+  if (folder === null) return [];
+  const items = folderMedia(folder).map(({ name, v, entry }) => describe(entryId, folder, name, v, entry));
+  timingLog("list", { entryId, n: items.length, ms: Math.round(performance.now() - t0) });
+  return items;
 }
 
 /** `001.png`, `002.jpg` … 가장 큰 번호 다음. 개수 + 1이면 중간을 지웠을 때 덮어쓴다 */
@@ -490,33 +544,31 @@ async function entryFolders() {
  * `games`는 거르기 전 전체 — 위쪽 고르기 목록이 지금 필터와 상관없이 같은 게임을 보여야 한다
  */
 export async function listGallery(entryId: number | null, kind: GalleryKind) {
+  const t0 = performance.now();
   if (entryId !== null) await db().transaction((tx) => findAliveEntry404(tx, entryId));
   const games: { entryId: number; gameName: string; imageCount: number; videoCount: number }[] = [];
   const items: (ReturnType<typeof describe> & { entryId: number; gameName: string; kind: MediaKind; mtimeNs: bigint })[] = [];
   for (const { entry, folder } of await entryFolders()) {
-    const names = localList(folder);
-    pruneOrphans(folder, new Set(names));
     let images = 0, videos = 0;
-    for (const name of names) {
-      // 항목 목록과 같은 거름 — `._001.png`(맥 AppleDouble) 같은 점 파일은 열리지 않는 칸이 된다
-      if (!isServableName(name)) continue;
+    // 항목 목록과 같은 거름 — `._001.png`(맥 AppleDouble) 같은 점 파일은 열리지 않는 칸이 된다 (`folderMedia`)
+    for (const { name, v, entry: e } of folderMedia(folder)) {
       const k = mediaKindOf(name);
       if (k === null) continue;
       if (k === "IMAGE") images++; else videos++;
       if ((entryId !== null && entry.entryId !== entryId) || (kind !== "ALL" && kind !== k)) continue;
-      let st: fs.BigIntStats;
-      try { st = fs.statSync(path.join(folder, name), { bigint: true }); } catch { continue; }   // 읽는 사이 지워짐
-      items.push({ entryId: entry.entryId, gameName: entry.displayName, kind: k, ...describe(entry.entryId, folder, name, st), mtimeNs: st.mtimeNs });
+      items.push({ entryId: entry.entryId, gameName: entry.displayName, kind: k, ...describe(entry.entryId, folder, name, v, e), mtimeNs: v.mtimeNs });
     }
     if (images + videos > 0) games.push({ entryId: entry.entryId, gameName: entry.displayName, imageCount: images, videoCount: videos });
   }
   items.sort((a, b) => (a.mtimeNs !== b.mtimeNs ? (a.mtimeNs < b.mtimeNs ? 1 : -1)
     : a.entryId !== b.entryId ? a.entryId - b.entryId : a.fileName < b.fileName ? 1 : a.fileName > b.fileName ? -1 : 0));
+  timingLog("gallery", { entryId, n: items.length, ms: Math.round(performance.now() - t0) });
   return {
     games,
     items: items.map((it) => ({
       entryId: it.entryId, gameName: it.gameName, fileName: it.fileName, kind: it.kind, contentType: it.contentType,
       sizeBytes: it.sizeBytes, takenAt: it.takenAt, url: it.url, thumbUrl: it.thumbUrl,
+      placeholder: it.placeholder, width: it.width, height: it.height,
     })),
   };
 }

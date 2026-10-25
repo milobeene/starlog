@@ -44,6 +44,23 @@ function trustedOrigin() {
   return Boolean(m) && Number(m[1]) === ipcRenderer.sendSync("session:port");
 }
 
+/*
+ * 마우스·휠을 만졌다 — 메인의 배경 일 문(`mediaGate.js`)이 "보이고 1분 안에 만짐"을 본다. 키보드는 메인이 직접 듣는다.
+ * 5초에 한 번만 보낸다
+ */
+if (trustedOrigin()) {
+  let lastActivity = 0;
+  const activity = () => {
+    const now = Date.now();
+    if (now - lastActivity < 5000) return;
+    lastActivity = now;
+    ipcRenderer.send("media:activity");
+  };
+  window.addEventListener("pointerdown", activity, { capture: true, passive: true });
+  window.addEventListener("wheel", activity, { capture: true, passive: true });
+  window.addEventListener("pointermove", activity, { capture: true, passive: true });
+}
+
 if (trustedOrigin()) contextBridge.exposeInMainWorld("starlog", {
   settings: {
     get: () => ipcRenderer.invoke("settings:get"),
@@ -188,6 +205,21 @@ if (trustedOrigin()) contextBridge.exposeInMainWorld("starlog", {
      * @returns `{ canceled: true }` | `{ canceled: false, folder, saved: [{entryId, fileName, savedAs}], failed: [{entryId, fileName, reason}] }`
      */
     saveTo: (refs) => ipcRenderer.invoke("media:saveTo", refs),
+    /** 배경 썸네일 진행 `{phase, done, total}` (mediaWork.js) */
+    onProgress: (callback) => {
+      const handler = (_event, payload) => callback(payload);
+      ipcRenderer.on("media:progress", handler);
+      return () => ipcRenderer.removeListener("media:progress", handler);
+    },
+    /** 게임 폴더가 바뀌었다 (fs.watch) */
+    onChanged: (callback) => {
+      const handler = (_event, payload) => callback(payload);
+      ipcRenderer.on("media:changed", handler);
+      return () => ipcRenderer.removeListener("media:changed", handler);
+    },
+    cancelPrepare: () => ipcRenderer.invoke("media:cancelPrepare"),
+    timingOn: () => ipcRenderer.sendSync("media:timingOn") === true,
+    timing: (event, data) => ipcRenderer.send("media:timing", event, data),
   },
 
   /**

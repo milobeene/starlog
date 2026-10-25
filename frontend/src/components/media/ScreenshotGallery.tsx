@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
@@ -13,6 +13,8 @@ import { backendUrl } from "@/lib/apiBase";
 import { kstDate } from "@/lib/format";
 import { usePick } from "@/lib/usePick";
 import { invalidateQueries } from "@/lib/useApi";
+import { mediaTiming, onMediaChanged } from "@/lib/mediaEvents";
+import { useIdlePreload, useWindowedGrid } from "@/lib/useWindowedGrid";
 import type { GalleryItem, GalleryResponse } from "@/lib/types";
 
 type Kind = "ALL" | "IMAGE" | "VIDEO";
@@ -71,8 +73,17 @@ export default function ScreenshotGallery({
   const { selectMode, setSelectMode, selected, allSelected, pick, toggleAll, clear: clearPick, cancel: cancelSelect } =
     usePick(data?.items.length ?? 0);
 
+  /* 속도 기록 — 목록을 부른 시각부터 첫 썸네일·첫 화면 썸네일 전부까지 (STARLOG_MEDIA_TIMING일 때만 남는다) */
+  const timing = useRef<{ t0: number; first: boolean; want: number; got: Set<number>; done: boolean }>({
+    t0: 0, first: false, want: 0, got: new Set(), done: true,
+  });
+
+  /* 탐색기로 넣고 지운 것 — 일렉트론이 폴더 감시로 알려 준다 */
+  useEffect(() => onMediaChanged(() => setNonce((n) => n + 1)), []);
+
   useEffect(() => {
     const controller = new AbortController();
+    const t0 = performance.now();
     queueMicrotask(() => {
       if (controller.signal.aborted) return;
       setLoading(true);
@@ -82,6 +93,8 @@ export default function ScreenshotGallery({
       .get<GalleryResponse>(`/api/screenshots${qs({ entryId, kind })}`, controller.signal)
       .then((response) => {
         if (controller.signal.aborted) return;
+        mediaTiming("list", { ms: Math.round(performance.now() - t0), n: response.items.length, all: entryId === null });
+        timing.current = { t0, first: false, want: 0, got: new Set(), done: false };
         setData(response);
         clearPick();
         setLoading(false);
@@ -178,6 +191,27 @@ export default function ScreenshotGallery({
   );
 
   const closeViewer = useCallback(() => setViewing(null), []);
+
+  /* 보이는 줄만 그린다 — 3000칸을 다 그리면 DOM이 1만 8천 개였다 */
+  const { attachOuter, attachGrid, start: winStart, end: winEnd, top: winTop, height: winHeight } = useWindowedGrid(items.length);
+  const thumbUrls = useMemo(() => items.map((item) => (item.thumbUrl ? backendUrl(item.thumbUrl) : null)), [items]);
+  useIdlePreload(thumbUrls, viewing === null);
+
+  const onTileLoaded = useCallback((index: number) => {
+    const t = timing.current;
+    if (t.done) return;
+    const ms = Math.round(performance.now() - t.t0);
+    if (!t.first) {
+      t.first = true;
+      mediaTiming("firstThumb", { ms });
+    }
+    if (t.want === 0) t.want = Math.max(1, Math.min(items.length, winEnd - winStart));
+    t.got.add(index);
+    if (t.got.size >= t.want) {
+      t.done = true;
+      mediaTiming("visibleThumbs", { ms, n: t.got.size });
+    }
+  }, [items.length, winEnd, winStart]);
 
   const kinds: { value: Kind; label: string }[] = [
     { value: "ALL", label: "모든 미디어" },
@@ -289,21 +323,30 @@ export default function ScreenshotGallery({
             }
           />
         ) : (
-          <div
-            className={`grid grid-cols-2 gap-2 transition-opacity sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 ${
-              loading ? "opacity-50" : ""
-            }`}
-          >
-            {items.map((item, index) => (
-              <Tile
-                key={`${item.entryId}/${item.fileName}`}
-                item={item}
-                showGame={entryId === null}
-                selectMode={selectMode}
-                picked={selected.has(index)}
-                onClick={(event) => onTile(index, event)}
-              />
-            ))}
+          <div ref={attachOuter} className="relative" style={winHeight === null ? undefined : { height: winHeight }}>
+            <div
+              ref={attachGrid}
+              data-count={items.length}
+              className={`absolute inset-x-0 grid grid-cols-2 gap-2 transition-opacity sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 ${
+                loading ? "opacity-50" : ""
+              }`}
+              style={{ top: winTop }}
+            >
+              {items.slice(winStart, winEnd).map((item, offset) => {
+                const index = winStart + offset;
+                return (
+                  <Tile
+                    key={`${item.entryId}/${item.fileName}`}
+                    item={item}
+                    showGame={entryId === null}
+                    selectMode={selectMode}
+                    picked={selected.has(index)}
+                    onClick={(event) => onTile(index, event)}
+                    onLoaded={() => onTileLoaded(index)}
+                  />
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
@@ -332,12 +375,14 @@ function Tile({
   selectMode,
   picked,
   onClick,
+  onLoaded,
 }: {
   item: GalleryItem;
   showGame: boolean;
   selectMode: boolean;
   picked: boolean;
   onClick: (event: React.MouseEvent) => void;
+  onLoaded?: () => void;
 }) {
   const isVideo = item.kind === "VIDEO";
   const date = formatTaken(item.takenAt);
@@ -357,6 +402,8 @@ function Tile({
         url={item.url}
         isVideo={isVideo}
         alt={item.fileName}
+        placeholder={item.placeholder}
+        onLoaded={onLoaded}
         className={picked ? "opacity-70" : ""}
       />
       {isVideo && <PlayBadge />}

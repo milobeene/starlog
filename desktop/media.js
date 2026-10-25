@@ -1,24 +1,14 @@
 /**
- * 스크린샷 썸네일 · 클립보드 · 내보내기 (P6 S2).
+ * 스크린샷 경로 규칙 · 클립보드 · 내보내기 (P6 S2).
  *
- * ## 썸네일 — 서버가 부탁하고 여기서 만든다
- *
- * 서버(utilityProcess)는 `nativeImage`를 못 쓴다. 그래서 `{type: "thumbnail", id, source}`를 보내오면
- * 여기서 만들어 `<게임 폴더>/.thumbs/<원본 이름>.jpg`에 쓰고 `{type: "thumbnail:result", id, ok}`로 답한다
- * (짝은 `server/src/common/storage/thumbs.ts`). **썸네일 수정시각에 원본 시각을 심는다** — 서버가 그걸로 신선도를 본다.
- *
- * 실측 (2026-10-24, 맥):
- * - `createThumbnailFromPath`(QuickLook)는 결과 크기가 들쭉날쭉하다 — 같은 요청에 480×270이 오기도 960×540이 오기도
- *   (화면 배율을 따라 2배 표현을 고른다). 그래서 **받은 뒤 우리가 다시 맞춘다**
- * - 못 읽는 파일엔 **OS의 파일 종류 아이콘**을 준다 (깨진 PNG, webm). 아이콘은 **모서리가 투명**하고
- *   영상 장면은 불투명하다 → 모서리 알파로 거른다
- * - PNG·JPEG은 `createFromPath`로 직접 풀고 줄인다 (4K PNG 28ms) — QuickLook보다 빠르고 크기가 정확하다.
- *   **WebP는 `nativeImage`가 못 푼다** → QuickLook으로
+ * 썸네일 만들기는 `thumbs.js`, 화면에 파일을 내주는 `starlog-media://`는 `mediaProtocol.js`가 한다 —
+ * 셋 다 **이 파일의 경로 규칙**(`mediaFileInside`)을 지난다.
  *
  * ## 경로는 믿지 않는다
  *
- * 서버가 준 경로든 화면이 고른 항목이든, **실제 경로(심볼릭 링크를 푼 것)가 데이터 루트의 `media/<게임>/<파일>`**
- * 한 칸 아래여야 한다. 썸네일 폴더 안·하위 폴더·다른 확장자는 거절한다
+ * 서버가 준 경로든 화면이 고른 항목이든 주소창의 조각이든, **실제 경로(심볼릭 링크를 푼 것)가 데이터 루트의
+ * `media/<게임>/<파일>`** 한 칸 아래여야 한다. 썸네일 폴더 안·하위 폴더·다른 확장자는 거절한다.
+ * 윈도우는 대소문자를 안 가린다 — `.THUMBS`도 썸네일 폴더다
  */
 const { clipboard, ClipboardItem, nativeImage } = require("electron");
 const fs = require("fs");
@@ -28,12 +18,34 @@ const { pathToFileURL } = require("url");
 const THUMB_DIR = ".thumbs";
 const IMAGE_EXT = new Set([".jpg", ".jpeg", ".png", ".webp"]);
 const VIDEO_EXT = new Set([".mp4", ".mov", ".webm"]);
-const DEFAULT_BOX = 480;
-const JPEG_QUALITY = 82;
+/** 서버(`domains/backlog/media.ts`)와 같은 표 — 확장자로만 정한다 (내용 냄새 맡기 없음) */
+const CONTENT_TYPE = {
+  ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp",
+  ".mp4": "video/mp4", ".mov": "video/quicktime", ".webm": "video/webm",
+};
+const WIN = process.platform === "win32";
 
 function kindOf(file) {
   const ext = path.extname(file).toLowerCase();
   return IMAGE_EXT.has(ext) ? "image" : VIDEO_EXT.has(ext) ? "video" : null;
+}
+
+const contentTypeOf = (file) => CONTENT_TYPE[path.extname(file).toLowerCase()] ?? null;
+
+/** 윈도우는 `.Thumbs`·`.THUMBS`도 같은 폴더다 */
+const isThumbDirName = (name) => (WIN ? name.toLowerCase() : name) === THUMB_DIR;
+
+/**
+ * 실제 경로. 윈도우는 `.native`(GetFinalPathNameByHandle) — 8.3 짧은 이름·정션·대소문자를 한 모양으로 편다.
+ * JS판은 짧은 이름을 안 펴서 같은 폴더가 "밖"으로 보일 수 있다 (거절 쪽으로 틀리지만 그래도)
+ */
+const realpath = (p) => (WIN ? fs.realpathSync.native(p) : fs.realpathSync(p));
+
+/** `<root>` 아래 상대 조각들. 밖이면 null. 윈도우의 `path.relative`는 대소문자를 안 가린다 */
+function partsInside(root, real) {
+  const rel = path.relative(root, real);
+  if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel)) return null;
+  return rel.split(path.sep);
 }
 
 /**
@@ -44,15 +56,13 @@ function mediaFileInside(mediaRoot, candidate) {
   if (typeof candidate !== "string" || candidate === "" || candidate.includes("\0") || !mediaRoot) return null;
   let real, root;
   try {
-    root = fs.realpathSync(mediaRoot);
-    real = fs.realpathSync(path.resolve(candidate));
+    root = realpath(mediaRoot);
+    real = realpath(path.resolve(candidate));
   } catch {
     return null;
   }
-  const rel = path.relative(root, real);
-  if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel)) return null;
-  const parts = rel.split(path.sep);
-  if (parts.length !== 2 || parts[0] === THUMB_DIR || parts[1].startsWith(".")) return null;
+  const parts = partsInside(root, real);
+  if (!parts || parts.length !== 2 || isThumbDirName(parts[0]) || parts[0].startsWith(".") || parts[1].startsWith(".")) return null;
   if (kindOf(real) === null) return null;
   try {
     if (!fs.statSync(real).isFile()) return null;
@@ -62,115 +72,27 @@ function mediaFileInside(mediaRoot, candidate) {
   return real;
 }
 
-// ───────────── 썸네일 ─────────────
-
-/** 박스 안에 비율대로. 키우지는 않는다 */
-function fit(image, box) {
-  const { width, height } = image.getSize();
-  if (!width || !height) return null;
-  const scale = Math.min(1, box / Math.max(width, height));
-  if (scale === 1) return image;
-  return image.resize({ width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)), quality: "good" });
+/**
+ * 주소의 조각 하나로 쓸 수 있는 이름. 구분자·NUL·제어문자·`:`(윈도우 대체 데이터 스트림 `a.jpg:x`)·
+ * 끝의 점·공백(윈도우가 조용히 떼어 **다른 이름이 같은 파일**이 된다)·점으로 시작하는 이름은 안 된다
+ */
+function isPlainSegment(name) {
+  return typeof name === "string" && name !== "" && name.length <= 255 && !name.startsWith(".")
+    && !/[\\/\0:\x00-\x1f]/.test(name) && !/[. ]$/.test(name);
 }
 
-/** QuickLook·윈도우 셸. 아이콘(모서리 투명)이 오면 null */
-async function viaOs(file, box) {
-  if (typeof nativeImage.createThumbnailFromPath !== "function") return null;   // 리눅스엔 없다
-  const os = await nativeImage.createThumbnailFromPath(file, { width: box, height: box });
-  // 표현이 여럿(1x·2x)이라 그대로는 크기를 못 믿는다 — PNG로 한 번 굳혀서 한 장으로 만든다
-  const flat = nativeImage.createFromBuffer(os.toPNG());
-  const { width, height } = flat.getSize();
-  if (!width || !height) return null;
-  const bitmap = flat.toBitmap();
-  const alpha = (x, y) => bitmap[(y * width + x) * 4 + 3];
-  if (alpha(0, 0) === 0 && alpha(width - 1, 0) === 0 && alpha(0, height - 1) === 0 && alpha(width - 1, height - 1) === 0) {
-    return null;   // 파일 종류 아이콘
-  }
-  return flat;
-}
-
-/** @returns 성공 여부. 실패 사유는 로그로만 — 서버는 "못 만듦"만 알면 된다 */
-async function makeThumbnail(request, mediaRoot) {
-  const source = mediaFileInside(mediaRoot, request?.source);
-  if (!source) return false;
-  const box = Number.isInteger(request?.max) && request.max >= 64 && request.max <= 1024 ? request.max : DEFAULT_BOX;
-  const kind = kindOf(source);   // 서버가 준 kind는 안 쓴다 — 확장자로 다시 정한다
-
-  let image = null;
-  if (kind === "image") {
-    const decoded = nativeImage.createFromPath(source);
-    image = decoded.isEmpty() ? await viaOs(source, box) : decoded;   // WebP·깨진 파일은 OS에게
-  } else {
-    image = await viaOs(source, box);
-  }
-  const small = image && fit(image, box);
-  if (!small) return false;
-
-  const target = path.join(path.dirname(source), THUMB_DIR, `${path.basename(source)}.jpg`);
-  const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
-  const st = fs.statSync(source);
-  /*
-   * ⚠️ `.thumbs`가 **진짜 폴더**인지 lstat으로 본다 (보안 점검 2026-10-25). 누가 거기에 밖을 가리키는
-   * 심볼릭 링크를 심어 두면 mkdir·쓰기가 링크를 따라가 데이터 루트 밖에 파일을 만든다
-   */
-  const thumbs = path.dirname(target);
-  let info = null;
-  try { info = fs.lstatSync(thumbs); } catch (e) { if (e.code !== "ENOENT") throw e; }
-  if (info && !info.isDirectory()) return false;
-  if (!info) fs.mkdirSync(thumbs);
+/** 이 게임 폴더의 썸네일 폴더 — 진짜 폴더면 경로, 링크·파일이면 null, 없으면 `missing` */
+function thumbDirOf(folder) {
+  const dir = path.join(folder, THUMB_DIR);
   try {
-    // wx — 같은 이름으로 심어 둔 링크가 있으면 따라가지 않고 실패한다
-    fs.writeFileSync(tmp, small.toJPEG(JPEG_QUALITY), { flag: "wx" });
-    fs.utimesSync(tmp, st.atime, st.mtime);   // 신선도 표시 — 서버가 원본 시각과 맞춰 본다
-    fs.renameSync(tmp, target);
+    const st = fs.lstatSync(dir);
+    return st.isDirectory() ? { dir, exists: true } : null;
   } catch (e) {
-    fs.rmSync(tmp, { force: true });
-    throw e;
+    return e.code === "ENOENT" ? { dir, exists: false } : null;
   }
-  return true;
 }
 
-/**
- * 메인 쪽 줄. 서버가 이미 2개로 묶지만 시험용 서버(연결 테스트·세이브 붓기)도 같은 메인에 부탁한다 —
- * 합쳐서 메인 스레드를 오래 잡지 않게
- */
-const MAX_PARALLEL = 2;
-/**
- * 한 장에 주는 시간. 서버는 20초 뒤 포기하는데(`thumbs.ts`) 여기 끝이 없으면 QuickLook이 멈춘 한 장이
- * 슬롯을 영영 쥐어 **그 뒤 모든 서버의 썸네일이 막힌다.** 늦게 끝난 작업은 그냥 버린다
- */
-const JOB_TIMEOUT_MS = 30_000;
-let active = 0;
-const waiting = [];
-
-function withTimeout(promise, ms) {
-  let timer;
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("시간 초과")), ms); }),
-  ]).finally(() => clearTimeout(timer));
-}
-
-function enqueue(job) {
-  return new Promise((resolve) => {
-    const run = () => {
-      active++;
-      withTimeout(Promise.resolve().then(job), JOB_TIMEOUT_MS)
-        .then(resolve, (e) => { console.warn("썸네일 실패", e?.message ?? e); resolve(false); })
-        .finally(() => { active--; waiting.shift()?.(); });
-    };
-    if (active < MAX_PARALLEL) run(); else waiting.push(run);
-  });
-}
-
-/** 서버 메시지 하나 처리. `reply`는 서버로 보내는 함수 */
-function handleServerMessage(message, mediaRoot, reply) {
-  if (message?.type !== "thumbnail" || typeof message.id !== "string") return false;
-  enqueue(() => makeThumbnail(message, mediaRoot)).then((ok) => {
-    try { reply({ type: "thumbnail:result", id: message.id, ok }); } catch { /* 서버가 그새 내려갔다 */ }
-  });
-  return true;
-}
+const thumbPathOf = (source) => path.join(path.dirname(source), THUMB_DIR, `${path.basename(source)}.jpg`);
 
 // ───────────── 클립보드 · 내보내기 ─────────────
 
@@ -244,4 +166,7 @@ function saveFiles(files, folder) {
   return { saved, failed };
 }
 
-module.exports = { THUMB_DIR, MAX_COPY, kindOf, mediaFileInside, makeThumbnail, handleServerMessage, copyToClipboard, saveFiles, freeName };
+module.exports = {
+  THUMB_DIR, MAX_COPY, kindOf, contentTypeOf, isThumbDirName, realpath, partsInside, mediaFileInside, isPlainSegment,
+  thumbDirOf, thumbPathOf, copyToClipboard, saveFiles, freeName,
+};

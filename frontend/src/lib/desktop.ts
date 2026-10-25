@@ -225,6 +225,15 @@ export interface StarlogBridge {
           failed: (MediaTarget & { reason: string })[];
         }
     >;
+    /** 배경 썸네일 진행 (세션을 열 때). 20장 미만이면 안 온다. 옛 preload에는 없다 */
+    onProgress?(callback: (p: { phase: "run" | "done" | "canceled"; done: number; total: number }) => void): () => void;
+    /** 게임 폴더가 바뀌었다 (탐색기로 넣고 지움) — 열린 목록을 다시 읽는다 */
+    onChanged?(callback: (c: { folder: string; thumbs?: boolean }) => void): () => void;
+    /** 배경 썸네일 중단 */
+    cancelPrepare?(): Promise<number>;
+    /** 속도 기록이 켜져 있나 (동기) · 기록 한 줄 — `STARLOG_MEDIA_TIMING=1`일 때만 남는다 */
+    timingOn?(): boolean;
+    timing?(event: string, data: Record<string, number | string | boolean>): void;
   };
   pickFolder(): Promise<string | null>;
   openFolder(which: string): Promise<void>;

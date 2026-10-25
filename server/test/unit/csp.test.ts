@@ -29,11 +29,13 @@ describe("CSP", () => {
     for (const d of ["object-src 'none'", "frame-ancestors 'none'", "base-uri 'none'", "form-action 'none'"]) expect(p).toContain(d);
   });
 
-  it("스토리지가 없으면 바깥 출처는 IGDB 이미지뿐", () => {
+  it("스토리지가 없으면 바깥 출처는 IGDB 이미지뿐 (+ 일렉트론 스크린샷 스킴은 사진·영상에만)", () => {
     setConfig(loadConfig({ STARLOG_DB_DIR: "memory://csp" }));
     const p = cspForHtml("");
     expect(directive(p, "connect-src")).toBe("connect-src 'self' http://127.0.0.1:*");
-    expect(directive(p, "img-src")).toBe("img-src 'self' data: blob: https://images.igdb.com http://127.0.0.1:*");
+    expect(p.match(/starlog-media:/g)?.length).toBe(2);
+    expect(directive(p, "img-src")).toBe("img-src 'self' data: blob: https://images.igdb.com http://127.0.0.1:* starlog-media:");
+    expect(directive(p, "media-src")).toBe("media-src 'self' blob: http://127.0.0.1:* starlog-media:");
   });
 
   it("이상한 주소는 정책에 못 끼어든다", () => {

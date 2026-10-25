@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { mediaTiming } from "@/lib/mediaEvents";
 
 /**
  * 스크린샷·영상 크게 보기 (2026-08-28에 다시 만듦).
@@ -68,14 +69,24 @@ export default function MediaViewer({
   const direction = useRef(1);
   const lastStep = useRef(0);
   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** 속도 기록 — 넘긴 순간부터 그 장의 무언가(썸네일·원본)가 그려질 때까지 */
+  const moveMark = useRef<{ url: string; t0: number; thumb: boolean; orig: boolean } | null>(null);
+  const painted = (url: string, what: "thumb" | "orig") => {
+    const m = moveMark.current;
+    if (!m || m.url !== url || (what === "thumb" ? m.thumb : m.orig)) return;
+    if (what === "thumb") m.thumb = true; else m.orig = true;
+    requestAnimationFrame(() => mediaTiming("viewerPaint", { ms: Math.round(performance.now() - m.t0), what }));
+  };
 
   const move = useCallback(
     (delta: number) => {
       direction.current = delta;
       // 끝에서 반대편으로 돈다 — 마지막 장에서 오른쪽을 눌렀을 때 아무 일도 안 나면 고장 같다
-      onIndex((index + delta + items.length) % items.length);
+      const next = (index + delta + items.length) % items.length;
+      if (items[next]) moveMark.current = { url: items[next].url, t0: performance.now(), thumb: false, orig: false };
+      onIndex(next);
     },
-    [index, items.length, onIndex],
+    [index, items, onIndex],
   );
 
   /* 멈춘 장 기준으로 진행 방향 3장 + 반대쪽 1장을 미리 풀어 둔다 */
@@ -166,6 +177,7 @@ export default function MediaViewer({
                 src={thumb}
                 alt=""
                 aria-hidden
+                onLoad={() => painted(item.url, "thumb")}
                 className={`${showOriginal ? "absolute inset-0 h-full w-full" : "h-[80vh] max-w-full"} rounded-lg object-contain`}
               />
             )}
@@ -178,7 +190,7 @@ export default function MediaViewer({
                 decoding="async"
                 onLoad={(e) => {
                   const url = item.url;
-                  e.currentTarget.decode().catch(() => {}).finally(() => setReadyUrl(url));
+                  e.currentTarget.decode().catch(() => {}).finally(() => { setReadyUrl(url); painted(url, "orig"); });
                 }}
                 className={`relative max-h-[80vh] max-w-full rounded-lg object-contain ${originalReady || !thumb ? "" : "opacity-0"}`}
               />

@@ -35,7 +35,9 @@ export type TaskKind =
   /** 연결 끊긴 외부 일정 넘기기·지우기·연결 해제 결과 (시스템 → 외부 일정) */
   | "external-plays"
   /** 끌어다 놓아 태그 옮기기 — 실패만 띄운다. 성공은 화면이 바로 보여준다 */
-  | "tag-move";
+  | "tag-move"
+  /** 세션을 열 때 빠진 스크린샷 썸네일을 뒤에서 만든다 (일렉트론 `mediaWork.js`) */
+  | "media-thumbs";
 
 export type Task = {
   id: string;

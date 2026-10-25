@@ -30,6 +30,12 @@ const backup = require("./backup");
 const cloudBackup = require("./cloudBackup");
 const saveFiles = require("./saveFiles");
 const media = require("./media");
+const thumbs = require("./thumbs");
+const thumbPool = require("./thumbPool");
+const mediaProtocol = require("./mediaProtocol");
+const mediaWork = require("./mediaWork");
+const mediaTiming = require("./mediaTiming");
+const mediaGate = require("./mediaGate");
 const csp = require("./csp");
 
 /**
@@ -106,6 +112,8 @@ protocol.registerSchemesAsPrivileged([
     scheme: "app",
     privileges: { standard: true, secure: true, supportFetchAPI: true },
   },
+  // 스크린샷 원본·썸네일 (`mediaProtocol.js`) — 주소가 기동마다 안 바뀌어 캐시가 이어지고, http 연결 6개 제한이 없다
+  { scheme: mediaProtocol.SCHEME, privileges: mediaProtocol.PRIVILEGES },
 ]);
 
 const MIME = {
@@ -414,7 +422,10 @@ function spawnServer(port, config) {
     STARLOG_PORT: String(port),
     STARLOG_HOST: "127.0.0.1",
     STARLOG_STATIC_DIR: WEB_FOR_SERVER,
+    // 목록이 스크린샷 주소를 `starlog-media://`로 낸다 — 그 스킴은 이 메인만 안다 (개발 서버·녹화본은 http 그대로)
+    STARLOG_MEDIA_SCHEME: mediaProtocol.SCHEME,
   });
+  if (mediaTiming.on()) env.STARLOG_MEDIA_TIMING = "1";
   for (const [key, value] of Object.entries(config.env ?? {})) {
     if (value) env[key] = value;
   }
@@ -443,7 +454,7 @@ function spawnServer(port, config) {
   child.on("message", (m) => {
     if (m && m.type === "diagnostic") diagnostic = m.code;
     else if (m && m.type === "checked") checked = true;
-    else media.handleServerMessage(m, mediaRoot, (reply) => child.postMessage(reply));
+    else thumbs.handleServerMessage(m, mediaRoot, (reply) => child.postMessage(reply));
   });
   child.stdout?.on("data", (chunk) => {
     const text = chunk.toString();
@@ -495,6 +506,7 @@ function startBackend(port, config) {
     backend = null;
     backendPort = null;
     backendMediaRoot = null;
+    mediaWork.stop();
     if (!stoppingOnPurpose) {
       const lost = session;
       session = null;
@@ -607,6 +619,7 @@ async function settleProbe(probe, port, { checkOnly = false } = {}) {
  */
 function stopBackend() {
   stopAutoBackupTimer();
+  mediaWork.stop();
   if (!backend) {
     session = null;
     return Promise.resolve();
@@ -778,6 +791,11 @@ function createWindow() {
   });
   win.once("ready-to-show", () => win.show());
   if (saved.maximized) win.maximize();
+  // 썸네일 공장(숨긴 창)이 남아 있으면 `window-all-closed`가 안 와서 앱이 안 꺼진다
+  win.on("closed", () => thumbPool.close());
+  // 배경 일은 사용자가 이 창을 보고 있을 때만 (`mediaGate.js`). 떠나면 빠른 공장(높은 OS 순위)도 하던 것만 끝내고 닫는다
+  mediaGate.attach(win);
+  mediaGate.onChange((active) => { if (!active) thumbPool.fast.closeWhenIdle(); });
 
   bindDevShortcuts(win.webContents);
   lockNavigation(win.webContents);
@@ -1307,6 +1325,15 @@ function registerIpc() {
     return { canceled: false, folder, saved, failed };
   });
 
+  // ── 스크린샷 배경 일 (mediaWork.js) ──
+  /** 진행 알림의 [중단] — 배경 썸네일만 */
+  handle("media:cancelPrepare", () => mediaWork.cancelPregen());
+  /** 속도 기록이 켜져 있나 (동기, 화면이 한 번만 묻는다) · 화면 쪽 기록 한 줄 */
+  onSync("media:timingOn", () => mediaTiming.on());
+  onAsync("media:timing", (_e, event, data) => mediaTiming.fromRenderer(event, data));
+  /** 마우스·휠 — 창이 보이고 1분 안에 만졌으면 포커스가 없어도 배경 일을 한다 */
+  onAsync("media:activity", () => mediaGate.input());
+
   handle("saves:list", () => saveFiles.list(dataDirs()));
 
   /*
@@ -1651,6 +1678,7 @@ function registerIpc() {
       console.error("[settings] 마지막 접속을 저장하지 못했습니다", err);
     }
     progress({ phase: "ready" });
+    startMediaWork();
     maybeAutoCloudBackup(request.mode, target);
     startAutoBackupTimer(request.mode);
     backendStorage = csp.storageOrigins([{ endpoint: config.env.APP_STORAGE_ENDPOINT, publicBaseUrl: config.env.APP_STORAGE_PUBLIC_BASE_URL }]);
@@ -1896,6 +1924,19 @@ function registerIpc() {
   });
 }
 
+/**
+ * 세션이 열렸다 — 배경 썸네일·감시·캐시 데우기를 이 서버의 데이터 루트로 (`mediaWork.js`).
+ * 입구로 나가도 서버가 살아 있으면 그대로 돈다. 서버를 내릴 때(`stopBackend`) 멈춘다
+ */
+function startMediaWork() {
+  if (!backendMediaRoot) return;
+  const send = (channel, payload) => { if (win && !win.isDestroyed()) win.webContents.send(channel, payload); };
+  mediaWork.start(backendMediaRoot, {
+    onProgress: (p) => send("media:progress", p),
+    onChanged: (c) => send("media:changed", c),
+  });
+}
+
 /** [최근 접속]이 없어진 대상을 가리키면 지운다 */
 function forgetLastTarget(mode, target) {
   try {
@@ -2133,6 +2174,7 @@ app.whenReady().then(() => {
     console.error("[cloud-backup] 쓰다 만 백업을 치우지 못했습니다", e);
   }
   protocol.handle("app", serveWeb);
+  protocol.handle(mediaProtocol.SCHEME, mediaProtocol.handler(() => backendMediaRoot, (folder) => mediaWork.noteRequest(folder)));
   lockPermissions();
   registerIpc();
   createWindow();
@@ -2161,7 +2203,7 @@ app.on("before-quit", (event) => {
    * 반쪽 세이브가 남았다. 내린 뒤의 반쪽 폴더는 `.partial` 표시가 있어 다음 기동이 치운다
    */
   Promise.allSettled([stopBackend(), ...[...probes].map((p) => p.stop())])
-    .finally(() => app.quit());
+    .finally(() => { thumbPool.close(); mediaTiming.flush(); app.quit(); });
 });
 
 /**
