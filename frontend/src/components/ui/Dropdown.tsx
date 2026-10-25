@@ -16,6 +16,7 @@ export default function Dropdown({
   align = "right",
   panelClassName = "w-48",
   portal = false,
+  disabled = false,
 }: {
   trigger: (open: boolean) => React.ReactNode;
   children: (close: () => void) => React.ReactNode;
@@ -29,8 +30,12 @@ export default function Dropdown({
    * 포탈로 body에 붙이면 그 맥락 밖이라 정상 색으로 그려진다
    */
   portal?: boolean;
+  /** 트리거를 진짜로 끈다 — 안쪽 모양만 흐리게 하면 감싼 버튼은 여전히 눌린다 */
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  // 열어 둔 사이에 꺼지면(선택을 다 풀었을 때) 닫는다 — 렌더 중 갱신은 React가 허용하는 이전 값 비교 패턴
+  if (disabled && open) setOpen(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const [place, setPlace] = useState<AnchorPlacement | null>(null);
@@ -129,7 +134,8 @@ export default function Dropdown({
      * 트리거의 오른쪽이 아니라 **줄 전체의 오른쪽 끝**이 되어 패널이 멀리 날아간다
      */
     <div ref={rootRef} className="relative w-fit">
-      <button type="button" onClick={() => setOpen((prev) => !prev)} aria-expanded={open}>
+      <button type="button" disabled={disabled} onClick={() => setOpen((prev) => !prev)} aria-expanded={open}
+        className={disabled ? "cursor-default" : undefined}>
         {trigger(open)}
       </button>
 

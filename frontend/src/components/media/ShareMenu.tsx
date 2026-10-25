@@ -61,11 +61,11 @@ export default function ShareMenu({ targets }: { targets: MediaTarget[] }) {
     <Dropdown
       align="right"
       panelClassName="w-64"
+      disabled={none}
       trigger={() => (
         <span
-          aria-disabled={none}
-          className={`block rounded-md border border-white/15 px-3 py-2 text-xs font-medium tracking-widest whitespace-nowrap text-white/80 uppercase transition-all hover:bg-white/10 hover:text-white sm:px-4 ${
-            none ? "pointer-events-none opacity-40" : ""
+          className={`block rounded-md border border-white/15 px-3 py-2 text-xs font-medium tracking-widest whitespace-nowrap text-white/80 uppercase transition-all sm:px-4 ${
+            none ? "opacity-40" : "hover:bg-white/10 hover:text-white"
           }`}
         >
           공유
