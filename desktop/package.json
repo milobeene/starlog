@@ -10,8 +10,8 @@
     "start": "electron ."
   },
   "devDependencies": {
-    "electron": "^33.0.0",
-    "electron-builder": "^26.15.3"
+    "electron": "45.0.0",
+    "electron-builder": "^26.18.0"
   },
   "dependencies": {
     "@electric-sql/pglite": "0.5.11"

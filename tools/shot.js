@@ -24,7 +24,7 @@ app.dock?.hide();
 app.whenReady().then(async () => {
   const win = new BrowserWindow({ show: false, width: w, height: h, webPreferences: { backgroundThrottling: false } });
   const logs = [];
-  win.webContents.on("console-message", (_e, level, message, line, source) => { if (level >= 2 && !/Electron Security Warning/.test(message)) logs.push(`[console ${level === 3 ? "error" : "warn"}] ${message} (${source}:${line})`); });
+  win.webContents.on("console-message", ({ level, message, lineNumber, sourceId }) => { if ((level === "warning" || level === "error") && !/Electron Security Warning/.test(message)) logs.push(`[console ${level === "error" ? "error" : "warn"}] ${message} (${sourceId}:${lineNumber})`); });
   win.webContents.on("render-process-gone", (_e, d) => logs.push(`[renderer gone] ${JSON.stringify(d)}`));
   win.webContents.session.webRequest.onCompleted((d) => { if (d.statusCode >= 400) logs.push(`[http ${d.statusCode}] ${d.method} ${d.url}`); });
   win.webContents.session.webRequest.onErrorOccurred((d) => { if (!/ERR_ABORTED/.test(d.error)) logs.push(`[net] ${d.error} ${d.url}`); });

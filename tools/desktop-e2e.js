@@ -17,6 +17,7 @@ const fs = require("fs");
 const os = require("os");
 const { execFileSync } = require("child_process");
 const Module = require("module");
+const url = require("url");
 
 const ROOT = path.resolve(__dirname, "..");
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "starlog-e2e-"));
@@ -189,16 +190,34 @@ async function mediaSteps(port, entryId) {
   fs.rmSync(path.join(folder, "link.png"));
 
   // ── 클립보드 (사용자 클립보드를 잠깐 빌린다 — 끝나면 되돌린다) ──
-  const savedText = clipboard.readText();
-  const savedImage = clipboard.readImage();
+  // 일렉트론 44부터 읽기는 전부 `clipboard.read()` 하나다 (readImage·readBuffer·availableFormats가 없어졌다)
+  const { ClipboardItem } = realElectron;
+  const clipTypes = async () => [...new Set((await clipboard.read()).flatMap((i) => i.types))];
+  const clipBytes = async (type) => {
+    const item = (await clipboard.read()).find((i) => i.types.includes(type));
+    return item ? Buffer.from(await (await item.getType(type)).arrayBuffer()) : null;
+  };
+  const clipFiles = async () => ((await clipBytes("text/uri-list"))?.toString("utf8") ?? "")
+    .split(/\r?\n/).filter(Boolean).map((u) => url.fileURLToPath(u));
+  const readUrls = () => process.platform !== "darwin" ? [] : JSON.parse(execFileSync("osascript", ["-l", "JavaScript", "-e",
+    `ObjC.import('AppKit'); const u=$.NSPasteboard.generalPasteboard.readObjectsForClassesOptions($([$.NSURL]),$({NSPasteboardURLReadingFileURLsOnlyKey:true}));
+     const o=[]; for(let i=0;u&&i<u.count;i++) o.push(ObjC.unwrap(u.objectAtIndex(i).path)); JSON.stringify(o)`]).toString());
+  const savedText = await clipboard.readText();
+  const savedPng = await clipBytes("image/png");
   try {
     const ref = (n) => JSON.stringify({ entryId, fileName: stored[n] });
     const c1 = await js(`window.starlog.media.copy(${ref("land.png")})`);
-    const pasted = clipboard.readImage().getSize();
+    const pastedPng = await clipBytes("image/png");
+    const pasted = pastedPng ? nativeImage.createFromBuffer(pastedPng).getSize() : null;
     check("복사 — 사진은 그림으로", c1.ok && c1.as === "image" && pasted.width === 2560 && pasted.height === 1440, `${JSON.stringify(c1)} ${JSON.stringify(pasted)}`);
     const c2 = await js(`window.starlog.media.copy(${ref("clip.mp4")})`);
-    const fileUrl = clipboard.readBuffer("public.file-url").toString("utf8");
-    check("복사 — 영상은 파일 참조로 (맥 public.file-url)", c2.ok && c2.as === "file" && fileUrl.endsWith(`/${stored["clip.mp4"]}`), `${JSON.stringify(c2)} ${fileUrl}`);
+    const one = await clipFiles();
+    check("복사 — 영상은 파일 참조로 (text/uri-list)", c2.ok && c2.as === "file" && one.length === 1 && path.basename(one[0]) === stored["clip.mp4"],
+      `${JSON.stringify(c2)} ${JSON.stringify(one)}`);
+    if (process.platform === "darwin") {
+      const finder = readUrls();
+      check("복사 — 하나짜리 파일 참조도 파인더가 읽는다 (맥 NSURL)", finder.length === 1 && path.basename(finder[0]) === stored["clip.mp4"], JSON.stringify(finder));
+    }
     const c3 = await js(`window.starlog.media.copy(${ref("pic.webp")})`);
     check("복사 — WebP도 파일 참조로", c3.ok && c3.as === "file");
     const c4 = await js(`window.starlog.media.copy({ entryId: ${entryId}, fileName: "../../../outside.png" })`);
@@ -206,18 +225,16 @@ async function mediaSteps(port, entryId) {
     const c5 = await js(`window.starlog.media.copy({ entryId: "1; rm", fileName: "x" }).then(() => "통과", (e) => "거절")`);
     check("복사 — 형식이 틀린 참조는 거절", c5 === "거절");
 
-    // 여러 개 = 전부 파일 참조. 맥은 NSFilenamesPboardType만 쓴다 (public.file-url을 같이 쓰면 OS가 첫 파일 하나로 합친다)
+    // 여러 개 = 전부 파일 참조. 파인더가 실제로 읽는 모양(NSURL 목록)으로 확인한다
     if (process.platform === "darwin") {
-      const readUrls = () => JSON.parse(execFileSync("osascript", ["-l", "JavaScript", "-e",
-        `ObjC.import('AppKit'); const u=$.NSPasteboard.generalPasteboard.readObjectsForClassesOptions($([$.NSURL]),$({NSPasteboardURLReadingFileURLsOnlyKey:true}));
-         const o=[]; for(let i=0;u&&i<u.count;i++) o.push(ObjC.unwrap(u.objectAtIndex(i).path)); JSON.stringify(o)`]).toString());
       const m1 = await js(`window.starlog.media.copy([${ref("land.png")}, ${ref("clip.mp4")}, ${ref("pic.webp")}])`);
       // 맥이 한글 경로를 분해형(NFD)으로 돌려준다 — 합쳐서 견준다
       const urls = readUrls().map((f) => fs.realpathSync(f).normalize("NFC"));
       const want = ["land.png", "clip.mp4", "pic.webp"].map((n) => fs.realpathSync(path.join(folder, stored[n])).normalize("NFC"));
       check("복사 — 여러 개는 전부 파일로 (맥 NSFilenamesPboardType, 파인더가 읽는 URL 3개)",
         m1.ok && m1.as === "file" && m1.count === 3 && JSON.stringify(urls) === JSON.stringify(want), `${JSON.stringify(m1)} ${JSON.stringify(urls)}`);
-      check("복사 — 여러 개일 때 그림은 안 실린다", !clipboard.availableFormats().includes("image/png"), clipboard.availableFormats().join(","));
+      const types = await clipTypes();
+      check("복사 — 여러 개일 때 그림은 안 실린다", !types.includes("image/png"), types.join(","));
       const m2 = await js(`window.starlog.media.copy([${ref("land.png")}, ${ref("land.png")}])`);
       check("복사 — 같은 파일을 두 번 고르면 한 번만", m2.ok && m2.count === 1 && m2.as === "image", JSON.stringify(m2));
       await js(`window.starlog.media.copy([${ref("land.png")}, ${ref("clip.mp4")}])`);
@@ -232,7 +249,8 @@ async function mediaSteps(port, entryId) {
     const m7 = await js(`window.starlog.media.copy(Array.from({ length: 501 }, () => ({ entryId: ${entryId}, fileName: "a.png" }))).then(() => "통과", () => "거절")`);
     check("복사 — 빈 배열·문자열·쓰레기 원소·501개는 거절", [m4, m5, m6, m7].every((x) => x === "거절"), [m4, m5, m6, m7].join(","));
   } finally {
-    if (!savedImage.isEmpty()) clipboard.writeImage(savedImage); else clipboard.writeText(savedText);
+    if (savedPng) await clipboard.write([new ClipboardItem({ "image/png": new Blob([savedPng], { type: "image/png" }) })]);
+    else await clipboard.writeText(savedText);
   }
 
   // ── 다른 창(우리 앱 문서가 아님)에서는 못 부른다 ──

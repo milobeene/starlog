@@ -39,6 +39,23 @@ asarUnpack:
   - web/**
   - node_modules/@electric-sql/**
 
+# 퓨즈 — 실행 파일 안의 스위치를 패키징 때 굽는다 (설정·코드로는 못 되돌린다).
+# 서명이 없어서 누가 우리 실행 파일을 "그냥 Node"로 돌리거나(RunAsNode·NODE_OPTIONS·--inspect)
+# asar를 바꿔치기해도 OS가 막아 주지 않는다 → 그 길을 실행 파일 쪽에서 닫는다.
+# utilityProcess는 RunAsNode와 무관하다(일렉트론 자체 경로) — 서버 기동은 그대로 산다
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableCookieEncryption: true
+  # 앱 코드(main.js 등)는 app.asar에서만 읽는다. asarUnpack한 server·web·PGlite는 "앱 진입점"이 아니라 영향 없다
+  onlyLoadAppFromAsar: true
+  # app.asar 머리의 해시를 실행 파일에 심은 값과 대조한다. **풀어 둔 파일(asarUnpack)은 검사 밖이다** —
+  # server/main.mjs는 이걸로 못 지킨다
+  enableEmbeddedAsarIntegrityValidation: true
+  # file:// 페이지는 안 쓴다 (창은 app://, 본 앱은 http://127.0.0.1)
+  grantFileProtocolExtraPrivileges: false
+
 mac:
   category: public.app-category.productivity
   # ⚠️ **애드혹 서명은 한다.** 개발자 인증서가 없다고 서명을 통째로 건너뛰면

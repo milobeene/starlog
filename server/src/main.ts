@@ -43,6 +43,15 @@ function requestShutdown(why: string) {
 process.on("SIGTERM", () => requestShutdown("SIGTERM"));
 process.on("SIGINT", () => requestShutdown("SIGINT"));
 parentPort?.on("message", (e) => { if ((e.data as { type?: string })?.type === "shutdown") requestShutdown("parent"); });
+/*
+ * 일렉트론 37부터 utilityProcess는 처리 안 된 거부에 **경고만 하고 계속 돈다** (Node는 죽는다).
+ * 반쯤 고장 난 채 세이브파일 잠금을 쥐고 사는 것보다 죽어서 "서버가 멈췄다"로 드러나는 게 낫다 —
+ * 개발(`npm run dev`)·골든과 같은 동작으로 맞춘다
+ */
+process.on("unhandledRejection", (e) => {
+  console.error("처리 안 된 거부", e);
+  process.exit(1);
+});
 
 /**
  * 로컬 세이브파일 잠금. **두 프로세스가 같은 PGlite 폴더를 열면 망가진다** — PGlite엔 파일 잠금이

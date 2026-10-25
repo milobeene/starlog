@@ -535,6 +535,11 @@ function createWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      /*
+       * 기본값도 true지만 박아 둔다 — preload가 Node를 못 쓰는 상태가 전제다(`electron`만 require).
+       * 누가 preload에 `require("fs")`를 넣으려고 sandbox를 끄면 화면 쪽 방어가 한 겹 사라진다
+       */
+      sandbox: true,
       preload: path.join(__dirname, "preload.js"),
     },
   });

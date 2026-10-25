@@ -17,7 +17,7 @@ const result = await build({
   bundle: true,
   platform: "node",
   format: "esm",
-  target: "node20",          // 일렉트론 33의 Node
+  target: "node24",          // 일렉트론 45의 Node (24.x). 올릴 땐 같이 올린다
   external: ["@electric-sql/pglite", "pg-native"],
   // CJS 의존성(pg)이 require를 부른다 — ESM 번들 안에서도 쓸 수 있게
   banner: { js: "import { createRequire as __cr } from 'module'; const require = __cr(import.meta.url);" },
