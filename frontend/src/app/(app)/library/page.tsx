@@ -2,7 +2,7 @@
 
 import { rememberLibrary, takeLibrary } from "@/lib/libraryState";
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import PageHeading from "@/components/ui/PageHeading";
 import SearchInput from "@/components/ui/SearchInput";
 import Dropdown from "@/components/ui/Dropdown";
@@ -63,15 +63,26 @@ function LibraryFallback() {
 }
 
 function LibraryContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   // 대시보드의 "More →"가 sort를 들고 온다
-  const initialSort = searchParams.get("sort") ?? "lastPlayed";
+  const linkSort = searchParams.get("sort");
+  const initialSort = linkSort ?? "lastPlayed";
+  // 첫 렌더에서만 정한다 — 아래에서 주소의 sort를 지운 뒤에도 "링크로 왔다"는 사실은 남아야 한다
+  const [fromLink] = useState(linkSort !== null);
 
   /*
    * 돌아왔을 때 보던 화면으로 (v1.2). 상세에서 [Back to library]를 누르면
-   * 늘 루트로 갔던 것을 고친다 — 필터도 폴더도 페이지도 그대로다
+   * 늘 루트로 갔던 것을 고친다 — 필터도 폴더도 페이지도 그대로다.
+   * 단 sort를 들고 온 링크(대시보드 More)는 **새로 시작**한다 — 기억한 정렬·필터·폴더 보기가
+   * 이기면 "평점순 더 보기"를 눌러도 지난번 화면이 뜬다
    */
-  const restored = takeLibrary();
+  const restored = fromLink ? null : takeLibrary();
+
+  // 링크의 sort는 한 번 쓰고 주소에서 뗀다 — 남겨 두면 상세에서 뒤로 올 때마다 또 새로 시작한다
+  useEffect(() => {
+    if (linkSort !== null) router.replace("/library", { scroll: false });
+  }, [linkSort, router]);
 
   const [query, setQuery] = useState(restored?.query ?? "");
   const [debounced, setDebounced] = useState("");
