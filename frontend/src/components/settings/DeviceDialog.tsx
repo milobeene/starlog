@@ -25,6 +25,7 @@ export default function DeviceDialog({
     <FormDialog
       title={edit ? "기기 수정" : "기기 추가"}
       onClose={onClose}
+      tall
       onSubmit={async () => {
         const body = { deviceType, label, memo: memo.trim() || null };
         if (edit) await api.put(`/api/me/devices/${edit.deviceId}`, body);
@@ -49,8 +50,8 @@ export default function DeviceDialog({
           className={FIELD_INPUT}
         />
       </Field>
-      <Field label="Memo" hint="스펙·주의점 · 마크다운 · Enter로 목록 이어쓰기, Tab으로 들여쓰기">
-        <MarkdownTextarea value={memo} onChange={setMemo} rows={6} maxLength={2000} />
+      <Field label="Memo" hint="스펙·주의점 · 마크다운 · Enter로 목록 이어쓰기, Tab으로 들여쓰기" className="flex-1">
+        <MarkdownTextarea fill value={memo} onChange={setMemo} maxLength={2000} />
       </Field>
     </FormDialog>
   );

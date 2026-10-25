@@ -9,6 +9,7 @@ import {
   loadPresets,
   shiftHue,
   storePresets,
+  unifyHue,
   type SavedPalette,
 } from "@/lib/palette";
 
@@ -145,8 +146,8 @@ export default function PaletteEditor({
         <span className="w-14 shrink-0 text-[11px] text-white/50">색조 이동</span>
         <input
           type="range"
-          min={-180}
-          max={180}
+          min={-360}
+          max={360}
           step={1}
           value={shift}
           onChange={(event) => rotate(Number(event.target.value))}
@@ -160,6 +161,17 @@ export default function PaletteEditor({
           {shift > 0 ? "+" : ""}
           {shift}°
         </span>
+        {/*
+          다섯 색의 색조를 전부 0°(빨강)로. onChange만 부르고 hue 상태는 건드리지 않는다 —
+          그러면 colors가 emitted와 어긋나 슬라이더가 0으로 떨어지고, 다음에 움직일 때 이 색이 새 기준이 된다
+        */}
+        <button
+          type="button"
+          onClick={() => onChange(unifyHue(colors))}
+          className="shrink-0 rounded-md border border-white/15 px-2.5 py-1 text-[11px] text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+        >
+          색조 통일
+        </button>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">

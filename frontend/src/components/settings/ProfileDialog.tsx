@@ -30,6 +30,7 @@ export default function ProfileDialog({
     <FormDialog
       title={field === "nickname" ? "프로필" : "메모"}
       onClose={onClose}
+      tall={field === "memo"}
       onSubmit={async () => {
         await api.put("/api/me/profile", {
           nickname,
@@ -66,8 +67,8 @@ export default function ProfileDialog({
           </Field>
         </>
       ) : (
-        <Field label="Memo" hint="마크다운을 지원합니다 · Enter로 목록 이어쓰기, Tab으로 들여쓰기 · 2,000자 이내">
-          <MarkdownTextarea value={memo} onChange={setMemo} rows={12} maxLength={2000} />
+        <Field label="Memo" hint="마크다운을 지원합니다 · Enter로 목록 이어쓰기, Tab으로 들여쓰기 · 2,000자 이내" className="flex-1">
+          <MarkdownTextarea fill value={memo} onChange={setMemo} maxLength={2000} />
         </Field>
       )}
     </FormDialog>

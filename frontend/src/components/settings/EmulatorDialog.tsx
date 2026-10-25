@@ -23,6 +23,7 @@ export default function EmulatorDialog({
     <FormDialog
       title={edit ? "에뮬레이터 수정" : "에뮬레이터 추가"}
       onClose={onClose}
+      tall
       onSubmit={async () => {
         const body = { name, memo: memo.trim() || null };
         if (edit) await api.put(`/api/me/emulators/${edit.emulatorId}`, body);
@@ -39,8 +40,8 @@ export default function EmulatorDialog({
           className={FIELD_INPUT}
         />
       </Field>
-      <Field label="Memo" hint="설정값·주의점 · 마크다운">
-        <MarkdownTextarea value={memo} onChange={setMemo} rows={6} maxLength={2000} />
+      <Field label="Memo" hint="설정값·주의점 · 마크다운" className="flex-1">
+        <MarkdownTextarea fill value={memo} onChange={setMemo} maxLength={2000} />
       </Field>
     </FormDialog>
   );

@@ -23,7 +23,7 @@ export function formatSyncEstimate(seconds: number): string {
 
 /**
  * 일괄 동기화를 돌린다. 진행·결과는 알림(`tasks`)으로 낸다.
- * `abort`는 알림의 [중단]이 건드리는 신호다 — 루프가 매 건 확인한다
+ * `abort`는 알림의 [중단]이 켜는 신호다 — 다이얼로그가 닫혀도 알림이 살아 있어서 ref로 넘겨 받는다
  */
 export async function runBulkSync(targets: GameMaster[], abort: MutableRefObject<boolean>) {
   /*
@@ -32,15 +32,36 @@ export async function runBulkSync(targets: GameMaster[], abort: MutableRefObject
    * 사용자는 멈춘 줄 알고 또 누른다. 알림은 껍데기에 붙어 있어 화면을 넘어 산다
    */
   abort.current = false;
+  const controller = new AbortController();
+  const timers: ReturnType<typeof setTimeout>[] = [];
+  let finish: () => void = () => {};
+  const allSettled = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+
+  /*
+   * ⚠️ **중단은 세 가지를 같이 한다** (2026-10-25). 예전엔 플래그만 켜서 "아직 안 쏜 타이머"만 막았는데,
+   * 발사는 0.3초 간격이라 145건이면 43초에 **전부 이미 나간 뒤**다. 진행 표시는 *응답* 기준이라
+   * 12/145에서 눌러도 요청은 다 나가 있었고, 막을 게 없어 끝까지 돌아 "145개 중 145개 갱신"이 떴다.
+   *   1) 대기 중인 타이머를 걷어낸다
+   *   2) 나간 요청은 fetch를 abort한다 — 브라우저 큐에서 기다리던 것은 아예 서버에 안 간다
+   *   3) 그 뒤 늦게 오는 결과는 세지 않는다
+   */
+  const stop = () => {
+    if (abort.current) return;
+    abort.current = true;
+    timers.forEach(clearTimeout);
+    controller.abort();
+    finish();
+  };
+
   const put = (done: number, label: string) =>
     putTask({
       id: "bulk-sync",
       kind: "bulk-sync",
       title: "게임 마스터 일괄 동기화",
       progress: { done, total: targets.length, label },
-      onAbort: () => {
-        abort.current = true;
-      },
+      onAbort: stop,
     });
 
   put(0, targets[0].name);
@@ -58,33 +79,35 @@ export async function runBulkSync(targets: GameMaster[], abort: MutableRefObject
    * **초당 4회**다. 동시 4개로 돌리면 응답이 빠를 때 초당 수십 번이 나간다 —
    * 동시 실행 수는 발사 속도를 전혀 안 막는다. 간격을 재는 쪽이 한도와 같은 단위다
    */
-  const flights = targets.map(
-    (game, i) =>
-      new Promise<void>((resolve) => {
-        setTimeout(async () => {
-          if (abort.current) return resolve();
-          try {
-            await api.post(`/api/games/${game.gameId}/resync`);
-            synced += 1;
-          } catch {
-            // 한 건이 실패해도 나머지는 돈다 — 다시 누르면 그것만 다시 잡힌다
-          }
-          done += 1;
-          put(done, game.name);
-          resolve();
-        }, i * SYNC_INTERVAL_MS);
-      }),
-  );
-  await Promise.all(flights);
+  targets.forEach((game, i) => {
+    timers.push(
+      setTimeout(async () => {
+        try {
+          await api.post(`/api/games/${game.gameId}/resync`, undefined, controller.signal);
+          if (abort.current) return;
+          synced += 1;
+        } catch {
+          // 한 건이 실패해도 나머지는 돈다 — 다시 누르면 그것만 다시 잡힌다. 중단으로 끊긴 건도 여기로 온다
+          if (abort.current) return;
+        }
+        done += 1;
+        put(done, game.name);
+        if (done === targets.length) finish();
+      }, i * SYNC_INTERVAL_MS),
+    );
+  });
+  await allSettled;
 
+  const aborted = abort.current;
   updateTask("bulk-sync", {
-    title: abort.current ? "일괄 동기화 중단됨" : "일괄 동기화 완료",
+    title: aborted ? "일괄 동기화 중단됨" : "일괄 동기화 완료",
     progress: undefined,
     onAbort: undefined,
     result: {
-      ok: !abort.current,
-      message: `${targets.length}개 중 ${synced}개를 갱신했습니다.`
-        + (abort.current ? " 다시 누르시면 남은 것만 다시 잡힙니다." : ""),
+      ok: !aborted,
+      message: aborted
+        ? `${targets.length}개 중 ${synced}개를 갱신하고 중단했습니다. 이미 서버에 닿은 몇 건은 마저 끝났을 수 있습니다. 다시 누르시면 남은 것만 다시 잡힙니다.`
+        : `${targets.length}개 중 ${synced}개를 갱신했습니다.`,
     },
   });
 }

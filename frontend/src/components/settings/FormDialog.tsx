@@ -10,11 +10,14 @@ export default function FormDialog({
   title,
   onClose,
   onSubmit,
+  tall = false,
   children,
 }: {
   title: string;
   onClose: () => void;
   onSubmit: () => Promise<void>;
+  /** 메모 입력칸이 있는 폼 — 높이를 고정하고 `flex-1` 칸이 남는 높이를 먹는다 (`Modal tall`) */
+  tall?: boolean;
   children: React.ReactNode;
 }) {
   const [busy, setBusy] = useState(false);
@@ -24,6 +27,7 @@ export default function FormDialog({
     <Modal
       title={title}
       onClose={onClose}
+      tall={tall}
       footer={
         <>
           {error && <span className="mr-auto text-xs text-red-400">{error}</span>}
@@ -48,7 +52,8 @@ export default function FormDialog({
         </>
       }
     >
-      <div className="flex flex-col gap-4">{children}</div>
+      {/* tall이면 본문(세로 flex)의 남는 높이를 이 줄이 받아 자식 `flex-1`에게 넘긴다. min-h-0을 안 줘서 칸이 모자라면 본문이 자연스럽게 스크롤된다 */}
+      <div className={`flex flex-col gap-4 ${tall ? "flex-1" : ""}`}>{children}</div>
     </Modal>
   );
 }

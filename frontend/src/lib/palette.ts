@@ -84,6 +84,17 @@ export function shiftHue(colors: string[], degrees: number): string[] {
   });
 }
 
+/**
+ * 다섯 색을 전부 같은 색조(기본 0° = 빨강)로 맞춘다. 채도·명도는 각자 그대로라 명암 구조는 남는다.
+ * 슬라이더로 돌리기 전에 "계열을 하나로 모으는" 출발점이다 — 흩어진 색조를 같은 양만큼 돌려서는 못 모은다
+ */
+export function unifyHue(colors: string[], hue = 0): string[] {
+  return colors.map((color) => {
+    const [, s, l] = hexToHsl(color);
+    return hslToHex(hue, s, l);
+  });
+}
+
 /* ── 마지막으로 쓴 색 (입구용) + 프리셋 ──────────────────────────── */
 
 export type SavedPalette = { name: string; colors: string[] };
