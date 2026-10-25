@@ -71,7 +71,7 @@ export default function ScreenshotSection({ entryId, gameName }: { entryId: numb
   const shots = list.data
     ? [...list.data]
         .sort((a, b) => (a.takenAt ?? "9").localeCompare(b.takenAt ?? "9"))
-        .map((shot) => ({ ...shot, url: backendUrl(shot.url) }))
+        .map((shot) => ({ ...shot, url: backendUrl(shot.url), thumbUrl: shot.thumbUrl ? backendUrl(shot.thumbUrl) : null }))
     : null;
 
   /*

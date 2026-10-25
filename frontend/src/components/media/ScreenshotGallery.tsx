@@ -172,6 +172,7 @@ export default function ScreenshotGallery({
         fileName: entryId === null ? `${item.gameName} · ${item.fileName}` : item.fileName,
         url: backendUrl(item.url),
         contentType: item.contentType,
+        thumbUrl: item.thumbUrl ? backendUrl(item.thumbUrl) : null,
       })),
     [items, entryId],
   );
