@@ -371,7 +371,9 @@ export async function systemStatus(d: Db = db()) {
   const apiUsage = [];
   for (const p of API_PROVIDERS) if (p !== "TRANSLATE") apiUsage.push(await usageOf(d, p, now));
 
-  const [covers] = await d.select({ n: count(), bytes: sql<string>`coalesce(sum(${coverImage.sizeBytes}), 0)` }).from(coverImage);
+  // 스토리지에 실제로 있는 커버만 — DB·로컬 폴더 커버까지 세면 스토리지를 안 써도 보관량이 찬다
+  const [covers] = await d.select({ n: count(), bytes: sql<string>`coalesce(sum(${coverImage.sizeBytes}), 0)` }).from(coverImage)
+    .where(eq(coverImage.location, "EXTERNAL"));
   const storage = { coverCount: Number(covers!.n), totalBytes: Number(covers!.bytes), configured: storageHasCredentials() };
 
   const database = {
