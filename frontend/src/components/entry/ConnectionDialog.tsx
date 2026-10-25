@@ -66,7 +66,7 @@ export default function ConnectionDialog({
     setDb,
     setStorage,
     setIgdb,
-    setTargets,
+    setCoverTarget,
     testing,
     busy,
     partResult,
@@ -169,7 +169,7 @@ export default function ConnectionDialog({
             form={form}
             secret={secretProps}
             setStorage={setStorage}
-            setTargets={setTargets}
+            setCoverTarget={setCoverTarget}
             storageReady={storageReady}
             bad={bad}
             disabled={busy.storage !== undefined}

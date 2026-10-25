@@ -7,9 +7,13 @@
  *
  * - 시각(`timestamp`)·날짜(`date`)는 `mode: 'string'` — 원문 그대로. `Date`로 바꾸면 로컬 시간대가 끼어든다
  * - 금액(`numeric`)은 문자열로 온다 — 계산은 `common/money.ts`
+ * - `bytea`(커버 바이트, V17)는 drizzle-kit이 못 읽어 `unknown("data")` + TODO로 뽑는다 → 아래 `bytea`로 바꿔 끼운다
  */
-import { pgTable, unique, check, bigint, varchar, text, date, numeric, integer, timestamp, index, foreignKey, uniqueIndex, boolean } from "drizzle-orm/pg-core"
+import { pgTable, unique, check, bigint, varchar, text, date, numeric, integer, timestamp, index, foreignKey, uniqueIndex, boolean, customType } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
+
+/** 드라이버마다 다르게 온다 — PGlite는 `Uint8Array`, node-postgres는 `Buffer`(그것도 `Uint8Array`다) */
+const bytea = customType<{ data: Uint8Array; driverData: Uint8Array }>({ dataType: () => "bytea" });
 
 export const game = pgTable("game", {
 	id: bigint({ mode: "number" }).primaryKey().generatedByDefaultAsIdentity({ name: "game_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 9223372036854775807, cache: 1 }),
@@ -405,6 +409,7 @@ export const coverImage = pgTable("cover_image", {
 	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }),
 	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }),
 	location: varchar({ length: 20 }).notNull(),
+	data: bytea("data"),
 }, (table) => [
 	foreignKey({
 			columns: [table.backlogEntryId],
@@ -412,6 +417,8 @@ export const coverImage = pgTable("cover_image", {
 			name: "fk_cover_image_entry"
 		}),
 	unique("uk_cover_image_backlog_entry").on(table.backlogEntryId),
+	check("chk_cover_image_location", sql`(location)::text = ANY ((ARRAY['LOCAL'::character varying, 'EXTERNAL'::character varying, 'DB'::character varying])::text[])`),
+	check("chk_cover_image_data", sql`((location)::text = 'DB'::text) = (data IS NOT NULL)`),
 ]);
 
 export const appSetting = pgTable("app_setting", {

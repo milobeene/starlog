@@ -1121,6 +1121,12 @@ function registerIpc() {
    */
   handle("settings:inspectDataRoot", (_e, dir) => inspectDataRoot(dir));
 
+  /** 로컬 세이브의 커버 위치. 다음에 세이브를 열 때부터 (서버가 기동 때 읽는다) */
+  handle("settings:setLocalCoverTarget", (_e, value) => {
+    if (!store.LOCAL_COVER_TARGETS.includes(value)) throw new Error("커버 저장 위치를 확인해 주세요");
+    return store.patchSettings({ localCoverTarget: value });
+  });
+
   handle("dialog:pickFolder", async () => {
     const result = await dialog.showOpenDialog(win, { properties: ["openDirectory", "createDirectory"] });
     if (result.canceled || !result.filePaths[0]) return null;
@@ -1604,8 +1610,9 @@ function registerIpc() {
    * 없어서, 뽑기가 성공한 순간부터 앱 전체가 `Failed to fetch`가 됐다. 상대는 다른 DB의 다른 포트라
    * 시험용처럼 격리해서 띄우고 내리면 창도 세션도 그대로다.
    *
-   * ⚠️ **커버 실물은 안 따라온다.** 클라우드 커버는 스토리지에 있다.
-   * 가져오기가 "파일 없으면 건너뛴다"로 처리하므로 마스터 커버로 폴백된다 — 화면이 그걸 미리 말해준다
+   * DB 커버는 내보내기(형식 6)에 바이트째 실려 그대로 따라온다.
+   * ⚠️ **스토리지·로컬 폴더 커버는 실물이 안 따라온다.** 가져오기가 "파일 없으면 건너뛴다"로 처리하므로
+   * 마스터 커버로 폴백된다 — 화면이 그걸 미리 말해준다
    */
   handle("cloud:toSaveFile", async (_e, saveName) => {
     if (session?.mode !== "cloud" || !backendPort) {
@@ -1893,7 +1900,7 @@ async function checkServices(profile, want) {
 }
 
 function localConfig(saveName) {
-  const { dataRoot } = store.getSettings();
+  const { dataRoot, localCoverTarget } = store.getSettings();
   return {
     mode: "local",
     env: {
@@ -1901,12 +1908,11 @@ function localConfig(saveName) {
       STARLOG_DB_DIR: saveFiles.dirOf(paths.subPaths(dataRoot), saveName),
       STARLOG_DATA_ROOT: dataRoot,
       /*
-       * 로컬 모드에는 스토리지가 아예 없다 — 명시적으로 꺼서 넘긴다.
-       * 안 넘기면 서버 기본값(false)에 기대게 되는데, **기본값에 기대는 것과
-       * 값을 정해서 주는 것은 다르다** — 기본값이 바뀌면 조용히 동작이 바뀐다
+       * 커버를 DB에 둘지 데이터 폴더에 둘지 (`settings.json`의 `localCoverTarget`, 로컬 세이브 전부에 하나).
+       * 로컬 모드에는 스토리지가 아예 없어 둘 중 하나다. 서버 기본값(db)에 기대지 않고 정해서 넘긴다 —
+       * **기본값에 기대는 것과 값을 정해서 주는 것은 다르다**, 기본값이 바뀌면 조용히 동작이 바뀐다
        */
-      STARLOG_MEDIA_USE_STORAGE_FOR_COVERS: "false",
-      STARLOG_MEDIA_USE_STORAGE_FOR_SCREENSHOTS: "false",
+      STARLOG_COVER_TARGET: localCoverTarget,
     },
   };
 }
@@ -1929,13 +1935,12 @@ function cloudConfig(profile) {
       STARLOG_DB_SCHEMA: db.schema,
       STARLOG_DATA_ROOT: dataRoot,
       /*
-       * 무엇을 스토리지에 올릴지 (사용자 결정 2026-08-28).
-       * 체크 안 한 것은 데이터 루트에 저장된다. **자격증명이 없으면 서버가 무시한다** —
-       * 올릴 데가 없는데 켜져 있으면 업로드가 502로 실패할 뿐이다 (MediaTargets).
-       * ⚠️ 스크린샷은 아직 서버가 스토리지에 올리지 않는다(데이터 폴더 전용) — 저장된 체크가 있어도 끈 채로 넘긴다
+       * 커버를 어디에 둘지 — db · local · storage (2026-10-25, 예전 "커버를 스토리지에" 체크박스 자리).
+       * 옛 체크는 `settings.js`가 읽을 때 옮긴다. **못 하는 쪽을 고르면 서버가 db로 떨어뜨린다**
+       * (스토리지 자격증명이 없다 등) — 켜진 채로 업로드가 502로 실패하게 두지 않는다.
+       * 스크린샷은 늘 데이터 폴더다 — 스토리지 칸(준비 중)은 지웠다
        */
-      STARLOG_MEDIA_USE_STORAGE_FOR_COVERS: String(!!profile.mediaTargets?.covers),
-      STARLOG_MEDIA_USE_STORAGE_FOR_SCREENSHOTS: "false",
+      STARLOG_COVER_TARGET: store.coverTargetOf(profile),
       APP_STORAGE_ENDPOINT: storage.endpoint,
       APP_STORAGE_BUCKET: storage.bucket,
       APP_STORAGE_ACCESS_KEY: storage.accessKey,

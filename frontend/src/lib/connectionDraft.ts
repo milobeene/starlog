@@ -97,10 +97,6 @@ export function restoreDraft(
   const next: ConnectionProfile = { ...base, ...(draft.name ? { name: draft.name } : {}) };
   for (const [key, value] of Object.entries(draft.sections)) {
     (next as unknown as Record<string, unknown>)[key] = value;
-    /*
-     * 스토리지에 무엇을 올릴지(`mediaTargets`)는 **스토리지 칸과 한 몸**이다.
-     * 따로 두면 "칸은 되살아났는데 체크는 풀려 있는" 상태가 나온다
-     */
   }
   return next;
 }

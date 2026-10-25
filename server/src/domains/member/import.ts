@@ -25,6 +25,7 @@ import { bigDecimalText, compareDecimal, money, setScale, type Money } from "../
 import { isSlugShaped, normalize, normalizeAll, require, sortKey, subjectParticle } from "../../common/text";
 import { ldtToDb } from "../../common/json";
 import { STORAGE_LIMITS, coversDir, isExternalCoverKey, isLocalCoverName, localExists } from "../../common/storage";
+import { MAGIC_LENGTH, coverMagicMatches } from "../backlog/media";
 import { findGameByMediaFolder, findIgdbGame, searchGamesByName, type GameRow } from "../game/service";
 import type { PlatformAccountRow, PlatformRow } from "../platform/service";
 import { ACQUISITION_METHODS, PLAYTHROUGH_STATUSES, deriveState } from "../backlog/shared";
@@ -528,7 +529,7 @@ async function importEntry(d: Db, g: GameRow, item: DumpEntry, c: Catalog, versi
     acquired++;
   }
 
-  if (item.cover !== null) await attachCover(d, entryId, item.cover, now);
+  if (item.cover !== null) await attachCover(d, entryId, item.cover, now, version);
   const playTotal = await importPlayRecords(d, entryId, item.playRecords, playTimeHours, item.createdAt, now);
 
   // 파생 상태는 회차·취득을 다 붙인 다음에 — 순서가 바뀌면 status가 위시리스트로 굳는다
@@ -600,15 +601,18 @@ async function importPlayRecords(d: Db, entryId: number, records: (DumpPlayRecor
 
 /**
  * ⚠️ **LOCAL 커버는 실물이 있을 때만 붙인다.** JSON은 다른 기계로 건너가도 로컬 파일은 안 따라온다 —
- * 그대로 붙이면 깨진 이미지가 뜨고 지울 수도 다시 올릴 수도 없다. 없으면 마스터 커버로 폴백시킨다
+ * 그대로 붙이면 깨진 이미지가 뜨고 지울 수도 다시 올릴 수도 없다. 없으면 마스터 커버로 폴백시킨다.
+ * DB 커버(형식 6)는 바이트가 파일 안에 있다 — 업로드와 같은 검사(크기·매직 넘버)를 지나야 붙는다
  */
-async function attachCover(d: Db, entryId: number, cover: DumpCover, now: string) {
-  // location은 6단계에 생겼다. 그 전에 뽑은 파일에는 없어서 EXTERNAL로 읽는다
-  const location = cover.location === null ? "EXTERNAL" : valueOf(["LOCAL", "EXTERNAL"] as const, cover.location, "CoverLocation");
+async function attachCover(d: Db, entryId: number, cover: DumpCover, now: string, version: number) {
+  // location은 6단계에 생겼다. 그 전에 뽑은 파일에는 없어서 EXTERNAL로 읽는다. DB는 형식 6부터 — 5 이하에선 예전처럼 모르는 값(500)
+  const locations = version >= 6 ? (["LOCAL", "EXTERNAL", "DB"] as const) : (["LOCAL", "EXTERNAL"] as const);
+  const location = cover.location === null ? "EXTERNAL" : valueOf<string>(locations, cover.location, "CoverLocation");
   const key = cover.storageKey as string;
   // 키 모양이 틀리면 건너뛴다 — 가져온 키는 나중에 스토리지 DELETE·HEAD, 로컬 삭제에 그대로 쓰인다.
   // 파일 하나가 `covers/entry-1/../entry-5/x.png`로 남의 커버를 지우게 만들 수 있다. 가져오기 전체를 막진 않는다 (마스터 커버로 폴백)
-  const shapeOk = location === "LOCAL" ? isLocalCoverName(key) : isExternalCoverKey(key);
+  // DB 키는 파일·객체를 가리키지 않지만 주소의 `?v=`에 그대로 나가므로 LOCAL과 같은 모양만 받는다
+  const shapeOk = location === "EXTERNAL" ? isExternalCoverKey(key) : isLocalCoverName(key);
   if (!shapeOk) {
     console.log(`커버 키 모양이 틀려 건너뛴다. entry=${entryId}`);
     return;
@@ -619,14 +623,31 @@ async function attachCover(d: Db, entryId: number, cover: DumpCover, now: string
   }
   // 타입은 파일이 말하는 값이 아니라 키의 확장자에서 정한다 (업로드 확정 때와 같다). 크기도 업로드 한도 안이어야 한다
   const contentType = COVER_TYPES[key.slice(key.lastIndexOf(".") + 1)]!;
-  const sizeBytes = cover.sizeBytes;
+  let data: Uint8Array | null = null;
+  let sizeBytes = cover.sizeBytes;
+  if (location === "DB") {
+    data = decodeCover(cover.data, contentType);
+    if (data === null) {
+      console.log(`DB 커버 바이트가 비었거나 이미지가 아니라 건너뛴다. entry=${entryId}`);
+      return;
+    }
+    sizeBytes = data.length;   // 파일이 적은 크기보다 실물이 맞다
+  }
   if (!Number.isSafeInteger(sizeBytes) || sizeBytes < 0 || sizeBytes > STORAGE_LIMITS.maxUploadBytes) {
     console.log(`커버 크기가 범위 밖이라 건너뛴다. entry=${entryId}`);
     return;
   }
   await d.insert(coverImage).values({
-    backlogEntryId: entryId, storageKey: key, contentType, sizeBytes, location, createdAt: now, updatedAt: now,
+    backlogEntryId: entryId, storageKey: key, contentType, sizeBytes, location, data, createdAt: now, updatedAt: now,
   });
+}
+
+/** base64 → 바이트. 비었거나 확장자와 머리 바이트가 안 맞으면 null (업로드의 `validateStoredCover`와 같은 판정) */
+function decodeCover(base64: string | null, contentType: string): Uint8Array | null {
+  if (base64 === null || !/^[A-Za-z0-9+/]*={0,2}$/.test(base64)) return null;
+  const bytes = new Uint8Array(Buffer.from(base64, "base64"));
+  if (bytes.length === 0 || bytes.length > STORAGE_LIMITS.maxUploadBytes) return null;
+  return coverMagicMatches(bytes.subarray(0, MAGIC_LENGTH), contentType) ? bytes : null;
 }
 
 const COVER_TYPES: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };

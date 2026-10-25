@@ -31,7 +31,22 @@ const SETTINGS_DEFAULT = {
   dataRoot: null,              // null = DEFAULT_DATA_ROOT
   window: { width: 1600, height: 1000, maximized: true },
   lastMode: null,              // "local" | "cloud"
+  localCoverTarget: "db",      // 로컬 세이브의 커버 위치 — "db" | "local" (스토리지가 없다)
 };
+
+/** 연결(클라우드)의 커버 위치. 서버 `STARLOG_COVER_TARGET`과 같은 글자 */
+const COVER_TARGETS = ["db", "local", "storage"];
+const LOCAL_COVER_TARGETS = ["db", "local"];
+
+/**
+ * 프로필의 커버 위치. 옛 프로필은 `mediaTargets.covers`(스토리지 체크박스)만 있다 — 켜져 있었으면 storage,
+ * 아니면 db다. 꺼진 체크는 예전엔 데이터 폴더(LOCAL)였지만 기본을 db로 옮긴 게 이번 변경의 요점이다
+ * (이미 데이터 폴더에 있는 커버는 그대로 읽힌다). 디스크에서 읽은 이상한 값도 db — 열기를 막지 않는다
+ */
+function coverTargetOf(profile) {
+  if (COVER_TARGETS.includes(profile?.coverTarget)) return profile.coverTarget;
+  return profile?.mediaTargets?.covers === true ? "storage" : "db";
+}
 
 const CONNECTIONS_DEFAULT = { version: 2, profiles: [] };
 
@@ -126,6 +141,7 @@ function getSettings() {
     ...s,
     dataRoot: s.dataRoot || DEFAULT_DATA_ROOT,
     window: windowOf(s.window),
+    localCoverTarget: LOCAL_COVER_TARGETS.includes(s.localCoverTarget) ? s.localCoverTarget : "db",
   };
 }
 
@@ -201,8 +217,12 @@ function cleanProfile(input) {
       if (typeof v === "string" && v.length <= 4096) out[group][key] = v;
     }
   }
-  const t = input.mediaTargets;
-  out.mediaTargets = { covers: Boolean(t?.covers), screenshots: Boolean(t?.screenshots) };
+  // 화면이 보낸 값은 셋 중 하나여야 한다 — 틀린 글자를 db로 바꿔 저장하면 고른 것과 다른 게 조용히 남는다.
+  // 안 보냈으면(옛 화면) 옛 체크박스에서 옮긴다. `mediaTargets`는 버린다 (스크린샷 스토리지는 없앴다)
+  if (input.coverTarget !== undefined && !COVER_TARGETS.includes(input.coverTarget)) {
+    throw new Error("커버 저장 위치를 확인해 주세요");
+  }
+  out.coverTarget = coverTargetOf(input);
   return out;
 }
 
@@ -228,7 +248,10 @@ async function canEncrypt() {
 async function decodeProfile(stored) {
   const profile = { ...stored };
   delete profile.sealed;
-  let migrate = false;
+  // 옛 체크박스(`mediaTargets`) → `coverTarget`. 조용히 옮기고 다음 쓰기 때 디스크에서도 사라진다
+  let migrate = profile.coverTarget !== coverTargetOf(profile) || "mediaTargets" in profile;
+  profile.coverTarget = coverTargetOf(profile);
+  delete profile.mediaTargets;
   if (typeof stored.sealed === "string") {
     try {
       const { result, shouldReEncrypt } = await safeStorage.decryptStringAsync(Buffer.from(stored.sealed, "base64"));
@@ -236,7 +259,7 @@ async function decodeProfile(stored) {
       for (const field of SECRET_FIELDS) {
         if (typeof secrets[field] === "string") setField(profile, field, secrets[field]);
       }
-      migrate = Boolean(shouldReEncrypt);
+      migrate = migrate || Boolean(shouldReEncrypt);
     } catch (e) {
       console.error(`[settings] 연결 "${stored.name}"의 자격증명을 풀지 못했습니다 — 다시 입력해야 합니다`, e?.message ?? e);
       for (const field of SECRET_FIELDS) setField(profile, field, "");
@@ -431,6 +454,9 @@ function storageUrls() {
 }
 
 module.exports = {
+  COVER_TARGETS,
+  LOCAL_COVER_TARGETS,
+  coverTargetOf,
   getSettings,
   storageUrls,
   patchSettings,

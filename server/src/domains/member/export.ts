@@ -52,6 +52,12 @@ function nowLdt(): string {
   return s.replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
 }
 
+/** DB 커버만 바이트를 싣는다 (형식 6). 그 밖에는 예전과 같은 네 칸 — 키 순서도 그대로 */
+function coverJson(c: typeof coverImage.$inferSelect) {
+  const base = { storageKey: c.storageKey, contentType: c.contentType, sizeBytes: c.sizeBytes, location: c.location };
+  return c.location === "DB" && c.data !== null ? { ...base, data: Buffer.from(c.data).toString("base64") } : base;
+}
+
 /** `starlog-backup-20261024.json` */
 export const backupFileName = (today: string) => `starlog-backup-${today.replaceAll("-", "")}.json`;
 
@@ -119,7 +125,7 @@ export async function exportData(d: Db) {
       memo: e.memo,
       tag: tagName,
       genres,
-      cover: c ? { storageKey: c.storageKey, contentType: c.contentType, sizeBytes: c.sizeBytes, location: c.location } : null,
+      cover: c ? coverJson(c) : null,
       playthroughs: pts.get(e.id) ?? [],
       acquisitions: acqs.get(e.id) ?? [],
       playRecords: records.get(e.id) ?? [],

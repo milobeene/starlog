@@ -40,6 +40,9 @@ export const MAGIC_LENGTH = 12;
 const startsWithAt = (head: Uint8Array, offset: number, expected: number[]) =>
   head.length >= offset + expected.length && expected.every((b, i) => head[offset + i] === b);
 
+/** 가져오기(DB 커버)도 같은 판정을 쓴다 */
+export const coverMagicMatches = (head: Uint8Array, contentType: string) => magicMatches(head, contentType);
+
 function magicMatches(head: Uint8Array, contentType: string): boolean {
   switch (contentType) {
     case "image/jpeg": return startsWithAt(head, 0, [0xff, 0xd8, 0xff]);
@@ -108,9 +111,12 @@ export function mediaContentTypeOf(fileName: string): string {
 
 type CoverRow = typeof coverImage.$inferSelect;
 
-/** 표시용 주소. LOCAL은 우리 엔드포인트(`?v=`로 캐시를 깬다), EXTERNAL은 버킷 공개 URL(미설정이면 null) */
+/**
+ * 표시용 주소. LOCAL·DB는 우리 엔드포인트(`?v=`로 캐시를 깬다 — 둘 다 바꿀 때마다 `storage_key`를 새로 짓는다),
+ * EXTERNAL은 버킷 공개 URL(미설정이면 null)
+ */
 export function coverPublicUrl(cover: { entryId: number; storageKey: string; location: string }): string | null {
-  if (cover.location === "LOCAL") return `/api/backlog/${cover.entryId}/cover/file?v=${cover.storageKey}`;
+  if (cover.location === "LOCAL" || cover.location === "DB") return `/api/backlog/${cover.entryId}/cover/file?v=${cover.storageKey}`;
   return fileStorage().publicUrl(cover.storageKey);
 }
 
@@ -129,12 +135,13 @@ const coverExtension = (fileName: string) => { const n = normalize(fileName)!; r
 
 interface Replaced { storageKey: string; location: CoverLocation }
 
-/** 0단계 — 어디에 어떻게 올릴지. EXTERNAL이면 허가증까지 함께 준다 */
+/** 0단계 — 어디에 어떻게 올릴지. EXTERNAL이면 허가증까지 함께 준다. LOCAL·DB는 둘 다 `POST …/cover/file` 한 번이다 */
 export async function prepareCover(entryId: number, fileName: string | null, sizeBytes: number) {
   await db().transaction((tx) => findAliveEntry(tx, entryId));
   const contentType = coverContentType(fileName, sizeBytes);
-  if (coverTarget() === "LOCAL") {
-    return { mode: "LOCAL", uploadUrl: null, storageKey: null, contentType, expiresInSeconds: null };
+  const target = coverTarget();
+  if (target !== "EXTERNAL") {
+    return { mode: target, uploadUrl: null, storageKey: null, contentType, expiresInSeconds: null };
   }
   const storageKey = keyPrefix(entryId) + crypto.randomUUID() + "." + coverExtension(fileName!);
   const upload = await fileStorage().presignUpload(storageKey, contentType, sizeBytes, STORAGE_LIMITS.uploadUrlTtlSeconds);
@@ -143,23 +150,26 @@ export async function prepareCover(entryId: number, fileName: string | null, siz
 
 /** 커버 행 붙이기 — 있으면 행을 갈아끼우지 않고 값만 바꾼다 (유니크 제약 아래 DELETE+INSERT 순서 함정) */
 async function attach(entryId: number, storageKey: string, contentType: string,
-                      sizeBytes: number, location: CoverLocation): Promise<Replaced | null> {
+                      sizeBytes: number, location: CoverLocation, data: Uint8Array | null = null): Promise<Replaced | null> {
   return db().transaction(async (tx) => {
     await findAliveEntry(tx, entryId);
     const [existing] = await tx.select().from(coverImage).where(eq(coverImage.backlogEntryId, entryId));
     if (existing) {
-      await saveIfChanged(tx, existing, { storageKey, contentType, sizeBytes, location },
+      // DB가 아닌 위치로 바꿀 때 `data`를 비워야 제약(chk_cover_image_data)이 맞는다
+      await saveIfChanged(tx, existing, { storageKey, contentType, sizeBytes, location, data },
         (patch) => tx.update(coverImage).set(patch).where(eq(coverImage.id, existing.id)));
       return { storageKey: existing.storageKey, location: existing.location as CoverLocation };
     }
     const now = nowKst();
-    await tx.insert(coverImage).values({ backlogEntryId: entryId, storageKey, contentType, sizeBytes, location, createdAt: now, updatedAt: now });
+    await tx.insert(coverImage).values({ backlogEntryId: entryId, storageKey, contentType, sizeBytes, location, data, createdAt: now, updatedAt: now });
     return null;
   });
 }
 
 /** 옛 파일 지우기 — **DB 커밋 뒤에.** 반대로 하면 DB엔 있는데 파일이 없는 최악이 나온다. 위치를 보고 갈라 지운다 */
 export async function removeFile(target: Replaced) {
+  // DB 커버는 바이트가 행에 있다 — 행이 지워지거나 덮일 때 이미 같이 갔다
+  if (target.location === "DB") return;
   // DB에 든 키라도 모양이 틀리면 건드리지 않는다 — `..`가 낀 키로 남의 객체·폴더 밖 파일을 지우는 걸 막는다. 남는 건 고아 파일뿐
   const valid = target.location === "LOCAL" ? isLocalCoverName(target.storageKey) : isExternalCoverKey(target.storageKey);
   if (!valid) { console.warn(`모양이 틀린 커버 키라 파일을 지우지 않는다. location=${target.location}`); return; }
@@ -191,22 +201,29 @@ export async function confirmExternalCover(entryId: number, rawKey: string | nul
   if (previous && !(previous.location === "EXTERNAL" && previous.storageKey === storageKey)) await removeFile(previous);
 }
 
-/** LOCAL 저장 — 바이트가 백엔드를 지나간다 (왕복 셋 → 하나) */
-export async function saveLocalCover(entryId: number, fileName: string | null, bytes: Uint8Array) {
+/**
+ * LOCAL·DB 저장 — 바이트가 백엔드를 지나간다 (왕복 셋 → 하나). 어디에 둘지는 지금 설정(`coverTarget`)이 정한다.
+ * 설정이 EXTERNAL인데 이 길로 오면 예전처럼 로컬 폴더다 (화면은 `mode`를 따라 이 길을 안 쓴다)
+ */
+export async function saveUploadedCover(entryId: number, fileName: string | null, bytes: Uint8Array) {
   await db().transaction((tx) => findAliveEntry(tx, entryId));
   const contentType = coverContentType(fileName, bytes.length);
   validateStoredCover(bytes.length, bytes.subarray(0, MAGIC_LENGTH), contentType);
-  const stored = localSave(coversDir(), bytes, coverExtension(fileName!));
-  const previous = await attach(entryId, stored, contentType, bytes.length, "LOCAL");
+  const previous = coverTarget() === "DB"
+    // 이름은 LOCAL과 같은 모양(`<uuid>.<ext>`) — 주소의 `?v=`라 교체할 때마다 달라야 캐시가 깨진다
+    ? await attach(entryId, `${crypto.randomUUID()}.${coverExtension(fileName!)}`, contentType, bytes.length, "DB", bytes)
+    : await attach(entryId, localSave(coversDir(), bytes, coverExtension(fileName!)), contentType, bytes.length, "LOCAL");
   if (previous) await removeFile(previous);
 }
 
-export async function readLocalCover(entryId: number) {
+/** LOCAL은 파일에서, DB는 행에서. EXTERNAL은 공개 URL로 보므로 여기 오지 않는다 */
+export async function readCoverFile(entryId: number) {
   const cover = await db().transaction(async (tx): Promise<CoverRow | undefined> => {
     await findAliveEntry(tx, entryId);
     const [row] = await tx.select().from(coverImage).where(eq(coverImage.backlogEntryId, entryId));
     return row;
   });
+  if (cover?.location === "DB" && cover.data !== null) return { bytes: cover.data, contentType: cover.contentType };
   if (!cover || cover.location !== "LOCAL") throw new InvalidInput("로컬 커버가 없습니다");
   return { bytes: localRead(coversDir(), cover.storageKey), contentType: cover.contentType };
 }

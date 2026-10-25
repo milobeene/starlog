@@ -2,9 +2,9 @@
 
 import type { ReactNode } from "react";
 import SecretField from "./SecretField";
-import { Check, Labeled, Section } from "./ConnectionFormParts";
+import { CoverTargetChoice, Labeled, Section } from "./ConnectionFormParts";
 import { FIELD_INPUT } from "@/components/ui/Field";
-import type { ConnectionProfile, SecretFieldPath } from "@/lib/desktop";
+import type { ConnectionProfile, CoverTarget, SecretFieldPath } from "@/lib/desktop";
 
 /**
  * 연결 폼의 섹션들. 값과 테스트·저장 상태는 `useConnectionForm`이 들고,
@@ -84,7 +84,7 @@ export function DatabaseSection({
 export function StorageSection({
   form,
   setStorage,
-  setTargets,
+  setCoverTarget,
   storageReady,
   secret,
   bad,
@@ -92,16 +92,21 @@ export function StorageSection({
   footer,
 }: SectionProps & {
   setStorage: (p: Partial<NonNullable<ConnectionProfile["storage"]>>) => void;
-  setTargets: (p: Partial<NonNullable<ConnectionProfile["mediaTargets"]>>) => void;
-  /** 스토리지 칸이 전부 찼나 — 사용 체크박스가 이걸로 열린다 */
+  setCoverTarget: (v: CoverTarget) => void;
+  /** 스토리지 칸이 전부 찼나 — [스토리지(R2)] 선택지가 이걸로 열린다 */
   storageReady: boolean;
 }) {
   return (
     <Section
-      title="커버 스토리지"
+      title="커버"
       disabled={disabled}
-      hint="선택입니다. 쓰지 않으시려면 아래 칸을 모두 비워 주세요."
+      hint="스토리지 칸은 선택입니다. 쓰지 않으시려면 모두 비워 주세요."
     >
+      <CoverTargetChoice
+        value={form.coverTarget ?? "db"}
+        onChange={setCoverTarget}
+        storageNote={storageReady ? null : "아래 스토리지 칸을 모두 채우시면 고를 수 있습니다"}
+      />
       <Labeled label="엔드포인트" keyName="endpoint" bad={bad("storage.endpoint")}>
         <input
           value={form.storage?.endpoint ?? ""}
@@ -151,29 +156,6 @@ export function StorageSection({
         />
       </div>
 
-      <div className="rounded-md border border-white/10 bg-white/[0.03] px-3.5 py-3">
-        <div className="text-[10px] font-semibold tracking-widest text-white/40 uppercase">
-          스토리지 사용
-        </div>
-        <div className="mt-2.5 flex flex-wrap gap-x-5 gap-y-2">
-          <Check
-            label="커버"
-            checked={Boolean(form.mediaTargets?.covers)}
-            disabled={!storageReady}
-            onChange={(v) => setTargets({ covers: v })}
-          />
-          {/*
-            ⚠️ **스크린샷은 아직 스토리지에 못 올린다** (2026-10-25). 체크해도 서버가 아무 일도 안 했다 —
-            켜진 것처럼 보이는 껍데기라 꺼 둔 채 막는다. 서버가 올리게 되면 다시 연다
-          */}
-          <Check label="스크린샷 (준비 중)" checked={false} disabled onChange={() => {}} />
-        </div>
-        <p className="mt-2.5 text-[11px] leading-relaxed text-white/30">
-          {storageReady
-            ? "체크하지 않은 것은 데이터 폴더에 저장됩니다. 스크린샷은 지금은 늘 데이터 폴더에 저장됩니다."
-            : "스토리지 칸을 모두 채우시면 켤 수 있습니다. 지금은 모두 데이터 폴더에 저장됩니다."}
-        </p>
-      </div>
       {/*
         스토리지 테스트는 **메모리 DB로** 시험용을 띄운다 — 위 데이터베이스 칸이 틀려도
         스토리지만 따로 볼 수 있다. 섹션별 테스트가 뜻을 가지려면 그래야 한다

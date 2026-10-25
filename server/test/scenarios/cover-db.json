@@ -1,0 +1,549 @@
+{
+ "name": "cover-db",
+ "note": "커버 DB 저장 (V17) — 기본 위치, 올리기·읽기·교체·지우기, 형식 6 내보내기 왕복. 그림 파일은 backlog-media 것을 쓴다",
+ "fixture": "fresh",
+ "steps": [
+  {
+   "name": "준비 — 수동 게임 A",
+   "method": "POST",
+   "path": "/api/games",
+   "body": {
+    "name": "ZZ Cover A",
+    "releasedOn": "2024-01-02"
+   },
+   "save": {
+    "ga": "id"
+   }
+  },
+  {
+   "name": "준비 — 수동 게임 B",
+   "method": "POST",
+   "path": "/api/games",
+   "body": {
+    "name": "ZZ Cover B",
+    "releasedOn": "2024-01-03"
+   },
+   "save": {
+    "gb": "id"
+   }
+  },
+  {
+   "name": "준비 — 담기 A",
+   "method": "POST",
+   "path": "/api/backlog",
+   "body": {
+    "gameId": "${ga}"
+   },
+   "save": {
+    "ea": "id"
+   }
+  },
+  {
+   "name": "준비 — 담기 B",
+   "method": "POST",
+   "path": "/api/backlog",
+   "body": {
+    "gameId": "${gb}"
+   },
+   "save": {
+    "eb": "id"
+   }
+  },
+  {
+   "name": "허가증 — 기본은 DB (자격증명도 설정도 없음)",
+   "method": "POST",
+   "path": "/api/backlog/${ea}/cover/upload-url",
+   "body": {
+    "fileName": "cover.png",
+    "sizeBytes": 73
+   }
+  },
+  {
+   "name": "허가증 — 너무 큼 (DB도 5MB)",
+   "method": "POST",
+   "path": "/api/backlog/${ea}/cover/upload-url",
+   "body": {
+    "fileName": "a.jpg",
+    "sizeBytes": 5242881
+   }
+  },
+  {
+   "name": "올리기 A — 아직 커버 없음",
+   "method": "GET",
+   "path": "/api/backlog/${ea}/cover/file?v=x"
+  },
+  {
+   "name": "올리기 A — 가짜 PNG (매직 넘버)",
+   "method": "POST",
+   "path": "/api/backlog/${ea}/cover/file",
+   "multipart": {
+    "file": {
+     "file": "backlog-media/fake.png",
+     "type": "image/png"
+    }
+   }
+  },
+  {
+   "name": "올리기 A — 빈 파일",
+   "method": "POST",
+   "path": "/api/backlog/${ea}/cover/file",
+   "multipart": {
+    "file": {
+     "file": "backlog-media/empty.png",
+     "type": "image/png"
+    }
+   }
+  },
+  {
+   "name": "올리기 A — DB에 저장",
+   "method": "POST",
+   "path": "/api/backlog/${ea}/cover/file",
+   "multipart": {
+    "file": {
+     "file": "backlog-media/cover.png",
+     "type": "image/png"
+    }
+   }
+  },
+  {
+   "name": "읽기 A — 바이트가 올린 것과 같다",
+   "method": "GET",
+   "path": "/api/backlog/${ea}/cover/file?v=x"
+  },
+  {
+   "name": "상세 A — 개인 커버 주소 (?v=이름)",
+   "method": "GET",
+   "path": "/api/backlog/${ea}"
+  },
+  {
+   "name": "올리기 B — DB에 저장",
+   "method": "POST",
+   "path": "/api/backlog/${eb}/cover/file",
+   "multipart": {
+    "file": {
+     "file": "backlog-media/cover.png",
+     "type": "image/png"
+    }
+   }
+  },
+  {
+   "name": "올리기 B — 교체 (다른 이미지)",
+   "method": "POST",
+   "path": "/api/backlog/${eb}/cover/file",
+   "multipart": {
+    "file": {
+     "file": "backlog-media/cover2.png",
+     "type": "image/png"
+    }
+   }
+  },
+  {
+   "name": "읽기 B — 교체한 바이트",
+   "method": "GET",
+   "path": "/api/backlog/${eb}/cover/file?v=x"
+  },
+  {
+   "name": "카드 — 커버 주소",
+   "method": "GET",
+   "path": "/api/backlog/cards"
+  },
+  {
+   "name": "지우기 A",
+   "method": "DELETE",
+   "path": "/api/backlog/${ea}/cover"
+  },
+  {
+   "name": "지우기 A — 다시 (없어도 204)",
+   "method": "DELETE",
+   "path": "/api/backlog/${ea}/cover"
+  },
+  {
+   "name": "읽기 A — 지운 뒤",
+   "method": "GET",
+   "path": "/api/backlog/${ea}/cover/file?v=x"
+  },
+  {
+   "name": "상세 A — 마스터 커버로 폴백",
+   "method": "GET",
+   "path": "/api/backlog/${ea}"
+  },
+  {
+   "name": "내보내기 — 형식 6, B 커버 바이트 실림",
+   "method": "GET",
+   "path": "/api/me/export",
+   "save": {
+    "fv": "formatVersion",
+    "exAt": "exportedAt",
+    "prof": "profile",
+    "cat": "catalog",
+    "games": "games",
+    "entries": "entries"
+   }
+  },
+  {
+   "name": "덮어쓰기 — 내보낸 것 그대로 (왕복)",
+   "method": "POST",
+   "path": "/api/me/replace",
+   "body": {
+    "formatVersion": "${fv}",
+    "exportedAt": "${exAt}",
+    "profile": "${prof}",
+    "catalog": "${cat}",
+    "games": "${games}",
+    "entries": "${entries}"
+   }
+  },
+  {
+   "name": "왕복 뒤 — 내보내기 (처음 것과 같아야 한다)",
+   "method": "GET",
+   "path": "/api/me/export"
+  },
+  {
+   "name": "왕복 뒤 — 카드 (B만 개인 커버)",
+   "method": "GET",
+   "path": "/api/backlog/cards"
+  },
+  {
+   "name": "왕복 뒤 — 읽기 B (바이트가 교체한 그대로)",
+   "method": "GET",
+   "path": "/api/backlog/4/cover/file?v=x",
+   "note": "빈 세이브라 항목 번호가 고정이다 — 덮어쓰기가 A·B를 3·4로 다시 만든다"
+  },
+  {
+   "name": "덮어쓰기 — 형식 5에 DB 위치 → 500 (예전 그대로 모르는 값)",
+   "method": "POST",
+   "path": "/api/me/replace",
+   "body": {
+    "formatVersion": 5,
+    "exportedAt": "2026-10-25T10:00:00",
+    "profile": {
+     "nickname": "ZZ 커버",
+     "memo": null,
+     "backgroundColors": null
+    },
+    "catalog": null,
+    "games": [
+     {
+      "key": "g-ok",
+      "externalId": null,
+      "source": "MANUAL",
+      "name": "ZZ 커버 정상",
+      "developers": [],
+      "publishers": [],
+      "masterGenres": [],
+      "releasedOn": null,
+      "listPrice": null,
+      "coverImageId": null,
+      "bannerImageId": null,
+      "summary": null,
+      "storyline": null,
+      "igdbRating": null,
+      "igdbRatingCount": null,
+      "releasePlatforms": [],
+      "mainStoryHours": null,
+      "mainExtraHours": null,
+      "completionistHours": null,
+      "timeToBeatSamples": null,
+      "mediaFolder": null
+     }
+    ],
+    "entries": [
+     {
+      "gameKey": "g-ok",
+      "createdAt": "2026-10-01T10:00:00",
+      "deletedAt": null,
+      "nameOverride": null,
+      "developerOverrides": [],
+      "publisherOverrides": [],
+      "releasedOnOverride": null,
+      "listPriceOverride": null,
+      "rating": null,
+      "playTimeHours": null,
+      "memo": null,
+      "tag": null,
+      "genres": [],
+      "cover": {
+       "storageKey": "1b2c3d4e-5f60-4718-8a9b-0c1d2e3f4a5b.png",
+       "contentType": "image/png",
+       "sizeBytes": 73,
+       "location": "DB",
+       "data": "iVBORw0KGgoAAAANSUhEUgAAAAQAAAAGCAIAAABrW6giAAAAEElEQVR4nGM4IScHRwyUcgDHCxhhZS03gwAAAABJRU5ErkJggg=="
+      },
+      "playthroughs": [],
+      "acquisitions": [],
+      "playRecords": []
+     }
+    ]
+   }
+  },
+  {
+   "name": "덮어쓰기 — 손으로 쓴 형식 6 (바이트 없음·가짜·키 모양·로컬 실물 없음은 건너뜀)",
+   "method": "POST",
+   "path": "/api/me/replace",
+   "body": {
+    "formatVersion": 6,
+    "exportedAt": "2026-10-25T10:00:00",
+    "profile": {
+     "nickname": "ZZ 커버",
+     "memo": null,
+     "backgroundColors": null
+    },
+    "catalog": null,
+    "games": [
+     {
+      "key": "g-ok",
+      "externalId": null,
+      "source": "MANUAL",
+      "name": "ZZ 커버 정상",
+      "developers": [],
+      "publishers": [],
+      "masterGenres": [],
+      "releasedOn": null,
+      "listPrice": null,
+      "coverImageId": null,
+      "bannerImageId": null,
+      "summary": null,
+      "storyline": null,
+      "igdbRating": null,
+      "igdbRatingCount": null,
+      "releasePlatforms": [],
+      "mainStoryHours": null,
+      "mainExtraHours": null,
+      "completionistHours": null,
+      "timeToBeatSamples": null,
+      "mediaFolder": null
+     },
+     {
+      "key": "g-nodata",
+      "externalId": null,
+      "source": "MANUAL",
+      "name": "ZZ 커버 바이트 없음",
+      "developers": [],
+      "publishers": [],
+      "masterGenres": [],
+      "releasedOn": null,
+      "listPrice": null,
+      "coverImageId": null,
+      "bannerImageId": null,
+      "summary": null,
+      "storyline": null,
+      "igdbRating": null,
+      "igdbRatingCount": null,
+      "releasePlatforms": [],
+      "mainStoryHours": null,
+      "mainExtraHours": null,
+      "completionistHours": null,
+      "timeToBeatSamples": null,
+      "mediaFolder": null
+     },
+     {
+      "key": "g-fake",
+      "externalId": null,
+      "source": "MANUAL",
+      "name": "ZZ 커버 가짜",
+      "developers": [],
+      "publishers": [],
+      "masterGenres": [],
+      "releasedOn": null,
+      "listPrice": null,
+      "coverImageId": null,
+      "bannerImageId": null,
+      "summary": null,
+      "storyline": null,
+      "igdbRating": null,
+      "igdbRatingCount": null,
+      "releasePlatforms": [],
+      "mainStoryHours": null,
+      "mainExtraHours": null,
+      "completionistHours": null,
+      "timeToBeatSamples": null,
+      "mediaFolder": null
+     },
+     {
+      "key": "g-badkey",
+      "externalId": null,
+      "source": "MANUAL",
+      "name": "ZZ 커버 키",
+      "developers": [],
+      "publishers": [],
+      "masterGenres": [],
+      "releasedOn": null,
+      "listPrice": null,
+      "coverImageId": null,
+      "bannerImageId": null,
+      "summary": null,
+      "storyline": null,
+      "igdbRating": null,
+      "igdbRatingCount": null,
+      "releasePlatforms": [],
+      "mainStoryHours": null,
+      "mainExtraHours": null,
+      "completionistHours": null,
+      "timeToBeatSamples": null,
+      "mediaFolder": null
+     },
+     {
+      "key": "g-local",
+      "externalId": null,
+      "source": "MANUAL",
+      "name": "ZZ 커버 로컬",
+      "developers": [],
+      "publishers": [],
+      "masterGenres": [],
+      "releasedOn": null,
+      "listPrice": null,
+      "coverImageId": null,
+      "bannerImageId": null,
+      "summary": null,
+      "storyline": null,
+      "igdbRating": null,
+      "igdbRatingCount": null,
+      "releasePlatforms": [],
+      "mainStoryHours": null,
+      "mainExtraHours": null,
+      "completionistHours": null,
+      "timeToBeatSamples": null,
+      "mediaFolder": null
+     }
+    ],
+    "entries": [
+     {
+      "gameKey": "g-ok",
+      "createdAt": "2026-10-01T10:00:00",
+      "deletedAt": null,
+      "nameOverride": null,
+      "developerOverrides": [],
+      "publisherOverrides": [],
+      "releasedOnOverride": null,
+      "listPriceOverride": null,
+      "rating": null,
+      "playTimeHours": null,
+      "memo": null,
+      "tag": null,
+      "genres": [],
+      "cover": {
+       "storageKey": "1b2c3d4e-5f60-4718-8a9b-0c1d2e3f4a5b.png",
+       "contentType": "image/jpeg",
+       "sizeBytes": 999,
+       "location": "DB",
+       "data": "iVBORw0KGgoAAAANSUhEUgAAAAQAAAAGCAIAAABrW6giAAAAEElEQVR4nGM4IScHRwyUcgDHCxhhZS03gwAAAABJRU5ErkJggg=="
+      },
+      "playthroughs": [],
+      "acquisitions": [],
+      "playRecords": []
+     },
+     {
+      "gameKey": "g-nodata",
+      "createdAt": "2026-10-01T10:00:00",
+      "deletedAt": null,
+      "nameOverride": null,
+      "developerOverrides": [],
+      "publisherOverrides": [],
+      "releasedOnOverride": null,
+      "listPriceOverride": null,
+      "rating": null,
+      "playTimeHours": null,
+      "memo": null,
+      "tag": null,
+      "genres": [],
+      "cover": {
+       "storageKey": "2b2c3d4e-5f60-4718-8a9b-0c1d2e3f4a5b.png",
+       "contentType": "image/png",
+       "sizeBytes": 73,
+       "location": "DB",
+       "data": null
+      },
+      "playthroughs": [],
+      "acquisitions": [],
+      "playRecords": []
+     },
+     {
+      "gameKey": "g-fake",
+      "createdAt": "2026-10-01T10:00:00",
+      "deletedAt": null,
+      "nameOverride": null,
+      "developerOverrides": [],
+      "publisherOverrides": [],
+      "releasedOnOverride": null,
+      "listPriceOverride": null,
+      "rating": null,
+      "playTimeHours": null,
+      "memo": null,
+      "tag": null,
+      "genres": [],
+      "cover": {
+       "storageKey": "3b2c3d4e-5f60-4718-8a9b-0c1d2e3f4a5b.png",
+       "contentType": "image/png",
+       "sizeBytes": 25,
+       "location": "DB",
+       "data": "PGh0bWw+bm90IGFuIGltYWdlPC9odG1sPg=="
+      },
+      "playthroughs": [],
+      "acquisitions": [],
+      "playRecords": []
+     },
+     {
+      "gameKey": "g-badkey",
+      "createdAt": "2026-10-01T10:00:00",
+      "deletedAt": null,
+      "nameOverride": null,
+      "developerOverrides": [],
+      "publisherOverrides": [],
+      "releasedOnOverride": null,
+      "listPriceOverride": null,
+      "rating": null,
+      "playTimeHours": null,
+      "memo": null,
+      "tag": null,
+      "genres": [],
+      "cover": {
+       "storageKey": "../x.png",
+       "contentType": "image/png",
+       "sizeBytes": 73,
+       "location": "DB",
+       "data": "iVBORw0KGgoAAAANSUhEUgAAAAQAAAAGCAIAAABrW6giAAAAEElEQVR4nGM4IScHRwyUcgDHCxhhZS03gwAAAABJRU5ErkJggg=="
+      },
+      "playthroughs": [],
+      "acquisitions": [],
+      "playRecords": []
+     },
+     {
+      "gameKey": "g-local",
+      "createdAt": "2026-10-01T10:00:00",
+      "deletedAt": null,
+      "nameOverride": null,
+      "developerOverrides": [],
+      "publisherOverrides": [],
+      "releasedOnOverride": null,
+      "listPriceOverride": null,
+      "rating": null,
+      "playTimeHours": null,
+      "memo": null,
+      "tag": null,
+      "genres": [],
+      "cover": {
+       "storageKey": "4b2c3d4e-5f60-4718-8a9b-0c1d2e3f4a5b.png",
+       "contentType": "image/png",
+       "sizeBytes": 73,
+       "location": "LOCAL",
+       "data": "iVBORw0KGgoAAAANSUhEUgAAAAQAAAAGCAIAAABrW6giAAAAEElEQVR4nGM4IScHRwyUcgDHCxhhZS03gwAAAABJRU5ErkJggg=="
+      },
+      "playthroughs": [],
+      "acquisitions": [],
+      "playRecords": []
+     }
+    ]
+   }
+  },
+  {
+   "name": "손으로 쓴 형식 6 뒤 — 내보내기 (정상 하나만 커버, 타입·크기는 실물에서)",
+   "method": "GET",
+   "path": "/api/me/export"
+  },
+  {
+   "name": "손으로 쓴 형식 6 뒤 — 카드",
+   "method": "GET",
+   "path": "/api/backlog/cards"
+  }
+ ]
+}

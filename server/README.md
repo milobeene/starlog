@@ -37,7 +37,7 @@ npm run bundle         # → ../desktop/server/main.mjs
 
 설정은 전부 환경변수 (`src/config.ts`): `STARLOG_DB_DIR`(로컬) 또는 `STARLOG_DB_URL`·`_USER`·`_PASSWORD`·`_SCHEMA`(클라우드),
 `STARLOG_PORT`, `STARLOG_DATA_ROOT`, `STARLOG_STATIC_DIR`, `STARLOG_API_TOKEN`(운영 필수), `STARLOG_PROFILE`(dev·test면 토큰 없이 돌고 시험 장치를 연다),
-`APP_IGDB_*`, `APP_STORAGE_*`, `STARLOG_MEDIA_USE_STORAGE_*`, `TRANSLATE_API_KEY`,
+`APP_IGDB_*`, `APP_STORAGE_*`, `STARLOG_COVER_TARGET`(`db`(기본)·`local`·`storage` — 못 하면 db, 없으면 옛 `STARLOG_MEDIA_USE_STORAGE_FOR_COVERS=true`를 storage로), `TRANSLATE_API_KEY`,
 `STARLOG_THUMBNAILER=copy`(dev·test 전용 — 일렉트론 없이 썸네일 흐름을 시험할 때 원본을 복사).
 
 클라우드 DB는 **기본이 TLS + 인증서 검증**이다 (`db/client.ts` `connectionFields`) — 평문은 주소에 `sslmode=disable`을 적었을 때만.

@@ -4,8 +4,8 @@ import { api } from "./api";
  * 커버 업로드 — **경로가 둘로 갈린다** (v1.0 6단계, architecture §4).
  *
  * ```
- *   EXTERNAL  허가증 → 스토리지에 직접 PUT → 확정      (왕복 3회)
- *   LOCAL     백엔드로 파일 전송                        (왕복 1회)
+ *   EXTERNAL   허가증 → 스토리지에 직접 PUT → 확정      (왕복 3회)
+ *   LOCAL·DB   백엔드로 파일 전송                        (왕복 1회 — 폴더냐 DB 행이냐는 서버 몫)
  * ```
  *
  * **어느 쪽인지 화면이 안 정한다.** 판정에 필요한 것(자격증명이 있나, 체크박스가 켜졌나)이
@@ -13,19 +13,21 @@ import { api } from "./api";
  * 첫 요청이 "어떻게 올려라"를 답해주고 여기는 따라가기만 한다.
  */
 type UploadTarget = {
-  mode: "LOCAL" | "EXTERNAL";
+  mode: "LOCAL" | "EXTERNAL" | "DB";
   uploadUrl: string | null;
   storageKey: string | null;
   contentType: string;
 };
 
-export async function uploadCover(entryId: number, file: File): Promise<void> {
+export async function uploadCover(entryId: number, original: File): Promise<void> {
+  // 줄인 뒤의 이름·크기로 허가증을 받는다 — EXTERNAL은 크기·타입이 서명에 들어간다
+  const file = await shrinkCover(original);
   const target = await api.post<UploadTarget>(`/api/backlog/${entryId}/cover/upload-url`, {
     fileName: file.name,
     sizeBytes: file.size,
   });
 
-  if (target.mode === "LOCAL") {
+  if (target.mode === "LOCAL" || target.mode === "DB") {
     await postFile(`/api/backlog/${entryId}/cover/file`, file);
     return;
   }
@@ -44,6 +46,52 @@ export async function uploadCover(entryId: number, file: File): Promise<void> {
   }
 
   await api.put(`/api/backlog/${entryId}/cover`, { storageKey: target.storageKey });
+}
+
+/** 긴 변 상한. 카드·상세 커버는 이보다 작게 그려진다 */
+const COVER_MAX_EDGE = 1200;
+/** 이미 이만큼 작은 JPEG면 다시 굽지 않는다 — 다시 구우면 화질만 깎인다 */
+const COVER_KEEP_BYTES = 400 * 1024;
+const COVER_QUALITY = 0.85;
+
+/**
+ * 올리기 전에 줄인다 (2026-10-25) — 커버가 DB에 들어가 백업·세이브 뽑기마다 실려 다니므로 몇 MB짜리 원본이면
+ * 그대로 무게가 된다. 긴 변 1200px · JPEG 0.85. 세 위치 모두 같다 (스크린샷은 안 줄인다 — 원본이 곧 기록이다).
+ *
+ * 못 읽는 파일(GIF·깨진 파일·지원 안 하는 형식)은 **그대로** 보낸다 — 거절은 서버가 이유와 함께 한다.
+ * 투명한 부분은 검게 칠한다: JPEG에는 투명이 없고, 앱 바탕이 검다
+ */
+async function shrinkCover(file: File): Promise<File> {
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type)) return file;
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    return file;
+  }
+  try {
+    const { width, height } = bitmap;
+    const edge = Math.max(width, height);
+    if (edge <= COVER_MAX_EDGE && file.type === "image/jpeg" && file.size <= COVER_KEEP_BYTES) return file;
+    const scale = Math.min(1, COVER_MAX_EDGE / edge);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(width * scale));
+    canvas.height = Math.max(1, Math.round(height * scale));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", COVER_QUALITY));
+    if (!blob) return file;
+    // 작은 JPEG를 다시 구웠더니 더 커졌으면 원본이 낫다 (크기는 이미 상한 안이다)
+    if (edge <= COVER_MAX_EDGE && file.type === "image/jpeg" && blob.size >= file.size) return file;
+    const base = file.name.replace(/\.[^.]*$/, "") || "cover";
+    return new File([blob], `${base}.jpg`, { type: "image/jpeg", lastModified: file.lastModified });
+  } finally {
+    bitmap.close();
+  }
 }
 
 /**

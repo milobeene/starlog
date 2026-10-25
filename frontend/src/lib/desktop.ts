@@ -38,16 +38,10 @@ export interface StorageConfig {
 }
 
 /**
- * 무엇을 스토리지에 올릴 것인가 (사용자 결정 2026-08-28).
- *
- * **커버와 스크린샷을 따로 켠다.** 커버는 몇 KB지만 스크린샷은 장당 2~5MB에 수백 장이라
- * 무료 티어 버킷이 먼저 찬다 — 하나로 묶으면 "커버만 클라우드에"가 표현이 안 된다.
- * 체크 안 한 것은 데이터 폴더에 저장된다
+ * 커버를 어디에 둘지 (2026-10-25, 예전 "스토리지 사용" 체크박스 자리). 서버 `STARLOG_COVER_TARGET`과 같은 글자.
+ * 못 하는 쪽(스토리지 자격증명이 없다 등)을 고르면 서버가 db로 떨어뜨린다. 스크린샷은 늘 데이터 폴더다
  */
-export interface MediaTargets {
-  covers: boolean;
-  screenshots: boolean;
-}
+export type CoverTarget = "db" | "local" | "storage";
 
 /** 비밀 칸. `connections.list()`는 이 칸들을 가려서(`••••abcd`) 준다 */
 export type SecretFieldPath =
@@ -76,7 +70,8 @@ export interface ConnectionProfile {
    * 넣은 값이 있으면 그게 이긴다
    */
   translate?: { apiKey?: string };
-  mediaTargets?: MediaTargets;
+  /** 옛 연결은 없다 — 일렉트론이 읽을 때 채워 준다 (옛 체크박스가 켜져 있었으면 storage, 아니면 db) */
+  coverTarget?: CoverTarget;
 }
 
 export type LaunchProgress =
@@ -179,8 +174,16 @@ export interface MediaTarget {
 
 export interface StarlogBridge {
   settings: {
-    get(): Promise<{ dataRoot: string; dirs: Record<string, string>; lastMode: LaunchMode | null }>;
+    get(): Promise<{
+      dataRoot: string;
+      dirs: Record<string, string>;
+      lastMode: LaunchMode | null;
+      /** 로컬 세이브의 커버 위치. 옛 일렉트론엔 없다 */
+      localCoverTarget?: Exclude<CoverTarget, "storage">;
+    }>;
     setDataRoot(dir: string): Promise<unknown>;
+    /** 로컬 세이브의 커버 위치 — 다음에 세이브를 열 때부터. 옛 preload에는 없다 → `?.` */
+    setLocalCoverTarget?(value: Exclude<CoverTarget, "storage">): Promise<unknown>;
     /** 바꾸기 전에 살펴본다. `ok: false`면 `reason`을 그대로 보여주면 된다 */
     inspectDataRoot(dir: string): Promise<{
       ok: boolean;
@@ -277,7 +280,7 @@ export interface StarlogBridge {
      */
     token?(): string | null;
   };
-  /** 클라우드 → 로컬 세이브파일. ⚠️ 커버 실물은 안 따라온다 */
+  /** 클라우드 → 로컬 세이브파일. DB 커버는 따라오고, ⚠️ 스토리지·로컬 폴더 커버는 실물이 안 따라온다 */
   cloudToSaveFile(saveName: string): Promise<{ saveName: string }>;
   /**
    * 클라우드 백업. 대상은 언제나 **지금 세션**이다. 옛 preload에는 없다 → `?.`로 쓴다.

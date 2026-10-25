@@ -25,7 +25,7 @@ import { addPlaythrough, deletePlaythrough, updatePlaythrough } from "./playthro
 import { addToBacklog } from "./entry";
 import {
   confirmExternalCover, deleteCover, deleteScreenshots, listGallery, listScreenshots, mediaContentTypeOf, prepareCover,
-  readLocalCover, removeFile, resolveScreenshot, resolveThumb, saveLocalCover, saveScreenshot, screenshotFilePath,
+  readCoverFile, removeFile, resolveScreenshot, resolveThumb, saveUploadedCover, saveScreenshot, screenshotFilePath,
   screenshotFolderPath,
 } from "./media";
 import { firstFile, firstText, missingPart, multipartFile, multipartForm, parseLongParam, sendFile } from "../../http/files";
@@ -246,19 +246,22 @@ routes.put("/api/backlog/:entryId/cover", async (c) => {
   return c.body(null, 200);
 });
 
-/** LOCAL 업로드 — 바이트가 백엔드를 지나간다 */
+/** LOCAL·DB 업로드 — 바이트가 백엔드를 지나간다 */
 routes.post("/api/backlog/:entryId/cover/file", async (c) => {
   const entryId = pathId(c, "entryId");
   const file = await multipartFile(c, "file");
   if (!file) return missingPart(c);
-  await saveLocalCover(entryId, file.name, new Uint8Array(await file.arrayBuffer()));
+  await saveUploadedCover(entryId, file.name, new Uint8Array(await file.arrayBuffer()));
   return c.body(null, 200);
 });
 
-/** LOCAL 원본. `?v=`는 서버가 안 읽는다 — 교체해도 주소가 같아서 브라우저 캐시를 깨려고 붙인 값이다 */
+/**
+ * LOCAL·DB 원본. `?v=`는 서버가 안 읽는다 — 주소가 항목 번호뿐이라 교체해도 같아서 브라우저 캐시를 깨려고 붙인 값이다.
+ * 그래서 1년 immutable이 안전하다 (교체하면 `storage_key`가 새로 지어져 `?v=`가 바뀐다)
+ */
 routes.get("/api/backlog/:entryId/cover/file", async (c) => {
   const entryId = pathId(c, "entryId");
-  const file = await readLocalCover(entryId);
+  const file = await readCoverFile(entryId);
   return c.body(new Uint8Array(file.bytes), 200, {
     "Content-Type": file.contentType,
     "Cache-Control": "private, max-age=31536000, immutable",

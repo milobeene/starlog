@@ -111,5 +111,12 @@ export const MIGRATIONS = [
   "script": "V16__media_folder_unique.sql",
   "checksum": -168185270,
   "sql": "-- 스크린샷 폴더 이름은 게임마다 하나 (v2, 2026-10-25, 보안 조사).\n--\n-- 폴더 = 그 게임의 스크린샷 목록이라, 두 게임이 같은 폴더를 잡으면 한쪽에서 지운 파일이 다른 쪽에서도 사라진다.\n-- 앱 코드(`uniqueMediaSlug`)가 이미 피하지만, 동시 요청 둘이 같은 이름을 고르는 틈은 DB만 막을 수 있다.\n-- 아직 폴더가 없는 게임(null)은 여럿이어도 된다 — 부분 유니크.\n--\n-- ⚠️ 실데이터(Neon)에서 처음 도는 파일이다. 이미 겹친 게 있으면 고르지 않고 멈춘다 (어느 쪽 폴더인지 사람만 안다)\ndo $$\ndeclare dup text;\nbegin\n  select media_folder into dup from game where media_folder is not null\n   group by media_folder having count(*) > 1 limit 1;\n  if dup is not null then\n    raise exception 'V16 중단: 스크린샷 폴더 \"%\"를 게임 둘 이상이 쓴다. 한쪽 게임의 폴더를 정리한 뒤 다시 열 것', dup;\n  end if;\nend $$;\n\ncreate unique index uk_game_media_folder on game (media_folder) where media_folder is not null;\n"
+ },
+ {
+  "version": "17",
+  "description": "cover in db",
+  "script": "V17__cover_in_db.sql",
+  "checksum": -219709229,
+  "sql": "-- 커버를 DB에도 둔다 (v2, 2026-10-25).\n--\n-- 개인 커버는 한 달에 한두 장(장당 수백 KB)이다. DB 안에 두면 클라우드 백업(`/api/me/export`)과\n-- 클라우드 → 로컬 세이브 뽑기에 커버가 같이 실린다 — 로컬 폴더(LOCAL)·스토리지(EXTERNAL)는 안 따라온다.\n-- 어디에 둘지는 연결 설정이 정한다(`STARLOG_COVER_TARGET`). 이미 있는 LOCAL·EXTERNAL 행은 그대로 읽힌다.\n--\n--   DB        바이트가 이 행의 `data`에 있다. `storage_key`는 `<uuid>.<확장자>` — 바꿀 때마다 새로 지어 주소의 `?v=`가 된다\n--   LOCAL     데이터 루트 `covers/<storage_key>`\n--   EXTERNAL  S3 호환 스토리지의 `storage_key`\n--\n-- ⚠️ 실데이터(Neon)에서 처음 도는 파일이다. 모르는 위치 값이 있으면 고르지 않고 멈춘다 (아래 제약이 어차피 거절한다 — 이유를 먼저 보인다)\ndo $$\ndeclare odd text;\nbegin\n  select location into odd from cover_image where location not in ('LOCAL','EXTERNAL') limit 1;\n  if odd is not null then\n    raise exception 'V17 중단: 커버 위치 \"%\"를 모른다. 그 커버 행을 정리한 뒤 다시 열 것', odd;\n  end if;\nend $$;\n\nalter table cover_image add column data bytea;\n\nalter table cover_image add constraint chk_cover_image_location check (location in ('LOCAL','EXTERNAL','DB'));\n-- 바이트는 DB 커버에만, DB 커버에는 반드시 — 반쪽(위치는 DB인데 바이트가 없다)이면 깨진 이미지가 뜨고 지우기 말고는 길이 없다\nalter table cover_image add constraint chk_cover_image_data check ((location = 'DB') = (data is not null));\n"
  }
 ] as const;

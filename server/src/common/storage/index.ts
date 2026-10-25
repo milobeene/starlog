@@ -4,6 +4,7 @@
  * 둘로 갈린다:
  *   - **로컬 폴더**(데이터 루트) — 커버 LOCAL·스크린샷. 경로를 우리가 조립하므로 탈출 검사가 여기 있다
  *   - **S3 호환 스토리지**(R2) — 커버 EXTERNAL. 자격증명이 없으면 "미설정" 구현이 자리를 지킨다
+ *   (커버 DB는 파일이 아니라 `cover_image.data`다 — 여기엔 고르는 규칙 `coverTarget`만 있다)
  *
  * 로컬 폴더가 스토리지 포트를 흉내 내지 않는 이유 — 프리사인드 URL은
  * 오브젝트 스토리지에만 있는 개념이고, 업로드 경로 자체가 갈린다 (architecture §4).
@@ -268,15 +269,18 @@ export function folderSize(dir: string): number {
 
 // ───────────── 무엇을 어디에 ─────────────
 
-export type CoverLocation = "LOCAL" | "EXTERNAL";
+export type CoverLocation = "LOCAL" | "EXTERNAL" | "DB";
 
-/** 체크했더라도 자격증명이 없으면 로컬이다. 켜진 채로 실패하게 두지 않는다 */
+/**
+ * 고른 대로 못 하면 **DB**다 — 스토리지는 자격증명이, 로컬 폴더는 데이터 루트가 있어야 한다.
+ * 예전엔 LOCAL로 떨어졌는데, DB는 어디서 열어도 따라다니고 백업에도 실려 가장 잃기 어렵다.
+ * 켜진 채로 실패(502)하게 두지 않는다
+ */
 export function coverTarget(): CoverLocation {
-  return config().media.useStorageForCovers && storageHasCredentials() ? "EXTERNAL" : "LOCAL";
-}
-
-export function screenshotsToStorage(): boolean {
-  return config().media.useStorageForScreenshots && storageHasCredentials();
+  const c = config();
+  if (c.media.coverTarget === "storage" && storageHasCredentials()) return "EXTERNAL";
+  if (c.media.coverTarget === "local" && c.dataRoot !== null) return "LOCAL";
+  return "DB";
 }
 
 // ───────────── 오브젝트 스토리지 ─────────────

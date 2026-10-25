@@ -19,8 +19,8 @@ import type { CoverInfo } from "@/lib/types";
  *
  * ## 업로드 경로가 둘이다
  *
- * 어디에 올릴지는 **서버가 정한다** (`lib/upload.ts`). 자격증명이 있는지, 체크박스가
- * 켜졌는지가 전부 서버에만 있어서, 화면이 판정하려면 설정을 또 내려받아야 한다.
+ * 어디에 올릴지(DB·로컬 폴더·스토리지)는 **서버가 정한다** (`lib/upload.ts`). 연결 설정의 커버 위치와
+ * 자격증명이 전부 서버에만 있어서, 화면이 판정하려면 설정을 또 내려받아야 한다.
  *
  * ## 고르자마자 올린다
  *
@@ -104,7 +104,7 @@ export default function CoverDialog({
           돌아갑니다.
         </p>
 
-        <DropZone onFiles={handle} disabled={busy} hint="붙여넣기(⌘V)도 됩니다 · 5MB 이하">
+        <DropZone onFiles={handle} disabled={busy} hint="붙여넣기(⌘V)도 됩니다 · JPG·PNG·WebP · 긴 변 1200px로 줄여 올립니다">
           {busy ? <p className="text-sm text-white/60">올리는 중…</p> : undefined}
         </DropZone>
       </div>

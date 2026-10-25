@@ -2,7 +2,7 @@
  * 데이터 한 벌. 내보내기·가져오기·덮어쓰기 공용.
  *
  * **사용자가 들고 다니는 파일 형식이다.** 키 이름·순서·null·날짜 모양을 바꾸면 이미 받아 둔 백업을 못 읽는다.
- * 자격증명·파생 상태·커버 실물·id는 담지 않는다.
+ * 자격증명·파생 상태·id는 담지 않는다. 커버 실물은 DB 커버(형식 6)만 — LOCAL·EXTERNAL은 키만 싣는다.
  *
  * 받는 쪽(Zod)은 관대하게 읽는다 — 모르는 키는 버리고, 빠진 칸은 null.
  * 본문은 `readBodyExact`로 읽으므로 **JSON 숫자가 원문 글자(문자열)로** 들어온다
@@ -30,8 +30,14 @@ import { opt, zDate, zDecimal, zLong, zText } from "../../common/schemas";
  *     - 취득의 `subscriptionIndex` — 구독은 이름이 겹칠 수 있어(재구독) `catalog.subscriptions`의 순번으로 가리킨다
  *     - 항목 `createdAt`을 그대로 되살린다
  *     4 이하는 예전과 똑같이 읽는다
+ * 6 — DB 커버(V17)의 바이트를 싣는다 (2026-10-25). 커버에 `location: "DB"` + `data`(base64), 타입은 `contentType`.
+ *     LOCAL·EXTERNAL 커버는 예전처럼 키만. 옛 앱은 `DB` 위치를 모르므로 번호를 올렸다 (5 이하를 읽는 동작은 그대로 —
+ *     5 이하 파일의 `DB`는 예전처럼 모르는 위치다)
  */
-export const FORMAT_VERSION = 5;
+export const FORMAT_VERSION = 6;
+
+/** 커버 한 장(5MB)의 base64 — 4/3배 + 여유. 본문 한도(50MB)는 따로 걸린다 */
+const MAX_COVER_BASE64 = Math.ceil((5 * 1024 * 1024) / 3) * 4 + 16;
 
 /**
  * ISO 로컬 날짜시각 (`2026-08-28T15:14:26.781806`, 초·소수는 생략 가능).
@@ -111,7 +117,11 @@ const Game = z.object({
  */
 const primitive = zLong;
 
-const Cover = z.object({ storageKey: text, contentType: text, sizeBytes: primitive, location: text });
+const Cover = z.object({
+  storageKey: text, contentType: text, sizeBytes: primitive, location: text,
+  /** 형식 6, DB 커버만 — 바이트 base64. 글자 상한(MAX_TEXT)으로는 한 장도 못 담아 따로 잰다 */
+  data: opt(z.string().max(MAX_COVER_BASE64)),
+});
 
 const Playthrough = z.object({
   sequenceNo: primitive, startedOn: opt(zDate), finishedOn: opt(zDate), status: text, label: text,

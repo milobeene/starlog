@@ -143,6 +143,10 @@ function kstNow(d = new Date()) {
   return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}:${p.second}`;
 }
 
+const UUID_SRC = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+const COVER_NAME_RE = new RegExp(`^${UUID_SRC}\\.(jpg|jpeg|png|webp)$`);
+const COVER_V_RE = new RegExp(`([?&]v=)${UUID_SRC}\\.(jpg|jpeg|png|webp)\\b`, "g");
+
 function normScalar(v: unknown): unknown {
   // 서버가 "오늘"로 채운 날짜(플레이 기록의 기본 날짜 등) — 녹화한 날과 다음 날 결과가 갈리지 않게
   if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && v === runStartKst.slice(0, 10)) return "<TODAY>";
@@ -156,6 +160,9 @@ function normScalar(v: unknown): unknown {
     const cap = kstNow(new Date(Date.now() + NOW_SLACK_MS));
     if (s.length >= 16 && s >= runStartKst.slice(0, s.length) && s <= cap.slice(0, s.length)) return "<NOW>";
   }
+  // LOCAL·DB 커버 이름(`<uuid>.<ext>`)은 올릴 때마다 새로 짓는다 — 이름 하나짜리 값과 주소의 `?v=`만 (키 경로 속 uuid는 그대로 본다)
+  if (typeof v === "string" && COVER_NAME_RE.test(v)) return v.replace(COVER_NAME_RE, "<UUID>.$1");
+  if (typeof v === "string" && v.includes("v=")) { const r = v.replace(COVER_V_RE, "$1<UUID>.$2"); if (r !== v) return r; }
   // 파일 주소의 `?v=<수정 시각 ms>` — 실행 중에 만든 파일이면 실행마다 다르다
   if (typeof v === "string" && /[?&]v=\d{13}\b/.test(v)) {
     return v.replace(/([?&]v=)(\d{13})\b/g, (m, k: string, n: string) =>
@@ -249,7 +256,10 @@ async function dumpDbRaw(dir: string) {
   const tables = (await db.query<{ t: string }>(
     `select table_name t from information_schema.tables where table_schema='public' and table_type='BASE TABLE' and table_name <> 'flyway_schema_history' order by 1`)).rows.map(r => r.t);
   const out: Record<string, Record<string, unknown>[]> = {};
-  for (const t of tables) out[t] = (await db.query<Record<string, unknown>>(`select * from "${t}"`)).rows;
+  // bytea(커버 바이트)는 해시로 — 그대로 두면 JSON이 바이트마다 칸 하나인 객체가 된다
+  const bytes = (r: Record<string, unknown>) => Object.fromEntries(Object.entries(r).map(([k, v]) =>
+    [k, v instanceof Uint8Array ? `sha256:${crypto.createHash("sha256").update(v).digest("hex").slice(0, 16)} (${v.length}B)` : v]));
+  for (const t of tables) out[t] = (await db.query<Record<string, unknown>>(`select * from "${t}"`)).rows.map(bytes);
   await db.close();
   return out;
 }

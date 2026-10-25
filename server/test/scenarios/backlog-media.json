@@ -1,5 +1,9 @@
 {
  "name": "backlog-media",
+ "note": "커버는 LOCAL(데이터 루트 covers/) 경로를 본다 — 기본(DB)은 cover-db 시나리오",
+ "env": {
+  "STARLOG_COVER_TARGET": "local"
+ },
  "steps": [
   {
    "name": "담기 — 수동 게임 만들기",

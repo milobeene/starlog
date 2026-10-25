@@ -34,7 +34,10 @@ export interface Config {
     secretKey: string | null;
     publicBaseUrl: string | null;
   };
-  media: { useStorageForCovers: boolean; useStorageForScreenshots: boolean };
+  /**
+   * 커버를 어디에 둘지 (연결 설정이 고른다). 고른 대로 못 하면 `coverTarget()`(common/storage)이 db로 떨어진다
+   */
+  media: { coverTarget: CoverTargetSetting };
   translateApiKey: string | null;
   /**
    * 연결 시험 — 열어서 진단(`select 1`·스키마 검사)까지만 하고 내려간다. **마이그레이션을 안 돈다** —
@@ -42,6 +45,8 @@ export interface Config {
    */
   checkOnly: boolean;
 }
+
+export type CoverTargetSetting = "db" | "local" | "storage";
 
 const blank = (v: string | undefined) => (v === undefined || v.trim() === "" ? null : v.trim());
 const flag = (v: string | undefined) => v?.trim().toLowerCase() === "true";
@@ -70,12 +75,26 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       publicBaseUrl: blank(env.APP_STORAGE_PUBLIC_BASE_URL),
     },
     media: {
-      useStorageForCovers: flag(env.STARLOG_MEDIA_USE_STORAGE_FOR_COVERS),
-      useStorageForScreenshots: flag(env.STARLOG_MEDIA_USE_STORAGE_FOR_SCREENSHOTS),
+      coverTarget: coverTargetOf(env),
     },
     translateApiKey: blank(env.TRANSLATE_API_KEY),
     checkOnly: flag(env.STARLOG_CHECK_ONLY),
   };
+}
+
+/**
+ * 새 변수(`STARLOG_COVER_TARGET`)가 우선이다. 없으면 옛 체크박스(`…_USE_STORAGE_FOR_COVERS`)를 읽는다 —
+ * 옛 일렉트론이 새 서버 번들을 띄우는 일은 없지만, 손으로 띄우는 스크립트·문서가 옛 이름을 쓴다.
+ * 옛 체크가 꺼져 있으면 LOCAL이 아니라 db다: 기본값을 db로 옮긴 게 이번 변경의 요점이다.
+ * 모르는 값은 db로 읽고 로그에 남긴다 — 기동을 막으면 진단 코드 없이 죽어 화면엔 "서버가 죽었다"만 뜬다.
+ * db는 백업에 실리는 쪽이라 틀린 값이 커버를 잃게 만들지 않는다
+ */
+function coverTargetOf(env: NodeJS.ProcessEnv): CoverTargetSetting {
+  const v = blank(env.STARLOG_COVER_TARGET)?.toLowerCase() ?? null;
+  if (v === null) return flag(env.STARLOG_MEDIA_USE_STORAGE_FOR_COVERS) ? "storage" : "db";
+  if (v === "db" || v === "local" || v === "storage") return v;
+  console.warn(`STARLOG_COVER_TARGET은 db · local · storage 중 하나다 — 모르는 값이라 db로 읽는다: ${v}`);
+  return "db";
 }
 
 /**

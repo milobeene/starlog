@@ -84,7 +84,9 @@ import { pathToFileURL } from "url";
 let ctl = {};
 try { ctl = JSON.parse(fs.readFileSync(${JSON.stringify(FAKE_CTL)}, "utf8")); } catch {}
 fs.appendFileSync(${JSON.stringify(FAKE_LOG)}, JSON.stringify({ pid: process.pid, mode: ctl.mode ?? null,
-  checkOnly: process.env.STARLOG_CHECK_ONLY ?? null, dbDir: process.env.STARLOG_DB_DIR ?? null, dbUrl: Boolean(process.env.STARLOG_DB_URL) }) + "\\n");
+  checkOnly: process.env.STARLOG_CHECK_ONLY ?? null, dbDir: process.env.STARLOG_DB_DIR ?? null, dbUrl: Boolean(process.env.STARLOG_DB_URL),
+  coverTarget: process.env.STARLOG_COVER_TARGET ?? null,
+  legacyMedia: Object.keys(process.env).filter((k) => k.startsWith("STARLOG_MEDIA_USE_STORAGE")) }) + "\\n");
 const pp = process.parentPort;
 if (ctl.fakeCheck && process.env.STARLOG_CHECK_ONLY === "true") {
   console.log("STARLOG_CHECKED");
@@ -603,7 +605,7 @@ async function connectionSteps() {
     storage: { endpoint: "https://203.0.113.2", bucket: "b", accessKey: SECRETS[1], secretKey: SECRETS[2], publicBaseUrl: "https://203.0.113.3" },
     igdb: { clientId: "cid", clientSecret: SECRETS[3] },
     translate: { apiKey: SECRETS[4] },
-    mediaTargets: { covers: false, screenshots: false },
+    coverTarget: "db",
   };
   const saved = await js(`window.starlog.connections.save(${JSON.stringify(profile)})`);
   const listed = await js("window.starlog.connections.list()");
@@ -671,6 +673,151 @@ async function connectionSteps() {
   const aside = fs.readdirSync(dir).filter((f) => f.startsWith("connections.json.corrupt-"));
   check("깨진 connections.json은 .corrupt-<시각>으로 보존 (덮어쓰지 않는다)",
     afterCorrupt.length === 0 && aside.length === 1 && fs.readFileSync(path.join(dir, aside[0]), "utf8") === "{ not json", aside.join(","));
+}
+
+/**
+ * 커버 저장 위치 (2026-10-25) — 옛 체크박스(`mediaTargets`)를 읽을 때 옮기는지, 고른 값이 저장·검사되는지,
+ * 서버 환경변수로 넘어가는지. 클라우드는 가짜 서버(crash)로 환경만 보고 내린다 — 진짜 DB에 안 붙는다
+ */
+async function coverTargetSteps() {
+  const CONN = path.join(TMP, "appData/starlog/connections.json");
+  const db = { url: "postgresql://203.0.113.1/x", user: "u" };
+  fs.writeFileSync(CONN, JSON.stringify({ version: 2, profiles: [
+    { name: "옛 체크 켬", db, mediaTargets: { covers: true, screenshots: true } },
+    { name: "옛 체크 끔", db, mediaTargets: { covers: false, screenshots: true } },
+    { name: "이상한 값", db, coverTarget: "s3" },
+  ] }), { mode: 0o600 });
+  const listed = await js("window.starlog.connections.list()");
+  const of = (name) => listed.find((p) => p.name === name);
+  check("커버 위치 — 옛 체크 켬은 storage, 끔은 db, 모르는 값은 db로 읽는다 (mediaTargets는 사라진다)",
+    of("옛 체크 켬")?.coverTarget === "storage" && of("옛 체크 끔")?.coverTarget === "db" && of("이상한 값")?.coverTarget === "db"
+      && listed.every((p) => !("mediaTargets" in p)), JSON.stringify(listed.map((p) => [p.name, p.coverTarget, p.mediaTargets])));
+  const disk = JSON.parse(fs.readFileSync(CONN, "utf8"));
+  check("커버 위치 — 읽으면서 디스크도 옮겨 쓴다 (스크린샷 체크도 함께 사라진다)",
+    disk.profiles.every((p) => !("mediaTargets" in p)) && disk.profiles.map((p) => p.coverTarget).join(",") === "storage,db,db",
+    JSON.stringify(disk.profiles.map((p) => [p.coverTarget, p.mediaTargets])));
+
+  await js(`window.starlog.connections.save({ ...${JSON.stringify(of("옛 체크 끔"))}, coverTarget: "local" }, { previousName: "옛 체크 끔" })`);
+  const bad = await js(`window.starlog.connections.save({ ...${JSON.stringify(of("옛 체크 켬"))}, coverTarget: "s3" }, { previousName: "옛 체크 켬" }).then(() => "통과", (e) => String(e))`);
+  const after = await js("window.starlog.connections.list()");
+  check("커버 위치 — 고른 값이 저장되고, 셋 밖의 값은 거절 (저장된 값 그대로)",
+    after.find((p) => p.name === "옛 체크 끔")?.coverTarget === "local" && /커버 저장 위치/.test(bad)
+      && after.find((p) => p.name === "옛 체크 켬")?.coverTarget === "storage", `${bad} ${JSON.stringify(after.map((p) => p.coverTarget))}`);
+
+  // 클라우드 기동 — 가짜 서버가 받은 환경만 적고 죽는다
+  fakeMode({ mode: "crash" });
+  const seen = {};
+  for (const name of ["옛 체크 켬", "옛 체크 끔"]) {
+    const mark = spawnLog().length;
+    await js(`window.starlog.launch({ mode: "cloud", target: ${JSON.stringify(name)} })`);
+    seen[name] = spawnLog().slice(mark).map((l) => [l.coverTarget, l.legacyMedia.length]);
+  }
+  fakeMode({});
+  check("커버 위치 — 클라우드 기동에 STARLOG_COVER_TARGET으로 넘긴다 (옛 STARLOG_MEDIA_USE_STORAGE_* 없음)",
+    seen["옛 체크 켬"].length > 0 && seen["옛 체크 켬"].every(([t, n]) => t === "storage" && n === 0)
+      && seen["옛 체크 끔"].length > 0 && seen["옛 체크 끔"].every(([t, n]) => t === "local" && n === 0), JSON.stringify(seen));
+  for (const p of after) await js(`window.starlog.connections.remove(${JSON.stringify(p.name)})`);
+
+  // 로컬 세이브 — settings.json 하나. 셋째(스토리지)는 없다
+  const SAVE = "E2E 커버";
+  await js(`window.starlog.saves.create(${JSON.stringify(SAVE)})`);
+  const before = await js("window.starlog.settings.get()");
+  const rejected = await js(`window.starlog.settings.setLocalCoverTarget("storage").then(() => "통과", () => "거절")`);
+  await js(`window.starlog.settings.setLocalCoverTarget("local")`);
+  const mark = spawnLog().length;
+  const up = await js(`window.starlog.launch({ mode: "local", target: ${JSON.stringify(SAVE)} })`);
+  const env = spawnLog().slice(mark).map((l) => l.coverTarget);
+  let prep = null;
+  if (up.ok) {
+    const g = await api(up.port, "POST", "/api/games", { name: "E2E 커버 게임" });
+    const e = await api(up.port, "POST", "/api/backlog", { gameId: g.json?.id });
+    prep = await api(up.port, "POST", `/api/backlog/${e.json?.id}/cover/upload-url`, { fileName: "a.png", sizeBytes: 10 });
+  }
+  await js(`window.starlog.settings.setLocalCoverTarget("db")`);
+  check("로컬 커버 위치 — 기본 db, storage는 거절, local을 고르면 다음 기동에 넘긴다",
+    before.localCoverTarget === "db" && rejected === "거절" && env.at(-1) === "local" && prep?.json?.mode === "LOCAL"
+      && (await js("window.starlog.settings.get()")).localCoverTarget === "db",
+    `${before.localCoverTarget} ${rejected} ${env.join(",")} ${prep?.status} ${prep?.json?.mode}`);
+  await goto("app://starlog/");
+}
+
+/**
+ * DB 커버 (V17) — 기본 위치로 올리고, 바이트·머리글을 보고, 교체하면 주소(`?v=`)가 바뀌는지.
+ * 세이브 백업(.tar.gz)·클라우드 백업(.json.gz)에 따라가는지는 그 단계들이 `coverBytes`로 다시 본다
+ */
+let coverBytes = null;
+async function coverDbSteps(port, entryId) {
+  const samples = path.join(TMP, "samples");
+  const prep = await api(port, "POST", `/api/backlog/${entryId}/cover/upload-url`, { fileName: "square.png", sizeBytes: 10 });
+  check("DB 커버 — 로컬 세이브 기본은 DB (mode)", prep.json?.mode === "DB", JSON.stringify(prep.json));
+  const send = async (file) => {
+    const fd = new FormData();
+    fd.append("file", new Blob([fs.readFileSync(file)]), path.basename(file));
+    return (await fetch(`http://127.0.0.1:${port}/api/backlog/${entryId}/cover/file`, { method: "POST", body: fd, headers: await auth() })).status;
+  };
+  const urlOf = async () => (await api(port, "GET", `/api/backlog/${entryId}`)).json?.resolved?.cover?.url ?? null;
+  const s1 = await send(path.join(samples, "square.png"));
+  const url1 = await urlOf();
+  const s2 = await send(path.join(samples, "port.jpg"));
+  const url2 = await urlOf();
+  const res = await fetch(`http://127.0.0.1:${port}${url2}`, { headers: await auth() });
+  const got = Buffer.from(await res.arrayBuffer());
+  const want = fs.readFileSync(path.join(samples, "port.jpg"));
+  check("DB 커버 — 올리고 교체하면 ?v=가 바뀌고, 바이트·타입·캐시 머리글이 맞다",
+    s1 === 200 && s2 === 200 && url1 && url2 && url1 !== url2 && /\/cover\/file\?v=[0-9a-f-]{36}\.jpg$/.test(url2)
+      && got.equals(want) && res.headers.get("content-type") === "image/jpeg" && /immutable/.test(res.headers.get("cache-control") ?? ""),
+    `${s1} ${s2} ${url1} → ${url2} ${got.length}/${want.length} ${res.headers.get("content-type")} ${res.headers.get("cache-control")}`);
+  const files = fs.readdirSync(path.join(TMP, "appData/starlog/data/covers"));
+  check("DB 커버 — 데이터 폴더 covers/에 파일을 안 만든다", files.length === 0, files.join(","));
+  coverBytes = want;
+  coverUrlBefore = url2;
+}
+
+/**
+ * 화면의 커버 올리기 — 올리기 전에 긴 변 1200px · JPEG로 줄이는지 (`lib/upload.ts` `shrinkCover`).
+ * 진짜 상세 화면의 [커버 이미지 변경] 팝업에 파일 칸으로 2560×1440 PNG를 넣는다 (CDP `DOM.setFileInputFiles`)
+ */
+async function coverResizeSteps(port, entryId) {
+  const { nativeImage } = realElectron;
+  const big = path.join(TMP, "samples", "land.png");
+  await goto(`app://starlog/library/detail?entry=${entryId}`);
+  await js(`document.querySelector('button[aria-label="커버 이미지 변경"]')?.click(); 0`);
+  await sleep(500);
+  const dbg = win.webContents.debugger;
+  dbg.attach("1.3");
+  try {
+    const { root } = await dbg.sendCommand("DOM.getDocument", { depth: -1 });
+    const { nodeId } = await dbg.sendCommand("DOM.querySelector", { nodeId: root.nodeId, selector: '[aria-modal="true"] input[type=file]' });
+    if (nodeId) await dbg.sendCommand("DOM.setFileInputFiles", { nodeId, files: [big] });
+  } finally {
+    dbg.detach();
+  }
+  let url = null;
+  for (let i = 0; i < 50; i += 1) {
+    await sleep(200);
+    url = (await api(port, "GET", `/api/backlog/${entryId}`)).json?.resolved?.cover?.url ?? null;
+    if (url && url !== coverUrlBefore) break;
+  }
+  const res = url ? await fetch(`http://127.0.0.1:${port}${url}`, { headers: await auth() }) : null;
+  const got = res ? Buffer.from(await res.arrayBuffer()) : Buffer.alloc(0);
+  const size = got.length ? nativeImage.createFromBuffer(got).getSize() : { width: 0, height: 0 };
+  const origin = fs.statSync(big).size;
+  check("커버 올리기(화면) — 2560×1440 PNG를 긴 변 1200 JPEG로 줄여 올린다",
+    url !== coverUrlBefore && size.width === 1200 && size.height === 675 && got[0] === 0xff && got[1] === 0xd8,
+    `${url} ${size.width}x${size.height} ${(got.length / 1024).toFixed(0)}KB ← ${(origin / 1024).toFixed(0)}KB`);
+  if (got.length) coverBytes = got;
+  await goto("app://starlog/dashboard");
+}
+let coverUrlBefore = null;
+
+/** 그 세이브의 그 항목 커버가 `coverBytes`와 같은가 */
+async function sameCover(port, name) {
+  const cards = await api(port, "GET", "/api/backlog/cards");
+  const card = cards.json?.find?.((c) => c.displayName === name) ?? (cards.json?.items ?? []).find((c) => c.displayName === name);
+  if (!card?.coverUrl) return `커버 주소 없음 ${JSON.stringify(card)?.slice(0, 120)}`;
+  const res = await fetch(`http://127.0.0.1:${port}${card.coverUrl}`, { headers: await auth() });
+  const got = Buffer.from(await res.arrayBuffer());
+  return res.status === 200 && coverBytes && got.equals(coverBytes) ? true : `${res.status} ${got.length}B`;
 }
 
 /** 그 pid가 아직 살아 있나 — 우리가 띄운 서버만 본다 */
@@ -830,6 +977,10 @@ async function cloudBackupSteps(save) {
     const dump = text ? JSON.parse(text) : null;
     check("클라우드 백업 — 내보내기 JSON(gzip), 게임이 들어 있다", Boolean(dump?.formatVersion) && text.includes("E2E 테스트 게임"));
     check("클라우드 백업 — 자격증명 칸이 없다", !/password|secretKey|accessKey|clientSecret|apiKey/i.test(text));
+    const dumped = dump?.entries?.find((e) => e.cover)?.cover;
+    check("클라우드 백업 — 형식 6, DB 커버가 바이트(base64)째 실린다",
+      dump?.formatVersion === 6 && dumped?.location === "DB" && coverBytes !== null && Buffer.from(dumped.data ?? "", "base64").equals(coverBytes),
+      `${dump?.formatVersion} ${dumped?.location} ${dumped?.sizeBytes}`);
     check("클라우드 백업 — 파일 0600 · 폴더 0700", fs.existsSync(file) && (fs.statSync(file).mode & 0o777) === 0o600
       && (fs.statSync(autoDir).mode & 0o777) === 0o700);
 
@@ -918,6 +1069,8 @@ async function cloudBackupSteps(save) {
   const opened = restoredName ? await js(`window.starlog.launch({ mode: "local", target: ${JSON.stringify(restoredName)} })`) : null;
   const cards = opened?.ok ? await api(opened.port, "GET", "/api/backlog/cards") : null;
   check("클라우드 백업에서 푼 세이브에 데이터가 있다", JSON.stringify(cards?.json ?? "").includes("E2E 테스트 게임"), restoredName ?? "없음");
+  const sameCloud = opened?.ok ? await sameCover(opened.port, "E2E 테스트 게임") : "기동 실패";
+  check("클라우드 백업에서 푼 세이브에 DB 커버가 바이트째 있다", sameCloud === true, String(sameCloud));
 }
 
 realElectron.app.whenReady().then(async () => {
@@ -963,6 +1116,8 @@ realElectron.app.whenReady().then(async () => {
     check("상세 화면", (await js("document.body.innerText")).includes("E2E 테스트 게임"));
 
     await mediaSteps(port, entry.json?.id);
+    await coverDbSteps(port, entry.json?.id);
+    await coverResizeSteps(port, entry.json?.id);
     // 스크린샷·영상이 생긴 뒤에 — 상세의 갤러리 썸네일·<video>까지 정책 안에서 뜨는지
     await cspSteps(port, entry.json?.id);
     await securitySteps(port);
@@ -971,6 +1126,7 @@ realElectron.app.whenReady().then(async () => {
     // ── 입구로 → 백업 (백엔드를 내리고 묶는다) ──
     await goto("app://starlog/");
     await connectionSteps();
+    await coverTargetSteps();
     t = Date.now();
     const backup = await js(`window.starlog.backups.create(${JSON.stringify(SAVE)})`);
     check("백업 만들기", /\.tar\.gz$/.test(backup.fileName), `${backup.fileName}, ${Date.now() - t}ms`);
@@ -985,6 +1141,8 @@ realElectron.app.whenReady().then(async () => {
     const cards = await api(relaunch.port, "GET", "/api/backlog/cards");
     const names = JSON.stringify(cards.json);
     check("되살린 세이브에 데이터가 있다", relaunch.ok && names.includes("E2E 테스트 게임"));
+    const sameRestored = relaunch.ok ? await sameCover(relaunch.port, "E2E 테스트 게임") : "기동 실패";
+    check("되살린 세이브에 DB 커버가 바이트째 있다 (.tar.gz 백업에 실린다)", sameRestored === true, String(sameRestored));
 
     // 같은 세이브를 바로 다시 열기 — 옛 백엔드가 잠금을 놓고 내려가야 한다 (DB_IN_USE 재발 방지)
     const again = await js(`window.starlog.launch({ mode: "local", target: ${JSON.stringify(SAVE)} })`);

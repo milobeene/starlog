@@ -14,7 +14,7 @@ import {
   settleSection,
   type SectionKey,
 } from "@/lib/connectionDraft";
-import { bridgeMessage, diagnosticOf, getBridge, type ConnectionProfile, type SecretFieldPath } from "@/lib/desktop";
+import { bridgeMessage, diagnosticOf, getBridge, type ConnectionProfile, type CoverTarget, type SecretFieldPath } from "@/lib/desktop";
 
 function getAt(profile: ConnectionProfile | undefined, path: SecretFieldPath): string {
   const [group, key] = path.split(".");
@@ -46,7 +46,7 @@ const EMPTY: ConnectionProfile = {
   db: { url: "", user: "", password: "", schema: "" },
   storage: { endpoint: "", bucket: "", accessKey: "", secretKey: "", publicBaseUrl: "" },
   igdb: { clientId: "", clientSecret: "" },
-  mediaTargets: { covers: false, screenshots: false },
+  coverTarget: "db",
 };
 
 /** 채워야 하는 칸들. 라벨 옆에 실제 키 이름을 함께 보여준다 */
@@ -155,8 +155,7 @@ export function useConnectionForm({
     patch({ storage: { ...form.storage, ...p } });
   const setIgdb = (p: Partial<NonNullable<ConnectionProfile["igdb"]>>) =>
     patch({ igdb: { ...form.igdb, ...p } });
-  const setTargets = (p: Partial<NonNullable<ConnectionProfile["mediaTargets"]>>) =>
-    patch({ mediaTargets: { covers: false, screenshots: false, ...form.mediaTargets, ...p } });
+  const setCoverTarget = (coverTarget: CoverTarget) => patch({ coverTarget });
 
   /** 이 모드에서 실제로 보이는 섹션들. 전체 테스트·저장이 이것만 훑는다 */
   const activeSections: SectionKey[] =
@@ -535,8 +534,8 @@ export function useConnectionForm({
 
       const next: ConnectionProfile = { ...base, name: form.name };
       (next as unknown as Record<string, unknown>)[key] = form[key];
-      /* 무엇을 올릴지(체크박스)는 스토리지 칸과 한 몸이다 — 따로 저장하면 짝이 안 맞는다 */
-      if (key === "storage") next.mediaTargets = form.mediaTargets;
+      /* 커버 위치는 이 섹션(커버) 칸이다 — 스토리지를 고른 채 스토리지 칸만 따로 저장되면 짝이 안 맞는다 */
+      if (key === "storage") next.coverTarget = form.coverTarget;
 
       // 이름을 바꿨으면 일렉트론이 옛 항목을 제자리에서 바꾼다 (가린 값도 옛 항목에서 푼다)
       const list = await getBridge()!.connections.save(next, stored?.name || storedName
@@ -563,7 +562,7 @@ export function useConnectionForm({
     setDb,
     setStorage,
     setIgdb,
-    setTargets,
+    setCoverTarget,
     testing,
     busy,
     partResult,

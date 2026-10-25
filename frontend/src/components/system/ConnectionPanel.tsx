@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import ConnectionDialog from "@/components/entry/ConnectionDialog";
+import { CoverTargetChoice, Section } from "@/components/entry/ConnectionFormParts";
 import { Button } from "@/components/ui/Field";
 import { api, errorMessage } from "@/lib/api";
-import { getBridge, type ConnectionProfile, type SecretFieldPath, type SessionInfo } from "@/lib/desktop";
+import { getBridge, type ConnectionProfile, type CoverTarget, type SecretFieldPath, type SessionInfo } from "@/lib/desktop";
 
 /**
  * 로컬 세이브파일의 연결 탭 (v1.2에서 클라우드와 **한 컴포넌트로 합침**).
@@ -45,7 +46,6 @@ function LocalConnectionSettings() {
           storage: { endpoint: "", bucket: "", accessKey: "", secretKey: "", publicBaseUrl: "" },
           igdb: { clientId: found.igdbClientId ?? "", clientSecret: found.igdbClientSecret ?? "" },
           translate: { apiKey: found.translateApiKey ?? "" },
-          mediaTargets: { covers: false, screenshots: false },
           hasSecret: {
             "igdb.clientSecret": found.hasIgdbClientSecret,
             "translate.apiKey": found.hasTranslateApiKey,
@@ -86,6 +86,7 @@ function LocalConnectionSettings() {
         지금은 로컬 세이브파일로 쓰고 계십니다. 데이터베이스 연결 설정은 입구 화면에서
         관리합니다.
       </Notice>
+      <LocalCoverTarget />
       <ConnectionDialog
         initial={initial}
         inline
@@ -95,6 +96,64 @@ function LocalConnectionSettings() {
         onSaved={() => {}}
       />
     </div>
+  );
+}
+
+/**
+ * 로컬 세이브의 커버 위치 (2026-10-25). **세이브마다가 아니라 로컬 세이브 전부에 하나**다 —
+ * `settings.json`에 있고 서버는 기동 때 읽는다(클라우드 연결의 같은 칸과 같은 길). 로컬에는 스토리지가 없다.
+ * 고르는 즉시 저장한다 — 값 하나라 [저장] 단계를 두면 눌렀는지 헷갈리기만 한다
+ */
+function LocalCoverTarget() {
+  const [value, setValue] = useState<CoverTarget | null>(null);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const bridge = getBridge();
+
+  useEffect(() => {
+    let cancelled = false;
+    getBridge()
+      ?.settings.get()
+      .then((s) => {
+        if (!cancelled) setValue(s.localCoverTarget ?? "db");
+      })
+      .catch((e) => {
+        if (!cancelled) setMessage({ ok: false, text: errorMessage(e, "설정을 읽지 못했습니다.") });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // 옛 일렉트론(preload에 칸이 없다)이면 고를 수 없다 — 숨긴다
+  if (!bridge?.settings.setLocalCoverTarget) return null;
+
+  const choose = async (next: CoverTarget) => {
+    if (next === "storage" || next === value) return;
+    const before = value;
+    setValue(next);
+    try {
+      await bridge.settings.setLocalCoverTarget!(next);
+      setMessage({ ok: true, text: "저장했습니다. 다음에 세이브를 여실 때부터 적용됩니다." });
+    } catch (e) {
+      setValue(before);
+      setMessage({ ok: false, text: errorMessage(e, "저장하지 못했습니다.") });
+    }
+  };
+
+  return (
+    <Section title="커버" hint="로컬 세이브 전부에 적용됩니다. 이미 올린 커버는 있던 자리 그대로 읽힙니다.">
+      {value === null ? (
+        <div className="h-16 skeleton-sweep rounded-md bg-white/[0.06]" />
+      ) : (
+        <CoverTargetChoice value={value} onChange={choose} storageNote="로컬 세이브에는 스토리지가 없습니다" />
+      )}
+      {message && (
+        <span className={`text-[11px] ${message.ok ? "text-emerald-300/80" : "text-red-400"}`}>
+          {message.ok ? "✓ " : "✕ "}
+          {message.text}
+        </span>
+      )}
+    </Section>
   );
 }
 

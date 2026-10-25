@@ -50,6 +50,8 @@ if (trustedOrigin()) contextBridge.exposeInMainWorld("starlog", {
     setDataRoot: (dir) => ipcRenderer.invoke("settings:setDataRoot", dir),
     /** 바꾸기 전에 살펴본다 — 쓸 수 있는 곳인지, 이미 우리 구조가 있는지 */
     inspectDataRoot: (dir) => ipcRenderer.invoke("settings:inspectDataRoot", dir),
+    /** 로컬 세이브의 커버 위치 — "db" | "local". 다음에 세이브를 열 때부터 */
+    setLocalCoverTarget: (value) => ipcRenderer.invoke("settings:setLocalCoverTarget", value),
   },
   /**
    * 배경 색 캐시 (프론트 F4). 입구가 백엔드 없이 마지막 색으로 뜨게 한다 (프리셋은 서버 프로필에 있다).
@@ -87,7 +89,7 @@ if (trustedOrigin()) contextBridge.exposeInMainWorld("starlog", {
 
   /**
    * 클라우드 데이터를 로컬 세이브파일로 뽑는다 (§6).
-   * ⚠️ 커버 실물은 안 따라온다 — 스토리지에 있다. 마스터 커버로 폴백된다
+   * DB 커버는 바이트째 따라온다(형식 6). ⚠️ 로컬 폴더·스토리지 커버는 실물이 안 따라온다 — 마스터 커버로 폴백된다
    */
   cloudToSaveFile: (saveName) => ipcRenderer.invoke("cloud:toSaveFile", saveName),
 
