@@ -6,6 +6,7 @@ import AppHeader from "@/components/layout/AppHeader";
 import CardStatsHost from "@/components/library/CardStatsHost";
 import TaskToasts from "@/components/layout/TaskToasts";
 import { Button } from "@/components/ui/Field";
+import { useCloudBackupToasts } from "@/lib/cloudBackup";
 import { getBridge } from "@/lib/desktop";
 import { rememberAppPath } from "@/lib/lastAppPath";
 import { refreshSession, useSession } from "@/lib/session";
@@ -52,6 +53,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       }),
     [router],
   );
+
+  // 자동 백업은 기동 직후 뒤에서 돈다 — 껍데기가 받아야 어느 화면에 있든 결과가 뜬다
+  useCloudBackupToasts();
 
   const [stuck, setStuck] = useState(false);
   useEffect(() => {

@@ -24,6 +24,8 @@ export type TaskKind =
   | "bulk-sync"
   | "resync"
   | "save-transfer"
+  /** 클라우드 백업 — 자동(하루 한 번, 기동 직후 뒤에서)·수동 (2026-10-25) */
+  | "cloud-backup"
   /** 게임 담기 (2026-08-29). 담고 나서 "보러가기 / 이어서 담기"가 이어진다 */
   | "add-game"
   /** 스크린샷 복사·저장 결과 (F5) */

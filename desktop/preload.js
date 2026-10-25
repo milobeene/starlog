@@ -92,6 +92,27 @@ if (trustedOrigin()) contextBridge.exposeInMainWorld("starlog", {
   cloudToSaveFile: (saveName) => ipcRenderer.invoke("cloud:toSaveFile", saveName),
 
   /**
+   * 클라우드 백업 (2026-10-25) — 지금 연결의 `/api/me/export`를 `.json.gz`로. 대상은 **지금 세션**이다.
+   * 자동(`auto/`, 하루 한 번·10개)과 수동(`manual/`, 안 지운다)은 폴더가 다르다
+   */
+  cloudBackups: {
+    list: () => ipcRenderer.invoke("cloudBackups:list"),
+    suggestName: () => ipcRenderer.invoke("cloudBackups:suggestName"),
+    create: (name) => ipcRenderer.invoke("cloudBackups:create", name),
+    /** 새 로컬 세이브로 푼다. `saveName`을 안 주면 일렉트론이 겹치지 않는 이름을 짓는다 */
+    restore: (kind, fileName, saveName) => ipcRenderer.invoke("cloudBackups:restore", kind, fileName, saveName),
+    remove: (kind, fileName) => ipcRenderer.invoke("cloudBackups:remove", kind, fileName),
+    openFolder: (kind) => ipcRenderer.invoke("cloudBackups:openFolder", kind),
+    /** 종류별 마지막 상태. 구독이 붙기 전에 쏜 것을 붙을 때 가져간다 */
+    status: () => ipcRenderer.invoke("cloudBackups:status"),
+    onStatus: (callback) => {
+      const handler = (_event, payload) => callback(payload);
+      ipcRenderer.on("cloud-backup:status", handler);
+      return () => ipcRenderer.removeListener("cloud-backup:status", handler);
+    },
+  },
+
+  /**
    * 반대 방향 — 로컬 세이브파일을 지금 붙은 데이터베이스에 **덮어쓴다** (2026-08-28).
    *
    * ⚠️ 되돌릴 수 없다. 그래서 일렉트론이 **직전에 지금 데이터를 세이브파일로 뽑아둔다** —

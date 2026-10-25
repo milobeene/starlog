@@ -1,9 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button, FIELD_INPUT } from "@/components/ui/Field";
+import Bytes from "@/components/ui/Bytes";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
-import { getBridge, type SaveFile, type SessionInfo } from "@/lib/desktop";
+import { CLOUD_BACKUP_TASK } from "@/lib/cloudBackup";
+import {
+  bridgeMessage,
+  getBridge,
+  type CloudBackupFile,
+  type CloudBackupKind,
+  type CloudBackupList,
+  type SaveFile,
+  type SessionInfo,
+} from "@/lib/desktop";
 import { putTask, updateTask, useTaskRunning } from "@/lib/tasks";
 import { api } from "@/lib/api";
 import { invalidateQueries } from "@/lib/useApi";
@@ -41,6 +51,8 @@ export default function DesktopSection() {
       {/* 받기 전엔 아무 문구도 안 낸다 — 클라우드 접속에서 "로컬 세이브파일" 안내가 번쩍이면 안 된다 */}
       {session === null ? null : session.mode === "cloud" ? (
         <>
+          {/* 6시간짜리 Neon 되돌리기 밖의 사본 — 가장 자주 볼 것이라 맨 위에 둔다 */}
+          {getBridge()?.cloudBackups && <CloudBackups />}
           <CloudExtract />
           {/*
             반대 방향. 뽑기만 있고 올리기가 없어서 **밖에서 정리한 기록을 다시 올릴 수가
@@ -285,4 +297,222 @@ function SaveFileUpload() {
       )}
     </div>
   );
+}
+
+/**
+ * 클라우드 백업 (2026-10-25). 지금 연결의 내보내기를 이 컴퓨터에 한 장씩 남긴다.
+ *
+ * Neon 무료 플랜은 되돌리기 기록을 6시간만 둔다 — 그 밖의 사본이 이 맥에 있어야 한다.
+ * 자동은 하루 한 번(10개까지, 넘치면 오래된 것부터), 수동은 저절로 안 지운다.
+ * 진행·결과는 알림으로 간다 — 자동 백업은 이 화면을 열기도 전에 뒤에서 돈다
+ */
+const RESTORE_TASK = "cloud-backup-restore";
+
+/* 다리 객체가 렌더마다 같은 참조라는 보장이 없다 — 의존성에 넣으면 효과가 매번 다시 돈다. 부를 때 꺼낸다 */
+const cloudBridge = () => getBridge()!.cloudBackups!;
+
+function CloudBackups() {
+  const [list, setList] = useState<CloudBackupList | null>(null);
+  const [name, setName] = useState("");
+  const [deleting, setDeleting] = useState<CloudBackupFile | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const busy = useTaskRunning(CLOUD_BACKUP_TASK.manual);
+  const restoring = useTaskRunning(RESTORE_TASK);
+
+  const reload = useCallback(() => {
+    cloudBridge()
+      .list()
+      .then((l) => {
+        setList(l);
+        setError(null);
+      })
+      .catch((e) => setError(bridgeMessage(e, "백업 목록을 읽지 못했습니다")));
+  }, []);
+
+  /* 추천 이름은 지금 시각이라 끝날 때마다 새로 받는다 — 방금 쓴 이름이 그대로 남으면 바로 "이미 있습니다"가 된다 */
+  const suggest = useCallback(() => {
+    cloudBridge().suggestName().then(setName).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    reload();
+    suggest();
+    // 자동 백업이 이 화면을 연 채로 끝날 수 있다 — 끝난 상태가 오면 목록을 다시 받는다
+    return cloudBridge().onStatus((s) => {
+      if (s.phase === "done" || s.phase === "failed") reload();
+    });
+  }, [reload, suggest]);
+
+  const create = async () => {
+    const target = name.trim();
+    try {
+      await cloudBridge().create(target);
+      suggest();
+    } catch (e) {
+      // 이름 검사처럼 시작도 못 한 실패는 메인이 상태를 안 쏜다 — 여기서 같은 자리에 띄운다
+      putTask({
+        id: CLOUD_BACKUP_TASK.manual,
+        kind: "cloud-backup",
+        title: "클라우드 백업",
+        result: { ok: false, message: `클라우드 백업 실패 — ${bridgeMessage(e, "알 수 없는 오류")}` },
+      });
+    }
+    reload();
+  };
+
+  const restore = async (item: CloudBackupFile) => {
+    putTask({
+      id: RESTORE_TASK,
+      kind: "save-transfer",
+      title: `${item.label} — 로컬 세이브파일로 푸는 중`,
+      progress: { done: 0, total: 0 },
+    });
+    try {
+      const r = await cloudBridge().restore(item.kind, item.fileName);
+      updateTask(RESTORE_TASK, {
+        progress: undefined,
+        title: "클라우드 백업 풀기",
+        result: {
+          ok: true,
+          message: `${r.saveName} 세이브파일을 만들었습니다. 입구의 [로컬 세이브파일]에서 열 수 있습니다.`,
+        },
+      });
+    } catch (e) {
+      updateTask(RESTORE_TASK, {
+        progress: undefined,
+        title: "클라우드 백업 풀기",
+        result: { ok: false, message: bridgeMessage(e, "풀지 못했습니다") },
+      });
+    }
+  };
+
+  const openFolder = (kind: CloudBackupKind) => {
+    cloudBridge().openFolder(kind).catch((e) => setError(bridgeMessage(e, "폴더를 열지 못했습니다")));
+  };
+
+  return (
+    <div className="mt-2 flex flex-col gap-3 border-t border-white/8 pt-5">
+      <div>
+        <h3 className="text-[11px] font-semibold tracking-widest text-white/50 uppercase">
+          클라우드 백업
+        </h3>
+        <p className="mt-1 text-[11px] leading-relaxed text-white/30">
+          지금 연결된 데이터를 이 컴퓨터에 파일 한 장으로 남깁니다. 앱을 열 때 하루 한 번 자동으로
+          만들어지고, 필요할 때 직접 뽑으실 수도 있습니다. 풀면 새 로컬 세이브파일이 됩니다.
+        </p>
+      </div>
+
+      <div className="flex gap-2">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="백업 이름"
+          disabled={busy}
+          maxLength={50}
+          className={FIELD_INPUT}
+        />
+        <Button variant="primary" onClick={create} disabled={busy || !name.trim()}>
+          {busy ? "백업 중" : "백업 뽑기"}
+        </Button>
+      </div>
+
+      {list === null && !error && <div className="h-12 skeleton-sweep rounded-lg bg-white/[0.06]" />}
+
+      {list && list.items.length === 0 && (
+        <p className="text-[11px] text-white/30">아직 백업이 없습니다.</p>
+      )}
+
+      {list && list.items.length > 0 && (
+        <div className="flex max-h-80 flex-col gap-2 overflow-y-auto">
+          {list.items.map((item) => (
+            <div
+              key={`${item.kind}/${item.fileName}`}
+              className="group flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-2">
+                  <span className="truncate text-sm text-white/90">
+                    {item.kind === "auto" ? "자동 백업" : item.label}
+                  </span>
+                  <span
+                    className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] tracking-wider ${
+                      item.kind === "auto" ? "bg-white/8 text-white/45" : "bg-white/15 text-white/75"
+                    }`}
+                  >
+                    {item.kind === "auto" ? "자동" : "수동"}
+                  </span>
+                </span>
+                <span className="num mt-0.5 block text-[11px] text-white/35">
+                  {readableDate(item.createdAt)}
+                  <span className="mx-1 text-white/20">·</span>
+                  <Bytes bytes={item.sizeBytes} />
+                </span>
+              </span>
+              <button
+                onClick={() => restore(item)}
+                disabled={restoring}
+                className="shrink-0 text-[11px] text-white/40 transition-colors hover:text-white disabled:opacity-40"
+              >
+                로컬 세이브로 풀기
+              </button>
+              {item.kind === "manual" && (
+                <button
+                  onClick={() => setDeleting(item)}
+                  className="shrink-0 text-[11px] text-white/0 transition-colors group-hover:text-white/30 hover:!text-red-400"
+                >
+                  삭제
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {list && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={() => openFolder("auto")} disabled={!list.folders.auto}>
+            자동 폴더 열기
+          </Button>
+          <Button onClick={() => openFolder("manual")} disabled={!list.folders.manual}>
+            수동 폴더 열기
+          </Button>
+          <span className="num text-[11px] text-white/30">
+            자동 {list.autoCount} / {list.keepAuto}
+          </span>
+        </div>
+      )}
+
+      {/* 규칙이 안 보이면 "내 백업이 왜 없어졌지"가 된다 */}
+      <p className="text-[11px] leading-relaxed text-white/25">
+        자동 백업은 {list?.keepAuto ?? 10}개까지 남고, 넘으면 오래된 것부터 지워집니다. 직접 뽑은 백업은
+        지우기 전까지 남습니다.
+      </p>
+
+      {error && <p className="text-xs text-red-400">{error}</p>}
+
+      {deleting && (
+        <ConfirmDialog
+          title="백업 삭제"
+          message={
+            <>
+              <b className="text-white">{deleting.label}</b> 백업을 지웁니다. 되돌릴 수 없습니다.
+            </>
+          }
+          onClose={() => setDeleting(null)}
+          onConfirm={async () => {
+            await cloudBridge().remove(deleting.kind, deleting.fileName);
+            setDeleting(null);
+            reload();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** ISO → `2026-10-25 18:10` (이 컴퓨터의 시각) */
+function readableDate(iso: string) {
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }

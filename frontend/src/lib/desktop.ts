@@ -120,6 +120,39 @@ export interface BackupUsage {
   keepBytes: number;
 }
 
+/** 클라우드 백업 한 장 (2026-10-25). 지금 연결의 내보내기 JSON을 gzip한 것 — 풀면 새 로컬 세이브가 생긴다 */
+export type CloudBackupKind = "auto" | "manual";
+
+export interface CloudBackupFile {
+  kind: CloudBackupKind;
+  fileName: string;
+  label: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+
+export interface CloudBackupList {
+  /** 최신이 앞. 자동·수동이 섞여 있다 */
+  items: CloudBackupFile[];
+  /** 종류별 폴더의 절대 경로. 아직 없으면 null */
+  folders: Record<CloudBackupKind, string | null>;
+  autoCount: number;
+  keepAuto: number;
+}
+
+/** 메인이 들고 있는 마지막 상태. `seq`가 같으면 이미 본 것이다 */
+export interface CloudBackupStatus {
+  seq: number;
+  kind: CloudBackupKind;
+  phase: "running" | "done" | "failed" | "skipped";
+  target: string;
+  fileName?: string;
+  sizeBytes?: number;
+  autoCount?: number;
+  keepAuto: number;
+  message?: string;
+}
+
 export interface ConnectionTestResult {
   ok: boolean;
   code: string | null;
@@ -246,6 +279,23 @@ export interface StarlogBridge {
   };
   /** 클라우드 → 로컬 세이브파일. ⚠️ 커버 실물은 안 따라온다 */
   cloudToSaveFile(saveName: string): Promise<{ saveName: string }>;
+  /**
+   * 클라우드 백업. 대상은 언제나 **지금 세션**이다. 옛 preload에는 없다 → `?.`로 쓴다.
+   * 자동은 하루 한 번·10개까지(넘치면 오래된 것부터), 수동은 저절로 안 지운다
+   */
+  cloudBackups?: {
+    list(): Promise<CloudBackupList>;
+    /** `<연결> 2026-10-25 18.10` — 수동 폴더에 있으면 `-2`… */
+    suggestName(): Promise<string>;
+    create(name: string): Promise<CloudBackupStatus>;
+    /** 새 로컬 세이브로 푼다. 이름을 안 주면 겹치지 않는 이름을 짓는다 */
+    restore(kind: CloudBackupKind, fileName: string, saveName?: string): Promise<{ saveName: string }>;
+    /** 수동만 */
+    remove(kind: CloudBackupKind, fileName: string): Promise<boolean>;
+    openFolder(kind: CloudBackupKind): Promise<void>;
+    status(): Promise<Record<CloudBackupKind, CloudBackupStatus | null>>;
+    onStatus(callback: (status: CloudBackupStatus) => void): () => void;
+  };
   /**
    * 로컬 세이브파일 → 지금 붙은 데이터베이스. **덮어쓴다.**
    *

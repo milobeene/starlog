@@ -27,6 +27,7 @@ const http = require("http");
 const paths = require("./paths");
 const store = require("./settings");
 const backup = require("./backup");
+const cloudBackup = require("./cloudBackup");
 const saveFiles = require("./saveFiles");
 const media = require("./media");
 const csp = require("./csp");
@@ -858,6 +859,79 @@ function dataDirs() {
   return paths.ensureDataRoot(store.getSettings().dataRoot);
 }
 
+// ───────────────────────── 클라우드 백업 (2026-10-25) ─────────────────────────
+
+/**
+ * 종류별 마지막 상태 — `{ seq, kind, phase, target, fileName?, autoCount?, keepAuto, message? }`.
+ *
+ * 이벤트만 쏘면 **받을 사람이 없을 때가 있다** — 자동 백업은 ready 직후에 시작하는데 그때 화면은 아직
+ * 입구에서 본 앱으로 넘어가는 중이고(CSP 때문에 문서를 새로 받기도 한다), 구독은 그 뒤에 붙는다.
+ * 그래서 메인이 마지막 상태를 들고 있고 화면은 붙을 때 한 번 가져간다 (`seq`로 본 것을 거른다)
+ */
+const cloudBackupStatus = { auto: null, manual: null };
+let cloudBackupSeq = 0;
+/** 지금 자동 백업 중인 연결 — 들락거리며 두 번 기동해도 같은 날 두 장 안 생기게 */
+const autoBackupRunning = new Set();
+
+function setCloudBackupStatus(status) {
+  const full = { ...status, seq: ++cloudBackupSeq, keepAuto: cloudBackup.KEEP_AUTO };
+  cloudBackupStatus[status.kind] = full;
+  if (win && !win.isDestroyed()) win.webContents.send("cloud-backup:status", full);
+  return full;
+}
+
+/**
+ * 지금 서버에서 내보내기를 받아 백업 한 장을 쓴다.
+ *
+ * ⚠️ **시작한 순간의 서버를 붙든다** — 포트와 토큰. 받는 사이 다른 연결로 들어갔으면 쓰지 않는다
+ * (그 연결의 폴더에 남의 데이터가 들어갈 수 있다). 토큰까지 보는 이유 — 포트는 재사용될 수 있다
+ */
+async function runCloudBackup(kind, fileName) {
+  if (!session || !backendPort) throw new Error("서버가 떠 있지 않습니다");
+  const port = backendPort;
+  const token = tokens.get(port);
+  const target = session.target;
+  const dirs = dataDirs();
+  const sameServer = () => backendPort === port && tokens.get(port) === token;
+  setCloudBackupStatus({ kind, phase: "running", target });
+  try {
+    const dump = await getJson(port, "/api/me/export");
+    if (!sameServer()) throw new Error("접속이 바뀌어 백업하지 않았습니다");
+    const made = kind === "auto"
+      ? await cloudBackup.writeAuto(dirs, target, dump)
+      : await cloudBackup.write(dirs, target, "manual", fileName, dump);
+    const status = setCloudBackupStatus({ kind, phase: "done", target, ...made });
+    return status;
+  } catch (e) {
+    setCloudBackupStatus({ kind, phase: "failed", target, message: String(e?.message ?? e) });
+    throw e;
+  }
+}
+
+/**
+ * 클라우드로 들어가 서버가 뜨면 하루 한 번 (자동). **기다리지 않는다** — 화면은 바로 쓸 수 있어야 한다.
+ * `STARLOG_E2E_CLOUD_BACKUP_LOCAL`은 E2E 전용 — 진짜 Neon 없이 로컬 세션으로 이 길을 밟는다
+ */
+function maybeAutoCloudBackup(mode, target) {
+  if (mode !== "cloud" && process.env.STARLOG_E2E_CLOUD_BACKUP_LOCAL !== "1") return;
+  if (autoBackupRunning.has(target)) return;
+  let today;
+  try {
+    today = cloudBackup.hasAutoToday(dataDirs(), target);
+  } catch (e) {
+    console.error("[cloud-backup] 자동 백업 확인 실패", e);
+    return;
+  }
+  if (today) {
+    setCloudBackupStatus({ kind: "auto", phase: "skipped", target });
+    return;
+  }
+  autoBackupRunning.add(target);
+  runCloudBackup("auto")
+    .catch((e) => console.error("[cloud-backup] 자동 백업 실패", e?.message ?? e))
+    .finally(() => autoBackupRunning.delete(target));
+}
+
 /** 마지막으로 [폴더 고르기]에서 고른 경로. 데이터 루트로 받아주는 유일한 새 값이다 */
 let pickedFolder = null;
 
@@ -1310,7 +1384,15 @@ function registerIpc() {
     const previousName = typeof options?.previousName === "string" ? options.previousName : undefined;
     const saved = await store.saveConnection(profile, previousName);
     const name = typeof profile?.name === "string" ? profile.name.trim() : "";
-    if (previousName && name && previousName !== name) retargetConnection(previousName, name);
+    if (previousName && name && previousName !== name) {
+      retargetConnection(previousName, name);
+      // 백업이 옛 이름 폴더에 남으면 목록에서 사라진다 (지워지진 않았는데 못 찾는다)
+      try {
+        cloudBackup.renameFolder(dataDirs(), previousName, name);
+      } catch (e) {
+        console.error("[cloud-backup] 백업 폴더를 옮기지 못했습니다", e);
+      }
+    }
     return saved;
   });
   handle("connections:remove", async (_e, name) => {
@@ -1475,6 +1557,7 @@ function registerIpc() {
       console.error("[settings] 마지막 접속을 저장하지 못했습니다", err);
     }
     progress({ phase: "ready" });
+    maybeAutoCloudBackup(request.mode, target);
     backendStorage = csp.storageOrigins([{ endpoint: config.env.APP_STORAGE_ENDPOINT, publicBaseUrl: config.env.APP_STORAGE_PUBLIC_BASE_URL }]);
     /*
      * **창을 안 옮긴다.** 포트만 알려주고 화면이 스스로 `/dashboard`로 라우팅한다 —
@@ -1625,6 +1708,58 @@ function registerIpc() {
    * 그런데 실제로는 잘못 들어왔거나 설정을 보러 나가는 쪽이 훨씬 흔하고,
    * 그때마다 다시 기다리는 건 값을 못 한다. 살려두면 [최근 접속]이 **즉시**다
    */
+  // ── 클라우드 백업 (2026-10-25). 대상은 언제나 **지금 세션** — 화면은 연결 이름을 고르지 않는다
+
+  const backupTarget = () => {
+    if (!session || !backendPort) throw new Error("서버가 떠 있지 않습니다");
+    return session.target;
+  };
+
+  handle("cloudBackups:list", () => cloudBackup.list(dataDirs(), backupTarget()));
+  handle("cloudBackups:suggestName", () => cloudBackup.suggestName(dataDirs(), backupTarget()));
+  /** 화면이 붙을 때 가져간다 — 붙기 전에 쏜 이벤트를 놓쳤을 수 있다 */
+  handle("cloudBackups:status", () => ({ ...cloudBackupStatus }));
+
+  handle("cloudBackups:create", async (_e, name) => {
+    const clean = assertSaveName(name);
+    backupTarget();
+    return runCloudBackup("manual", `${clean}${cloudBackup.EXT}`);
+  });
+
+  /**
+   * 백업 → **새 로컬 세이브**. 지금 서버는 안 건드린다(파일만 읽는다).
+   * 이름을 안 주면 `<연결> <백업 이름>`으로 짓고, 겹치면 번호를 붙인다. 주면 겹칠 때 거절한다
+   */
+  handle("cloudBackups:restore", async (_e, kind, fileName, saveName) => {
+    const target = backupTarget();
+    cloudBackup.assertFileName(kind, fileName);
+    const dirs = dataDirs();
+    let name;
+    if (saveName !== undefined && saveName !== null && saveName !== "") {
+      name = assertSaveName(saveName);
+    } else {
+      const base = `${target} ${fileName.slice(0, -cloudBackup.EXT.length)}`;
+      name = names.fit(base);
+      for (let i = 2; pouring.has(name) || saveFiles.taken(dirs, name); i += 1) name = names.fit(base, `-${i}`);
+    }
+    const dump = await cloudBackup.read(dirs, target, kind, fileName);
+    reserveSave(dirs, name);
+    await pourInto(name, dump);
+    return { saveName: name };
+  });
+
+  handle("cloudBackups:remove", (_e, kind, fileName) => {
+    cloudBackup.remove(dataDirs(), backupTarget(), kind, fileName);
+    return true;
+  });
+
+  /** 종류의 폴더를 연다. 경로는 화면이 아니라 여기서 정한다 */
+  handle("cloudBackups:openFolder", (_e, kind) => {
+    const folder = cloudBackup.folderOf(dataDirs(), backupTarget(), kind);
+    if (!fs.existsSync(folder)) throw new Error("아직 이 종류의 백업이 없습니다");
+    shell.openPath(folder);
+  });
+
   handle("backToEntry", () => {
     loadEntry();
     return true;
@@ -1890,6 +2025,13 @@ app.whenReady().then(() => {
     if (removed.length) console.error(`[saves] 만들다 만 세이브를 치웠습니다: ${removed.join(", ")}`);
   } catch (e) {
     console.error("[saves] 만들다 만 세이브를 치우지 못했습니다", e);
+  }
+  // 쓰다 만 클라우드 백업(`.partial`) — 이름이 달라 목록엔 안 뜨지만 쌓이지 않게
+  try {
+    const removed = cloudBackup.cleanPartials(dataDirs());
+    if (removed.length) console.error(`[cloud-backup] 쓰다 만 백업을 치웠습니다: ${removed.join(", ")}`);
+  } catch (e) {
+    console.error("[cloud-backup] 쓰다 만 백업을 치우지 못했습니다", e);
   }
   protocol.handle("app", serveWeb);
   lockPermissions();

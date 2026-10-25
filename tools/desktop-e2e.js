@@ -10,7 +10,8 @@
  * - ⚠️ **본 앱도 `app://starlog`에서 연다** — 실제 앱이 그렇다(창은 평생 `app://` 한 장, API만
  *   `http://127.0.0.1:포트`로 → CORS). 처음엔 창을 http로 옮겨 열어서 **CORS가 빠진 걸 못 잡았다** (2026-10-24)
  *
- * 클라우드 모드는 시험하지 않는다 — 실제 Neon에 붙기 때문이다.
+ * 클라우드 모드는 시험하지 않는다 — 실제 Neon에 붙기 때문이다. 클라우드 백업은 `STARLOG_E2E_CLOUD_BACKUP_LOCAL`로
+ * 로컬 세션에서 같은 길(내보내기 → `.json.gz` → 풀기)을 밟는다 (`cloudBackupSteps`).
  * 서버가 안 뜨거나(멈춤·진단 없이 죽음) 점검 전용 기동은 **가짜 서버**로 본다 — 서버 번들 앞에 끼운
  * 작은 스크립트가 제어 파일을 읽고 흉내 내거나 진짜 번들을 불러온다 (`robustnessSteps`).
  *
@@ -791,6 +792,134 @@ async function robustnessSteps(save, other) {
     `${listed.join(",")} / ${removed.join(",")}`);
 }
 
+// ── 클라우드 백업 (2026-10-25) — 진짜 Neon 없이 로컬 세션으로 같은 길을 밟는다 (`STARLOG_E2E_CLOUD_BACKUP_LOCAL`) ──
+async function cloudBackupSteps(save) {
+  const zlib = require("zlib");
+  const cloudBackup = require(path.join(ROOT, "desktop/cloudBackup.js"));
+  const dataRoot = path.join(TMP, "appData/starlog/data");
+  const dirs = { root: dataRoot };
+  const autoDir = path.join(dataRoot, "cloud-backups", save, "auto");
+  const manualDir = path.join(dataRoot, "cloud-backups", save, "manual");
+  const p2 = (n) => String(n).padStart(2, "0");
+  const now = new Date();
+  const today = `${now.getFullYear()}-${p2(now.getMonth() + 1)}-${p2(now.getDate())}`;
+  const autos = () => (fs.existsSync(autoDir) ? fs.readdirSync(autoDir).sort() : []);
+  const status = () => js("window.starlog.cloudBackups.status()");
+  /** 자동 백업은 뒤에서 돈다 — seq가 앞으로 가고 끝난 상태가 될 때까지 */
+  const waitAuto = async (afterSeq) => {
+    for (let i = 0; i < 100; i += 1) {
+      const s = (await status()).auto;
+      if (s && s.seq > afterSeq && s.phase !== "running") return s;
+      await sleep(200);
+    }
+    return null;
+  };
+
+  let restoredName = null;
+  process.env.STARLOG_E2E_CLOUD_BACKUP_LOCAL = "1";
+  try {
+    // ① 서버가 뜨면 오늘 것이 없으니 한 장 — 화면은 기다리지 않는다
+    let seq = (await status()).auto?.seq ?? 0;
+    await goto("app://starlog/");
+    const up = await js(`window.starlog.launch({ mode: "local", target: ${JSON.stringify(save)} })`);
+    const first = await waitAuto(seq);
+    check("클라우드 자동 백업 — 기동 뒤 한 장", up.ok && first?.phase === "done" && autos().length === 1
+      && autos()[0].startsWith(`auto-${today}`), `${first?.phase} ${first?.message ?? ""} ${autos().join(",")}`);
+    const file = path.join(autoDir, autos()[0] ?? "x");
+    const text = fs.existsSync(file) ? zlib.gunzipSync(fs.readFileSync(file)).toString("utf8") : "";
+    const dump = text ? JSON.parse(text) : null;
+    check("클라우드 백업 — 내보내기 JSON(gzip), 게임이 들어 있다", Boolean(dump?.formatVersion) && text.includes("E2E 테스트 게임"));
+    check("클라우드 백업 — 자격증명 칸이 없다", !/password|secretKey|accessKey|clientSecret|apiKey/i.test(text));
+    check("클라우드 백업 — 파일 0600 · 폴더 0700", fs.existsSync(file) && (fs.statSync(file).mode & 0o777) === 0o600
+      && (fs.statSync(autoDir).mode & 0o777) === 0o700);
+
+    // 알림 — 본 앱 껍데기가 붙을 때 메인의 마지막 상태를 가져온다 (이벤트는 입구에서 쏘였다)
+    await goto("app://starlog/dashboard");
+    const toast = await js("document.body.innerText");
+    check("클라우드 백업 알림 — 붙기 전에 끝난 것도 뜬다", toast.includes("클라우드 백업 완료") && toast.includes("자동 백업 1/10"),
+      toast.split("\n").filter((l) => l.includes("백업")).join(" | "));
+
+    // ② 같은 날 다시 열면 건너뛴다
+    seq = (await status()).auto.seq;
+    await goto("app://starlog/");
+    await js(`window.starlog.launch({ mode: "local", target: ${JSON.stringify(save)} })`);
+    const second = await waitAuto(seq);
+    check("클라우드 자동 백업 — 오늘 것이 있으면 건너뛴다", second?.phase === "skipped" && autos().length === 1, `${second?.phase} ${autos().length}`);
+
+    // ③ 수동 — 추천 이름 · 겹치면 -2 · 규칙 밖 거절
+    const suggested = await js("window.starlog.cloudBackups.suggestName()");
+    check("수동 백업 — 추천 이름 `<연결> 날짜 시.분`", new RegExp(`^${save} ${today} \\d{2}\\.\\d{2}$`).test(suggested), suggested);
+    const made = await js(`window.starlog.cloudBackups.create(${JSON.stringify(suggested)})`);
+    check("수동 백업 — manual/ 에 한 장", made.phase === "done" && fs.existsSync(path.join(manualDir, `${suggested}.json.gz`)), made.fileName);
+    const next = await js("window.starlog.cloudBackups.suggestName()");
+    check("수동 백업 — 같은 이름이 있으면 -2를 추천", next === `${suggested}-2`, next);
+    const dup = await js(`window.starlog.cloudBackups.create(${JSON.stringify(suggested)}).then(() => "통과", () => "거절")`);
+    const bad = await js(`window.starlog.cloudBackups.create("../../밖").then(() => "통과", () => "거절")`);
+    check("수동 백업 — 같은 이름·경로 조각은 거절", dup === "거절" && bad === "거절", `${dup} ${bad}`);
+    // 사람이 auto- 로 지어도 수동 폴더라 10개 규칙에 안 걸린다
+    await js(`window.starlog.cloudBackups.create("auto-2000-01-01_000000")`);
+
+    // ④ 10개 규칙 — 옛 자동 10장을 깔고 오늘 것을 지운 뒤 다시 열면 11 → 가장 오래된 것부터 지워 10
+    const body = fs.readFileSync(file);
+    for (let d = 1; d <= 10; d += 1) fs.writeFileSync(path.join(autoDir, `auto-2026-01-${p2(d)}_000000.json.gz`), body);
+    fs.rmSync(file);
+    seq = (await status()).auto.seq;
+    await js(`window.starlog.launch({ mode: "local", target: ${JSON.stringify(save)} })`);
+    const third = await waitAuto(seq);
+    const left = autos();
+    check("클라우드 자동 백업 — 10개만 남기고 가장 오래된 것부터 지운다",
+      third?.phase === "done" && third.autoCount === 10 && left.length === 10 && !left.includes("auto-2026-01-01_000000.json.gz")
+      && left.includes("auto-2026-01-02_000000.json.gz") && left.some((f) => f.startsWith(`auto-${today}`)), left.join(","));
+    const manualLeft = fs.readdirSync(manualDir).sort();
+    check("클라우드 자동 백업 — 수동 백업은 안 건드린다", manualLeft.length === 2, manualLeft.join(","));
+
+    const listed = await js("window.starlog.cloudBackups.list()");
+    check("클라우드 백업 목록 — 자동 10 + 수동 2, 종류별 폴더",
+      listed.items.length === 12 && listed.autoCount === 10 && listed.items.filter((i) => i.kind === "manual").length === 2
+      && listed.folders.auto === autoDir && listed.folders.manual === manualDir, `${listed.items.length} ${listed.autoCount}`);
+
+    // ⑤ 지우기 — 수동만. 자동·경로 조각은 거절
+    const rmAuto = await js(`window.starlog.cloudBackups.remove("auto", ${JSON.stringify(left[0])}).then(() => "통과", () => "거절")`);
+    const rmEsc = await js(`window.starlog.cloudBackups.remove("manual", "../auto/${left[0]}").then(() => "통과", () => "거절")`);
+    const rmKind = await js(`window.starlog.cloudBackups.remove("../x", "a.json.gz").then(() => "통과", () => "거절")`);
+    await js(`window.starlog.cloudBackups.remove("manual", "auto-2000-01-01_000000.json.gz")`);
+    check("클라우드 백업 지우기 — 수동만, 자동·경로 조각·모르는 종류는 거절",
+      rmAuto === "거절" && rmEsc === "거절" && rmKind === "거절" && autos().length === 10
+      && !fs.existsSync(path.join(manualDir, "auto-2000-01-01_000000.json.gz")), `${rmAuto} ${rmEsc} ${rmKind}`);
+
+    // ⑥ 폴더 열기 — 종류의 폴더를 메인이 정한다
+    shellCalls.length = 0;
+    await js(`window.starlog.cloudBackups.openFolder("manual")`);
+    check("클라우드 백업 — 수동 폴더 열기", shellCalls.some(([k, p]) => k === "openPath" && p === manualDir), JSON.stringify(shellCalls));
+
+    // ⑦ 새 로컬 세이브로 풀기 — 있는 이름은 거절, 경로 조각 거절, 자동 폴더에 수동 이름 거절
+    const taken = await js(`window.starlog.cloudBackups.restore("manual", ${JSON.stringify(`${suggested}.json.gz`)}, ${JSON.stringify(save)}).then(() => "통과", () => "거절")`);
+    const esc = await js(`window.starlog.cloudBackups.restore("manual", "../../../saves/x.json.gz").then(() => "통과", () => "거절")`);
+    const wrongKind = await js(`window.starlog.cloudBackups.restore("auto", ${JSON.stringify(`${suggested}.json.gz`)}).then(() => "통과", () => "거절")`);
+    check("클라우드 백업 풀기 — 있는 세이브 이름·경로 조각·종류 어긋남은 거절", taken === "거절" && esc === "거절" && wrongKind === "거절",
+      `${taken} ${esc} ${wrongKind}`);
+    const restored = await js(`window.starlog.cloudBackups.restore("manual", ${JSON.stringify(`${suggested}.json.gz`)})`);
+    const saves = (await js("window.starlog.saves.list()")).map((x) => x.name);
+    check("클라우드 백업 풀기 — 새 세이브가 생긴다", saves.includes(restored.saveName), restored.saveName);
+    restoredName = restored.saveName;
+
+    // ⑧ 쓰다 만 .partial — 목록에 안 뜨고 기동 정리가 치운다
+    const half = path.join(autoDir, `auto-${today}_235959.json.gz.partial`);
+    fs.writeFileSync(half, "half");
+    const listed2 = await js("window.starlog.cloudBackups.list()");
+    const removed = cloudBackup.cleanPartials(dirs);
+    check("클라우드 백업 — 쓰다 만 .partial은 목록에 없고 정리된다",
+      listed2.items.length === 11 && removed.length === 1 && !fs.existsSync(half), `${listed2.items.length} ${removed.join(",")}`);
+  } finally {
+    process.env.STARLOG_E2E_CLOUD_BACKUP_LOCAL = "";
+  }
+
+  // 푼 세이브를 열면 데이터가 있다 (끈 뒤라 자동 백업이 안 돈다)
+  const opened = restoredName ? await js(`window.starlog.launch({ mode: "local", target: ${JSON.stringify(restoredName)} })`) : null;
+  const cards = opened?.ok ? await api(opened.port, "GET", "/api/backlog/cards") : null;
+  check("클라우드 백업에서 푼 세이브에 데이터가 있다", JSON.stringify(cards?.json ?? "").includes("E2E 테스트 게임"), restoredName ?? "없음");
+}
+
 realElectron.app.whenReady().then(async () => {
   try {
     await waitWindowLoaded();
@@ -864,6 +993,7 @@ realElectron.app.whenReady().then(async () => {
     check("같은 세이브를 바로 다시 열기", again2.ok === true);
 
     await robustnessSteps(SAVE, restored);
+    await cloudBackupSteps(SAVE);
 
     const log = path.join(TMP, "appData/starlog/backend.log");
     check("backend.log — 0600", (fs.statSync(log).mode & 0o777) === 0o600);
