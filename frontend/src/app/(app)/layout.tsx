@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import AppHeader from "@/components/layout/AppHeader";
+import CardStatsHost from "@/components/library/CardStatsHost";
 import TaskToasts from "@/components/layout/TaskToasts";
 import { getBridge } from "@/lib/desktop";
 import { rememberAppPath } from "@/lib/lastAppPath";
@@ -56,6 +57,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         화면을 옮겨도 이 컴포넌트는 안 죽어서 진행이 이어 보인다 (2026-08-28)
       */}
       <TaskToasts />
+      <CardStatsHost />
     </>
   );
 }

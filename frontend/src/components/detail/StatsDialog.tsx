@@ -41,6 +41,7 @@ export default function StatsDialog({
   const [add, setAdd] = useState<DurSegs>(EMPTY_SEGS);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 처음 포커스는 더하기 칸 — 여는 이유 대부분이 "이번에 한 만큼 얹기"라서
   const firstRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -110,9 +111,9 @@ export default function StatsDialog({
         <Field label="Playtime" composite>
           <div className="grid grid-cols-[4rem_1fr] items-center gap-x-3 gap-y-2">
             <span className="text-xs text-white/45">지금까지</span>
-            <DurationField ariaLabel="지금까지 플레이타임" value={base} onChange={setBase} hoursRef={firstRef} invalid={over} />
+            <DurationField ariaLabel="지금까지 플레이타임" value={base} onChange={setBase} invalid={over} />
             <span className="text-xs text-white/45">더하기</span>
-            <DurationField ariaLabel="더할 플레이타임" prefix="+" value={add} onChange={setAdd} invalid={over} />
+            <DurationField ariaLabel="더할 플레이타임" prefix="+" value={add} onChange={setAdd} hoursRef={firstRef} invalid={over} />
           </div>
           <p className={`min-h-4 text-[11px] ${over ? "text-red-400" : "text-white/45"}`}>
             {over ? (

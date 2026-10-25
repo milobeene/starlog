@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import CardContextMenu from "@/components/library/CardContextMenu";
 import GameCover from "./GameCover";
@@ -23,7 +22,6 @@ export default function GameCard({ card, sort }: { card: BacklogCard; sort?: str
    * 출시 연월 — 정렬한 값이 카드에 안 보이면 순서가 맞는지 확인할 길이 없다.
    * 서버가 그 필드를 안 실어 보낸 카드(`undefined`)는 기존 회차 줄로 둔다
    */
-  const router = useRouter();
   // 우클릭 메뉴 (v2 U2) — 마우스 자리. 카드마다 상태를 들고 있어도 열려 있는 건 하나뿐이다
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const detailHref = `/library/detail?entry=${card.entryId}`;
@@ -137,7 +135,6 @@ export default function GameCard({ card, sort }: { card: BacklogCard; sort?: str
         x={menu.x}
         y={menu.y}
         onClose={() => setMenu(null)}
-        onOpenDetail={() => router.push(detailHref)}
       />
     )}
     </>

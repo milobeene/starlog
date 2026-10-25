@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { openCardStats } from "@/lib/cardStats";
 import { actionsFor, QUICK_ACTION_LABEL, runQuickAction, type QuickAction } from "@/lib/quickPlay";
 import type { EntryStatus } from "@/lib/types";
 
@@ -11,8 +12,8 @@ import type { EntryStatus } from "@/lib/types";
  * 마우스 자리에 뜨는 포탈이라 Dropdown(트리거 기준)을 못 쓴다.
  * 스크롤·리사이즈·바깥 클릭·Esc에서 닫는다 — 떠 있는 채로 카드만 움직이면 엉뚱한 게임을 가리킨다.
  *
- * [완료]는 점수 팝업을 열지 않는다: 카드에서는 상세가 열려 있지 않아 팝업을 띄울 자리가 없다.
- * 대신 토스트에 [점수·시간 입력]을 달아 상세로 보낸다
+ * [점수·플레이타임]은 상세로 가지 않고 그 자리에서 팝업을 연다 (`CardStatsHost`).
+ * [완료] 토스트의 [점수·시간 입력]도 같은 팝업이다
  */
 export default function CardContextMenu({
   entryId,
@@ -20,14 +21,12 @@ export default function CardContextMenu({
   x,
   y,
   onClose,
-  onOpenDetail,
 }: {
   entryId: number;
   status: EntryStatus;
   x: number;
   y: number;
   onClose: () => void;
-  onOpenDetail: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: x, top: y });
@@ -71,7 +70,7 @@ export default function CardContextMenu({
       entryId,
       action,
       action === "complete"
-        ? { actions: [{ label: "점수·시간 입력", run: onOpenDetail }] }
+        ? { actions: [{ label: "점수·시간 입력", run: () => openCardStats(entryId) }] }
         : undefined,
     );
   };
@@ -80,7 +79,7 @@ export default function CardContextMenu({
     <div
       ref={ref}
       role="menu"
-      className="menu-panel fixed z-[60] w-40"
+      className="menu-panel fixed z-[60] w-44"
       style={{ left: pos.left, top: pos.top }}
       onContextMenu={(event) => event.preventDefault()}
     >
@@ -89,6 +88,17 @@ export default function CardContextMenu({
           {QUICK_ACTION_LABEL[action]}
         </button>
       ))}
+      <div role="separator" className="my-1 h-px bg-white/10" />
+      <button
+        role="menuitem"
+        onClick={() => {
+          onClose();
+          openCardStats(entryId);
+        }}
+        className="menu-item"
+      >
+        점수·플레이타임
+      </button>
     </div>,
     document.body,
   );
