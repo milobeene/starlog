@@ -117,6 +117,16 @@
     color: inherit;
   }
 
+  /*
+   * 펼친 목록은 OS가 그린다. 맥은 시스템 메뉴라 괜찮지만 **윈도우는 흰 바탕에 select의 글자색(흰색)을
+   * 물려받아** 항목이 안 보였다. 목록 쪽 색을 박아 둔다 — 고른 항목 강조는 OS가 따로 칠한다
+   */
+  option,
+  optgroup {
+    background-color: #18181b;
+    color: #fafafa;
+  }
+
   ul,
   ol {
     list-style: none;
