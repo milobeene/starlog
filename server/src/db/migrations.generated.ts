@@ -118,5 +118,12 @@ export const MIGRATIONS = [
   "script": "V17__cover_in_db.sql",
   "checksum": -219709229,
   "sql": "-- 커버를 DB에도 둔다 (v2, 2026-10-25).\n--\n-- 개인 커버는 한 달에 한두 장(장당 수백 KB)이다. DB 안에 두면 클라우드 백업(`/api/me/export`)과\n-- 클라우드 → 로컬 세이브 뽑기에 커버가 같이 실린다 — 로컬 폴더(LOCAL)·스토리지(EXTERNAL)는 안 따라온다.\n-- 어디에 둘지는 연결 설정이 정한다(`STARLOG_COVER_TARGET`). 이미 있는 LOCAL·EXTERNAL 행은 그대로 읽힌다.\n--\n--   DB        바이트가 이 행의 `data`에 있다. `storage_key`는 `<uuid>.<확장자>` — 바꿀 때마다 새로 지어 주소의 `?v=`가 된다\n--   LOCAL     데이터 루트 `covers/<storage_key>`\n--   EXTERNAL  S3 호환 스토리지의 `storage_key`\n--\n-- ⚠️ 실데이터(Neon)에서 처음 도는 파일이다. 모르는 위치 값이 있으면 고르지 않고 멈춘다 (아래 제약이 어차피 거절한다 — 이유를 먼저 보인다)\ndo $$\ndeclare odd text;\nbegin\n  select location into odd from cover_image where location not in ('LOCAL','EXTERNAL') limit 1;\n  if odd is not null then\n    raise exception 'V17 중단: 커버 위치 \"%\"를 모른다. 그 커버 행을 정리한 뒤 다시 열 것', odd;\n  end if;\nend $$;\n\nalter table cover_image add column data bytea;\n\nalter table cover_image add constraint chk_cover_image_location check (location in ('LOCAL','EXTERNAL','DB'));\n-- 바이트는 DB 커버에만, DB 커버에는 반드시 — 반쪽(위치는 DB인데 바이트가 없다)이면 깨진 이미지가 뜨고 지우기 말고는 길이 없다\nalter table cover_image add constraint chk_cover_image_data check ((location = 'DB') = (data is not null));\n"
+ },
+ {
+  "version": "18",
+  "description": "homeops game choice",
+  "script": "V18__homeops_game_choice.sql",
+  "checksum": -2140642963,
+  "sql": "-- homeops가 게임을 고를 때 보는 창 (v2, 2026-10-25). 인수인계 `docs/homeops-handoff.md` §5.\n--\n-- homeops 계정(`homeops_writer`)에는 **이 뷰와 `homeops_play_log`만** 연다 — 메모·구매·회차 같은 건 안 보이게.\n-- 뷰는 소유자 권한으로 돌아서 homeops 계정에 `backlog_entry`·`game` 읽기 권한을 줄 필요가 없다.\n--\n-- 권한(grant)은 여기 넣지 않는다 — 계정은 비밀번호가 붙어 콘솔에서 만들고(공개 저장소라 코드에 못 둔다),\n-- 계정이 없는 DB(로컬 세이브)에서 grant가 터지면 세이브가 안 열린다. 기동 때 계정이 있으면 그때 준다 (`startup.ts`)\ncreate view homeops_game_choice as\nselect b.id              as entry_id,\n       b.display_name    as name,\n       b.status,\n       b.last_played_on,\n       b.play_time_hours,\n       g.cover_image_id\n  from backlog_entry b\n  join game g on g.id = b.game_id\n where b.deleted_at is null;\n"
  }
 ] as const;
