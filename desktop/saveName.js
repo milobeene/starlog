@@ -63,4 +63,12 @@ function fit(base, suffix = "") {
   return isValid(name) ? name : `backup${suffix}`;
 }
 
-module.exports = { assertSaveName, isValid, fit, MAX_LENGTH };
+/**
+ * 이름 비교용 열쇠 — 맥(APFS)·윈도우는 대소문자·한글 조합형/완성형을 가리지 않는다.
+ * `Neon`과 `neon`이 둘 다 있으면 디스크에서는 한 폴더라 서로의 백업을 지운다
+ */
+function nameKey(name) {
+  return String(name ?? "").normalize("NFC").toLowerCase();
+}
+
+module.exports = { assertSaveName, isValid, fit, nameKey, MAX_LENGTH };

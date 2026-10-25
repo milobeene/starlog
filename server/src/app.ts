@@ -47,7 +47,7 @@ export function createApp(opts: { staticDir: string | null }) {
 
   /*
    * 문지기 (`http/guard.ts`) — Host가 맨 앞(정적 화면까지), 그다음 CORS, 그다음 토큰.
-   * 남이면 본문을 보지 않고 거절한다. 본문 크기는 자리마다 다르다 (업로드 260MB · 기록 통째 50MB · 나머지 5MB)
+   * 남이면 본문을 보지 않고 거절한다. 본문 크기는 자리마다 다르다 (업로드 260MB · 기록 통째 256MB · 나머지 5MB)
    */
   app.use("*", securityHeaders);
   app.use("*", hostGuard);

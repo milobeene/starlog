@@ -85,8 +85,11 @@ async function shrinkCover(file: File): Promise<File> {
     ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", COVER_QUALITY));
     if (!blob) return file;
-    // 작은 JPEG를 다시 구웠더니 더 커졌으면 원본이 낫다 (크기는 이미 상한 안이다)
-    if (edge <= COVER_MAX_EDGE && file.type === "image/jpeg" && blob.size >= file.size) return file;
+    /*
+     * 상한 안의 원본인데 다시 구운 게 작아지지 않았으면 원본이 낫다 — 형식을 안 가린다.
+     * 작은 PNG·WebP(아이콘풍 커버)는 JPEG로 구우면 오히려 커지고 화질만 깎인다
+     */
+    if (edge <= COVER_MAX_EDGE && blob.size >= file.size) return file;
     const base = file.name.replace(/\.[^.]*$/, "") || "cover";
     return new File([blob], `${base}.jpg`, { type: "image/jpeg", lastModified: file.lastModified });
   } finally {

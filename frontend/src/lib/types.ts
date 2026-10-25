@@ -176,6 +176,46 @@ export interface PlayRecord {
   counted: boolean;
 }
 
+/* ── 연결 끊긴 외부 일정 (GET /api/external-plays/detached, 2026-10-25) ── */
+
+/** 외부 캘린더 쪽에서 사라진 일정 한 줄. 시각은 `ldt()` 문자열 */
+export interface DetachedExternalPlay {
+  id: number;
+  entryId: number;
+  entryName: string;
+  startedAt: string;
+  endedAt: string;
+  minutes: number;
+  label: string | null;
+  detachedAt: string;
+  /** 끝났는가(합계에 들어갔는가). false면 예정 — 넘기기 대상이 아니다 */
+  counted: boolean;
+}
+
+export interface DetachedExternalPlays {
+  items: DetachedExternalPlay[];
+  /** 아직 연결된(끊기지 않은) 외부 일정 수 — [연결 해제]가 옮길 몫 */
+  attachedCount: number;
+  attachedEnded: number;
+  attachedFuture: number;
+}
+
+/** POST /api/external-plays/detached/release — released: 일반 기록으로 넘김 · removed: 0분이라 기록 없이 지움 */
+export interface ReleaseDetachedResult {
+  released: number;
+  removed: number;
+}
+
+/** POST /api/external-plays/detached/delete */
+export interface DeleteDetachedResult {
+  deleted: number;
+}
+
+/** POST /api/external-plays/detach-all */
+export interface DetachAllResult {
+  detached: number;
+}
+
 export interface DeviceRef {
   deviceId: number;
   name: string;

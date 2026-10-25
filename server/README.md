@@ -21,7 +21,7 @@ npm run bundle         # → ../desktop/server/main.mjs
 순서: 보안 머리글(`nosniff`·`no-referrer`) → **Host**(`127.0.0.1:<포트>`·`localhost:<포트>`만, 정적 화면까지 — DNS 리바인딩) →
 **CORS**(고정 목록: `app://starlog`·`http://127.0.0.1:<포트>`, dev면 `http://localhost:3000`·`http://127.0.0.1:3000`. 남은 403 —
 요청의 Host로 "같은 출처"를 끌어내지 않는다) → **토큰** → **`Sec-Fetch-Site: cross-site`**(토큰이 맞으면 통과 — 창 `app://`→127.0.0.1은 늘 cross-site다) →
-**본문 형식**(쓰기 요청은 `application/json`만, 멀티파트는 업로드 두 자리만, 아니면 415) → **본문 크기**(업로드 260MB · `/api/me/import|replace` 50MB · 나머지 5MB).
+**본문 형식**(쓰기 요청은 `application/json`만, 멀티파트는 업로드 두 자리만, 아니면 415) → **본문 크기**(업로드 260MB · `/api/me/import|replace` 256MB · 나머지 5MB).
 ⚠️ CORS를 빼면 앱이 **배경만 남은 검은 화면**이 된다.
 
 | | 운영 (일렉트론) | dev·test (`npm run dev`·골든 일부) |
@@ -62,7 +62,7 @@ npm run bundle         # → ../desktop/server/main.mjs
 | 금액 | `money(amount, currency)`·`scale2`·`amountJson`·`compareAmount` — **부동소수 금지** |
 | 시각 | `nowKst()`·`todayKst()` — **DB `now()` 금지** (세션 시간대가 UTC면 9시간 밀린다) |
 | 응답 | `ldt()`(timestamp → `"…T…"`)·`page()` (`src/common/json.ts`) |
-| 플레이타임 | `domains/backlog/playtime.ts` — **기록(`play_record`) + 끝난 homeops 일정(`homeops_play_log`)의 합이 원본**, `backlog_entry.play_time_hours`는 캐시. 기록을 바꾸면 `syncPlayTime`, 기동 때 `syncAllPlayTimes`. 계산은 0.1분 정수(BigInt). 목록 `GET …/play-records?page&size`(기본 10)는 두 표를 **한 SQL `union all`로 합쳐** 쪽으로 자른다 — 순서 날짜·시각·출처·번호(번호가 두 표에서 겹쳐서 출처까지 있어야 쪽이 안 흔들린다), 응답은 `page()` 모양 |
+| 플레이타임 | `domains/backlog/playtime.ts` — **기록(`play_record`) + 끝난 homeops 일정(`homeops_play_log`)의 합이 원본**, `backlog_entry.play_time_hours`는 캐시. 기록을 바꾸면 `syncPlayTime`, 기동 때 `syncAllPlayTimes`, 조회 앞은 homeops 표 도장(`playTimeStamp`)이 바뀌었을 때만 `syncAllPlayTimes`(`freshPlayTimes`). 계산은 0.1분 정수(BigInt). 목록 `GET …/play-records?page&size`(기본 10)는 두 표를 **한 SQL `union all`로 합쳐** 쪽으로 자른다 — 순서 날짜·시각·출처·번호(번호가 두 표에서 겹쳐서 출처까지 있어야 쪽이 안 흔들린다), 응답은 `page()` 모양 |
 | 프로필 | `findProfile(d)` (`domains/member/profile.ts`) — `member` 테이블의 **한 행**. 주인·소유권 개념이 없다 (V14) |
 
 ## 함정 (이전하면서 실측으로 찾은 것)
@@ -91,7 +91,7 @@ npm run bundle         # → ../desktop/server/main.mjs
 - **`@NotBlank`는 전각 공백(U+3000)도 공백이다** → `violations().notBlank`가 그렇게 본다 (2026-10-24 고침)
 - **위반 메시지가 둘 이상이면 자바 순서가 실행마다 바뀐다** → 시나리오는 위반 하나씩
 - **`play_time_hours`에 직접 쓰지 않는다** (v2 S4) — 기록을 넣고 `syncPlayTime`. 항목을 지우는 경로(완전 삭제·마스터 삭제·덮어쓰기)는
-  `play_record`를 먼저 지운다. `homeops_play_log`는 **STARLOG가 쓰지 않는 표**다 — 항목이 지워질 때 FK cascade로만 사라진다
+  `play_record`를 먼저 지운다. `homeops_play_log`는 **STARLOG가 쓰지 않는 표**다 — 항목이 지워질 때 FK cascade로 사라지는 것과, V20 예외 둘(끊긴 행 넘기기·지우기, [전부 끊기] — `domains/backlog/external.ts`)뿐이다. 지울 땐 묘비(`homeops_released`)를 같이 남긴다
 - **정수 칸의 `sum()`은 int8이라 숫자로 온다** — 소수 계산에 넘길 거면 `::text`로 받는다
 - **N+1 걱정은 덜어도 된다** (로컬 DB). 단 목록 응답이 수백 건이면 묶어서 조회
 

@@ -86,11 +86,15 @@ export const crossSiteGuard: MiddlewareHandler = async (c, next) => {
 
 /** 파일을 받는 자리 — 멀티파트는 여기만 */
 const UPLOAD = /^\/api\/backlog\/[^/]+\/(cover\/file|screenshots)$/;
-/** 기록 통째로 — 실데이터 내보내기가 340KB 안팎이라 넉넉히 */
+/** 기록 통째로 */
 const DUMP = /^\/api\/me\/(import|replace)$/;
 
 const MB = 1024 * 1024;
-export const LIMITS = { upload: 260 * MB, dump: 50 * MB, json: 5 * MB } as const;
+/**
+ * dump: 형식 6부터 DB 커버가 base64로 실린다(base64라 1.33배). 50MB면 보통 크기 커버 120장 안팎에서 막혀
+ * 내보낸 파일을 되돌려 넣지 못한다 → 256MB. V8 문자열 상한(~512MB) 아래라 JSON 파싱은 아직 된다
+ */
+export const LIMITS = { upload: 260 * MB, dump: 256 * MB, json: 5 * MB } as const;
 
 const hasBody = (c: Context) => {
   const len = c.req.header("Content-Length");

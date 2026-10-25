@@ -10,6 +10,7 @@ import ApiUsagePanel from "@/components/system/ApiUsagePanel";
 import GameMasterPanel from "@/components/system/GameMasterPanel";
 import ConnectionPanel from "@/components/system/ConnectionPanel";
 import AppSettingsPanel from "@/components/system/AppSettingsPanel";
+import ExternalPlaysPanel from "@/components/system/ExternalPlaysPanel";
 import { useApi } from "@/lib/useApi";
 import { api } from "@/lib/api";
 import type { AppSettings, SystemStatus } from "@/lib/types";
@@ -30,6 +31,8 @@ const TABS = [
   { key: "usage", label: "사용량" },
   { key: "games", label: "게임 마스터" },
   { key: "settings", label: "앱 설정" },
+  // 연결 끊긴 외부 캘린더 일정 정리 (2026-10-25). 앱 전체 데이터 정리라 여기 둔다
+  { key: "external", label: "외부 일정" },
   { key: "keys", label: "연결" },
 ] as const;
 
@@ -90,6 +93,7 @@ function SystemContent() {
         {tab === "usage" && <UsageTab />}
         {tab === "games" && <GameMasterPanel />}
         {tab === "settings" && <AppSettingsPanel />}
+        {tab === "external" && <ExternalPlaysPanel />}
         {tab === "keys" && <ConnectionPanel />}
       </div>
     </main>

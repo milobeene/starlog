@@ -1061,8 +1061,36 @@ async function cloudBackupSteps(save) {
     const removed = cloudBackup.cleanPartials(dirs);
     check("클라우드 백업 — 쓰다 만 .partial은 목록에 없고 정리된다",
       listed2.items.length === 11 && removed.length === 1 && !fs.existsSync(half), `${listed2.items.length} ${removed.join(",")}`);
+    const staging = path.join(dataRoot, "cloud-backups", ".staging");
+    check("클라우드 백업 — 흘려 받은 임시 파일이 안 남는다 (.staging 비어 있음)",
+      !fs.existsSync(staging) || fs.readdirSync(staging).length === 0, fs.existsSync(staging) ? fs.readdirSync(staging).join(",") : "없음");
+
+    // ⑨ [최근 접속] 즉시 복귀도 "열 때"다 — 오늘 것을 지우고 입구 → resume
+    const todayFile = () => autos().find((f) => f.startsWith(`auto-${today}`));
+    if (todayFile()) fs.rmSync(path.join(autoDir, todayFile()));
+    await goto("app://starlog/");
+    seq = (await status()).auto.seq;
+    const resumed = await js("window.starlog.session.resume()");
+    const fourth = await waitAuto(seq);
+    check("클라우드 자동 백업 — 즉시 복귀(session:resume)에서도 하루 한 번", Boolean(resumed?.port) && fourth?.phase === "done"
+      && Boolean(todayFile()) && autos().length === 10, `${fourth?.phase} ${fourth?.message ?? ""} ${autos().length}`);
+
+    // ⑩ 세션이 살아 있는 동안 주기적으로 — E2E는 간격을 줄인다. 오늘 것을 지우면 다음 차례에 한 장
+    process.env.STARLOG_E2E_CLOUD_BACKUP_EVERY_MS = "400";
+    await js(`window.starlog.launch({ mode: "local", target: ${JSON.stringify(save)} })`);
+    await sleep(300);
+    if (todayFile()) fs.rmSync(path.join(autoDir, todayFile()));
+    seq = (await status()).auto.seq;
+    let tick = null;
+    for (let i = 0; i < 40 && !(tick?.phase === "done" && tick.seq > seq); i += 1) {
+      await sleep(200);
+      tick = (await status()).auto;
+    }
+    check("클라우드 자동 백업 — 세션 중 주기 확인이 날이 바뀐(오늘 것 없는) 걸 잡는다",
+      tick?.phase === "done" && tick.seq > seq && Boolean(todayFile()), `${tick?.phase} ${tick?.seq}/${seq}`);
   } finally {
     process.env.STARLOG_E2E_CLOUD_BACKUP_LOCAL = "";
+    process.env.STARLOG_E2E_CLOUD_BACKUP_EVERY_MS = "";
   }
 
   // 푼 세이브를 열면 데이터가 있다 (끈 뒤라 자동 백업이 안 돈다)
@@ -1071,6 +1099,94 @@ async function cloudBackupSteps(save) {
   check("클라우드 백업에서 푼 세이브에 데이터가 있다", JSON.stringify(cards?.json ?? "").includes("E2E 테스트 게임"), restoredName ?? "없음");
   const sameCloud = opened?.ok ? await sameCover(opened.port, "E2E 테스트 게임") : "기동 실패";
   check("클라우드 백업에서 푼 세이브에 DB 커버가 바이트째 있다", sameCloud === true, String(sameCloud));
+  // 다른 세션으로 갈아탔다 — 앞 세션의 주기 확인이 남아 돌면 안 된다
+  const quietFrom = (await js("window.starlog.cloudBackups.status()")).auto?.seq ?? 0;
+  await sleep(1200);
+  const quietTo = (await js("window.starlog.cloudBackups.status()")).auto?.seq ?? 0;
+  check("클라우드 자동 백업 — 세션이 바뀌면 주기 확인이 멈춘다", quietFrom === quietTo, `${quietFrom} → ${quietTo}`);
+}
+
+/**
+ * 클라우드 백업 폴더 = 연결 이름 (리뷰 2026-10-25). 대소문자 겹침 · 이름 바꾸기 충돌 · 지운 연결의 백업 ·
+ * 받는 중 파일이 연결 폴더 밖에 있는지 · 가벼운 응답 검사. 진짜 클라우드 세션 없이 연결 IPC와 모듈로 본다
+ */
+async function cloudBackupFolderSteps() {
+  const cloudBackup = require(path.join(ROOT, "desktop/cloudBackup.js"));
+  const { Readable } = require("stream");
+  const dataRoot = path.join(TMP, "appData/starlog/data");
+  const dirs = { root: dataRoot };
+  const root = path.join(dataRoot, "cloud-backups");
+  const conn = (name) => ({ name, db: { url: "jdbc:postgresql://203.0.113.1/z", user: "u", password: "FAKE_PW_FOLDER_1" }, storage: {}, igdb: {}, translate: {} });
+  const save = (profile, previousName) => js(`window.starlog.connections.save(${JSON.stringify(profile)}${previousName ? `, { previousName: ${JSON.stringify(previousName)} }` : ""}).then(() => "통과", (e) => String(e))`);
+  const plant = (folder, file) => {
+    fs.mkdirSync(path.join(root, folder, "manual"), { recursive: true });
+    fs.writeFileSync(path.join(root, folder, "manual", file), "x");
+  };
+  const entries = () => (fs.existsSync(root) ? fs.readdirSync(root) : []);
+
+  // ① 대소문자만 다른 이름 — 새로도, 바꿔서도 못 만든다
+  await save(conn("CaseA"));
+  const dupNew = await save(conn("casea"));
+  await save(conn("다른 연결"));
+  const dupRename = await save(conn("CASEA"), "다른 연결");
+  check("연결 이름 — 대소문자만 달라도 겹침 (새 연결·이름 바꾸기)", /이미 있습니다/.test(dupNew) && /이미 있습니다/.test(dupRename), `${dupNew} / ${dupRename}`);
+
+  // ② 대소문자만 바꾸는 이름 바꾸기 — 자기 자신과 겹친 게 아니다. 폴더도 따라간다(맥에서는 한 폴더)
+  plant("CaseA", "a.json.gz");
+  const caseOnly = await save(conn("casea"), "CaseA");
+  check("연결 이름 대소문자만 바꾸기 — 허용, 백업 폴더 이름도 바뀐다",
+    caseOnly === "통과" && entries().includes("casea") && !entries().includes("CaseA") && fs.existsSync(path.join(root, "casea/manual/a.json.gz")),
+    `${caseOnly} ${entries().join(",")}`);
+
+  // ③ 새 이름 자리에 주인 없는 폴더 — 비켜 두고 옮긴다 (섞지도, 옛 폴더에 버려두지도 않는다)
+  plant("새 이름", "orphan.json.gz");
+  await save(conn("새 이름"), "casea");
+  const aside = entries().filter((e) => e.startsWith(".removed-새 이름-"));
+  check("연결 이름 바꾸기 — 새 이름 폴더가 이미 있으면 그쪽을 .removed-로 비켜 두고 옮긴다",
+    fs.existsSync(path.join(root, "새 이름/manual/a.json.gz")) && !fs.existsSync(path.join(root, "새 이름/manual/orphan.json.gz"))
+    && aside.length === 1 && fs.existsSync(path.join(root, aside[0], "manual/orphan.json.gz")) && !entries().includes("casea"),
+    entries().join(","));
+
+  // ④ 연결 지우기 — 백업 폴더를 비켜 둔다. 같은 이름으로 새로 만들어도 물려받지 않는다
+  await js(`window.starlog.connections.remove("새 이름")`);
+  const retired = entries().filter((e) => e.startsWith(".removed-새 이름-"));
+  await save(conn("새 이름"));
+  check("연결 지우기 — 백업 폴더는 .removed-로 (지우지 않음), 같은 이름 새 연결은 빈손",
+    retired.length === 2 && !entries().includes("새 이름") && retired.some((e) => fs.existsSync(path.join(root, e, "manual/a.json.gz"))),
+    entries().join(","));
+
+  // ⑤ 새 연결 이름 자리의 주인 없는 폴더도 물려받지 않는다
+  plant("고아", "z.json.gz");
+  await save(conn("고아"));
+  check("새 연결 — 그 이름의 주인 없는 백업 폴더는 비켜 둔다", !entries().includes("고아") && entries().some((e) => e.startsWith(".removed-고아-")), entries().join(","));
+
+  // ⑥ 예전에 만든 대소문자 쌍은 폴더를 갈라 놓는다 (해시)
+  const a = cloudBackup.folderName("Neon", ["neon"]);
+  const b = cloudBackup.folderName("neon", ["Neon"]);
+  check("백업 폴더 — 옛 대소문자 쌍은 서로 다른 폴더, 혼자면 이름 그대로",
+    a !== b && a.toLowerCase() !== b.toLowerCase() && cloudBackup.folderName("Neon", ["다른"]) === "Neon", `${a} / ${b}`);
+
+  // ⑦ 받는 중 파일은 연결 폴더 밖(.staging)에 — 받는 사이 이름이 바뀌어도 옛 폴더가 다시 안 생긴다
+  const tmp = cloudBackup.stage(dirs);
+  await cloudBackup.gzipInto(tmp, Readable.from([Buffer.from('{"formatVersion":6,"entries":[],"games":[]}')]));
+  const outside = !fs.existsSync(path.join(root, "받는중A"));
+  fs.mkdirSync(path.join(root, "받는중B"), { recursive: true });
+  const made = cloudBackup.commit(dirs, "받는중B", "manual", "m.json.gz", tmp);
+  check("클라우드 백업 — 받는 동안 연결 폴더를 안 만들고, 다 받은 뒤 그 순간의 이름 폴더로",
+    outside && made.fileName === "m.json.gz" && fs.existsSync(path.join(root, "받는중B/manual/m.json.gz")) && !fs.existsSync(tmp)
+    && (fs.statSync(path.join(root, "받는중B/manual/m.json.gz")).mode & 0o777) === 0o600, JSON.stringify(made));
+  const read = await cloudBackup.read(dirs, "받는중B", "manual", "m.json.gz");
+  check("클라우드 백업 — 흘려 쓴 gzip을 그대로 되읽는다", read.formatVersion === 6);
+
+  // ⑧ 가벼운 검사 — 머리가 다르거나 꼬리가 끊긴 응답은 버린다
+  const bad = async (text) => {
+    const t = cloudBackup.stage(dirs);
+    const r = await cloudBackup.gzipInto(t, Readable.from([Buffer.from(text)])).then(() => "통과", () => "거절");
+    return r === "거절" && !fs.existsSync(t);
+  };
+  check("클라우드 백업 — 엉뚱한 응답·끊긴 응답은 거절하고 임시 파일을 치운다",
+    (await bad("<html>not json</html>")) && (await bad('{"formatVersion":6,"entries":[{"x":')) && (await bad('{"error":1}')));
+  for (const n of ["CaseA", "다른 연결", "새 이름", "고아"]) await js(`window.starlog.connections.remove(${JSON.stringify(n)})`);
 }
 
 realElectron.app.whenReady().then(async () => {
@@ -1115,6 +1231,23 @@ realElectron.app.whenReady().then(async () => {
     await goto(`app://starlog/library/detail?entry=${entry.json?.id}`);
     check("상세 화면", (await js("document.body.innerText")).includes("E2E 테스트 게임"));
 
+    // 외부 일정 (2026-10-25) — 도장은 쓰기 없이 같은 값, 정리 탭은 빈 목록 + 연동 앱 이름이 화면에 없다
+    const stamp1 = await api(port, "GET", "/api/external-plays/stamp");
+    const stamp2 = await api(port, "GET", `/api/external-plays/stamp?entryId=${entry.json?.id}`);
+    const stamp3 = await api(port, "GET", "/api/external-plays/stamp");
+    check("외부 일정 도장 — 전체·항목별, 안 바뀌면 같은 값", stamp1.status === 200 && typeof stamp1.json?.stamp === "string"
+      && stamp2.status === 200 && stamp1.json.stamp === stamp3.json?.stamp, `${stamp1.status} ${stamp2.status}`);
+    await goto("app://starlog/system?tab=external");
+    let sysText = "";
+    for (let i = 0; i < 25 && !sysText.includes("연결 끊긴 외부 일정이 없습니다"); i += 1) {
+      await sleep(200);
+      sysText = await js("document.body.innerText");
+    }
+    const detachDisabled = await js(`[...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "외부 캘린더 연결 해제")?.disabled ?? null`);
+    check("시스템 → 외부 일정 — 빈 목록 안내, 연결 해제는 꺼짐, 화면에 연동 앱 이름 없음",
+      sysText.includes("연결 끊긴 외부 일정이 없습니다") && detachDisabled === true && !/homeops/i.test(sysText),
+      `${detachDisabled} ${sysText.split("\n").filter((l) => l.includes("외부")).join(" | ")}`);
+
     await mediaSteps(port, entry.json?.id);
     await coverDbSteps(port, entry.json?.id);
     await coverResizeSteps(port, entry.json?.id);
@@ -1126,6 +1259,7 @@ realElectron.app.whenReady().then(async () => {
     // ── 입구로 → 백업 (백엔드를 내리고 묶는다) ──
     await goto("app://starlog/");
     await connectionSteps();
+    await cloudBackupFolderSteps();
     await coverTargetSteps();
     t = Date.now();
     const backup = await js(`window.starlog.backups.create(${JSON.stringify(SAVE)})`);

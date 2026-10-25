@@ -14,6 +14,7 @@ import { CardGridSkeleton } from "@/components/ui/Skeleton";
 import FilterBox, { EMPTY_FILTERS, hasAnyFilter, type Filters } from "@/components/library/FilterBox";
 import FolderView from "@/components/library/FolderView";
 import { useApi } from "@/lib/useApi";
+import { useExternalPlayStamp } from "@/lib/useExternalPlayStamp";
 import { qs } from "@/lib/api";
 import { GAME_GRID, useGridColumns } from "@/lib/useGridColumns";
 import { SORT_LABEL, SORT_ORDER } from "@/lib/labels";
@@ -38,6 +39,8 @@ const PAGE_ROWS = 4;
  * fallback이 뼈대와 같은 모양이라 전환이 눈에 안 띈다
  */
 export default function LibraryPage() {
+  // 외부 캘린더가 일정을 고쳤으면 카드의 플레이타임이 바뀐다 — 돌아올 때(포커스)만 본다
+  useExternalPlayStamp();
   return (
     <Suspense fallback={<LibraryFallback />}>
       <LibraryContent />

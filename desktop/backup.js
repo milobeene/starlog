@@ -21,8 +21,10 @@ const names = require("./saveName");
 const saveFiles = require("./saveFiles");
 const tarball = require("./tarball");
 
-const KEEP_COUNT = 30;
-const KEEP_BYTES = 100 * 1024 * 1024;   // 100MB
+// 개수가 실제 한도다. 용량은 이상하게 큰 백업을 막는 상한일 뿐 —
+// 커버를 DB에 쌓으면(JPEG라 거의 안 눌린다) 한 장이 커져서, 100MB였을 때는 몇 개만 남을 수 있었다
+const KEEP_COUNT = 10;
+const KEEP_BYTES = 1024 * 1024 * 1024;   // 1GB
 const EXT = ".tar.gz";
 /** 마지막 백업이 묶은 내용의 지문 — 자동 백업이 "바뀌었나"를 이걸로 본다 (목록은 `.tar.gz`만 보므로 안 섞인다) */
 const FINGERPRINT = ".fingerprint.json";

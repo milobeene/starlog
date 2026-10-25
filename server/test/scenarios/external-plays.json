@@ -1,0 +1,161 @@
+{
+ "name": "external-plays",
+ "note": "homeops에서 끊긴 일정 정리·변경 도장 (V20) — 일정은 API로 못 만들어서 `sql`로 넣는다(번호 1~6이 넣은 순서). 끊긴 행만 건드리는지, 넘기기는 끝난 것만, 지운 행은 묘비(homeops_released)에, 합계 다시 맞춤. 전부 끊기(detach-all)는 아직 연결된 행에만 detached_at·updated_at",
+ "fixture": "fresh",
+ "sql": [
+  "insert into game (source, name, created_at, updated_at) values ('MANUAL', 'Ext Alpha', '2026-01-01 09:00:00', '2026-01-01 09:00:00'), ('MANUAL', 'Ext Beta', '2026-01-01 09:00:00', '2026-01-01 09:00:00')",
+  "insert into backlog_entry (game_id, status, display_name, display_name_sort_key, created_at, updated_at) select id, 'WISHLIST', name, '1|' || lower(name), '2026-01-01 09:00:00', '2026-01-01 09:00:00' from game where name in ('Ext Alpha', 'Ext Beta') order by name",
+  "insert into homeops_play_log (backlog_entry_id, external_id, started_at, ended_at, minutes, label, created_at, updated_at, detached_at) select id, 'ext-a1', '2026-01-10 20:00:00', '2026-01-10 21:30:00', 90, '저녁 플레이', '2026-01-01 09:00:00', '2026-01-01 09:00:00', '2026-01-12 08:00:00' from backlog_entry where display_name = 'Ext Alpha'",
+  "insert into homeops_play_log (backlog_entry_id, external_id, started_at, ended_at, minutes, label, created_at, updated_at, detached_at) select id, 'ext-a2', '2026-01-11 13:00:00', '2026-01-11 13:00:00', 0, null, '2026-01-01 09:00:00', '2026-01-01 09:00:00', '2026-01-12 08:00:00' from backlog_entry where display_name = 'Ext Alpha'",
+  "insert into homeops_play_log (backlog_entry_id, external_id, started_at, ended_at, minutes, label, created_at, updated_at, detached_at) select id, 'ext-a3', '2999-01-01 20:00:00', '2999-01-01 22:00:00', 120, '먼 미래', '2026-01-01 09:00:00', '2026-01-01 09:00:00', '2026-01-12 08:00:00' from backlog_entry where display_name = 'Ext Alpha'",
+  "insert into homeops_play_log (backlog_entry_id, external_id, started_at, ended_at, minutes, label, created_at, updated_at, detached_at) select id, 'ext-a4', '2026-01-09 20:00:00', '2026-01-09 20:30:00', 30, '연결 중', '2026-01-01 09:00:00', '2026-01-01 09:00:00', null from backlog_entry where display_name = 'Ext Alpha'",
+  "insert into homeops_play_log (backlog_entry_id, external_id, started_at, ended_at, minutes, label, created_at, updated_at, detached_at) select id, 'ext-b1', '2026-01-08 20:00:00', '2026-01-08 20:45:00', 45, null, '2026-01-01 09:00:00', '2026-01-01 09:00:00', '2026-01-13 08:00:00' from backlog_entry where display_name = 'Ext Beta'",
+  "insert into homeops_play_log (backlog_entry_id, external_id, started_at, ended_at, minutes, label, created_at, updated_at, detached_at) select id, 'ext-b2', '2999-02-01 20:00:00', '2999-02-01 21:00:00', 60, null, '2026-01-01 09:00:00', '2026-01-01 09:00:00', '2026-01-13 08:00:00' from backlog_entry where display_name = 'Ext Beta'",
+  "insert into homeops_play_log (backlog_entry_id, external_id, started_at, ended_at, minutes, label, created_at, updated_at, detached_at) select id, 'ext-a5', '2999-03-01 20:00:00', '2999-03-01 21:00:00', 15, null, '2026-01-01 09:00:00', '2026-01-01 09:00:00', null from backlog_entry where display_name = 'Ext Alpha'"
+ ],
+ "steps": [
+  {
+   "name": "준비 — 카드 (기동 때 합계: A 90+0+30분, B 45분)",
+   "method": "GET",
+   "path": "/api/backlog/cards",
+   "save": {
+    "a": "0.entryId",
+    "b": "1.entryId"
+   }
+  },
+  {
+   "name": "끊긴 일정 — 끊긴 것만 5줄, 시작 최신순, 미래 것은 counted=false, 아직 연결된 것 2(끝남 1·예정 1)",
+   "method": "GET",
+   "path": "/api/external-plays/detached"
+  },
+  {
+   "name": "도장 — 전체",
+   "method": "GET",
+   "path": "/api/external-plays/stamp"
+  },
+  {
+   "name": "도장 — 항목 A",
+   "method": "GET",
+   "path": "/api/external-plays/stamp?entryId=${a}"
+  },
+  {
+   "name": "넘기기 — 번호가 0이면 본문 오류 (400)",
+   "method": "POST",
+   "path": "/api/external-plays/detached/release",
+   "body": {
+    "ids": [
+     0
+    ]
+   }
+  },
+  {
+   "name": "넘기기 — ids가 없으면 본문 오류 (400)",
+   "method": "POST",
+   "path": "/api/external-plays/detached/release",
+   "body": {}
+  },
+  {
+   "name": "넘기기 — 끝난 끊긴 일정만: a1 → ADD, a2(0분) → 지우기만, a3(미래)·a4·a5(연결 중)·없는 번호는 그대로",
+   "method": "POST",
+   "path": "/api/external-plays/detached/release",
+   "body": {
+    "ids": [
+     1,
+     2,
+     3,
+     4,
+     7,
+     999
+    ]
+   }
+  },
+  {
+   "name": "넘기기 — 두 번째는 0",
+   "method": "POST",
+   "path": "/api/external-plays/detached/release",
+   "body": {
+    "ids": [
+     1,
+     2
+    ]
+   }
+  },
+  {
+   "name": "상세 A — 합계는 그대로 (일정 몫이 ADD로)",
+   "method": "GET",
+   "path": "/api/backlog/${a}"
+  },
+  {
+   "name": "목록 A — ADD 한 줄 + 남은 일정 둘",
+   "method": "GET",
+   "path": "/api/backlog/${a}/play-records"
+  },
+  {
+   "name": "지우기 — b1(끝남)·b2(미래) 지움, a4(연결 중)는 무시",
+   "method": "POST",
+   "path": "/api/external-plays/detached/delete",
+   "body": {
+    "ids": [
+     5,
+     6,
+     4
+    ]
+   }
+  },
+  {
+   "name": "지우기 — 빈 목록",
+   "method": "POST",
+   "path": "/api/external-plays/detached/delete",
+   "body": {
+    "ids": []
+   }
+  },
+  {
+   "name": "상세 B — 기록이 없어져 합계 null로 다시 맞춤",
+   "method": "GET",
+   "path": "/api/backlog/${b}"
+  },
+  {
+   "name": "끊긴 일정 — a3(미래)만 남음",
+   "method": "GET",
+   "path": "/api/external-plays/detached"
+  },
+  {
+   "name": "도장 — 전체 (바뀜)",
+   "method": "GET",
+   "path": "/api/external-plays/stamp"
+  },
+  {
+   "name": "전부 끊기 — 아직 연결된 a4·a5",
+   "method": "POST",
+   "path": "/api/external-plays/detach-all",
+   "body": {}
+  },
+  {
+   "name": "전부 끊기 — 두 번째는 0",
+   "method": "POST",
+   "path": "/api/external-plays/detach-all",
+   "body": {}
+  },
+  {
+   "name": "끊긴 일정 — a5·a3·a4, 연결된 것 0",
+   "method": "GET",
+   "path": "/api/external-plays/detached"
+  },
+  {
+   "name": "넘기기 — 끊긴 a4(끝남)는 이제 넘어간다",
+   "method": "POST",
+   "path": "/api/external-plays/detached/release",
+   "body": {
+    "ids": [
+     4
+    ]
+   }
+  },
+  {
+   "name": "상세 A — 합계 그대로 (90 ADD + 30 ADD)",
+   "method": "GET",
+   "path": "/api/backlog/${a}"
+  }
+ ]
+}

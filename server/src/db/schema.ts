@@ -472,6 +472,7 @@ export const homeopsPlayLog = pgTable("homeops_play_log", {
 	label: varchar({ length: 200 }),
 	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }),
 	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }),
+	detachedAt: timestamp("detached_at", { precision: 6, mode: 'string' }),
 }, (table) => [
 	index("idx_homeops_play_log_entry").using("btree", table.backlogEntryId.asc().nullsLast().op("int8_ops")),
 	foreignKey({
@@ -483,3 +484,8 @@ export const homeopsPlayLog = pgTable("homeops_play_log", {
 	check("chk_homeops_play_log_minutes", sql`minutes >= 0`),
 	check("chk_homeops_play_log_range", sql`ended_at >= started_at`),
 ]);
+
+export const homeopsReleased = pgTable("homeops_released", {
+	externalId: varchar("external_id", { length: 200 }).primaryKey().notNull(),
+	releasedAt: timestamp("released_at", { precision: 6, mode: 'string' }).notNull(),
+});

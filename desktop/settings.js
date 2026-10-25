@@ -25,6 +25,7 @@ const fs = require("fs");
 const path = require("path");
 const { safeStorage } = require("electron");
 const { SETTINGS_FILE, CONNECTIONS_FILE, DEFAULT_DATA_ROOT } = require("./paths");
+const { nameKey } = require("./saveName");
 
 const SETTINGS_DEFAULT = {
   version: 1,
@@ -403,8 +404,12 @@ function saveConnection(input, previousName) {
     const profiles = await readProfiles();
     const clean = cleanProfile(input);
     const stored = findStored(profiles, previousName);
-    const clash = profiles.find((p) => p.name === clean.name);
-    if (clash && clash !== stored) throw new Error(`같은 이름의 연결이 이미 있습니다: ${clean.name}`);
+    // 대소문자만 다른 이름도 겹침이다 — 클라우드 백업 폴더가 연결 이름이라 디스크에서 한 폴더가 된다
+    const clash = profiles.find((p) => nameKey(p.name) === nameKey(clean.name));
+    if (clash && clash !== stored) {
+      const hint = clash.name === clean.name ? "" : " (대소문자만 달라도 같은 이름으로 봅니다)";
+      throw new Error(`같은 이름의 연결이 이미 있습니다: ${clash.name}${hint}`);
+    }
     const next = unmask(clean, stored);
     if (stored?.locked) {
       // 안 풀렸던 프로필에서 비밀 칸을 그대로 두고 저장하면 봉투를 지키고 잠금도 유지한다
@@ -439,6 +444,17 @@ async function revealSecret(name, field) {
   return getField(found, field);
 }
 
+/** 연결 이름들 — 백업 폴더를 고를 때 쓴다. `storageUrls`와 같은 이유로 동기·키체인 없이 */
+function connectionNames() {
+  try {
+    const c = JSON.parse(fs.readFileSync(CONNECTIONS_FILE, "utf8"));
+    const profiles = Array.isArray(c?.profiles) ? c.profiles : [];
+    return profiles.map((p) => p?.name).filter((n) => typeof n === "string");
+  } catch {
+    return [];
+  }
+}
+
 /**
  * 저장된 연결들의 스토리지 주소(엔드포인트·공개 주소) — CSP용. 비밀 칸이 아니라 키체인을 안 거친다.
  * 문서를 서빙할 때마다 불리므로 **동기·부작용 없음**: 못 읽으면 빈 목록(덮어쓰기·격리는 `readJson`의 몫)
@@ -459,6 +475,7 @@ module.exports = {
   coverTargetOf,
   getSettings,
   storageUrls,
+  connectionNames,
   patchSettings,
   getConnections,
   listMasked,

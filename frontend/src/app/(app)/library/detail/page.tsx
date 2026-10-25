@@ -21,6 +21,7 @@ import SummaryStats from "@/components/detail/SummaryStats";
 import type { DetailDialog } from "@/components/detail/detailDialog";
 import { useBannerScroll } from "@/components/detail/useBannerScroll";
 import { invalidateQueries, useApi } from "@/lib/useApi";
+import { useExternalPlayStamp } from "@/lib/useExternalPlayStamp";
 import { bannerSrc } from "@/lib/cover";
 import type { BacklogDetail, OptionsResponse } from "@/lib/types";
 
@@ -52,6 +53,8 @@ function DetailByEntry() {
 function BacklogDetail({ entryId }: { entryId: string }) {
   const { bannerRef, onScroll } = useBannerScroll();
   const { data, error, reload } = useApi<BacklogDetail>(`/api/backlog/${entryId}`);
+  // 보고 있는 동안 일정이 끝나면 합계·Playtime History가 바뀐다 — 30초마다도 본다
+  useExternalPlayStamp(entryId, true);
   // 선택지는 편집 폼 전부가 공유한다 (기기·에뮬·계정·플랫폼·구독·사전)
   const options = useApi<OptionsResponse>("/api/me/options");
   /**

@@ -77,7 +77,7 @@ export default function BackupList({
       <div className="flex flex-col gap-2">
         {usage === null && <div className="h-16 skeleton-sweep rounded-lg bg-white/[0.06]" />}
 
-        {/* 목록만 자기 안에서 스크롤한다 — 30개까지 쌓이므로 입구가 밀린다 */}
+        {/* 목록만 자기 안에서 스크롤한다 — 10개까지 쌓이므로 입구가 밀린다 */}
         {usage && usage.items.length > 0 && (
         <div className="entry-list flex flex-col gap-2">
         {usage.items.map((item) => (

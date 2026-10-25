@@ -8,7 +8,7 @@
  *
  * 단위는 분이고 소수 첫째 자리까지다(V15 머리말). 계산은 **0.1분 단위 정수(BigInt)** 로만 한다.
  */
-import { and, asc, eq, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, eq, lte, sql } from "drizzle-orm";
 import type { MiddlewareHandler } from "hono";
 import { db, type Db } from "../../db/client";
 import { backlogEntry, homeopsPlayLog, playRecord } from "../../db/schema";
@@ -119,35 +119,50 @@ export async function syncAllPlayTimes(d: Db): Promise<number> {
 }
 
 /**
- * homeops 일정이 **앱이 도는 중에** 끝나면(또는 클라우드에서 homeops가 그사이 쓰면) 캐시가 낡는다 — 읽기 전에 맞춘다.
+ * homeops 표의 변경 도장 — 모양은 알 필요 없는 글자다(화면은 같은지만 본다). **읽기만 한다.**
+ *
+ * 행 수·분 합·마지막 `updated_at`·`created_at`·**끝난 행 수**·끊긴 행 수. 끝난 행 수가 있어서 아무도 안 써도
+ * 일정이 시간이 지나 끝나는 순간 도장이 바뀐다. homeops가 고칠 때 `updated_at`을 안 바꾸면(게임만 옮김 등) 못 본다 —
+ * 그래서 인수인계 V20에 "쓸 때마다 `updated_at`을 새로"를 계약으로 적었다
+ */
+export async function playTimeStamp(d: Db, entryId?: number): Promise<string> {
+  const now = nowKst();
+  const r = (await one<{ n: number; m: string; u: string | null; c: string | null; e: number; x: number }>(d, sql`select
+      count(*)::int as n, coalesce(sum(minutes), 0)::text as m, max(updated_at)::text as u, max(created_at)::text as c,
+      (count(*) filter (where ended_at <= ${now}::timestamp))::int as e,
+      (count(*) filter (where detached_at is not null))::int as x
+    from homeops_play_log ${entryId === undefined ? sql`` : sql`where backlog_entry_id = ${entryId}`}`))!;
+  return [r.n, r.m, r.u ?? "", r.c ?? "", r.e, r.x].join("|");
+}
+
+/**
+ * homeops 일정이 **앱이 도는 중에** 끝나거나 바뀌면 캐시가 낡는다 — 읽기 전에 맞춘다.
  * 낡은 캐시를 화면이 "지금까지"의 기준값으로 보여 주면, 그 값으로 저장할 때 끝난 일정 몫이 ADJUST로 지워진다.
  *
- * 대상 = 지금 일정이 있는 항목 + **지난번에 있던 항목.** 지금 것만 보면 마지막 일정이 지워진 항목이 대상에서 빠져
- * 합계가 옛 값에 멈춘다 (homeops에서 마지막 일정을 지웠을 때 실제로 났다). 기억은 프로세스 안에만 —
- * 꺼진 동안 지워진 건 기동 때 전체 재계산(`syncAllPlayTimes`)이 맞춘다
+ * 도장이 지난번과 다를 때만 **전체**를 다시 센다(바뀐 행만 쓴다). 대상 항목을 고르지 않으니 마지막 일정이 지워진
+ * 항목도 빠지지 않는다. 처음엔 기억이 없어(null) 기동 뒤 첫 조회는 늘 센다 — 기동 정리와 첫 조회 사이에 지워진 것까지.
+ * 기억하는 건 **세기 전에 뜬 도장**이다 — 세는 동안 homeops가 쓰면 다음 조회의 도장이 달라 한 번 더 센다.
+ * 동시 조회 둘이 같이 세도 같은 값을 쓸 뿐이고, 늦게 끝난 쪽이 옛 도장을 남겨도 한 번 더 셀 뿐이다
  */
-let homeopsSeen = new Set<number>();
+let lastStamp: string | null = null;
 
-export async function refreshHomeopsTotals(d: Db): Promise<number> {
-  const now = new Set((await d.selectDistinct({ id: homeopsPlayLog.backlogEntryId }).from(homeopsPlayLog)).map((r) => r.id));
-  const targets = [...new Set([...now, ...homeopsSeen])];
-  if (targets.length === 0) return 0;
-  const sums = await sumsByEntry(d, nowKst());
-  const entries = await d.select().from(backlogEntry).where(inArray(backlogEntry.id, targets));
-  let changed = 0;
-  for (const e of entries) {
-    if (await saveEntryIfChanged(d, e, { playTimeHours: totalOf(sums.get(e.id)) })) changed++;
-  }
-  // 맞춘 뒤에 바꾼다 — 중간에 실패하면 다음 조회가 같은 대상을 다시 본다
-  homeopsSeen = now;
+/** 센 경우 바뀐 항목 수, 도장이 같아 건너뛰면 null */
+export async function refreshPlayTimes(d: Db): Promise<number | null> {
+  const stamp = await playTimeStamp(d);
+  if (stamp === lastStamp) return null;
+  const changed = await d.transaction((tx) => syncAllPlayTimes(tx));
+  lastStamp = stamp;
   return changed;
 }
+
+/** 시험용 — 기동 직후 상태로 */
+export function forgetPlayTimeStamp() { lastStamp = null; }
 
 /** 합계를 보여 주는 조회(백로그·통계) 앞에 거는 미들웨어. 쓰기 요청은 자기 쪽에서 합을 새로 센다 */
 export const freshPlayTimes: MiddlewareHandler = async (c, next) => {
   if (c.req.method === "GET") {
     // 맞추기는 덤이다 — 실패해도 조회는 그대로 (낡은 캐시를 보여 주는 것뿐이고, 진짜 DB 고장이면 본 처리에서 드러난다)
-    try { await db().transaction((tx) => refreshHomeopsTotals(tx)); } catch (e) { console.warn("플레이타임 합계 맞추기 실패", e); }
+    try { await refreshPlayTimes(db()); } catch (e) { console.warn("플레이타임 합계 맞추기 실패", e); }
   }
   await next();
 };

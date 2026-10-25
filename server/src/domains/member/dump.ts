@@ -36,7 +36,7 @@ import { opt, zDate, zDecimal, zLong, zText } from "../../common/schemas";
  */
 export const FORMAT_VERSION = 6;
 
-/** 커버 한 장(5MB)의 base64 — 4/3배 + 여유. 본문 한도(50MB)는 따로 걸린다 */
+/** 커버 한 장(5MB)의 base64 — 4/3배 + 여유. 본문 한도(256MB)는 따로 걸린다 */
 const MAX_COVER_BASE64 = Math.ceil((5 * 1024 * 1024) / 3) * 4 + 16;
 
 /**
@@ -52,7 +52,7 @@ const zLdt = z.string().refine((s) => {
 });
 
 /**
- * 길이 상한 — 본문 한도(~50MB) 안에서도 한 칸이 수십 MB거나 배열이 수백만 개면 DB·메모리가 먼저 죽는다.
+ * 길이 상한 — 본문 한도(~256MB) 안에서도 한 칸이 수십 MB거나 배열이 수백만 개면 DB·메모리가 먼저 죽는다.
  * 실제 내보내기가 340KB 안팎이라 넉넉하게 잡았다 (한도를 넘는 파일은 400 "읽을 수 없습니다")
  */
 const MAX_TEXT = 20_000;

@@ -145,7 +145,7 @@ describe("업로드·크기 자리", () => {
     expect((await a.request("/api/me/import", { method: "POST", body: mp() })).status).toBe(415);
   });
 
-  it("JSON 자리는 5MB, 기록 통째는 50MB", async () => {
+  it("JSON 자리는 5MB, 기록 통째는 256MB", async () => {
     const a = mini();
     const big = "x".repeat(6 * 1024 * 1024);
     const json = { "Content-Type": "application/json" };

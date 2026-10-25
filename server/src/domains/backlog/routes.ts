@@ -9,7 +9,7 @@
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { db } from "../../db/client";
-import { DEFAULT_MSG, elementSizeViolations, readBodyExact, violations } from "../../http/body";
+import { DEFAULT_MSG, elementSizeViolations, readBody, readBodyExact, violations } from "../../http/body";
 import { pathId, query } from "../../http/params";
 import { InvalidInput } from "../../common/errors";
 import { normalize } from "../../common/text";
@@ -33,7 +33,8 @@ import { findAliveEntry404 } from "./shared";
 import { resolveGame } from "../game/service";
 import { translateGame } from "../system/service";
 import { addAcquisition, deleteAcquisition, updateAcquisition } from "./acquisition";
-import { addPlayRecord, deletePlayRecord, freshPlayTimes, listPlayRecords, updatePlayRecord } from "./playtime";
+import { addPlayRecord, deletePlayRecord, freshPlayTimes, listPlayRecords, playTimeStamp, updatePlayRecord } from "./playtime";
+import { deleteDetached, detachAll, listDetached, releaseDetached } from "./external";
 
 export const routes = new Hono();
 
@@ -438,6 +439,35 @@ routes.delete("/api/play-records/:recordId", async (c) => {
   const recordId = pathId(c, "recordId");
   await db().transaction((tx) => deletePlayRecord(tx, recordId));
   return c.body(null, 204);
+});
+
+// ───────────── homeops 일정 — 변경 도장 · 끊긴 일정 정리 (V20) ─────────────
+// `/api/backlog/*` 밖이라 합계 맞추기 미들웨어가 안 걸린다 — 도장은 읽기만 해야 하고(화면이 몇 초마다 부른다),
+// 끊긴 목록은 합계 캐시를 보여 주지 않는다
+
+/** 화면이 이전 값과 비교해 다르면 다시 읽는다. 다시 읽는 GET이 미들웨어로 합계를 맞춘다 */
+routes.get("/api/external-plays/stamp", async (c) => {
+  const entryId = query(c).long("entryId");
+  return c.json({ stamp: await playTimeStamp(db(), entryId ?? undefined) });
+});
+
+routes.get("/api/external-plays/detached", async (c) => c.json(await listDetached(db())));
+
+/** 본문은 안 읽는다(`{}`) — 고를 것이 없다 */
+routes.post("/api/external-plays/detach-all", async (c) => c.json(await db().transaction((tx) => detachAll(tx))));
+
+const DetachedIdsRequest = z.object({
+  ids: z.array(zLong.refine((n) => Number.isSafeInteger(n) && n > 0)).max(500),
+});
+
+routes.post("/api/external-plays/detached/release", async (c) => {
+  const { ids } = await readBody(c, DetachedIdsRequest);
+  return c.json(await db().transaction((tx) => releaseDetached(tx, ids)));
+});
+
+routes.post("/api/external-plays/detached/delete", async (c) => {
+  const { ids } = await readBody(c, DetachedIdsRequest);
+  return c.json(await db().transaction((tx) => deleteDetached(tx, ids)));
 });
 
 // ───────────── 회차 ─────────────

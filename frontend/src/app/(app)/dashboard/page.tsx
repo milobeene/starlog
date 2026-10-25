@@ -11,6 +11,7 @@ import StatTile from "@/components/dashboard/StatTile";
 import MonthlyCompletionsChart from "@/components/dashboard/MonthlyCompletionsChart";
 import MonthlySpendingChart from "@/components/dashboard/MonthlySpendingChart";
 import { useApi } from "@/lib/useApi";
+import { useExternalPlayStamp } from "@/lib/useExternalPlayStamp";
 import { useSession } from "@/lib/session";
 import { formatRating } from "@/lib/labels";
 import PlayTime from "@/components/ui/PlayTime";
@@ -29,6 +30,8 @@ import type {
  */
 export default function DashboardPage() {
   const session = useSession();
+  // 통계의 플레이타임 합계가 외부 일정에서도 나온다 — 돌아올 때(포커스)만 본다
+  useExternalPlayStamp();
   const facets = useApi<FacetsResponse>("/api/backlog/facets");
   const playtime = useApi<PlaytimeStats>("/api/stats/playtime");
   const spending = useApi<MonthlySpending>("/api/stats/spending/monthly");
