@@ -8,17 +8,20 @@ export default function Pagination({
   page,
   totalPages,
   onChange,
+  className = "mt-12 mb-8",
 }: {
   page: number;
   totalPages: number;
   onChange: (page: number) => void;
+  /** 위아래 여백 — 팝업 안에서는 줄인다 */
+  className?: string;
 }) {
   if (totalPages <= 1) return null;
 
   const slots = pageSlots(page, totalPages);
 
   return (
-    <nav className="mt-12 mb-8 flex items-center justify-center space-x-2 text-sm">
+    <nav className={`${className} flex items-center justify-center space-x-2 text-sm`}>
       <button
         onClick={() => onChange(page - 1)}
         disabled={page === 0}

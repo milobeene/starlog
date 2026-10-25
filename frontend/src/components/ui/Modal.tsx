@@ -1,6 +1,18 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+
+/*
+ * 겹쳐 뜬 팝업 중 **맨 위 하나만** Esc를 받는다 (점수·플레이타임 → 기록 목록 → 기록 수정).
+ * 팝업마다 document 리스너를 달면 한 번의 Esc가 전부 닫는다 — 게다가 onClose가 인라인 함수라
+ * 렌더마다 리스너를 다시 달면 순서가 뒤집혀 아래 팝업이 먼저 반응하기도 한다.
+ * 그래서 리스너는 **하나**만 두고, 스택의 맨 위 팝업의 최신 onClose를 부른다.
+ * 팝업이 아닌 것(DateField·Dropdown 등)은 capture에서 전파를 끊으므로 여기까지 오지 않는다
+ */
+const stack: { close: () => void }[] = [];
+const onEscape = (event: KeyboardEvent) => {
+  if (event.key === "Escape") stack[stack.length - 1]?.close();
+};
 
 /**
  * 다이얼로그 껍데기. `<dialog>`를 안 쓰는 이유 — 브라우저 기본 백드롭이
@@ -27,13 +39,19 @@ export default function Modal({
   /** 높이를 최대(85vh)로 고정한다 — 메모처럼 본문을 입력칸이 꽉 채우는 팝업용. 본문은 세로 flex라 `flex-1` 자식이 채운다 */
   tall?: boolean;
 }) {
+  const closeRef = useRef(onClose);
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+    closeRef.current = onClose;
+  });
+  useEffect(() => {
+    const entry = { close: () => closeRef.current() };
+    if (stack.length === 0) document.addEventListener("keydown", onEscape);
+    stack.push(entry);
+    return () => {
+      stack.splice(stack.indexOf(entry), 1);
+      if (stack.length === 0) document.removeEventListener("keydown", onEscape);
     };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+  }, []);
 
   return (
     <div
@@ -50,11 +68,7 @@ export default function Modal({
       >
         <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-6 py-4">
           <h3 className="text-sm font-semibold tracking-wide text-white/90 uppercase">{title}</h3>
-          <button
-            onClick={onClose}
-            aria-label="닫기"
-            className="text-white/40 transition-colors hover:text-white"
-          >
+          <button onClick={onClose} aria-label="닫기" className="text-white/40 transition-colors hover:text-white">
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
             </svg>

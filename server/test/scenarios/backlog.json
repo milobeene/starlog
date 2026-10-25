@@ -2057,8 +2057,8 @@
    "method": "GET",
    "path": "/api/backlog/81/play-records",
    "save": {
-    "adj81": "0.recordId",
-    "base81": "1.recordId"
+    "adj81": "items.0.recordId",
+    "base81": "items.1.recordId"
    },
    "note": "앞의 '개인 기록 — 반올림'이 16.5시간 → 12.35시간을 ADJUST -249분으로 남겼다"
   },
@@ -2292,7 +2292,7 @@
    "path": "/api/backlog/89/play-records"
   },
   {
-   "name": "플레이 기록 — 기록 없는 항목 목록 (빈 배열)",
+   "name": "플레이 기록 — 기록 없는 항목 목록 (items 빈 배열)",
    "method": "GET",
    "path": "/api/backlog/95/play-records"
   },

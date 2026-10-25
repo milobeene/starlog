@@ -45,7 +45,7 @@ npm run bundle         # → ../desktop/server/main.mjs
 | 금액 | `money(amount, currency)`·`scale2`·`amountJson`·`compareAmount` — **부동소수 금지** |
 | 시각 | `nowKst()`·`todayKst()` — **DB `now()` 금지** (세션 시간대가 UTC면 9시간 밀린다) |
 | 응답 | `ldt()`(timestamp → `"…T…"`)·`page()` (`src/common/json.ts`) |
-| 플레이타임 | `domains/backlog/playtime.ts` — **기록(`play_record`) + 끝난 homeops 일정(`homeops_play_log`)의 합이 원본**, `backlog_entry.play_time_hours`는 캐시. 기록을 바꾸면 `syncPlayTime`, 기동 때 `syncAllPlayTimes`. 계산은 0.1분 정수(BigInt) |
+| 플레이타임 | `domains/backlog/playtime.ts` — **기록(`play_record`) + 끝난 homeops 일정(`homeops_play_log`)의 합이 원본**, `backlog_entry.play_time_hours`는 캐시. 기록을 바꾸면 `syncPlayTime`, 기동 때 `syncAllPlayTimes`. 계산은 0.1분 정수(BigInt). 목록 `GET …/play-records?page&size`(기본 10)는 두 표를 **한 SQL `union all`로 합쳐** 쪽으로 자른다 — 순서 날짜·시각·출처·번호(번호가 두 표에서 겹쳐서 출처까지 있어야 쪽이 안 흔들린다), 응답은 `page()` 모양 |
 | 프로필 | `findProfile(d)` (`domains/member/profile.ts`) — `member` 테이블의 **한 행**. 주인·소유권 개념이 없다 (V14) |
 
 ## 함정 (이전하면서 실측으로 찾은 것)

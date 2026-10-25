@@ -8,15 +8,17 @@
  *
  * 단위는 분이고 소수 첫째 자리까지다(V15 머리말). 계산은 **0.1분 단위 정수(BigInt)** 로만 한다.
  */
-import { and, asc, desc, eq, lte, sql } from "drizzle-orm";
+import { and, asc, eq, lte, sql } from "drizzle-orm";
 import type { Db } from "../../db/client";
 import { backlogEntry, homeopsPlayLog, playRecord } from "../../db/schema";
 import { InvalidInput, NotFound } from "../../common/errors";
 import { nowKst, todayKst } from "../../common/clock";
-import { ldt } from "../../common/json";
+import { ldt, page as pageOf } from "../../common/json";
 import { setScale } from "../../common/money";
 import { normalize } from "../../common/text";
 import { saveIfChanged } from "../../db/changes";
+import { one, rows } from "../../db/raw";
+import { normalizePage, normalizeSize } from "./query";
 import { findAliveEntry404, findAliveEntryForUpdate, saveEntryIfChanged, type EntryRow } from "./shared";
 
 export const PLAY_RECORD_KINDS = ["BASELINE", "ADJUST", "ADD"] as const;
@@ -145,32 +147,39 @@ export interface PlayRecordView {
   counted: boolean;
 }
 
-/** 두 출처를 합쳐 최신순 — 날짜, 같은 날이면 STARLOG는 만든 시각·homeops는 시작 시각, 그다음 번호 */
-export async function listPlayRecords(d: Db, entryId: number): Promise<PlayRecordView[]> {
+/**
+ * 두 출처를 합쳐 최신순, 쪽으로 자른다. 쪽 경계가 출처를 가로지르므로 **한 SQL**(`union all` + order + limit)이어야 한다.
+ * 순서 — 날짜, 같은 날이면 STARLOG는 만든 시각·homeops는 시작 시각, 그다음 출처·번호(번호는 두 표가 따로 매겨 겹친다).
+ * 마지막 둘이 있어야 쪽을 넘나들 때 같은 줄이 겹치거나 빠지지 않는다
+ */
+export async function listPlayRecords(d: Db, entryId: number, page: number, size: number) {
   await findAliveEntry404(d, entryId);
+  const p = normalizePage(page), s = normalizeSize(size);
   const now = nowKst();
-  const own = await d.select().from(playRecord).where(eq(playRecord.backlogEntryId, entryId))
-    .orderBy(desc(playRecord.playedOn), desc(playRecord.createdAt), desc(playRecord.id));
-  const theirs = await d.select().from(homeopsPlayLog).where(eq(homeopsPlayLog.backlogEntryId, entryId))
-    .orderBy(desc(homeopsPlayLog.startedAt), desc(homeopsPlayLog.id));
+  const list = await rows<{
+    recordId: number; source: "STARLOG" | "HOMEOPS"; kind: PlayRecordKind | "HOMEOPS"; minutes: string;
+    playedOn: string; startedAt: string | null; endedAt: string | null; note: string | null; counted: boolean;
+  }>(d, sql`select * from (
+      select id as "recordId", 'STARLOG' as source, kind, minutes::text as minutes, played_on as "playedOn",
+             null::timestamp as "startedAt", null::timestamp as "endedAt", note, true as counted, created_at as at
+        from play_record where backlog_entry_id = ${entryId}
+      union all
+      select id, 'HOMEOPS', 'HOMEOPS', minutes::text, started_at::date, started_at, ended_at, label,
+             ended_at <= ${now}::timestamp, started_at
+        from homeops_play_log where backlog_entry_id = ${entryId}
+    ) r order by r."playedOn" desc, r.at desc nulls last, r.source desc, r."recordId" desc
+    limit ${s} offset ${p * s}`);
+  const total = (await one<{ n: number }>(d, sql`select
+      (select count(*) from play_record where backlog_entry_id = ${entryId})::int
+    + (select count(*) from homeops_play_log where backlog_entry_id = ${entryId})::int as n`))!.n;
 
-  const items: (PlayRecordView & { at: string })[] = [
-    ...own.map((r) => ({
-      recordId: r.id, source: "STARLOG" as const, kind: r.kind as PlayRecordKind,
-      minutes: Number(r.minutes), playedOn: r.playedOn, startedAt: null, endedAt: null, note: r.note,
-      editable: true, counted: true, at: r.createdAt ?? "",
-    })),
-    ...theirs.map((h) => ({
-      recordId: h.id, source: "HOMEOPS" as const, kind: "HOMEOPS" as const,
-      minutes: h.minutes, playedOn: h.startedAt.slice(0, 10), startedAt: ldt(h.startedAt), endedAt: ldt(h.endedAt),
-      note: h.label, editable: false, counted: h.endedAt <= now, at: h.startedAt,
-    })),
-  ];
-  items.sort((a, b) => cmp(b.playedOn, a.playedOn) || cmp(b.at, a.at) || b.recordId - a.recordId);
-  return items.map(({ at: _at, ...view }) => view);
+  const items: PlayRecordView[] = list.map((r) => ({
+    recordId: r.recordId, source: r.source, kind: r.kind, minutes: Number(r.minutes), playedOn: r.playedOn,
+    startedAt: ldt(r.startedAt), endedAt: ldt(r.endedAt), note: r.note,
+    editable: r.source === "STARLOG", counted: r.counted,
+  }));
+  return pageOf(items, p, s, total);
 }
-
-const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 // ───────────── STARLOG 기록 쓰기 ─────────────
 

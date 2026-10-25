@@ -128,6 +128,27 @@
    "path": "/api/backlog/${a}/play-records"
   },
   {
+   "name": "쪽 — 0쪽, 2건씩 (최신순 앞 둘)",
+   "method": "GET",
+   "path": "/api/backlog/${a}/play-records?page=0&size=2"
+  },
+  {
+   "name": "쪽 — 1쪽, 2건씩 (0쪽과 겹치지 않는다)",
+   "method": "GET",
+   "path": "/api/backlog/${a}/play-records?page=1&size=2"
+  },
+  {
+   "name": "쪽 — 범위 밖 (items 빈 배열, totalElements는 그대로)",
+   "method": "GET",
+   "path": "/api/backlog/${a}/play-records?page=9&size=2"
+  },
+  {
+   "name": "쪽 — 음수 쪽·0건 크기는 0쪽·1건으로",
+   "method": "GET",
+   "path": "/api/backlog/${a}/play-records?page=-1&size=0",
+   "note": "다른 목록(/api/backlog)과 같은 보정"
+  },
+  {
    "name": "상세 A — 10분",
    "method": "GET",
    "path": "/api/backlog/${a}"

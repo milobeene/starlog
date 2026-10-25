@@ -16,7 +16,6 @@ import DetailSkeleton from "@/components/detail/DetailSkeleton";
 import { GameInformationCard, HowLongToBeatCard, TagCard } from "@/components/detail/InfoCards";
 import NotesSection from "@/components/detail/NotesSection";
 import PlaythroughSection from "@/components/detail/PlaythroughSection";
-import PlaytimeSection from "@/components/detail/PlaytimeSection";
 import PurchaseSection from "@/components/detail/PurchaseSection";
 import SummaryStats from "@/components/detail/SummaryStats";
 import type { DetailDialog } from "@/components/detail/detailDialog";
@@ -137,9 +136,6 @@ function BacklogDetail() {
                 ongoingRun={ongoingRun}
                 onOpen={setDialog}
               />
-
-              {/* 회차 바로 아래 — 둘 다 "언제 얼마나 했나"라 붙어 있어야 읽힌다 (v2 S4) */}
-              <PlaytimeSection entryId={data.entryId} onOpen={setDialog} />
 
               <PurchaseSection acquisitions={data.acquisitions} onOpen={setDialog} />
 

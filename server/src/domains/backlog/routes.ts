@@ -400,10 +400,12 @@ routes.put("/api/backlog/:entryId/genres", async (c) => {
 
 // ───────────── 플레이타임 기록 (v2 S4) ─────────────
 
-/** STARLOG 기록 + homeops 일정, 최신순. homeops 것은 `editable: false` — 고치는 길이 아예 없다(표가 다르다) */
+/** STARLOG 기록 + homeops 일정, 최신순, 쪽으로. homeops 것은 `editable: false` — 고치는 길이 아예 없다(표가 다르다) */
 routes.get("/api/backlog/:entryId/play-records", async (c) => {
   const entryId = pathId(c, "entryId");
-  return c.json(await db().transaction((tx) => listPlayRecords(tx, entryId)));
+  const q = query(c);
+  const page = q.int("page", 0), size = q.int("size", 10);
+  return c.json(await db().transaction((tx) => listPlayRecords(tx, entryId, page, size)));
 });
 
 /** 추가(ADD)만. 직접 수정(ADJUST)은 개인 기록 저장에서 합계가 바뀔 때 생긴다 */

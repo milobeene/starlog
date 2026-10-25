@@ -150,7 +150,7 @@ export interface PersonalRecord {
   memo: string | null;
 }
 
-/* ── 플레이타임 기록 (GET /api/backlog/{entryId}/play-records, v2 S4) ── */
+/* ── 플레이타임 기록 (GET /api/backlog/{entryId}/play-records?page&size → `PageResponse<PlayRecord>`, v2 S4) ── */
 
 /**
  * BASELINE 기존 기록(이전 때 합계 한 줄) · ADJUST 직접 수정(차이) · ADD 추가 — STARLOG가 쓴다.

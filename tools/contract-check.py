@@ -55,7 +55,8 @@ ENDPOINTS = [
     # v1.0 6·7단계 — 로컬 저장 경로. 커버는 위치에 따라 응답 모양이 갈린다
     ("/api/backlog/{entry}/screenshots", "ScreenshotResponse", "[]"),
     # v2 S4 — 플레이타임 기록 (STARLOG 기록 + homeops 일정)
-    ("/api/backlog/{entry}/play-records", "PlayRecord", "[]"),
+    ("/api/backlog/{entry}/play-records?size=1", "PageResponse", ""),
+    ("/api/backlog/{entry}/play-records?size=1", "PlayRecord", "items[]"),
 ]
 
 def parse_interfaces(text):
