@@ -17,7 +17,7 @@ export const HOMEOPS_ROLE = "homeops_writer";
 /**
  * homeops 계정이 있으면 권한을 맞춘다. 여러 번 줘도 같아서 매 기동 돈다 —
  * 계정을 나중에 만들어도 STARLOG를 한 번 열면 붙는다. 없으면(로컬 세이브·연계 전) 아무것도 안 한다.
- * 쓰기는 `homeops_play_log` 하나, 읽기는 뷰 하나 — 나머지 표는 계속 못 본다
+ * 쓰기는 `homeops_play_log` 하나, 읽기는 뷰 하나, 일반 기록으로 넘기기 함수 하나 — 나머지 표는 계속 못 본다
  */
 export async function grantHomeops(d: Db): Promise<boolean> {
   const { schema, has_role } = (await one<{ schema: string; has_role: boolean }>(d,
@@ -27,6 +27,7 @@ export async function grantHomeops(d: Db): Promise<boolean> {
   await d.execute(sql`grant usage on schema ${sql.identifier(schema)} to ${role_}`);
   await d.execute(sql`grant select on homeops_game_choice to ${role_}`);
   await d.execute(sql`grant select, insert, update, delete on homeops_play_log to ${role_}`);
+  await d.execute(sql`grant execute on function homeops_release(text[]) to ${role_}`);
   return true;
 }
 

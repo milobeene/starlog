@@ -79,7 +79,7 @@ export default function PlaytimeHistoryDialog({
               <tr
                 key={`${record.source}-${record.recordId}`}
                 onClick={record.editable ? () => setEditing(record) : undefined}
-                title={record.editable ? undefined : "homeops 캘린더의 일정입니다. 캘린더에서 고쳐 주세요"}
+                title={record.editable ? undefined : "외부 캘린더에서 들어온 일정입니다. 그 캘린더에서 고쳐 주세요"}
                 className={`transition-colors ${record.editable ? "cursor-pointer hover:bg-white/[0.05]" : ""} ${
                   record.counted ? "" : "opacity-45"
                 }`}

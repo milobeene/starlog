@@ -44,4 +44,25 @@ describe("homeops 합계 캐시 다시 맞추기", () => {
     expect(await refreshHomeopsTotals(d)).toBe(0);
     await o.close();
   }, 30_000);
+
+  it("마지막 일정이 지워지면 합계도 비운다 — 일정이 없어진 항목도 한 번은 다시 본다", async () => {
+    const o = await openDb({ kind: "pglite", dir: "memory://homeops-last" });
+    await migrate(o);
+    const d = o.db;
+    const now = nowKst();
+    const [g] = await d.insert(game).values({ source: "MANUAL", name: "ZZ", createdAt: now, updatedAt: now }).returning();
+    const [e] = await d.insert(backlogEntry).values({
+      gameId: g!.id, status: "BACKLOG", displayName: "ZZ", createdAt: "2020-01-01 00:00:00", updatedAt: "2020-01-01 00:00:00",
+    }).returning();
+    await d.insert(homeopsPlayLog).values({ backlogEntryId: e!.id, externalId: "only", startedAt: "2020-01-02 10:00:00", endedAt: "2020-01-02 10:30:00", minutes: 30 });
+    await refreshHomeopsTotals(d);
+    expect((await d.select().from(backlogEntry).where(eq(backlogEntry.id, e!.id)))[0]!.playTimeHours).toBe("0.50");
+
+    await d.delete(homeopsPlayLog).where(eq(homeopsPlayLog.externalId, "only"));
+    expect(await refreshHomeopsTotals(d)).toBe(1);
+    expect((await d.select().from(backlogEntry).where(eq(backlogEntry.id, e!.id)))[0]!.playTimeHours).toBeNull();
+    // 다 맞춘 뒤엔 대상이 비어 쿼리 하나로 끝난다
+    expect(await refreshHomeopsTotals(d)).toBe(0);
+    await o.close();
+  }, 30_000);
 });

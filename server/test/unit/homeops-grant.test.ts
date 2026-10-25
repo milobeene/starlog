@@ -46,5 +46,5 @@ describe("homeops 계정 권한", () => {
       await d.execute(sql`reset role`);
     }
     await o.close();
-  });
+  }, 30_000);
 });

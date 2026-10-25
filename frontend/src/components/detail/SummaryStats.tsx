@@ -23,32 +23,30 @@ export default function SummaryStats({
   const { resolved, personalRecord } = data;
 
   return (
-    // 연필은 격자 밖에 둔다 — 칸이 늘면 nth-child 선 규칙이 어긋난다
-    <div className="relative mb-10">
-      <div className="absolute top-1 right-0 z-10">
-        <EditPencil label="점수·플레이타임 수정" onClick={() => onOpen({ kind: "stats" })} />
+    // 연필은 격자 밖에 둔다 — 칸이 늘면 nth-child 선 규칙이 어긋난다. 구획 높이만큼 세워서 눈에 띄게
+    <div className="mb-10 flex gap-3 border-t-line border-b-line py-6">
+      <div className="grid flex-1 grid-cols-2 md:grid-cols-4 [&>*]:border-white/15 [&>*:nth-child(2n)]:border-l [&>*:nth-child(n+3)]:border-t md:[&>*]:border-l md:[&>*:first-child]:border-l-0 md:[&>*:nth-child(n+3)]:border-t-0">
+        <Stat
+          label="Total Playtime"
+          value={<PlayTime hours={personalRecord.playTimeHours} unitClassName="text-[0.6em] text-white/60" />}
+        />
+        <Stat label="Playthroughs" value={data.playthroughs.length} />
+        <Stat
+          label="My Rating"
+          value={
+            personalRecord.rating == null ? (
+              "—"
+            ) : (
+              <span className="inline-flex items-center gap-1.5">
+                <StarIcon className="h-[0.8em] w-[0.8em] -translate-y-[1px] text-white/35" />
+                {formatRating(personalRecord.rating)}
+              </span>
+            )
+          }
+        />
+        <Stat label="Release Date" value={resolved.releasedOn ?? "—"} />
       </div>
-    <div className="grid grid-cols-2 border-t-line border-b-line py-6 md:grid-cols-4 [&>*]:border-white/15 [&>*:nth-child(2n)]:border-l [&>*:nth-child(n+3)]:border-t md:[&>*]:border-l md:[&>*:first-child]:border-l-0 md:[&>*:nth-child(n+3)]:border-t-0">
-      <Stat
-        label="Total Playtime"
-        value={<PlayTime hours={personalRecord.playTimeHours} unitClassName="text-[0.6em] text-white/60" />}
-      />
-      <Stat label="Playthroughs" value={data.playthroughs.length} />
-      <Stat
-        label="My Rating"
-        value={
-          personalRecord.rating == null ? (
-            "—"
-          ) : (
-            <span className="inline-flex items-center gap-1.5">
-              <StarIcon className="h-[0.8em] w-[0.8em] -translate-y-[1px] text-white/35" />
-              {formatRating(personalRecord.rating)}
-            </span>
-          )
-        }
-      />
-      <Stat label="Release Date" value={resolved.releasedOn ?? "—"} />
-    </div>
+      <EditPencil tall label="점수·플레이타임 수정" onClick={() => onOpen({ kind: "stats" })} />
     </div>
   );
 }

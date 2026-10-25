@@ -121,17 +121,25 @@ export async function syncAllPlayTimes(d: Db): Promise<number> {
 /**
  * homeops 일정이 **앱이 도는 중에** 끝나면(또는 클라우드에서 homeops가 그사이 쓰면) 캐시가 낡는다 — 읽기 전에 맞춘다.
  * 낡은 캐시를 화면이 "지금까지"의 기준값으로 보여 주면, 그 값으로 저장할 때 끝난 일정 몫이 ADJUST로 지워진다.
- * 일정이 있는 항목만 본다 (없으면 쿼리 하나로 끝)
+ *
+ * 대상 = 지금 일정이 있는 항목 + **지난번에 있던 항목.** 지금 것만 보면 마지막 일정이 지워진 항목이 대상에서 빠져
+ * 합계가 옛 값에 멈춘다 (homeops에서 마지막 일정을 지웠을 때 실제로 났다). 기억은 프로세스 안에만 —
+ * 꺼진 동안 지워진 건 기동 때 전체 재계산(`syncAllPlayTimes`)이 맞춘다
  */
+let homeopsSeen = new Set<number>();
+
 export async function refreshHomeopsTotals(d: Db): Promise<number> {
-  const ids = await d.selectDistinct({ id: homeopsPlayLog.backlogEntryId }).from(homeopsPlayLog);
-  if (ids.length === 0) return 0;
+  const now = new Set((await d.selectDistinct({ id: homeopsPlayLog.backlogEntryId }).from(homeopsPlayLog)).map((r) => r.id));
+  const targets = [...new Set([...now, ...homeopsSeen])];
+  if (targets.length === 0) return 0;
   const sums = await sumsByEntry(d, nowKst());
-  const entries = await d.select().from(backlogEntry).where(inArray(backlogEntry.id, ids.map((r) => r.id)));
+  const entries = await d.select().from(backlogEntry).where(inArray(backlogEntry.id, targets));
   let changed = 0;
   for (const e of entries) {
     if (await saveEntryIfChanged(d, e, { playTimeHours: totalOf(sums.get(e.id)) })) changed++;
   }
+  // 맞춘 뒤에 바꾼다 — 중간에 실패하면 다음 조회가 같은 대상을 다시 본다
+  homeopsSeen = now;
   return changed;
 }
 
