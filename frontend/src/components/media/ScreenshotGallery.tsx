@@ -2,17 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import Dropdown from "@/components/ui/Dropdown";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
 import { Button, FIELD_SELECT } from "@/components/ui/Field";
 import MediaThumb, { PlayBadge } from "@/components/media/MediaThumb";
+import ShareMenu from "@/components/media/ShareMenu";
 import MediaViewer from "@/components/library/MediaViewer";
 import { api, errorMessage, qs } from "@/lib/api";
 import { backendUrl } from "@/lib/apiBase";
-import { getBridge } from "@/lib/desktop";
 import { usePick } from "@/lib/usePick";
-import { putTask } from "@/lib/tasks";
 import { invalidateQueries } from "@/lib/useApi";
 import type { GalleryItem, GalleryResponse } from "@/lib/types";
 
@@ -51,10 +49,16 @@ function formatTaken(iso: string | null): string {
  */
 export default function ScreenshotGallery({
   initialEntryId,
+  initialGameName,
   onClose,
 }: {
   /** null이면 모든 게임 */
   initialEntryId: number | null;
+  /**
+   * 상세에서 열 때 그 게임의 이름. 서버의 `games`는 파일 있는 게임만 주므로, 파일이 0개인 게임은
+   * 이 이름이 있어야 드롭다운에 보인다
+   */
+  initialGameName?: string;
   onClose: () => void;
 }) {
   const [entryId, setEntryId] = useState<number | null>(initialEntryId);
@@ -67,7 +71,6 @@ export default function ScreenshotGallery({
   const [viewing, setViewing] = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const media = getBridge()?.media;
   /* 선택 상태는 상세의 스크린샷 구역과 같은 훅이다. 목록이 올 때 비우는 건 아래 fetch가 한다 */
   const { selectMode, setSelectMode, selected, allSelected, pick, toggleAll, clear: clearPick, cancel: cancelSelect } =
     usePick(data?.items.length ?? 0);
@@ -98,12 +101,23 @@ export default function ScreenshotGallery({
   const games = data?.games;
   const items = useMemo(() => data?.items ?? [], [data]);
 
+  /*
+   * 드롭다운에 올릴 게임 — 서버 목록 + (파일이 0개인) 처음 열린 게임. 처음 게임은 파일이 없어도
+   * 늘 고를 수 있어야 한다: 비어 있는 갤러리에서 "이 게임 비었다"를 보여주는 게 이 모드의 전부다
+   */
+  const options = useMemo(() => {
+    const list = games ?? [];
+    if (initialEntryId === null || !initialGameName || !games || list.some((g) => g.entryId === initialEntryId)) return list;
+    return [...list, { entryId: initialEntryId, gameName: initialGameName, imageCount: 0, videoCount: 0 }]
+      .sort((a, b) => a.gameName.localeCompare(b.gameName));
+  }, [games, initialEntryId, initialGameName]);
+
   /* 고르고 있던 게임의 파일이 전부 지워지면 드롭다운에 없는 값이 남는다 — 전체로 돌아간다 */
   useEffect(() => {
-    if (entryId !== null && games && games.length > 0 && !games.some((g) => g.entryId === entryId)) {
+    if (entryId !== null && options.length > 0 && !options.some((g) => g.entryId === entryId)) {
       queueMicrotask(() => setEntryId(null));
     }
-  }, [games, entryId]);
+  }, [options, entryId]);
 
   /* 종류 알약에 붙일 개수 — 서버의 `games`가 필터와 무관한 전체라서 거기서 더한다 */
   const counts = useMemo(() => {
@@ -155,52 +169,6 @@ export default function ScreenshotGallery({
     }
   };
 
-  const toast = (title: string, ok: boolean, message?: string) =>
-    putTask({ id: "media-share", kind: "media-share", title, result: { ok, message } });
-
-  const copyChosen = async () => {
-    if (!media || chosen.length !== 1) return;
-    const { entryId: id, fileName } = chosen[0];
-    try {
-      const result = await media.copy({ entryId: id, fileName });
-      if (result.ok) {
-        toast(
-          result.as === "image" ? "이미지를 클립보드에 복사했습니다" : "파일을 클립보드에 복사했습니다",
-          true,
-          result.as === "file" ? "이미지가 아니어서 파일로 복사됐습니다. 탐색기(Finder)에 붙여넣을 수 있습니다." : undefined,
-        );
-      } else {
-        toast(
-          "복사하지 못했습니다",
-          false,
-          result.reason === "NOT_FOUND"
-            ? "파일을 찾을 수 없습니다. 폴더에서 지워졌는지 확인해 주세요."
-            : "복사할 수 없는 형식입니다. 폴더에 저장을 이용해 주세요.",
-        );
-      }
-    } catch (caught) {
-      toast("복사하지 못했습니다", false, errorMessage(caught, "잠시 후 다시 시도해 주세요."));
-    }
-  };
-
-  const saveChosen = async () => {
-    if (!media || chosen.length === 0) return;
-    try {
-      const result = await media.saveTo(chosen.map((i) => ({ entryId: i.entryId, fileName: i.fileName })));
-      if (result.canceled) return;
-      const failed = result.failed.length;
-      toast(
-        failed === 0
-          ? `${result.saved.length}개를 저장했습니다`
-          : `${result.saved.length}개를 저장하고 ${failed}개는 저장하지 못했습니다`,
-        failed === 0,
-        result.folder,
-      );
-    } catch (caught) {
-      toast("저장하지 못했습니다", false, errorMessage(caught, "잠시 후 다시 시도해 주세요."));
-    }
-  };
-
   /* 크게 보기는 늘 원본이다. 전 게임 모드에서는 어느 게임 것인지 이름에 붙인다 */
   const viewerItems = useMemo(
     () =>
@@ -242,7 +210,7 @@ export default function ScreenshotGallery({
             className={`${FIELD_SELECT} min-w-0 flex-1 sm:max-w-xs sm:flex-none`}
           >
             <option value="">모든 게임</option>
-            {(games ?? []).map((game) => (
+            {options.map((game) => (
               <option key={game.entryId} value={game.entryId}>
                 {game.gameName} ({game.imageCount + game.videoCount})
               </option>
@@ -287,48 +255,7 @@ export default function ScreenshotGallery({
                 {allSelected ? "전체 선택 해제" : "전체 선택"}
               </Button>
             )}
-            {/* 공유는 일렉트론에서만 — 브라우저는 로컬 파일 접근과 폴더 선택이 없다 */}
-            {media && (
-              <Dropdown
-                align="right"
-                panelClassName="w-64"
-                trigger={() => (
-                  <span
-                    aria-disabled={selected.size === 0}
-                    className={`block rounded-md border border-white/15 px-3 py-2 text-xs font-medium tracking-widest whitespace-nowrap text-white/80 uppercase transition-all hover:bg-white/10 hover:text-white sm:px-4 ${
-                      selected.size === 0 ? "pointer-events-none opacity-40" : ""
-                    }`}
-                  >
-                    공유
-                  </span>
-                )}
-              >
-                {(close) => (
-                  <>
-                    <button
-                      className="menu-item flex-col !items-start !gap-0 disabled:pointer-events-none disabled:opacity-40"
-                      disabled={chosen.length !== 1}
-                      onClick={() => {
-                        close();
-                        void copyChosen();
-                      }}
-                    >
-                      클립보드 복사
-                      <span className="text-[11px] text-white/35">한 개만 선택했을 때 사용할 수 있습니다</span>
-                    </button>
-                    <button
-                      className="menu-item"
-                      onClick={() => {
-                        close();
-                        void saveChosen();
-                      }}
-                    >
-                      폴더에 저장…
-                    </button>
-                  </>
-                )}
-              </Dropdown>
-            )}
+            <ShareMenu targets={chosen.map((i) => ({ entryId: i.entryId, fileName: i.fileName }))} />
             <Button variant="danger" disabled={selected.size === 0} onClick={() => setConfirmDelete(true)}>
               삭제
             </Button>
@@ -357,8 +284,12 @@ export default function ScreenshotGallery({
           </div>
         ) : items.length === 0 ? (
           <EmptyState
-            title={kind === "ALL" ? "스크린샷이 없습니다" : "이 종류의 미디어가 없습니다"}
-            hint="게임 상세 화면에서 이미지와 영상을 올릴 수 있습니다."
+            title={kind === "ALL" ? "아직 스크린샷이 없습니다" : "이 종류의 미디어가 없습니다"}
+            hint={
+              entryId === null
+                ? "게임 상세 화면의 Screenshots 구역에 파일을 끌어다 놓거나, 클립보드에 있으면 ⌘V로 붙여 넣을 수 있습니다."
+                : "이 게임의 상세 화면에서 파일을 끌어다 놓거나, 클립보드에 있으면 ⌘V로 붙여 넣을 수 있습니다."
+            }
           />
         ) : (
           <div

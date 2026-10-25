@@ -156,11 +156,13 @@ export interface StarlogBridge {
   };
   /**
    * 스크린샷 공유 (F5). 옛 preload에는 없을 수 있다 → 부르는 쪽은 `?.`로 쓴다.
-   * 한 번에 한 파일씩만 복사된다 — 클립보드가 한 칸이다
+   * `copy`는 하나면 그림(PNG·JPEG) 또는 파일, **둘 이상이면 전부 파일 참조**다 (최대 500)
    */
   media?: {
-    copy(target: MediaTarget): Promise<
-      { ok: true; as: "image" | "file" } | { ok: false; reason: "NOT_FOUND" | "UNSUPPORTED" }
+    copy(target: MediaTarget | MediaTarget[]): Promise<
+      | { ok: true; as: "image" | "file"; count: number }
+      | { ok: false; reason: "NOT_FOUND"; failed: MediaTarget[] }
+      | { ok: false; reason: "UNSUPPORTED" }
     >;
     /** 호출할 때마다 폴더를 묻는다. 취소하면 `canceled: true` */
     saveTo(targets: MediaTarget[]): Promise<

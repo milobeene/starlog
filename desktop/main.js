@@ -766,11 +766,19 @@ function registerIpc() {
     return out;
   }
 
-  ipcMain.handle("media:copy", async (event, ref) => {
+  /**
+   * `target`은 `{entryId, fileName}` 하나 또는 그 배열이다 (최대 `MAX_COPY`). **하나라도 못 풀면 아무것도 안 복사한다** —
+   * 일부만 붙은 채로 성공처럼 보이면 사람이 모른다
+   */
+  ipcMain.handle("media:copy", async (event, target) => {
     assertFromApp(event);
-    const [{ file }] = await resolveMediaRefs([ref]);
-    if (!file) return { ok: false, reason: "NOT_FOUND" };
-    return media.copyToClipboard(file);
+    const refs = Array.isArray(target) ? target : [target];
+    if (refs.length > media.MAX_COPY) throw new Error("한 번에 복사할 수 있는 개수를 넘었습니다");
+    const resolved = await resolveMediaRefs(refs);
+    const failed = resolved.filter((r) => !r.file).map((r) => r.label);
+    if (failed.length > 0) return { ok: false, reason: "NOT_FOUND", failed };
+    // 같은 파일을 두 번 고른 요청은 한 번으로 — 붙여넣을 때 중복되지 않게
+    return media.copyToClipboard([...new Set(resolved.map((r) => r.file))]);
   });
 
   /** 저장할 폴더는 **매번** 고른다 (사용자 결정) — 마지막 폴더를 기억해 조용히 쏟아붓지 않는다 */

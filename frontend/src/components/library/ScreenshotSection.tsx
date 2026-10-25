@@ -15,6 +15,7 @@ import { getBridge } from "@/lib/desktop";
 import MediaViewer from "./MediaViewer";
 import MediaThumb, { PlayBadge } from "@/components/media/MediaThumb";
 import ScreenshotGallery from "@/components/media/ScreenshotGallery";
+import ShareMenu from "@/components/media/ShareMenu";
 
 /**
  * 게임별 스크린샷 (v1.0 7단계, architecture §10-1).
@@ -41,7 +42,7 @@ type Shot = {
   thumbUrl: string | null;
 };
 
-export default function ScreenshotSection({ entryId }: { entryId: number }) {
+export default function ScreenshotSection({ entryId, gameName }: { entryId: number; gameName?: string }) {
   /** 펼침 상태를 여기서 든다 — 버튼이 제목 줄에 있어서 Collapsible 밖이다 */
   const [expanded, setExpanded] = useState(false);
   /** 접을 만큼 긴가. Collapsible이 실제로 재서 알려준다 — 장수로 어림하면 창 폭에 따라 틀린다 */
@@ -129,6 +130,11 @@ export default function ScreenshotSection({ entryId }: { entryId: number }) {
             <Button onClick={toggleAll}>{allSelected ? "전체 선택 해제" : "전체 선택"}</Button>
           )}
           {selectMode && (
+            <ShareMenu
+              targets={[...selected].sort((x, y) => x - y).flatMap((i) => (shots?.[i] ? [{ entryId, fileName: shots[i].fileName }] : []))}
+            />
+          )}
+          {selectMode && (
             <Button variant="danger" disabled={selected.size === 0 || busy} onClick={() => setConfirmDelete(true)}>
               삭제
             </Button>
@@ -151,15 +157,14 @@ export default function ScreenshotSection({ entryId }: { entryId: number }) {
               폴더 열기
             </button>
           )}
-          {shots && shots.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setGalleryOpen(true)}
-              className="rounded-md px-2.5 py-2 text-[11px] font-normal text-white/50 transition-colors hover:bg-white/5 hover:text-white"
-            >
-              전체 화면
-            </button>
-          )}
+          {/* 0개여도 연다 — 갤러리가 빈 상태를 보여주고, 다른 게임으로 넘어갈 수도 있다 */}
+          <button
+            type="button"
+            onClick={() => setGalleryOpen(true)}
+            className="rounded-md px-2.5 py-2 text-[11px] font-normal text-white/50 transition-colors hover:bg-white/5 hover:text-white"
+          >
+            전체 화면
+          </button>
           {/*
             펼치기가 **제목 줄로 올라왔다** (v1.1.3). 내용 아래에 있으면 스크린샷이
             수십 장일 때 버튼이 화면 밖으로 밀려 손이 안 닿는다
@@ -269,6 +274,7 @@ export default function ScreenshotSection({ entryId }: { entryId: number }) {
       {galleryOpen && (
         <ScreenshotGallery
           initialEntryId={entryId}
+          initialGameName={gameName}
           onClose={() => setGalleryOpen(false)}
         />
       )}

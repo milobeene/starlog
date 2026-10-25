@@ -7,6 +7,7 @@ import { useMemo, useRef, useState } from "react";
 import { invalidateQueries, useApi } from "@/lib/useApi";
 import { api } from "@/lib/api";
 import { Skeleton } from "@/components/ui/Skeleton";
+import ScreenshotGallery from "@/components/media/ScreenshotGallery";
 import { useDragAutoScroll } from "@/components/library/useDragAutoScroll";
 import { coverSrc } from "@/lib/cover";
 import type { BacklogCard, BacklogName, FacetsResponse } from "@/lib/types";
@@ -53,6 +54,9 @@ export default function LibrarySidebar() {
     setOpenedFor(currentId);
     if (open) setOpen(false);
   }
+
+  /** 모든 게임의 스크린샷 갤러리 (F5). 상세 화면에서는 그 게임으로 여는 쪽이 따로 있다 */
+  const [galleryOpen, setGalleryOpen] = useState(false);
 
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   /** 드래그가 얹혀 있는 그룹. 놓을 자리를 눈에 보이게 한다 */
@@ -375,15 +379,33 @@ export default function LibrarySidebar() {
         )}
       </div>
 
-      <div className="shrink-0 border-t border-white/10 p-3">
+      <div className="flex shrink-0 gap-2 border-t border-white/10 p-3">
         <Link
           href="/add"
-          className="flex w-full items-center justify-center gap-2 rounded-md border border-white/15 py-2.5 text-sm font-medium transition-all hover:bg-white hover:text-black"
+          className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-md border border-white/15 py-2.5 text-sm font-medium whitespace-nowrap transition-all hover:bg-white hover:text-black"
         >
           Add Game <span className="text-lg leading-none">+</span>
         </Link>
+        {/* 글자 없이 아이콘만 — 드로어 폭(16rem)에서 Add Game과 나란히 두려는 것. 같은 줄이라 높이는 늘어나 맞는다 */}
+        <button
+          type="button"
+          onClick={() => {
+            setOpen(false);   // 드로어가 열려 있었다면 갤러리를 닫았을 때 목록이 덮고 있지 않게
+            setGalleryOpen(true);
+          }}
+          aria-label="스크린샷"
+          title="스크린샷"
+          className="flex shrink-0 items-center justify-center rounded-md border border-white/15 px-3.5 transition-all hover:bg-white hover:text-black"
+        >
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.75" d="M3 7a2 2 0 012-2h2.5l1.2-1.5h6.6L16.5 5H19a2 2 0 012 2v11a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+            <circle cx="12" cy="12.5" r="3.5" strokeWidth="1.75" />
+          </svg>
+        </button>
       </div>
     </aside>
+
+    {galleryOpen && <ScreenshotGallery initialEntryId={null} onClose={() => setGalleryOpen(false)} />}
     </>
   );
 }

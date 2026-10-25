@@ -24,6 +24,7 @@ const { clipboard, nativeImage } = require("electron");
 const fs = require("fs");
 const path = require("path");
 const { pathToFileURL } = require("url");
+const { execFile } = require("child_process");
 
 const THUMB_DIR = ".thumbs";
 const IMAGE_EXT = new Set([".jpg", ".jpeg", ".png", ".webp"]);
@@ -151,28 +152,74 @@ function handleServerMessage(message, mediaRoot, reply) {
 
 // ───────────── 클립보드 · 내보내기 ─────────────
 
+/** 한 번에 클립보드에 올릴 수 있는 개수. 화면이 한 번에 고를 수 있는 것보다 넉넉하되 끝은 있게 */
+const MAX_COPY = 500;
+
+const plistEscape = (text) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/** 맥이 파인더·메신저에 파일 여러 개로 내미는 옛 형식 — 경로 배열 plist */
+function filenamesPlist(files) {
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n`
+    + `<plist version="1.0">\n<array>\n${files.map((f) => `\t<string>${plistEscape(f)}</string>`).join("\n")}\n</array>\n</plist>\n`;
+}
+
 /**
- * 클립보드로. 사진은 **그림 자체**를(채팅·편집기에 붙는다), 그림으로 못 푸는 것(WebP·영상)은
- * **파일 참조**를 넣는다(파인더·탐색기·디스코드에 파일로 붙는다).
- *
- * 파일 참조는 OS마다 형식이 다르다 — 맥 `public.file-url`(확인함), 윈도우 `FileNameW`(미확인).
- * 그 밖의 OS는 못 한다고 답한다
+ * 윈도우는 `CF_HDROP`(탐색기가 붙이는 형식)이어야 하는데, 그건 **이름 없는 정수 형식(15)** 이라
+ * `clipboard.writeBuffer`(이름으로 형식을 등록한다)로는 못 쓴다. PowerShell `Set-Clipboard -LiteralPath`가
+ * 정확히 그걸 쓴다. 경로는 명령줄에 끼우지 않고 **환경변수(JSON)** 로 건넨다 — 인용·한글 문제가 없다
  */
-function copyToClipboard(file) {
-  if (kindOf(file) === "image") {
-    const image = nativeImage.createFromPath(file);
-    if (!image.isEmpty()) {
-      clipboard.writeImage(image);
-      return { ok: true, as: "image" };
+function setClipboardFilesWindows(files) {
+  return new Promise((resolve) => {
+    const script = "Set-Clipboard -LiteralPath ([string[]](ConvertFrom-Json $env:STARLOG_CLIP_FILES))";
+    // PATH에서 찾지 않는다 — 앞선 폴더에 놓인 다른 powershell.exe가 잡히지 않게 시스템 경로로
+    const exe = path.join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+    execFile(exe, ["-NoProfile", "-NonInteractive", "-Sta", "-Command", script],
+      { env: { ...process.env, STARLOG_CLIP_FILES: JSON.stringify(files) }, timeout: 15000, windowsHide: true },
+      (error) => resolve(!error));
+  });
+}
+
+/**
+ * 클립보드로. 인자는 `mediaFileInside`를 통과한 실제 경로의 배열이다.
+ *
+ * - **하나**: 사진은 **그림 자체**(채팅·편집기에 붙는다), 그림으로 못 푸는 것(WebP·영상)은 **파일 참조**
+ * - **둘 이상**: 전부 **파일 참조** — 클립보드는 그림을 한 장밖에 못 든다
+ *
+ * 파일 참조는 OS마다 다르다 — 맥 `public.file-url`(하나)·`NSFilenamesPboardType`(여럿), 윈도우 `FileNameW`(하나)·
+ * `CF_HDROP`(여럿). 맥은 확인했고 윈도우는 미확인. 그 밖의 OS는 못 한다고 답한다
+ *
+ * ⚠️ 맥에서 `NSFilenamesPboardType`만 쓴다. `public.file-url`을 같이 쓰면 OS가 첫 파일 하나짜리로 합쳐 버린다
+ * (실측: 단독이면 항목 3개, 같이 쓰면 1개)
+ */
+async function copyToClipboard(files) {
+  if (files.length === 1) {
+    const file = files[0];
+    if (kindOf(file) === "image") {
+      const image = nativeImage.createFromPath(file);
+      if (!image.isEmpty()) {
+        clipboard.writeImage(image);
+        return { ok: true, as: "image", count: 1 };
+      }
     }
+    if (process.platform === "darwin") {
+      clipboard.writeBuffer("public.file-url", Buffer.from(pathToFileURL(file).href, "utf8"));
+      return { ok: true, as: "file", count: 1 };
+    }
+    if (process.platform === "win32") {
+      clipboard.writeBuffer("FileNameW", Buffer.from(`${file}\0`, "ucs2"));
+      return { ok: true, as: "file", count: 1 };
+    }
+    return { ok: false, reason: "UNSUPPORTED" };
   }
   if (process.platform === "darwin") {
-    clipboard.writeBuffer("public.file-url", Buffer.from(pathToFileURL(file).href, "utf8"));
-    return { ok: true, as: "file" };
+    clipboard.clear();   // 앞에 있던 그림·글이 같이 붙지 않게
+    clipboard.writeBuffer("NSFilenamesPboardType", Buffer.from(filenamesPlist(files), "utf8"));
+    return { ok: true, as: "file", count: files.length };
   }
   if (process.platform === "win32") {
-    clipboard.writeBuffer("FileNameW", Buffer.from(`${file}\0`, "ucs2"));
-    return { ok: true, as: "file" };
+    return (await setClipboardFilesWindows(files))
+      ? { ok: true, as: "file", count: files.length }
+      : { ok: false, reason: "UNSUPPORTED" };
   }
   return { ok: false, reason: "UNSUPPORTED" };
 }
@@ -215,4 +262,4 @@ function saveFiles(files, folder) {
   return { saved, failed };
 }
 
-module.exports = { THUMB_DIR, kindOf, mediaFileInside, makeThumbnail, handleServerMessage, copyToClipboard, saveFiles, freeName };
+module.exports = { THUMB_DIR, MAX_COPY, kindOf, mediaFileInside, makeThumbnail, handleServerMessage, copyToClipboard, saveFiles, freeName };

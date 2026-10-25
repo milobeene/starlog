@@ -117,10 +117,12 @@ contextBridge.exposeInMainWorld("starlog", {
    */
   media: {
     /**
-     * 클립보드로. 사진은 그림으로(`as: "image"`), WebP·영상은 파일 참조로(`as: "file"`, 맥·윈도우).
-     * @returns `{ ok: true, as }` | `{ ok: false, reason: "NOT_FOUND" | "UNSUPPORTED" }`
+     * 클립보드로. `{entryId, fileName}` 하나 또는 그 배열(최대 500).
+     * 하나면 사진은 그림으로(`as: "image"`), WebP·영상은 파일 참조로(`as: "file"`). **둘 이상이면 전부 파일 참조**.
+     * 하나라도 못 찾으면 아무것도 복사하지 않는다
+     * @returns `{ ok: true, as, count }` | `{ ok: false, reason: "NOT_FOUND", failed: [{entryId, fileName}] }` | `{ ok: false, reason: "UNSUPPORTED" }`
      */
-    copy: (ref) => ipcRenderer.invoke("media:copy", ref),
+    copy: (target) => ipcRenderer.invoke("media:copy", target),
     /**
      * 폴더를 **매번** 골라 복사한다. 이름이 겹치면 `001 (1).png`. 덮어쓰지 않는다
      * @returns `{ canceled: true }` | `{ canceled: false, folder, saved: [{entryId, fileName, savedAs}], failed: [{entryId, fileName, reason}] }`
