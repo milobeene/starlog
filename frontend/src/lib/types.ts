@@ -610,7 +610,9 @@ export interface SystemStatus {
     sizeBytes: number | null;
     totalBytes: number | null;
     coverBytes: number;
+    coverCount: number;
     mediaBytes: number;
+    mediaCount: number;
   };
   /** 호출 기록 보존 기간. 화면이 "N일치만 보관합니다"로 쓴다 */
   retentionDays: number;

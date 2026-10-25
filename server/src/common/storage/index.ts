@@ -244,26 +244,28 @@ export function localList(directory: string): string[] {
 }
 
 /**
- * 폴더 하나의 실제 크기 (하위 폴더 포함). 실패하면 0 — 시스템 화면이 이것 때문에 죽으면 안 된다.
+ * 폴더 하나의 실제 크기와 파일 수 (하위 폴더 포함). 실패하면 0 — 시스템 화면이 이것 때문에 죽으면 안 된다.
  * 썸네일 폴더(`.thumbs`)는 안 센다 — 사용자가 올린 것이 아니라 캐시다
  */
-export function folderSize(dir: string): number {
-  if (!isDirectory(dir)) return 0;
+export function folderStats(dir: string): { bytes: number; files: number } {
+  if (!isDirectory(dir)) return { bytes: 0, files: 0 };
   try {
-    let total = 0;
+    let total = 0, files = 0;
     const walk = (d: string) => {
       for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        // 점 파일(.DS_Store·._*)은 OS가 남긴 것 — 갤러리도 안 보여 주는데 크기에만 잡히면 "다 지웠는데 6KB"가 된다
+        if (e.name.startsWith(".")) continue;
         const p = path.join(d, e.name);
         if (e.isDirectory()) { if (e.name !== THUMB_DIR) walk(p); }
         else {
-          try { const st = fs.lstatSync(p); if (st.isFile()) total += st.size; } catch { /* 못 읽는 파일은 0으로 센다 */ }
+          try { const st = fs.lstatSync(p); if (st.isFile()) { total += st.size; files++; } } catch { /* 못 읽는 파일은 0으로 센다 */ }
         }
       }
     };
     walk(dir);
-    return total;
+    return { bytes: total, files };
   } catch {
-    return 0;
+    return { bytes: 0, files: 0 };
   }
 }
 

@@ -19,7 +19,7 @@ import { ExternalApi, InvalidInput, NotFound, TooManyRequests } from "../../comm
 import { nowKst } from "../../common/clock";
 import { ldt } from "../../common/json";
 import { config } from "../../config";
-import { coversDir, folderSize, mediaDir, storageHasCredentials } from "../../common/storage";
+import { coversDir, folderStats, mediaDir, storageHasCredentials } from "../../common/storage";
 import { isJavaBlank, javaStrip } from "../../common/text";
 
 // ───────────── 호출 기록 ─────────────
@@ -377,14 +377,19 @@ export async function systemStatus(d: Db = db()) {
   const storage = { coverCount: Number(covers!.n), totalBytes: Number(covers!.bytes), configured: storageHasCredentials() };
 
   // 커버 = 로컬 폴더 + DB에 담긴 커버(V17). 기본 위치가 DB라 폴더만 재면 늘 비어 보인다 — DB 몫은 세이브 크기에도 들어 있다
-  const [dbCovers] = await d.select({ bytes: sql<string>`coalesce(sum(${coverImage.sizeBytes}), 0)` }).from(coverImage)
+  const [dbCovers] = await d.select({ n: count(), bytes: sql<string>`coalesce(sum(${coverImage.sizeBytes}), 0)` }).from(coverImage)
     .where(eq(coverImage.location, "DB"));
+  const localCovers = folderStats(coversDir());
+  const media = folderStats(mediaDir());
   const database = {
     product: "PostgreSQL",   // PGlite·Neon 둘 다 Postgres다
     sizeBytes: await myTablesSize(d),
     totalBytes: await databaseSize(d),
-    coverBytes: folderSize(coversDir()) + Number(dbCovers!.bytes),
-    mediaBytes: folderSize(mediaDir()),
+    coverBytes: localCovers.bytes + Number(dbCovers!.bytes),
+    coverCount: localCovers.files + Number(dbCovers!.n),
+    mediaBytes: media.bytes,
+    // 스크린샷·영상 파일 수 (썸네일 캐시 제외)
+    mediaCount: media.files,
   };
 
   const used = await translationUsage(d);

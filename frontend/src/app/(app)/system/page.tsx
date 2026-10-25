@@ -152,8 +152,8 @@ function UsageTab() {
               ) : null
             }
           />
-          <Stat label="커버" value={<Bytes bytes={database.coverBytes} />} />
-          <Stat label="스크린샷" value={<Bytes bytes={database.mediaBytes} />} />
+          <Stat label="커버" value={<Bytes bytes={database.coverBytes} />} hint={`${database.coverCount.toLocaleString()}장`} />
+          <Stat label="스크린샷" value={<Bytes bytes={database.mediaBytes} />} hint={`${database.mediaCount.toLocaleString()}개 (영상 포함)`} />
         </div>
         {database.sizeBytes === null && (
           <p className="mt-2 text-[11px] text-white/30">
