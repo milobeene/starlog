@@ -376,11 +376,14 @@ export async function systemStatus(d: Db = db()) {
     .where(eq(coverImage.location, "EXTERNAL"));
   const storage = { coverCount: Number(covers!.n), totalBytes: Number(covers!.bytes), configured: storageHasCredentials() };
 
+  // 커버 = 로컬 폴더 + DB에 담긴 커버(V17). 기본 위치가 DB라 폴더만 재면 늘 비어 보인다 — DB 몫은 세이브 크기에도 들어 있다
+  const [dbCovers] = await d.select({ bytes: sql<string>`coalesce(sum(${coverImage.sizeBytes}), 0)` }).from(coverImage)
+    .where(eq(coverImage.location, "DB"));
   const database = {
     product: "PostgreSQL",   // PGlite·Neon 둘 다 Postgres다
     sizeBytes: await myTablesSize(d),
     totalBytes: await databaseSize(d),
-    coverBytes: folderSize(coversDir()),
+    coverBytes: folderSize(coversDir()) + Number(dbCovers!.bytes),
     mediaBytes: folderSize(mediaDir()),
   };
 
