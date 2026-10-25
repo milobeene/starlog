@@ -7,10 +7,12 @@ import { useEffect, useRef } from "react";
  * 팝업마다 document 리스너를 달면 한 번의 Esc가 전부 닫는다 — 게다가 onClose가 인라인 함수라
  * 렌더마다 리스너를 다시 달면 순서가 뒤집혀 아래 팝업이 먼저 반응하기도 한다.
  * 그래서 리스너는 **하나**만 두고, 스택의 맨 위 팝업의 최신 onClose를 부른다.
- * 팝업이 아닌 것(DateField·Dropdown 등)은 capture에서 전파를 끊으므로 여기까지 오지 않는다
+ * 팝업이 아닌 것(DateField·Dropdown·Combobox 등)은 열려 있을 때 capture에서 전파를 끊으므로 여기까지 오지 않는다
  */
 const stack: { close: () => void }[] = [];
 const onEscape = (event: KeyboardEvent) => {
+  // 한글 조합 중 Esc는 조합 취소다 — 팝업까지 닫으면 쓰던 글이 날아간다
+  if (event.isComposing || event.keyCode === 229) return;
   if (event.key === "Escape") stack[stack.length - 1]?.close();
 };
 
@@ -30,6 +32,7 @@ export default function Modal({
   footer,
   width = "max-w-lg",
   tall = false,
+  dismissible = true,
 }: {
   title: string;
   onClose: () => void;
@@ -38,13 +41,21 @@ export default function Modal({
   width?: string;
   /** 높이를 최대(85vh)로 고정한다 — 메모처럼 본문을 입력칸이 꽉 채우는 팝업용. 본문은 세로 flex라 `flex-1` 자식이 채운다 */
   tall?: boolean;
+  /**
+   * false면 Esc·바깥 누르기로는 안 닫힌다 (×·취소 버튼만). 길게 쓴 글이 있는 팝업용 —
+   * 손이 미끄러진 Esc 한 번에 5,000자 메모가 확인 없이 날아갔다
+   */
+  dismissible?: boolean;
 }) {
   const closeRef = useRef(onClose);
+  const dismissRef = useRef(dismissible);
   useEffect(() => {
     closeRef.current = onClose;
+    dismissRef.current = dismissible;
   });
   useEffect(() => {
-    const entry = { close: () => closeRef.current() };
+    // 맨 위가 못 닫히는 팝업이면 Esc는 아무것도 안 한다 — 아래 팝업으로 넘기지도 않는다
+    const entry = { close: () => dismissRef.current && closeRef.current() };
     if (stack.length === 0) document.addEventListener("keydown", onEscape);
     stack.push(entry);
     return () => {
@@ -57,7 +68,7 @@ export default function Modal({
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-6 backdrop-blur-[2px]"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (event.target === event.currentTarget && dismissible) onClose();
       }}
     >
       <div

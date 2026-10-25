@@ -26,7 +26,9 @@ const SORTS = {
   lastPlayed: sql`b.last_played_on desc nulls last`,
   rating: sql`b.rating desc nulls last`,
   releasedOn: sql`b.released_on_resolved desc nulls last`,
-  name: sql`b.display_name asc`,
+  // 정렬 키(V5 — 숫자·기호 → 영문 → 한글 → 그 밖, 대소문자 무시)로. 이름 그대로면 DB 콜레이션을 타서 PGlite(C)와
+  // Neon(en_US)의 순서가 갈린다. 키가 같으면(대소문자만 다름) 이름으로
+  name: sql`b.display_name_sort_key asc nulls last, b.display_name asc`,
   playtime: sql`b.play_time_hours desc nulls last`,
 } as const;
 export type BacklogSort = keyof typeof SORTS;

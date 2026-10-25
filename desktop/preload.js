@@ -11,7 +11,7 @@
  *
  * 전부 **백엔드가 뜨기 전에** 필요한 일이다 (architecture §2의 경계표).
  * 기준은 "재시작이 필요한가"다 — DB·스토리지는 부팅 때 조립되므로 이쪽,
- * IGDB 키는 런타임에 바꿔도 되므로 앱 안(스프링 API).
+ * IGDB 키는 런타임에 바꿔도 되므로 앱 안(서버 API).
  *
  * ⚠️ **자격증명은 가린 채로 온다** (보안 점검 2026-10-25). 오타를 확인해야 하는 값이라(결정 63)
  * 눈 버튼은 그대로 있다 — 누를 때 `connections.reveal`로 그 칸 하나만 받아온다.
@@ -133,14 +133,17 @@ if (trustedOrigin()) contextBridge.exposeInMainWorld("starlog", {
 
   connections: {
     list: () => ipcRenderer.invoke("connections:list"),
-    /** 가린 값(`••••abcd`)을 그대로 두면 저장된 진짜 값이 유지된다. 이름을 고쳤으면 `{ previousName }` */
+    /**
+     * 가린 값(`••••abcd`)을 그대로 두면 저장된 진짜 값이 유지된다. 고치는 항목이면 `{ previousName }` —
+     * 이름을 바꿨으면 그 항목을 제자리에서 바꾼다. 다른 연결과 이름이 겹치면 거절한다
+     */
     save: (profile, options) => ipcRenderer.invoke("connections:save", profile, options),
     remove: (name) => ipcRenderer.invoke("connections:remove", name),
     /** 눈 버튼 — 칸 하나(`"db.password"` 등)의 진짜 값 */
     reveal: (name, field) => ipcRenderer.invoke("connections:reveal", name, field),
     /**
-     * @param options `{ scope, previousName }`. 입구는 전부, 앱 안은 DB·스토리지만 —
-     *                IGDB·번역은 앱 안에서 각자 버튼으로 따로 시험한다
+     * @param options `{ scope, previousName }`. `"all"`은 넷 다, `"db"`·`"storage"`는 그 하나만.
+     *                DB는 열어 보기만 한다(스키마를 만들지 않는다)
      */
     test: (profile, options) => ipcRenderer.invoke("connections:test", profile, options),
   },
@@ -164,16 +167,20 @@ if (trustedOrigin()) contextBridge.exposeInMainWorld("starlog", {
     saveTo: (refs) => ipcRenderer.invoke("media:saveTo", refs),
   },
 
-  /** 백엔드를 띄우고 진단까지 통과하면 창이 본 앱으로 넘어간다 */
+  /**
+   * 백엔드를 띄운다. 성공하면 `{ ok, port }` — 창은 안 옮기고 화면이 그 포트로 스스로 들어간다.
+   * `{ resume: true }`면 [최근 접속]이다 — 없어진 세이브·연결은 새로 만들지 않고 거절한다
+   */
   launch: (request) => ipcRenderer.invoke("launch", request),
+  /** 기동 대기 중의 [취소]. 띄우던 서버를 내린다 */
+  cancelLaunch: () => ipcRenderer.invoke("launch:cancel"),
+  /** 앱 안에서 서버가 죽어 입구로 왔을 때의 이유 (한 번 가져가면 지워진다) */
+  takeLaunchError: () => ipcRenderer.invoke("launch:takeError"),
 
   /**
-   * 본 앱 → 입구로 되돌아간다. 창만 `app://`로 다시 로드한다.
+   * 본 앱 → 입구로 되돌아간다. 메인은 `go-entry`를 알리기만 하고 옮기는 건 화면 라우터가 한다.
    *
    * ⚠️ **백엔드는 안 죽인다** (9단계). 그래야 [최근 접속]이 즉시 복귀다
-   *
-   * 이 preload는 본 앱(`http://127.0.0.1:포트`)에도 붙는다 — 같은 창이니까.
-   * 그래서 앱 안에서도 이 함수를 부를 수 있고, 그게 5단계의 모드 전환 전부다
    */
   backToEntry: () => ipcRenderer.invoke("backToEntry"),
 

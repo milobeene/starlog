@@ -59,15 +59,24 @@ type PtLike = Pick<PlaythroughRow, "id" | "sequenceNo" | "startedOn" | "finished
 export const lastActivityOn = (p: Pick<PtLike, "startedOn" | "finishedOn">) => p.finishedOn ?? p.startedOn;
 
 /**
- * 최신 회차 = COALESCE(종료일, 시작일) 최대, 같으면 번호 큰 쪽 — 번호가 아니라 날짜가 정한다.
+ * 최신 회차 = COALESCE(종료일, 시작일) 최대 — 번호가 아니라 날짜가 정한다.
+ * 같은 날이면 **진행 중인 것 → 시작일이 늦은 것 → 번호 큰 쪽**. 같은 날 맞닿는 회차(BR-PT-02, 2026-10-25)가 생긴 뒤로
+ * "D에 끝난 회차"와 "D에 시작한 회차"가 같은 날로 겹친다 — 뒤의 것이 늦게 시작했으니 최신이다 (번호는 나중에 적은 과거 회차가 더 클 수 있다).
+ * 그 전엔 이런 동점이 생길 수 없어서 기존 데이터의 판정은 그대로다.
  * 회차가 없으면 **취득이 하나라도 있으면 BACKLOG**, 없으면 WISHLIST
  */
+function newer(p: PtLike, q: PtLike): boolean {
+  const a = lastActivityOn(p), b = lastActivityOn(q);
+  if (a !== b) return a > b;
+  if ((p.finishedOn === null) !== (q.finishedOn === null)) return p.finishedOn === null;
+  if (p.startedOn !== q.startedOn) return p.startedOn > q.startedOn;
+  return p.sequenceNo > q.sequenceNo;
+}
+
 export function deriveState(pts: readonly PtLike[], hasAcquisition: boolean) {
   let latest: PtLike | null = null;
   for (const p of pts) {
-    if (latest === null) { latest = p; continue; }
-    const a = lastActivityOn(p), b = lastActivityOn(latest);
-    if (a > b || (a === b && p.sequenceNo > latest.sequenceNo)) latest = p;
+    if (latest === null || newer(p, latest)) latest = p;
   }
   if (latest !== null) {
     return { status: latest.status, lastPlayedOn: lastActivityOn(latest), lastPlaythroughId: latest.id };
@@ -84,8 +93,10 @@ export async function acquisitionCount(d: Db, entryId: number): Promise<number> 
   return r?.n ?? 0;
 }
 
+const ENTRY_NUMERIC = ["rating", "playTimeHours", "listPriceOverrideAmount"] as const;
+
 export function saveEntryIfChanged(d: Db, before: EntryRow, after: Partial<EntryRow>) {
   return saveIfChanged(d, before, after, (patch) =>
-    d.update(backlogEntry).set(patch).where(eq(backlogEntry.id, before.id)));
+    d.update(backlogEntry).set(patch).where(eq(backlogEntry.id, before.id)), ENTRY_NUMERIC);
 }
 

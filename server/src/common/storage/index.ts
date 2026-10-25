@@ -291,8 +291,11 @@ export interface FileStoragePort {
   head(storageKey: string): Promise<StoredObject | null>;
   /** 앞부분 몇 바이트만 (매직 넘버 검사). 없으면 빈 배열 */
   readHead(storageKey: string, length: number): Promise<Uint8Array>;
-  /** 실패해도 던지지 않는다 — DB 커밋 **뒤에** 불린다 (K-4) */
-  delete(storageKey: string): Promise<void>;
+  /**
+   * 실패해도 던지지 않는다 — DB 커밋 **뒤에** 불린다 (K-4).
+   * 성공 true · 실패 false · 스토리지가 없어 **부르지도 않음** null (사용량 기록을 가르려고)
+   */
+  delete(storageKey: string): Promise<boolean | null>;
   /** 공개 조회 URL. 공개 주소가 없으면 null */
   publicUrl(storageKey: string): string | null;
   /** 자격증명이 **실제로 먹히는지**. 실패 사유, 성공이면 null */
@@ -309,7 +312,7 @@ const unconfigured: FileStoragePort = {
   async presignUpload() { throw new ExternalApi("FILE_STORAGE", UNCONFIGURED_MESSAGE); },
   async head() { throw new ExternalApi("FILE_STORAGE", UNCONFIGURED_MESSAGE); },
   async readHead() { throw new ExternalApi("FILE_STORAGE", UNCONFIGURED_MESSAGE); },
-  async delete() { /* 커밋 뒤에 불리므로 여기서 터지면 성공한 삭제가 실패로 보인다 */ },
+  async delete() { return null; /* 커밋 뒤에 불리므로 여기서 터지면 성공한 삭제가 실패로 보인다 */ },
   publicUrl() { return null; },
   async checkAccess() { return "스토리지 자격증명이 설정되지 않았습니다"; },
 };
@@ -417,12 +420,14 @@ class S3Storage implements FileStoragePort {
     }
   }
 
-  async delete(storageKey: string): Promise<void> {
+  async delete(storageKey: string): Promise<boolean> {
     try {
       await this.send("DELETE", storageKey);
+      return true;
     } catch (e) {
       // 던지지 않는다 — 연결 실패까지. DB 커밋 뒤라 던지면 성공한 삭제가 실패로 보인다. 남은 파일은 라이프사이클이 정리한다
       console.warn(`스토리지 파일 삭제 실패 — key=${storageKey} (고아 파일로 남는다)`, e);
+      return false;
     }
   }
 

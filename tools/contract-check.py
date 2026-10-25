@@ -5,16 +5,20 @@
 카드의 coverImageId 누락, options의 Ref(id,name)를 platformId로 읽음,
 검색 결과의 gameId가 null인데 그것만 보냄, 상세 DTO 전면 개편 미반영.
 
-**정적 비교(자바 record 파싱)가 아니라 실제 JSON을 받아서** 키를 맞춘다 —
-Jackson 직렬화·중첩·@JsonInclude까지 그대로 드러나기 때문이다.
+**정적 비교(서버 타입 파싱)가 아니라 실제 JSON을 받아서** 키를 맞춘다 —
+null 필드의 키·중첩까지 실제 직렬화 그대로 드러나기 때문이다.
 
 사용법:
     1) 백엔드를 실데이터로 띄운다 (cd server && npm run dev -- --fixture)
     2) python3 tools/contract-check.py [포트]
+       토큰을 거는 서버(데스크탑과 같은 설정)면 STARLOG_API_TOKEN=<토큰> 을 붙인다
+
+종료 코드: 불일치가 있거나, 서버에 못 붙었거나(401 포함), **한 건도 대조하지 못했으면 1.**
+예전엔 서버가 없어도 전부 "건너뜀"이 되고 "불일치 없음"·0으로 끝나서 통과로 읽혔다.
 
 새 엔드포인트를 만들면 아래 ENDPOINTS에 한 줄 추가한다.
 """
-import json, re, subprocess, sys, pathlib
+import json, os, re, subprocess, sys, pathlib
 
 # 포트를 인자로 바꿀 수 있다 — 이미 백엔드가 8080에 떠 있을 때 새 코드를 다른 포트에 띄워 대조한다
 BASE = f"http://localhost:{sys.argv[1] if len(sys.argv) > 1 else '8080'}"
@@ -80,12 +84,17 @@ def parse_interfaces(text):
         out[name] = fields
     return out
 
+TOKEN = os.environ.get("STARLOG_API_TOKEN")
+
 def fetch(path):
-    raw = subprocess.run(
-        ["curl", "-s", f"{BASE}{path}"],
-        capture_output=True, text=True).stdout
-    try: return json.loads(raw)
+    cmd = ["curl", "-s", "-w", "\n%{http_code}", f"{BASE}{path}"]
+    if TOKEN: cmd[2:2] = ["-H", f"X-Starlog-Token: {TOKEN}"]
+    raw = subprocess.run(cmd, capture_output=True, text=True).stdout
+    body, _, status = raw.rpartition("\n")
+    fetch.statuses.append(status)
+    try: return json.loads(body)
     except Exception: return None
+fetch.statuses = []
 
 def dig(data, path):
     for part in [p for p in path.split(".") if p]:
@@ -100,6 +109,16 @@ def dig(data, path):
     return data
 
 ifaces = parse_interfaces(TYPES.read_text())
+
+# 서버부터 본다 — 못 붙거나 거절당하면 아래 대조는 전부 "건너뜀"이 되어 의미가 없다
+_me = fetch("/api/me")
+_status = fetch.statuses[-1]
+if _status in ("000", ""):
+    print(f"서버에 붙지 못했습니다: {BASE}")
+    sys.exit(1)
+if _status in ("401", "403"):
+    print(f"서버가 거절했습니다 ({_status}) — 토큰이 필요하면 STARLOG_API_TOKEN을 주세요")
+    sys.exit(1)
 
 # 상세 대조용 id — 번호를 박아 두면 그 항목이 없는 DB에서 조용히 "건너뜀"이 된다. 첫 카드에서 고른다
 _first = (fetch("/api/backlog?size=1") or {}).get("items") or [{}]
@@ -138,5 +157,9 @@ if problems:
     print("── 불일치 ──")
     for iface, path, kind, msg in problems:
         print(f"  [{kind}] {iface}\n      {msg}\n      ← {path}")
+elif checked == 0:
+    print("대조한 것이 없습니다 — 데이터가 있는 서버(--fixture)로 띄웠는지 확인하세요")
 else:
     print("불일치 없음")
+
+sys.exit(1 if problems or checked == 0 else 0)

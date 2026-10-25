@@ -11,6 +11,15 @@ import { Conflict, NotFound } from "../../common/errors";
 import { nowKst } from "../../common/clock";
 import { normalize } from "../../common/text";
 
+/**
+ * 팔레트에 있는 이름만 받는다. 목록은 화면도 같은 것을 쓴다 —
+ * 한쪽만 늘리면 저장은 되는데 안 보이는 색이 생긴다. 가져오기(`member/import.ts`)도 이걸로 거른다
+ */
+export const PALETTE = [
+  "rose", "coral", "amber", "sand", "olive", "sage", "mint", "teal",
+  "sky", "denim", "lavender", "plum", "mauve", "clay",
+] as const;
+
 export type TagRow = typeof tag.$inferSelect;
 export type GenreRow = typeof genre.$inferSelect;
 

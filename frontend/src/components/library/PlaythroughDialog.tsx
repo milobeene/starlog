@@ -125,198 +125,201 @@ export default function PlaythroughDialog({
   };
 
   return (
-    <Modal
-      title={run ? `${run.sequenceNo}회차 수정` : "회차 추가"}
-      onClose={onClose}
-      footer={
-        <>
-          {/*
-            삭제는 **수정할 때만** 뜬다. 잘못 추가한 회차를 지울 방법이 여기밖에 없다 —
-            백엔드에는 진작 있었는데 화면이 없어 수정만 가능했다 (FR-PT-08)
-          */}
-          {run && (
-            <button
-              onClick={() => setRemoving(true)}
-              className="text-xs text-white/30 transition-colors hover:text-red-400"
+    <>
+      <Modal
+        title={run ? `${run.sequenceNo}회차 수정` : "회차 추가"}
+        onClose={onClose}
+        footer={
+          <>
+            {/*
+              삭제는 **수정할 때만** 뜬다. 잘못 추가한 회차를 지울 방법이 여기밖에 없다 —
+              백엔드에는 진작 있었는데 화면이 없어 수정만 가능했다 (FR-PT-08)
+            */}
+            {run && (
+              <button
+                onClick={() => setRemoving(true)}
+                className="text-xs text-white/30 transition-colors hover:text-red-400"
+              >
+                삭제
+              </button>
+            )}
+            {error && <span className="mr-auto text-xs text-red-400">{error}</span>}
+            {!error && run && <span className="mr-auto" />}
+            <Button onClick={onClose}>취소</Button>
+            <Button variant="primary" onClick={save} disabled={saving}>
+              {saving ? "저장 중" : "저장"}
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Started" composite>
+              <DateField value={startedOn} onChange={setStartedOn} />
+            </Field>
+            <Field label="Finished" hint="비워 두시면 진행 중으로 표시됩니다" composite>
+              <DateField value={finishedOn} onChange={setFinishedOn} />
+            </Field>
+          </div>
+
+          <Field label="Status" hint="이 값에 따라 게임 상태가 결정됩니다">
+            <select
+              value={status}
+              onChange={(event) => setStatus(event.target.value as PlaythroughStatus)}
+              className={FIELD_SELECT}
             >
-              삭제
-            </button>
-          )}
-          {error && <span className="mr-auto text-xs text-red-400">{error}</span>}
-          {!error && run && <span className="mr-auto" />}
-          <Button onClick={onClose}>취소</Button>
-          <Button variant="primary" onClick={save} disabled={saving}>
-            {saving ? "저장 중" : "저장"}
-          </Button>
-        </>
-      }
-    >
-      <div className="flex flex-col gap-4">
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Started" composite>
-            <DateField value={startedOn} onChange={setStartedOn} />
-          </Field>
-          <Field label="Finished" hint="비워 두시면 진행 중으로 표시됩니다" composite>
-            <DateField value={finishedOn} onChange={setFinishedOn} />
-          </Field>
-        </div>
-
-        <Field label="Status" hint="이 값에 따라 게임 상태가 결정됩니다">
-          <select
-            value={status}
-            onChange={(event) => setStatus(event.target.value as PlaythroughStatus)}
-            className={FIELD_SELECT}
-          >
-            {STATUSES.map((item) => (
-              <option key={item} value={item}>
-                {PLAYTHROUGH_STATUS_LABEL[item]}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Device">
-            <select value={deviceId} onChange={(e) => setDeviceId(e.target.value)} className={FIELD_SELECT}>
-              <option value="">선택 안 함</option>
-              {withCurrent(options?.devices ?? [], run?.device && { id: run.device.deviceId, name: run.device.name }).map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
+              {STATUSES.map((item) => (
+                <option key={item} value={item}>
+                  {PLAYTHROUGH_STATUS_LABEL[item]}
                 </option>
               ))}
             </select>
           </Field>
-          <Field label={runsOn === "platform" ? "Platform" : "Emulator"}>
-            {/*
-              토글 (v1.1). 플랫폼과 에뮬은 **동시에 고를 일이 없어서** 한 칸을 나눠 쓴다.
-              바꾸면 아래 계정을 비운다 — 안 그러면 "스위치 + 스팀 계정"이 남는다
-            */}
-            {runsOn === "platform" ? (
-              <select
-                value={platformId}
-                onChange={(e) => {
-                  setPlatformId(e.target.value);
-                  setAccountId("");
-                }}
-                className={FIELD_SELECT}
-              >
+
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Device">
+              <select value={deviceId} onChange={(e) => setDeviceId(e.target.value)} className={FIELD_SELECT}>
                 <option value="">선택 안 함</option>
-                {withCurrent(
-                  options?.platforms ?? [],
-                  run?.platform && { id: run.platform.platformId, name: run.platform.name },
-                ).map((item) => (
+                {withCurrent(options?.devices ?? [], run?.device && { id: run.device.deviceId, name: run.device.name }).map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}
                   </option>
                 ))}
               </select>
-            ) : (
-              <select
-                value={emulatorId}
-                onChange={(e) => {
-                  setEmulatorId(e.target.value);
-                  setAccountId("");
-                }}
-                className={FIELD_SELECT}
-              >
-                <option value="">선택 안 함</option>
-                {withCurrent(options?.emulators ?? [], run?.emulator && { id: run.emulator.emulatorId, name: run.emulator.name }).map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            )}
-            <div className="mt-1.5 flex gap-1">
-              {(["platform", "emulator"] as const).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => {
-                    setRunsOn(mode);
+            </Field>
+            <Field label={runsOn === "platform" ? "Platform" : "Emulator"}>
+              {/*
+                토글 (v1.1). 플랫폼과 에뮬은 **동시에 고를 일이 없어서** 한 칸을 나눠 쓴다.
+                바꾸면 아래 계정을 비운다 — 안 그러면 "스위치 + 스팀 계정"이 남는다
+              */}
+              {runsOn === "platform" ? (
+                <select
+                  value={platformId}
+                  onChange={(e) => {
+                    setPlatformId(e.target.value);
                     setAccountId("");
                   }}
-                  className={`rounded px-2 py-0.5 text-[10px] tracking-widest uppercase transition-colors ${
-                    runsOn === mode
-                      ? "bg-white/15 text-white"
-                      : "text-white/35 hover:bg-white/8 hover:text-white/70"
-                  }`}
+                  className={FIELD_SELECT}
                 >
-                  {mode === "platform" ? "플랫폼" : "에뮬"}
-                </button>
-              ))}
-            </div>
+                  <option value="">선택 안 함</option>
+                  {withCurrent(
+                    options?.platforms ?? [],
+                    run?.platform && { id: run.platform.platformId, name: run.platform.name },
+                  ).map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <select
+                  value={emulatorId}
+                  onChange={(e) => {
+                    setEmulatorId(e.target.value);
+                    setAccountId("");
+                  }}
+                  className={FIELD_SELECT}
+                >
+                  <option value="">선택 안 함</option>
+                  {withCurrent(options?.emulators ?? [], run?.emulator && { id: run.emulator.emulatorId, name: run.emulator.name }).map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <div className="mt-1.5 flex gap-1">
+                {(["platform", "emulator"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => {
+                      setRunsOn(mode);
+                      setAccountId("");
+                    }}
+                    className={`rounded px-2 py-0.5 text-[10px] tracking-widest uppercase transition-colors ${
+                      runsOn === mode
+                        ? "bg-white/15 text-white"
+                        : "text-white/35 hover:bg-white/8 hover:text-white/70"
+                    }`}
+                  >
+                    {mode === "platform" ? "플랫폼" : "에뮬"}
+                  </button>
+                ))}
+              </div>
+            </Field>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Account">
+              {/*
+                **소속을 먼저 고르게 잠근다** (v1.2, 취득 다이얼로그와 같은 규칙).
+                목록은 이미 고른 소속의 것만인데 잠그지 않으면, 소속이 비었을 때 선택지가
+                통째로 빈 채로 열려서 "계정이 하나도 없다"로 보인다
+              */}
+              <select
+                value={accountId}
+                onChange={(e) => setAccountId(e.target.value)}
+                className={FIELD_SELECT}
+                disabled={!owner}
+              >
+                <option value="">
+                  {owner
+                    ? "선택 안 함"
+                    : runsOn === "platform"
+                      ? "플랫폼을 먼저 고르세요"
+                      : "에뮬을 먼저 고르세요"}
+                </option>
+                {accountChoices.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Input">
+              <select value={inputMethodId} onChange={(e) => setInputMethodId(e.target.value)} className={FIELD_SELECT}>
+                <option value="">선택 안 함</option>
+                {withCurrent(options?.inputMethods ?? [], run?.inputMethod && { id: run.inputMethod.inputMethodId, name: run.inputMethod.name }).map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+
+          <Field label="Label" hint="예) 하드 모드, 친구와 협동">
+            <input
+              type="text"
+              value={label}
+              onChange={(event) => setLabel(event.target.value)}
+              maxLength={100}
+              className={FIELD_INPUT}
+            />
           </Field>
         </div>
+      </Modal>
 
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Account">
-            {/*
-              **소속을 먼저 고르게 잠근다** (v1.2, 취득 다이얼로그와 같은 규칙).
-              목록은 이미 고른 소속의 것만인데 잠그지 않으면, 소속이 비었을 때 선택지가
-              통째로 빈 채로 열려서 "계정이 하나도 없다"로 보인다
-            */}
-            <select
-              value={accountId}
-              onChange={(e) => setAccountId(e.target.value)}
-              className={FIELD_SELECT}
-              disabled={!owner}
-            >
-              <option value="">
-                {owner
-                  ? "선택 안 함"
-                  : runsOn === "platform"
-                    ? "플랫폼을 먼저 고르세요"
-                    : "에뮬을 먼저 고르세요"}
-              </option>
-              {accountChoices.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Input">
-            <select value={inputMethodId} onChange={(e) => setInputMethodId(e.target.value)} className={FIELD_SELECT}>
-              <option value="">선택 안 함</option>
-              {withCurrent(options?.inputMethods ?? [], run?.inputMethod && { id: run.inputMethod.inputMethodId, name: run.inputMethod.name }).map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </div>
-
-        {removing && (
-          <ConfirmDialog
-            title={`${run?.sequenceNo}회차 삭제`}
-            message={
-              <>
-                <b className="text-white">{run?.sequenceNo}회차</b> 기록을 삭제합니다. 되돌릴 수
-                없으며, 남은 회차의 번호는 다시 매겨지지 않습니다.
-              </>
-            }
-            onConfirm={async () => {
-              await api.del(`/api/playthroughs/${run!.playthroughId}`);
-              onSaved();
-              onClose();
-            }}
-            onClose={() => setRemoving(false)}
-          />
-        )}
-
-        <Field label="Label" hint="예) 하드 모드, 친구와 협동">
-          <input
-            type="text"
-            value={label}
-            onChange={(event) => setLabel(event.target.value)}
-            maxLength={100}
-            className={FIELD_INPUT}
-          />
-        </Field>
-      </div>
-    </Modal>
+      {/* 형제로 그린다 — 판넬 안이면 backdrop-filter가 fixed의 기준이 돼 딤·확인창이 판넬 안에 갇힌다 */}
+      {removing && (
+        <ConfirmDialog
+          title={`${run?.sequenceNo}회차 삭제`}
+          message={
+            <>
+              <b className="text-white">{run?.sequenceNo}회차</b> 기록을 삭제합니다. 되돌릴 수
+              없으며, 남은 회차의 번호는 다시 매겨지지 않습니다.
+            </>
+          }
+          onConfirm={async () => {
+            await api.del(`/api/playthroughs/${run!.playthroughId}`);
+            onSaved();
+            onClose();
+          }}
+          onClose={() => setRemoving(false)}
+        />
+      )}
+    </>
   );
 }
 

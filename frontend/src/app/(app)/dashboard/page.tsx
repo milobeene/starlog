@@ -41,7 +41,6 @@ export default function DashboardPage() {
   const playingCount = statuses.find((item) => item.status === "PLAYING")?.count ?? 0;
   const completionRate = totalGames > 0 ? ((completed / totalGames) * 100).toFixed(1) : "0.0";
 
-
   if (facets.error) return <ErrorNotice error={facets.error} onRetry={facets.reload} />;
 
   return (
@@ -73,7 +72,9 @@ export default function DashboardPage() {
           icon="play"
           value={facets.loading ? <Skeleton className="h-12 w-16" /> : playingCount}
           hint={
-            playing.data && playing.data.items.length > 0
+            playing.error && !playing.data
+              ? "진행 중인 목록을 불러오지 못했습니다"
+              : playing.data && playing.data.items.length > 0
               ? // 먼저 시작한 순 — 목록 API에는 이 정렬이 없어 회차 시작일로 여기서 세운다
                 [...playing.data.items]
                   .sort((a, b) =>
@@ -100,12 +101,17 @@ export default function DashboardPage() {
           value={
             playtime.loading ? (
               <Skeleton className="h-12 w-32" />
+            ) : playtime.error && !playtime.data ? (
+              // 실패를 "0분"으로 그리면 기록이 사라진 것처럼 보인다
+              "—"
             ) : (
               <PlayTime hours={playtime.data?.totalHours ?? 0} unitClassName="text-[0.6em] text-white/60" />
             )
           }
           hint={
-            playtime.data && playtime.data.recordedEntries === 0
+            playtime.error && !playtime.data
+              ? "플레이 시간을 불러오지 못했습니다"
+              : playtime.data && playtime.data.recordedEntries === 0
               ? "아직 기록된 플레이 시간이 없어"
               : "Time tracked across platforms"
           }
@@ -159,6 +165,8 @@ export default function DashboardPage() {
           <Skeleton className="h-72 w-full" />
         ) : completions.data ? (
           <MonthlyCompletionsChart data={completions.data} />
+        ) : completions.error ? (
+          <InlineError onRetry={completions.reload} />
         ) : null}
       </div>
 
@@ -168,9 +176,23 @@ export default function DashboardPage() {
           <Skeleton className="h-72 w-full" />
         ) : spending.data ? (
           <MonthlySpendingChart data={spending.data} />
+        ) : spending.error ? (
+          <InlineError onRetry={spending.reload} />
         ) : null}
       </div>
     </main>
+  );
+}
+
+/** 타일 하나가 실패했을 때 — 대시보드 전체를 에러로 바꾸지 않고 그 자리만 알린다 */
+function InlineError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="flex items-center gap-3 py-6 text-xs text-white/45">
+      불러오지 못했습니다.
+      <button onClick={onRetry} className="text-white/70 underline-offset-2 transition-colors hover:text-white hover:underline">
+        다시 시도
+      </button>
+    </div>
   );
 }
 
@@ -195,7 +217,7 @@ function GameRow({
   meta: (card: BacklogCard) => React.ReactNode;
   metaClassName?: string;
 }) {
-  const { data, loading } = useApi<PageResponse<BacklogCard>>(
+  const { data, loading, error, reload } = useApi<PageResponse<BacklogCard>>(
     `/api/backlog?sort=${sort}&size=10`,
   );
 
@@ -205,6 +227,8 @@ function GameRow({
       <SectionHeader title={title} />
       {loading ? (
         <RowSkeleton />
+      ) : error && !data ? (
+        <InlineError onRetry={reload} />
       ) : (
         /*
          * --card 하나로 칸 폭과 마스크 위치를 같이 정한다.

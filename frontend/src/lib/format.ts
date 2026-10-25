@@ -63,3 +63,15 @@ export function formatReleaseMonth(date: string | null | undefined): string | nu
   const m = date?.match(/^(\d{4})-(\d{2})/);
   return m ? `${m[1]}.${m[2]}` : null;
 }
+
+/**
+ * KST 날짜(`YYYY-MM-DD`). 서버는 KST로 날짜를 만든다(시계 규칙) — 맥의 시간대가 달라도
+ * 같은 날을 가리키게 화면의 "오늘"·찍은 날도 전부 이걸로 맞춘다
+ */
+export function kstDate(date: Date = new Date()): string {
+  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul" }).format(date);
+}
+
+export function todayKst(): string {
+  return kstDate();
+}

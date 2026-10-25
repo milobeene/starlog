@@ -67,9 +67,8 @@ function LibraryContent() {
   const searchParams = useSearchParams();
   // 대시보드의 "More →"가 sort를 들고 온다
   const linkSort = searchParams.get("sort");
-  const initialSort = linkSort ?? "lastPlayed";
-  // 첫 렌더에서만 정한다 — 아래에서 주소의 sort를 지운 뒤에도 "링크로 왔다"는 사실은 남아야 한다
-  const [fromLink] = useState(linkSort !== null);
+  // 모르는 값은 기본 정렬로 — 그대로 보내면 서버가 INVALID_INPUT을 내 목록 대신 에러가 뜬다
+  const initialSort = linkSort && (SORT_ORDER as readonly string[]).includes(linkSort) ? linkSort : "lastPlayed";
 
   /*
    * 돌아왔을 때 보던 화면으로 (v1.2). 상세에서 [Back to library]를 누르면
@@ -77,7 +76,9 @@ function LibraryContent() {
    * 단 sort를 들고 온 링크(대시보드 More)는 **새로 시작**한다 — 기억한 정렬·필터·폴더 보기가
    * 이기면 "평점순 더 보기"를 눌러도 지난번 화면이 뜬다
    */
-  const restored = fromLink ? null : takeLibrary();
+  // 마운트 때 한 번만 정한다 — 주소의 sort를 지운 뒤에도 "링크로 왔다"는 사실은 남아야 하고,
+  // 아래 effect가 매번 새로 기억하므로 렌더마다 꺼내면 "돌아온 상태"가 아니다
+  const [restored] = useState(() => (linkSort !== null ? null : takeLibrary()));
 
   // 링크의 sort는 한 번 쓰고 주소에서 뗀다 — 남겨 두면 상세에서 뒤로 올 때마다 또 새로 시작한다
   useEffect(() => {
@@ -85,7 +86,8 @@ function LibraryContent() {
   }, [linkSort, router]);
 
   const [query, setQuery] = useState(restored?.query ?? "");
-  const [debounced, setDebounced] = useState("");
+  // 되살린 검색어로 시작한다 — ""로 시작하면 첫 요청이 q 없이 나가고, 300ms 뒤 조건이 바뀌어 쪽이 0으로 튄다
+  const [debounced, setDebounced] = useState(restored?.query ?? "");
   const [sort, setSort] = useState(restored?.sort ?? initialSort);
   const [filters, setFilters] = useState<Filters>(restored?.filters ?? EMPTY_FILTERS);
   const [page, setPage] = useState(restored?.page ?? 0);
@@ -158,10 +160,22 @@ function LibraryContent() {
    * 돌아올 때마다 스켈레톤이 스친다 — 브라우저 뒤로가기가 즉시인 이유는
    * 그린 것을 그대로 다시 보여주기 때문이다.
    *
-   * 조건이 바뀌면(필터·페이지) 기억해둔 것은 남의 것이므로 안 쓴다
+   * 조건이 바뀌면(필터·검색어·정렬·페이지) 기억해둔 것은 남의 것이므로 안 쓴다 — 요청 주소로 대조한다
    */
-  const samePath = restored != null && restored.view === view && restored.page === page;
+  const samePath = restored != null && view === "grid" && restored.cardsPath === listPath;
   const cards = list.data ?? (samePath ? restored?.cards : null) ?? null;
+
+  /*
+   * 남은 쪽보다 뒤를 보고 있으면 마지막 쪽으로 — 마지막 쪽의 하나뿐인 게임을 상세에서 지우고 오면
+   * 서버는 빈 쪽을 주고, 그대로 그리면 다른 쪽에 게임이 있는데도 "담아 두신 게임이 없습니다"가 뜬다
+   */
+  const fresh = list.loading ? null : list.data;
+  useEffect(() => {
+    if (fresh && fresh.items.length === 0 && page > 0 && fresh.totalPages > 0) {
+      const last = fresh.totalPages - 1;
+      queueMicrotask(() => setPage(last));
+    }
+  }, [fresh, page]);
 
   useEffect(() => {
     /*
@@ -173,9 +187,11 @@ function LibraryContent() {
     rememberLibrary({
       view, filters, query, sort, page,
       openFolder: prev?.openFolder ?? null,
-      cards: list.data ?? null,
+      // 받는 중이면 옛 경로 값이라 이 주소의 것으로 기억하면 안 된다
+      cards: list.loading ? null : list.data,
+      cardsPath: listPath,
     });
-  }, [view, filters, query, sort, page, list.data]);
+  }, [view, filters, query, sort, page, list.data, list.loading, listPath]);
 
   // 제목·필터·그리드가 한 덩어리로 스크롤한다. 따로 스크롤하는 건 사이드바뿐
   return (
@@ -192,7 +208,6 @@ function LibraryContent() {
 
       {/* 툴바 + 필터 박스 */}
       <div className="page-x flex flex-col gap-4 pb-5">
-        {/* 폰에서는 검색창이 좁아져 글자가 잘린다 — 정렬을 아래로 내린다 */}
         {/* 폰에서는 검색창이 좁아져 글자가 잘린다 — 정렬을 아래로 내린다 */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <SearchInput value={query} onChange={setQuery} />
@@ -260,7 +275,7 @@ function LibraryContent() {
           ) : (
             <CardGridSkeleton />
           )
-        ) : list.error ? (
+        ) : list.error && !cards ? (
           <ErrorNotice error={list.error} onRetry={list.reload} />
         ) : list.loading && !cards ? (
           <CardGridSkeleton />
@@ -270,7 +285,8 @@ function LibraryContent() {
               Showing <span className="num">{cards.items.length}</span> on this page ·{" "}
               <span className="num">{cards.totalElements}</span> total games
             </div>
-            <div className={GAME_GRID}>
+            {/* 옛 쪽을 그대로 두고 흐리게 — 쪽을 넘길 때마다 스켈레톤으로 무너지지 않으면서 받는 중인 건 보인다 */}
+            <div className={`${GAME_GRID} transition-opacity ${list.loading ? "opacity-50" : ""}`}>
               {cards.items.map((card) => (
                 <GameCard key={card.entryId} card={card} sort={sort} />
               ))}

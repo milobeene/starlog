@@ -12,7 +12,8 @@ import type { MemberEmulator, MemberPlatform, PlatformAccountRef } from "@/lib/t
  *
  * 되살리기를 **되묻는 유일한 선택지다.** 나머지 넷은 같은 이름으로 다시 추가하면 조용히
  * 되살아나는데, 계정은 취득 기록(구매 이력)까지 물고 있어서 사용자가 알고 되살리는 편이 낫다 (§7.4).
- * 예전에는 안내만 하고 버튼이 없어 아무것도 할 수 없었다
+ * 예전에는 안내만 하고 버튼이 없어 아무것도 할 수 없었다. 그 뒤에도 폼이 저장 성공으로 알고
+ * 바로 닫혀서 확인창이 한 프레임도 못 떴다 — 그래서 `"keep-open"`으로 닫힘을 건너뛴다
  */
 export default function AccountDialog({
   platforms,
@@ -68,6 +69,10 @@ export default function AccountDialog({
           onSaved();
           return;
         }
+        // 고르지 않으면 Number("")=0이 나간다 — 서버 오류 문구보다 먼저 여기서 막는다
+        const ownerId = ownerKind === "platform" ? platformId : emulatorId;
+        if (!ownerId) throw new Error(ownerKind === "platform" ? "플랫폼을 골라 주세요." : "에뮬레이터를 골라 주세요.");
+        if (!label.trim()) throw new Error("라벨을 입력해 주세요.");
         try {
           await api.post("/api/me/platform-accounts", {
             // 고르지 않은 쪽은 안 보낸다 — 서버가 "하나만"을 검사한다
@@ -81,7 +86,7 @@ export default function AccountDialog({
             const body = caught.body as { targetId?: number } | undefined;
             if (body?.targetId) {
               setRevivable(body.targetId);
-              return;
+              return "keep-open";
             }
           }
           throw caught;

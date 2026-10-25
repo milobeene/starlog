@@ -76,10 +76,12 @@ export default function ScreenshotSection({ entryId, gameName }: { entryId: numb
 
   /*
    * 선택은 갤러리와 같은 훅이다 (선택/취소·Shift 범위·⌘ 토글). 위치로 들기 때문에
-   * 목록이 새로 오면(업로드·삭제·갤러리에서 지움) 비운다 — `list.data`가 바뀔 때가 그때다
+   * 목록이 실제로 바뀌면(업로드·삭제·갤러리에서 지움) 비운다. 응답 객체가 아니라 **순서대로 늘어선
+   * 파일명**으로 본다 — 무관한 쓰기의 전역 무효화로 같은 목록이 다시 와도 선택이 풀리던 것
    */
+  const listKey = shots?.map((shot) => shot.fileName).join("\n") ?? null;
   const { selectMode, setSelectMode, selected, allSelected, pick, toggleAll, clear, cancel } =
-    usePick(shots?.length ?? 0, list.data);
+    usePick(shots?.length ?? 0, listKey);
 
   const add = async (files: File[]) => {
     setBusy(true);
@@ -90,10 +92,11 @@ export default function ScreenshotSection({ entryId, gameName }: { entryId: numb
         // 원본 시각을 함께 보낸다 — 서버가 파일에 심어 "찍은 순서"를 만든다
         await uploadScreenshot(entryId, file, file.lastModified);
       }
-      list.reload();
     } catch (caught) {
       setError(errorMessage(caught, "올리지 못했습니다."));
     } finally {
+      // 중간에 실패해도 앞에서 올라간 것은 보여야 한다
+      list.reload();
       setBusy(false);
     }
   };

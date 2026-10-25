@@ -113,9 +113,3 @@ export function backendUrl(path: string): string {
   const withToken = token ? `${path}${path.includes("?") ? "&" : "?"}t=${encodeURIComponent(token)}` : path;
   return origin() + withToken;
 }
-
-/**
- * @deprecated 새 코드는 `backendUrl()`을 쓴다. 주소가 실행 중에 정해지므로
- *             모듈을 불러오는 시점의 상수로는 담을 수 없다
- */
-export const API_BASE = "";

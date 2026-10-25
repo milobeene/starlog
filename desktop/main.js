@@ -11,7 +11,7 @@
  *   2. 입구 화면을 app:// 로 로드          ← 순수 프론트, DB 필요 없음
  *   3. 사용자가 모드와 대상을 고른다
  *   4. 빈 포트를 찾아 서버를 띄운다        ← utilityProcess, 설정은 전부 환경변수로
- *   5. 진단 통과하면 창을 본 앱으로 이동
+ *   5. 진단 통과하면 포트를 알려주고, 화면이 같은 문서 안에서 본 앱으로 라우팅한다
  *
  * **서버는 매번 "이미 정해진 DB"만 본다 → 서버 코드는 모드를 모른다.**
  * → docs/v1.0-architecture.md §2
@@ -36,10 +36,7 @@ const csp = require("./csp");
  * 상수로 굳혀두면 개발 경로에만 맞고 `.dmg`에서는 못 찾는다
  */
 const SERVER = paths.serverEntry();
-/**
- * 정적 프론트. 입구(app://)와 본 앱(서버가 http로) **둘 다 이 한 벌을 쓴다** —
- * 자바 시절엔 jar 안과 여기, 두 곳에 복사해야 했다
- */
+/** 정적 프론트. 입구·본 앱(app://)과 서버의 http 사본이 **이 한 벌을 쓴다** */
 const WEB = path.join(__dirname, "web");
 /** 서버(utilityProcess)에게 줄 실제 경로. 패키징되면 asar 밖(`app.asar.unpacked`)에 있다 */
 const WEB_FOR_SERVER = WEB.replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
@@ -61,12 +58,38 @@ let session = null;
 /**
  * 지금 띄우려는 대상 — `{ mode, target }`.
  *
- * `session`은 **성공한 뒤에야** 채워지므로 실패를 설명할 때 쓸 수가 없다. 그런데 실패하면
- * 창이 입구로 **통째로 다시 로드**되어 화면 쪽 상태(무엇을 누르셨는지)도 함께 날아간다.
- * 그래서 "손상됐으니 이 세이브파일의 백업으로 가시라"를 화면이 스스로 알 방법이 없었다.
- * 진단에 대상을 실어 보내려고 여기에 남긴다
+ * `session`은 **성공한 뒤에야** 채워지므로 실패를 설명할 때 쓸 수가 없다. 그리고 앱 안에서 서버가
+ * 죽으면 화면이 입구로 라우팅되며 "무엇을 열고 있었는지"를 잃는다.
+ * "손상됐으니 이 세이브파일의 백업으로 가시라"를 띄우려면 진단에 대상을 실어 보내야 한다
  */
 let launching = null;
+/**
+ * 기동 세대. `launch`가 부를 때마다 올리고, 기다린 뒤마다 "아직 내 차례인가"를 본다 (2026-10-25).
+ * 두 번 눌러 겹치면 늦은 쪽이 앞엣것을 내리는데, 앞엣것이 그걸 모르고 죽은 포트를 90초 두드리다
+ * **남의 이름이 붙은 오류**를 "ready" 뒤에 쏘았다. [취소]도 이 번호를 올린다
+ */
+let launchSeq = 0;
+/**
+ * 앱 안에서 서버가 혼자 죽었을 때의 오류. 입구가 **마운트되며 가져간다** (`launch:takeError`).
+ * 죽음을 알리는 순간 화면은 아직 앱이고, 입구로 라우팅된 뒤에야 구독이 붙는다 — 그 사이에 쏜 이벤트는
+ * 받을 사람이 없어 이유 없는 입구만 남았다
+ */
+let pendingEntryError = null;
+/** 지금 떠 있는 시험용 서버들 — 앱을 닫을 때 같이 내린다 (안 그러면 붓던 세이브가 반쪽으로 남는다) */
+const probes = new Set();
+/** 붓는 중인 세이브 이름 — 같은 이름을 두 번 붓다 서로의 폴더를 지우지 않게 */
+const pouring = new Set();
+
+/**
+ * 서버 기동을 기다리는 한계. 넘기면 내리고 TIMEOUT으로 알린다 (Neon 콜드스타트 + 마이그레이션).
+ * 환경변수는 데스크탑 E2E가 90초를 기다리지 않으려고 줄이는 데만 쓴다 — 늘리는 건 막는다
+ */
+const LAUNCH_TIMEOUT_MS = Math.min(Number(process.env.STARLOG_LAUNCH_TIMEOUT_MS) || 90_000, 90_000);
+/**
+ * 정상 종료를 기다리는 한계 — 본 서버와 시험용이 **같은 값**이다 (2026-10-25).
+ * 시험용만 3초였는데, 그건 방금 부은 세이브를 닫는 서버이기도 해서 느린 디스크면 갓 만든 세이브를 강제로 죽였다
+ */
+const STOP_TIMEOUT_MS = 25_000;
 
 /*
  * ## app:// 를 "진짜 오리진"으로 등록한다
@@ -110,11 +133,11 @@ const MIME = {
 };
 
 /**
- * 정적 내보내기의 파일 모양에 맞춰 이어 붙인다 — 스프링의 `StaticSiteConfig`와 같은 규칙이다.
+ * 정적 내보내기의 파일 모양에 맞춰 이어 붙인다 — 서버의 `http/static.ts`와 같은 규칙이다.
  * `/` → `index.html`, `/dashboard` → `dashboard.html`.
  *
- * 두 곳에 같은 규칙이 있는 게 중복처럼 보이지만, **입구는 스프링이 뜨기 전에 떠야 해서**
- * 스프링의 것을 쓸 수가 없다. 이게 "프론트가 두 오리진에서 뜬다"의 대가다
+ * 두 곳에 같은 규칙이 있는 게 중복처럼 보이지만, **입구는 서버가 뜨기 전에 떠야 해서**
+ * 서버의 것을 쓸 수가 없다
  */
 function resolveWebFile(pathname) {
   const clean = decodeURIComponent(pathname).replace(/^\/+/, "");
@@ -232,7 +255,7 @@ function postJson(port, urlPath, payload) {
  *
  * `res.on("end")` 콜백은 Promise 실행자가 끝난 **뒤에** 다음 틱에서 돈다. 거기서 던지면
  * `reject`로 가는 게 아니라 **처리되지 않은 예외**가 되어 일렉트론 메인 프로세스가 통째로
- * 죽는다 — 창이 안내도 없이 사라진다. 스프링이 200에 HTML 에러 페이지를 주는 순간이 그렇다.
+ * 죽는다 — 창이 안내도 없이 사라진다. 서버가 200에 JSON 아닌 것을 주는 순간이 그렇다.
  * 직접 재현했다: `SyntaxError ... at IncomingMessage.<anonymous>`, 종료코드 1
  */
 function parseInto(resolve, reject, urlPath, text) {
@@ -246,9 +269,9 @@ function parseInto(resolve, reject, urlPath, text) {
 /**
  * 기동 진행 상황을 화면에 알린다.
  *
- * ⚠️ **실패에는 대상을 붙여서 보낸다.** 기동이 실패하면 창이 입구로 통째로 다시 로드되어
- * 화면 쪽 상태가 날아간다 — "무엇을 여시려다 실패했는지"를 화면이 스스로 알 방법이 없다.
- * 그 정보가 있어야 "손상됐으니 **이 세이브파일의** 백업으로 가시라"를 띄울 수 있다.
+ * ⚠️ **실패에는 대상을 붙여서 보낸다.** 앱 안에서 서버가 죽으면 화면이 입구로 옮겨 가며
+ * "무엇을 열고 있었는지"를 모른다. 그 정보가 있어야 "손상됐으니 **이 세이브파일의** 백업으로
+ * 가시라"를 띄울 수 있다.
  *
  * 붙이는 걸 여기 한 곳에 둔 이유 — 실패를 알리는 자리가 둘이다(`onBackendDied`와
  * `launch`의 catch). 각자 붙이게 두면 **나중에 온 쪽이 대상 없는 payload로 덮어쓴다.**
@@ -260,19 +283,14 @@ function progress(payload) {
 }
 
 /**
- * 스프링이 응답할 때까지 기다린다.
+ * 서버가 응답할 때까지 기다린다. 로그 문자열이 아니라 **실제로 HTTP가 도는지**를 본다 —
+ * 무슨 상태코드든 대답하면 살아난 것이다.
  *
- * 로그의 "Started ...Application"을 보는 방법도 있지만 **문자열에 기대는 건 약하다.**
- * 실제로 HTTP가 도는지를 본다 — 무슨 상태코드든 대답하면 살아난 것이다
+ * @param isAlive **그 프로세스가** 아직 살아 있나 — 기본값을 두지 않는다 (2026-10-25).
+ *                전역 `backend`를 보면 시험용(전역에 없음)은 즉시 "죽음"이 되고, 겹친 기동에서는
+ *                남의 서버가 살아 있는 걸 내 서버로 착각해 죽은 포트를 90초 두드렸다
  */
-/**
- * @param isAlive 프로세스가 아직 살아 있나. **전역 `backend`를 보면 안 된다** —
- *                시험용 백엔드(`spawnProbe`)는 전역에 안 들어가서, 입구 화면처럼 본 백엔드가
- *                없을 때 **즉시 거부**됐다. 그러면 `connections:test`가 `done = null`을 받고
- *                `!done?.diagnostic`이 true가 되어 **DB가 성공한 것처럼 보고**했다.
- *                1초도 안 걸려 "DB는 됐고 나머지는 실패"가 뜨던 이유가 이것이다
- */
-function waitForBackend(port, timeoutMs = 90_000, isAlive = () => backend !== null) {
+function waitForBackend(port, timeoutMs, isAlive) {
   const started = Date.now();
   return new Promise((resolve, reject) => {
     const tick = () => {
@@ -292,34 +310,11 @@ function waitForBackend(port, timeoutMs = 90_000, isAlive = () => backend !== nu
 }
 
 /**
- * ## 설정은 전부 환경변수로 넘긴다
- *
- * 자바 시절엔 포트·DB 주소를 인자로 줬는데, 인자는 `ps`로 같은 계정의 다른 프로세스에 보인다.
- * v2 서버는 **환경변수만** 읽는다 (`server/src/config.ts`).
- */
-/**
- * 서버를 띄우는 **단 한 곳** (2026-08-28에 하나로 합쳤다).
- *
- * 예전엔 `startBackend`와 `spawnProbe`가 조립을 **두 벌** 갖고 있었고, 그래서 실행 파일
- * 존재 검사가 한쪽에만 있었다. 갈라진 두 벌은 반드시 어긋난다.
- *
- * ## `utilityProcess` (v2)
- *
- * 자바는 `child_process.spawn`으로 JVM을 띄웠다. 이제 서버는 Node 코드라 일렉트론 안의 Node로
- * 바로 돈다 — JRE를 실을 필요도, 몇 초짜리 JVM 기동도 없다. 별도 프로세스인 건 그대로라서
- * 무거운 쿼리에 창이 얼지 않고, 아래 수명 관리(죽이고 await 후 새로 띄우기)도 그대로 산다.
- *
- * 돌려주는 `proc`은 자바 시절 `ChildProcess`와 **같은 모양**(`kill(sig)`·`once("exit")`)으로 감쌌다.
- * ⚠️ `kill("SIGTERM")`은 신호가 아니라 **메시지로 종료를 요청한다.** 윈도우에서
- * `utilityProcess.kill()`은 TerminateProcess(강제)라 PGlite가 닫힐 틈이 없다 —
- * 강제로 죽은 데이터 폴더는 망가질 수 있다. 강제는 `kill("SIGKILL")`일 때만
- */
-/**
  * 로그가 너무 커졌으면 한 번 밀어둔다.
  *
- * 기동마다 스프링 부트 로그가 통째로 쌓이는데 지우는 데가 없었다. 지금은 문제가 아니지만
- * **로그를 보라고 안내하는 화면이 여럿**이라(진단 실패, 백엔드 종료) 수백 MB짜리 파일을
- * 열게 만들면 그 안내가 무의미해진다. 한 세대만 남긴다 — 두 벌이면 충분하다
+ * 기동마다 서버 로그가 쌓이는데 지우는 데가 없었다. **로그를 보라고 안내하는 화면이 여럿**이라
+ * (진단 실패, 백엔드 종료) 수백 MB짜리 파일을 열게 만들면 그 안내가 무의미해진다.
+ * 한 세대만 남긴다 — 두 벌이면 충분하다
  */
 const LOG_MAX_BYTES = 5 * 1024 * 1024;
 
@@ -371,7 +366,10 @@ function logWrite(chunk) {
  *
  * 예전엔 `...process.env`였다. 사용자 셸에 `STARLOG_PROFILE=dev`가 남아 있으면 배포판 서버가
  * 개발 모드(인증 장치 `X-Member-Id`, CORS 꺼짐)로 떴다. 서버가 실제로 필요로 하는 건
- * 경로·임시 폴더·로캘·프록시 정도다
+ * 경로·임시 폴더·로캘·인증서 정도다.
+ *
+ * 프록시 변수(`HTTPS_PROXY` 등)는 뺐다 — 서버의 fetch·`pg` 어느 쪽도 그걸 읽지 않아서
+ * "회사망 지원"처럼 보이기만 했다. 필요해지면 서버가 프록시 에이전트를 붙이는 쪽이 먼저다
  */
 const ENV_PASSTHROUGH = [
   "PATH", "HOME", "TMPDIR", "TMP", "TEMP", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CTYPE", "TZ",
@@ -380,13 +378,25 @@ const ENV_PASSTHROUGH = [
   "SystemRoot", "SYSTEMROOT", "windir", "ComSpec", "PATHEXT", "APPDATA", "LOCALAPPDATA", "USERPROFILE",
   "HOMEDRIVE", "HOMEPATH", "USERNAME", "ProgramData", "ProgramFiles", "ProgramFiles(x86)", "CommonProgramFiles",
   "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE", "OS",
-  // 회사망 — 프록시·사설 인증서 없이는 Neon·R2·IGDB에 못 붙는다
-  "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy",
+  // 사설 인증서 — 회사망 TLS 검사 장비 뒤에서는 이게 없으면 Neon·R2·IGDB에 못 붙는다
   "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR",
 ];
 /** 사용자 환경에서 절대 넘기면 안 되는 것 — 허용 목록에 실수로 들어가도 여기서 한 번 더 지운다 */
 const ENV_FORBIDDEN = ["STARLOG_PROFILE", "STARLOG_THUMBNAILER", "STARLOG_API_TOKEN", "NODE_OPTIONS", "ELECTRON_RUN_AS_NODE"];
 
+/**
+ * 서버를 띄우는 **단 한 곳** (2026-08-28에 하나로 합쳤다). 본 서버·시험용 모두 여기를 지난다 —
+ * 조립이 두 벌이면 실행 파일 존재 검사 같은 게 한쪽에만 생긴다.
+ *
+ * 설정은 전부 **환경변수**로 넘긴다 — 인자는 `ps`로 같은 계정의 다른 프로세스에 보인다 (`server/src/config.ts`).
+ *
+ * ⚠️ `kill("SIGTERM")`은 신호가 아니라 **메시지로 종료를 요청한다.** 윈도우에서
+ * `utilityProcess.kill()`은 TerminateProcess(강제)라 PGlite가 닫힐 틈이 없다 —
+ * 강제로 죽은 데이터 폴더는 망가질 수 있다. 강제는 `kill("SIGKILL")`일 때만
+ *
+ * `exited`는 `{ code, diagnostic, checked }`다. `checked`는 점검 전용 기동(`STARLOG_CHECK_ONLY`)이
+ * DB를 열어 보고 곱게 내려갔다는 신호다
+ */
 function spawnServer(port, config) {
   logWrite(`\n===== ${new Date().toISOString()} port=${port} mode=${config.mode} =====\n`);
 
@@ -422,6 +432,7 @@ function spawnServer(port, config) {
   }
 
   let diagnostic = null;
+  let checked = false;
   /*
    * 썸네일은 서버가 부탁하고 여기서 만든다 (`nativeImage`가 메인 전용). 경로는 **이 서버에 준 데이터 루트**
    * 안으로 묶는다 — 설정의 데이터 루트가 그사이 바뀌어도 이 서버가 보는 곳은 그대로다
@@ -430,11 +441,14 @@ function spawnServer(port, config) {
   // 진단은 두 길로 온다 — 메시지(정상)와 stdout 한 줄(메시지가 가기 전에 죽었을 때)
   child.on("message", (m) => {
     if (m && m.type === "diagnostic") diagnostic = m.code;
+    else if (m && m.type === "checked") checked = true;
     else media.handleServerMessage(m, mediaRoot, (reply) => child.postMessage(reply));
   });
   child.stdout?.on("data", (chunk) => {
-    const found = chunk.toString().match(/STARLOG_DIAGNOSTIC:\s*([A-Z_]+)/);
+    const text = chunk.toString();
+    const found = text.match(/STARLOG_DIAGNOSTIC:\s*([A-Z_]+)/);
     if (found) diagnostic = found[1];
+    if (/STARLOG_CHECKED\b/.test(text)) checked = true;
     logWrite(chunk);
   });
   child.stderr?.on("data", (chunk) => logWrite(chunk));
@@ -443,7 +457,7 @@ function spawnServer(port, config) {
     child.once("exit", (code) => {
       // 같은 포트를 다음 서버가 받을 수 있다 — 내 토큰일 때만 지운다
       if (tokens.get(port) === token) tokens.delete(port);
-      resolve({ code, diagnostic });
+      resolve({ code, diagnostic, checked });
     });
   });
 
@@ -471,6 +485,8 @@ function startBackend(port, config) {
   backend = proc;
   backendPort = proc ? port : null;
   backendMediaRoot = proc && config.env?.STARLOG_DATA_ROOT ? path.join(config.env.STARLOG_DATA_ROOT, "media") : null;
+  // 띄우지도 못했으면(번들 없음) 죽음을 따로 알리지 않는다 — `launch`가 그 진단으로 바로 답한다
+  if (!proc) return { proc, exited };
 
   const done = exited.then((result) => {
     // 그 사이에 새 백엔드가 떴으면 그건 남의 것이다 — 내가 죽었다고 남을 지우면 안 된다
@@ -478,35 +494,39 @@ function startBackend(port, config) {
     backend = null;
     backendPort = null;
     backendMediaRoot = null;
-    if (!stoppingOnPurpose) onBackendDied(result.code, result.diagnostic);
+    if (!stoppingOnPurpose) {
+      const lost = session;
+      session = null;
+      onBackendDied(result.code, result.diagnostic, lost);
+    }
     return result;
   });
 
-  return { exited: done };
+  return { proc, exited: done };
 }
 
 /**
  * 백엔드가 저 혼자 죽었다 (architecture §2 "딸려오는 자잘한 일" 5번).
  *
  * 이걸 안 잡으면 화면이 그대로 남은 채 모든 요청이 실패해서
- * **앱이 고장 난 게 아니라 데이터가 사라진 것처럼 보인다.** 입구로 되돌린다
+ * **앱이 고장 난 게 아니라 데이터가 사라진 것처럼 보인다.** 입구로 되돌린다.
+ *
+ * 오류는 `pendingEntryError`에도 남긴다 — 지금 쏘는 이벤트는 아직 앱 화면이 받고(입구 구독이 없다),
+ * 입구는 라우팅이 끝나고 마운트되며 이걸 가져간다
  */
-function onBackendDied(code, diagnostic) {
+function onBackendDied(code, diagnostic, lost) {
   if (!win || win.isDestroyed()) return;
-  loadEntry();
-  progress({
+  const payload = {
+    ...(lost ?? launching ?? {}),
     phase: "error",
     code: diagnostic ?? "BACKEND_DIED",
     exitCode: code,
-  });
+  };
+  pendingEntryError = payload;
+  loadEntry();
+  progress(payload);
 }
 
-/**
- * 좀비 프로세스 방지. SIGTERM으로 먼저 부탁하고, 안 죽으면 SIGKILL.
- *
- * ⚠️ **윈도우는 신호 체계가 달라 `taskkill /T`가 필요할 수 있다 — 10단계에서 확인한다.**
- * 맥에서는 일렉트론만 죽여도 java가 따라 죽는 것까지 확인했다
- */
 /**
  * 시험용 백엔드 (2026-08-28).
  *
@@ -515,7 +535,7 @@ function onBackendDied(code, diagnostic) {
  * 옛 포트를 보며 `Failed to fetch`를 뱉었다.
  *
  * 죽음 감지(`onBackendDied`)도 안 붙인다. 시험용은 끝나면 죽는 게 정상이라
- * 붙이면 매번 "서버가 예기치 않게 종료됐습니다"가 뜬다
+ * 붙이면 매번 "서버가 예기치 않게 종료됐습니다"가 뜬다. 대신 `probes`에 올려 앱 종료 때 함께 내린다
  */
 function spawnProbe(port, config) {
   const { proc, exited } = spawnServer(port, config);
@@ -523,25 +543,26 @@ function spawnProbe(port, config) {
   let running = proc !== null;
   const done = exited.then((result) => {
     running = false;
+    probes.delete(probe);
     return result;
   });
 
-  return {
+  const probe = {
     exited: done,
     isAlive: () => running,
     /**
-     * ⚠️ **끝까지 기다린다.** 예전엔 신호만 보내고 넘어갔는데, 이제 이걸 **로컬 세이브파일을
-     * 만드는 데도 쓴다** — 서버가 세이브파일 잠금을 놓기 전에 돌아가면 사용자가 곧바로 열었을 때
-     * `DB_IN_USE`다. `stopBackend`가 본 백엔드에 대해 하는 것과 같은 이유다.
+     * ⚠️ **끝까지 기다린다.** 이걸 **로컬 세이브파일을 만드는 데도 쓴다** — 서버가 세이브파일
+     * 잠금을 놓기 전에 돌아가면 사용자가 곧바로 열었을 때 `DB_IN_USE`다.
+     * `stopBackend`가 본 백엔드에 대해 하는 것과 같은 이유고, 기다리는 시간도 같다.
      *
-     * SIGKILL 타이머도 여기서 지운다. 안 지우면 이미 죽은 pid에 3초 뒤 신호를 쏜다
+     * SIGKILL 타이머도 여기서 지운다. 안 지우면 이미 죽은 pid에 신호를 쏜다
      */
     async stop() {
       if (!proc || !running) return;
       proc.kill("SIGTERM");
       const killer = setTimeout(() => {
         try { proc.kill("SIGKILL"); } catch { /* 이미 죽었으면 무시 */ }
-      }, 3000);
+      }, STOP_TIMEOUT_MS);
       try {
         await done;
       } finally {
@@ -549,6 +570,28 @@ function spawnProbe(port, config) {
       }
     },
   };
+  if (running) probes.add(probe);
+  return probe;
+}
+
+/**
+ * 시험용이 뜰 때까지 기다린 결과 — `{ ready }` 또는 `{ ready: false, code }`.
+ *
+ * ⚠️ **진단 없이 죽은 것도 실패다** (2026-10-25). 예전엔 `probe.exited`가 먼저 이기면
+ * `{diagnostic: null}`이 되고 판정이 `!diagnostic`이라 **"DB 연결됨"**으로 보고했다 —
+ * 부팅 중 처리 안 된 거부·번들 로드 실패·메모리 부족이 다 성공으로 보였다
+ */
+async function settleProbe(probe, port, { checkOnly = false } = {}) {
+  const outcome = await Promise.race([
+    probe.exited.then((r) => ({ exit: r })),
+    waitForBackend(port, LAUNCH_TIMEOUT_MS, probe.isAlive).then(() => ({ ready: true }), (e) => ({ failed: e.message })),
+  ]);
+  if (outcome.ready) return { ready: true };
+  if (outcome.failed === "TIMEOUT") return { ready: false, code: "TIMEOUT" };
+  const r = outcome.exit ?? await probe.exited;
+  // 점검 전용은 DB를 열어 보고 스스로 내려가는 게 성공이다
+  if (checkOnly && r.checked && r.code === 0 && !r.diagnostic) return { ready: true, checked: true };
+  return { ready: false, code: r.diagnostic ?? "BACKEND_DIED" };
 }
 
 /**
@@ -595,7 +638,7 @@ function stopBackend() {
     killer = setTimeout(() => {
       try { proc.kill("SIGKILL"); } catch { /* 이미 죽었으면 무시 */ }
       killer = setTimeout(finish, 500);
-    }, 25_000);
+    }, STOP_TIMEOUT_MS);
   });
 }
 
@@ -764,36 +807,51 @@ const names = require("./saveName");
 const { assertSaveName } = names;
 
 /**
- * 새 세이브파일을 만들고 JSON을 부어넣는다.
+ * 붓기 전에 이름을 잡는다. 이미 있거나 **지금 붓는 중**이면 거절한다 (2026-10-25).
+ * `taken`만 보면 두 번 누른 뽑기가 둘 다 통과하고, 늦은 쪽이 `DB_IN_USE`로 실패하며
+ * 앞엣것이 쓰는 폴더를 지웠다
+ */
+function reserveSave(dirs, name) {
+  if (pouring.has(name) || saveFiles.taken(dirs, name)) {
+    throw new Error("같은 이름의 세이브파일이 이미 있습니다");
+  }
+  pouring.add(name);
+}
+
+/**
+ * 새 세이브파일을 만들고 JSON을 부어넣는다. 이름은 `reserveSave`로 잡아 둔 것이어야 한다.
  *
- * **두 군데가 똑같이 필요해졌다** — 클라우드를 뽑을 때와, 덮어쓰기 전에 안전망을 뜰 때.
- * 갈라두면 한쪽만 고쳐지는 건 이번 리뷰에서 이미 여러 번 겪었다.
+ * **두 군데가 똑같이 필요하다** — 클라우드를 뽑을 때와, 덮어쓰기 전에 안전망을 뜰 때.
  *
- * 빈 세이브파일에 스키마를 만드는 일은 백엔드를 한 번 띄우면 Flyway가 알아서 한다.
- * 그 백엔드는 **격리해서** 띄운다 — 창이 보고 있는 백엔드는 손대지 않는다
+ * 빈 세이브파일에 스키마를 만드는 일은 서버를 한 번 띄우면 마이그레이션이 알아서 한다.
+ * 그 서버는 **격리해서** 띄운다 — 창이 보고 있는 백엔드는 손대지 않는다.
+ *
+ * ⚠️ 붓는 동안은 `<이름>.partial` 표시를 둔다. 앱이 도중에 꺼지면 반쯤 부은 폴더가 남는데,
+ * 표시가 있으면 목록에 안 뜨고 다음 기동 때 치워진다
  */
 async function pourInto(saveName, dump) {
   const dirs = dataDirs();
-  const port = await freePort();
-  const probe = spawnProbe(port, localConfig(saveName));
+  saveFiles.markPartial(dirs, saveName);
   try {
-    await waitForBackend(port, 90_000, probe.isAlive);
-    await postJson(port, "/api/me/import", dump);
-  } catch (e) {
+    const port = await freePort();
+    const probe = spawnProbe(port, localConfig(saveName));
+    try {
+      const up = await settleProbe(probe, port);
+      if (!up.ready) throw new Error(`세이브파일을 만들지 못했습니다 (${up.code})`);
+      await postJson(port, "/api/me/import", dump);
+    } catch (e) {
+      await probe.stop();
+      // 반쯤 만들어진 세이브파일을 치운다 — 남기면 같은 이름으로 다시 시도할 수가 없다
+      saveFiles.remove(dirs, saveName);
+      throw e;
+    }
+    // 잠금이 풀릴 때까지 기다린다 — 바로 열러 갈 수 있어야 한다
     await probe.stop();
-    /*
-     * ⚠️ **반쯤 만들어진 세이브파일을 치운다.** 마이그레이션이 스키마까지는 만들어놨으므로
-     * 폴더가 남는데, 그러면 같은 이름으로 다시 시도할 수가 없다 — "이미 있습니다"만 뜬다
-     */
-    saveFiles.remove(dirs, saveName);
-    const result = await probe.exited;
-    throw new Error(result?.diagnostic
-      ? `세이브파일을 만들지 못했습니다 (${result.diagnostic})`
-      : (e.message || String(e)));
+    saveFiles.clearPartial(dirs, saveName);
+    return saveName;
+  } finally {
+    pouring.delete(saveName);
   }
-  // 잠금이 풀릴 때까지 기다린다 — 바로 열러 갈 수 있어야 한다
-  await probe.stop();
-  return saveName;
 }
 
 function dataDirs() {
@@ -1106,7 +1164,7 @@ function registerIpc() {
   handle("saves:create", (_e, name) => {
     const clean = assertSaveName(name);
     const { saves } = dataDirs();
-    if (saveFiles.taken({ saves }, clean)) {
+    if (pouring.has(clean) || saveFiles.taken({ saves }, clean)) {
       throw new Error("같은 이름의 세이브파일이 이미 있습니다");
     }
     return clean;
@@ -1132,6 +1190,9 @@ function registerIpc() {
     if (oldName === newName) return newName;
 
     const dirs = dataDirs();
+    if (pouring.has(oldName) || pouring.has(newName)) {
+      throw new Error("이 세이브파일을 만드는 중입니다. 끝난 뒤 다시 시도해 주세요");
+    }
     if (saveFiles.taken(dirs, newName)) {
       throw new Error("같은 이름의 세이브파일이 이미 있습니다");
     }
@@ -1146,34 +1207,44 @@ function registerIpc() {
 
     saveFiles.rename(dirs, oldName, newName);
 
-    const oldBackups = path.join(dirs.backups, oldName);
-    if (fs.existsSync(oldBackups)) {
-      const target = path.join(dirs.backups, newName);
-      /*
-       * 새 이름의 백업 폴더가 이미 있으면(전에 같은 이름을 쓴 적이 있다) 안으로 옮겨 합친다.
-       * 통째로 rename하면 **있던 백업을 덮어써서 지운다**
-       */
-      if (fs.existsSync(target)) {
-        for (const file of fs.readdirSync(oldBackups)) {
-          const to2 = path.join(target, file);
-          if (!fs.existsSync(to2)) fs.renameSync(path.join(oldBackups, file), to2);
-        }
-        fs.rmSync(oldBackups, { recursive: true, force: true });
-      } else {
-        fs.renameSync(oldBackups, target);
-      }
-    }
-
-    // [최근 접속]이 사라진 이름을 가리키지 않게 한다
+    /*
+     * ⚠️ **[최근 접속]을 폴더 바로 다음에 옮긴다** (2026-10-25). 백업 폴더 옮기기에서 던지면(윈도우 EBUSY 등)
+     * 예전엔 여기까지 못 와서 [최근 접속]이 사라진 이름을 가리켰고, 누르면 그 이름으로 빈 세이브가 생겼다
+     */
     const settings = store.getSettings();
     if (settings.lastMode === "local" && settings.lastTarget === oldName) {
       store.patchSettings({ lastTarget: newName });
+    }
+
+    const oldBackups = path.join(dirs.backups, oldName);
+    if (fs.existsSync(oldBackups)) {
+      const target = path.join(dirs.backups, newName);
+      try {
+        /*
+         * 새 이름의 백업 폴더가 이미 있으면(전에 같은 이름을 쓴 적이 있다) 안으로 옮겨 합친다.
+         * 통째로 rename하면 **있던 백업을 덮어써서 지운다**
+         */
+        if (fs.existsSync(target)) {
+          for (const file of fs.readdirSync(oldBackups)) {
+            const to2 = path.join(target, file);
+            if (!fs.existsSync(to2)) saveFiles.renameWithRetry(path.join(oldBackups, file), to2);
+          }
+          fs.rmSync(oldBackups, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+        } else {
+          saveFiles.renameWithRetry(oldBackups, target);
+        }
+      } catch (e) {
+        // 세이브는 이미 새 이름이다 — 되돌리다 또 실패하느니 무엇이 남았는지 정확히 말한다
+        throw new Error(`이름은 바꿨지만 백업 폴더를 옮기지 못했습니다. 데이터 폴더의 backups/${oldName}을(를) `
+          + `backups/${newName}(으)로 직접 옮겨 주세요 (${e?.code ?? e?.message ?? e})`);
+      }
     }
     return newName;
   });
 
   handle("saves:remove", async (_e, name) => {
     const clean = assertSaveName(name);
+    if (pouring.has(clean)) throw new Error("이 세이브파일을 만드는 중입니다. 끝난 뒤 다시 시도해 주세요");
     // 열고 있는 파일은 못 지운다 — 윈도우는 아예 거부하고, 맥은 지워지되 서버가 유령을 붙든다
     if (session?.mode === "local" && session.target === clean) {
       await stopBackend();
@@ -1187,7 +1258,7 @@ function registerIpc() {
     /*
      * ⚠️ **[최근 접속]도 같이 지운다.** 개명(`saves:rename`)에는 있는데 여기만 빠져 있었다.
      * 지운 뒤에도 입구에 [최근 접속]이 남아서, 누르면 **없는 파일을 열려다 같은 이름으로
-     * 빈 세이브를 새로 만든다** — DB는 파일이 없으면 그냥 만들기 때문이다 (H2도 PGlite도).
+     * 빈 세이브를 새로 만든다** — PGlite는 폴더가 없으면 그냥 만들기 때문이다.
      * 사용자 눈에는 "지운 세이브가 되살아났는데 안이 텅 비었다"로 보인다. 실제로 겪었다
      */
     const settings = store.getSettings();
@@ -1232,210 +1303,177 @@ function registerIpc() {
   /*
    * ⚠️ **화면에는 가린 값만 준다** (보안 점검 2026-10-25). 비밀 칸은 `••••끝네자`와 `hasSecret`.
    * 가린 값 그대로 저장·테스트하면 메인이 저장된 진짜 값으로 바꿔 쓴다 (`settings.js` `unmask`).
-   * `previousName` — 이름을 고치는 중이면 진짜 값은 옛 이름 쪽에 있다
+   * `previousName` — 고치는 항목의 옛 이름. 진짜 값은 그쪽에 있고, 이름을 바꿨으면 그 항목을 제자리에서 바꾼다
    */
   handle("connections:list", () => store.listMasked());
-  handle("connections:save", (_e, profile, options) => store.saveConnection(profile, options?.previousName));
-  handle("connections:remove", (_e, name) => store.removeConnection(String(name ?? "")));
+  handle("connections:save", async (_e, profile, options) => {
+    const previousName = typeof options?.previousName === "string" ? options.previousName : undefined;
+    const saved = await store.saveConnection(profile, previousName);
+    const name = typeof profile?.name === "string" ? profile.name.trim() : "";
+    if (previousName && name && previousName !== name) retargetConnection(previousName, name);
+    return saved;
+  });
+  handle("connections:remove", async (_e, name) => {
+    const clean = String(name ?? "");
+    const left = await store.removeConnection(clean);
+    // [최근 접속]이 지운 연결을 가리키면 눌러도 "찾을 수 없습니다"만 뜬다
+    const settings = store.getSettings();
+    if (settings.lastMode === "cloud" && settings.lastTarget === clean) {
+      store.patchSettings({ lastMode: null, lastTarget: null });
+    }
+    return left;
+  });
   /** 눈 버튼. 칸 하나만 진짜 값으로 */
   handle("connections:reveal", (_e, name, field) => store.revealSecret(String(name ?? ""), String(field ?? "")));
 
   /**
-   * 연결 테스트 = 백엔드를 진단만 시키고 죽인다.
-   *
-   * Node에서 직접 붙어보는 방법도 있지만 **PG 드라이버를 Node에도 또 넣어야** 하고,
-   * 버전이 어긋나면 "일렉트론은 되는데 스프링은 안 되는" 상황이 난다 (architecture §3)
-   */
-  /**
-   * 연결 테스트 (2026-08-28 전면 수정).
+   * 연결 테스트 (2026-08-28 → 2026-10-25 다시 짬).
    *
    * ## 🔴 지금 쓰는 백엔드를 절대 안 건드린다
    *
    * 예전엔 죽였다가 되살렸는데, **되살릴 때 포트가 바뀐다.** 창은 옛 포트를 보고 있으니
-   * 그 뒤로 앱 전체가 `TypeError: Failed to fetch`가 됐다 — 새로고침하면 검은 화면.
-   * "다음에 들어올 때 적용됩니다"라고 해놓고 사실상 재접속을 강제한 셈이었다.
+   * 그 뒤로 앱 전체가 `TypeError: Failed to fetch`가 됐다. 시험 대상은 PostgreSQL이라
+   * 동시 접속이 되므로, 다른 포트에 시험용을 띄우고 내리면 끝이다.
    *
-   * 죽일 이유도 없었다. 시험 대상은 **PostgreSQL이라 동시 접속이 된다** —
-   * H2 파일 잠금 같은 게 없다. 그냥 다른 포트에 시험용을 하나 더 띄우고 내리면 끝이다
-   */
-  /**
-   * @param options `{ scope }` — `"all"`(기본)이면 DB·스토리지·IGDB·번역을 다 본다.
-   *                `"database"`면 **DB와 스토리지만** 본다.
+   * ## 🔴 대상 DB에 아무것도 쓰지 않는다 (2026-10-25)
    *
-   * ## 왜 범위가 필요한가 (2026-08-28)
+   * 예전엔 시험용이 **서버 전체를 부팅**했다 — 오타로 빈 Postgres나 남의 DB를 가리켜도 [테스트]만 눌러
+   * 스키마·프로필 행이 생기고 기동 작업이 돌았다. 이제 둘로 나눈다:
    *
-   * 입구와 앱 안은 목적이 다르다. 입구는 **관문**이라 "이 연결로 들어가도 되나"를 한 번에
-   * 확인해야 한다. 앱 안은 **"방금 고친 이 값이 맞나"**라서, 안 고친 것까지 부르면
-   * 느릴 뿐 아니라 결과가 다시 네 줄이라 **어디가 틀렸는지 좁혀지지 않는다.**
+   *   DB                 `STARLOG_CHECK_ONLY` — 열고(`select 1` + 스키마 점검) 진단만 내고 내려간다
+   *   스토리지·IGDB·번역  **메모리 DB**(`memory://`)로 띄운 시험용에 눌러 본다 — 사용자의 DB와 무관하다
    *
-   * IGDB와 번역은 지금 백엔드에 값을 넘겨 바로 시험할 수 있어서 앱 안에서는 각자 버튼을
-   * 갖는다. **DB와 스토리지는 그럴 수가 없다** — 부팅 때 조립되는 값이라 지금 백엔드로는
-   * 못 시험하고 시험용을 하나 띄워야 한다. 그래서 그 둘만 여기 남는다
+   * 둘이 따로라 DB가 틀려도 스토리지·키 결과는 나온다 — "어디가 틀렸나"가 좁혀진다.
+   *
+   * @param options `{ scope }` — `"all"`(기본, 입구의 관문)은 넷 다, `"db"`·`"storage"`는 그 하나만
+   *                (앱 안의 섹션 버튼. IGDB·번역은 앱 안에서 지금 서버로 바로 시험한다)
    */
   handle("connections:test", async (_e, input, options) => {
-    const scope = ["all", "db", "database", "storage"].includes(options?.scope) ? options.scope : "all";
+    const scope = ["all", "db", "storage"].includes(options?.scope) ? options.scope : "all";
     const profile = await store.resolveProfile(input, options?.previousName);
-    /*
-     * ## 스토리지만 볼 때는 **메모리 DB로 띄운다** (2026-08-28)
-     *
-     * 스토리지 확인은 우리 백엔드가 버킷을 눌러보는 방식이라 백엔드가 떠야 한다.
-     * 그런데 그 백엔드를 **사용자의 DB로** 띄우면, DB가 틀렸을 때 스토리지는 멀쩡한데도
-     * "확인 실패"가 뜬다 — 섹션을 따로 시험하는 뜻이 사라진다.
-     *
-     * 메모리 DB로 띄우면 DB와 완전히 무관해진다. 어차피 이 백엔드는 버킷에 한 번
-     * 손을 대보고 죽는 것뿐이라 담을 데이터가 없다 (자바 땐 `jdbc:h2:mem:`, 이제 PGlite `memory://`)
-     */
-    const base = cloudConfig(profile);
-    const config = scope === "storage"
-      ? {
-          ...base,
-          env: {
-            ...base.env,
-            STARLOG_DB_URL: undefined,
-            STARLOG_DB_USER: undefined,
-            STARLOG_DB_PASSWORD: undefined,
-            STARLOG_DB_SCHEMA: undefined,
-            STARLOG_DB_DIR: "memory://",
-          },
-        }
-      : base;
-    const port = await freePort();
-    const probe = spawnProbe(port, config);
+    const wantDb = scope !== "storage";
+    const want = {
+      storage: scope !== "db" && Boolean(profile.storage?.endpoint && profile.storage?.bucket),
+      igdb: scope === "all" && Boolean(profile.igdb?.clientId && profile.igdb?.clientSecret),
+      translate: scope === "all" && Boolean(profile.translate?.apiKey),
+    };
 
-    /*
-     * ⚠️ **시험용의 생사를 넘겨야 한다.** 기본값은 전역 `backend`를 보는데 시험용은 거기 없어서,
-     * 안 넘기면 즉시 "죽었다"로 판정하고 **DB가 성공한 것처럼** 보고한다
-     */
-    /*
-     * ⚠️ **실패를 `diagnostic: null`로 접으면 안 된다** (2026-08-28).
-     *
-     * 예전엔 TIMEOUT만 코드로 바꾸고 나머지를 null로 뒀는데, 아래 판정이
-     * `!done?.diagnostic`이라 **null = 성공**이다. 즉 시험용이 진단 코드도 못 찍고 죽으면
-     * (자바가 없다, jar가 없다) **"DB는 연결됐습니다"라고 보고했다.** 이 화면에서 이미
-     * 한 번 났던 실패 모양이라 같은 자리에 두 번 만들지 않는다
-     */
-    const done = await Promise.race([
-      probe.exited,
-      waitForBackend(port, 90_000, probe.isAlive)
-        .then(() => ({ code: 0, diagnostic: null }))
-        .catch((e) => ({ code: -1, diagnostic: e.message || "BACKEND_DIED" })),
+    const [db, services] = await Promise.all([
+      wantDb ? checkDatabase(profile) : null,
+      want.storage || want.igdb || want.translate ? checkServices(profile, want) : {},
     ]);
-
-    /*
-     * DB가 떴으면 스토리지·IGDB도 실제로 눌러본다.
-     *
-     * **"연결 실패" 한 줄이면 어디가 문제인지 알 수가 없다** — 사용자가 키를 안 넣고
-     * 접속했다가 빈 화면만 하염없이 본 게 이 기능의 출발점이다
-     */
-    let storage = null;
-    let igdb = null;
-    let translate = null;
-    if (!done?.diagnostic) {
-      const hasStorage = (scope === "all" || scope === "storage")
-        && profile.storage?.endpoint && profile.storage?.bucket;
-      const hasIgdb = scope === "all"
-        && profile.igdb?.clientId && profile.igdb?.clientSecret;
-      const hasTranslate = scope === "all" && Boolean(profile.translate?.apiKey);
-      if (hasIgdb) {
-        igdb = await postJson(port, "/api/system/settings/igdb/test", {
-          clientId: profile.igdb.clientId,
-          clientSecret: profile.igdb.clientSecret,
-        }).catch((e) => ({ ok: false, message: String(e.message ?? e) }));
-      }
-      if (hasStorage) {
-        /*
-         * ⚠️ **실제로 버킷을 눌러본다.** 예전엔 `/api/system`의 `configured`만 봤는데
-         * 그건 "값이 채워져 있나"일 뿐이라 **비밀번호를 틀려도 통과했다.**
-         * 자격증명이 맞는지는 스토리지에 물어봐야만 알 수 있다
-         */
-        storage = await getJson(port, "/api/system/storage/check")
-          .catch((e) => ({ ok: false, message: String(e.message ?? e) }));
-      }
-      if (hasTranslate) {
-        /*
-         * ⚠️ **글자를 안 쓰는 방법으로 시험한다.** 백엔드가 `languages`(지원 언어 목록)를
-         * 부르는데, 값이 매겨지는 건 번역하려고 보낸 글자라 이 호출은 공짜다.
-         * "ko로 번역해보기"로 시험했다면 **버튼 한 번이 곧 돈**이었을 것이다
-         */
-        translate = await postJson(port, "/api/system/settings/translate/test", {
-          apiKey: profile.translate.apiKey,
-        }).catch((e) => ({ ok: false, message: String(e.message ?? e) }));
-      }
-    }
-
-    await probe.stop();
+    const { storage = null, igdb = null, translate = null } = services;
 
     return {
-      ok: !done?.diagnostic && (igdb?.ok ?? true) && (storage?.ok ?? true)
-        && (translate?.ok ?? true),
-      code: done?.diagnostic ?? null,
-      /*
-       * 스토리지만 볼 때의 `database`는 **메모리 DB**의 결과라 사용자의 DB와 무관하다.
-       * 화면이 그걸 "데이터베이스 연결됨"으로 그리면 거짓말이 되므로 null로 지운다
-       */
-      database: scope === "storage" ? null : { ok: !done?.diagnostic },
+      ok: (db?.ok ?? true) && (storage?.ok ?? true) && (igdb?.ok ?? true) && (translate?.ok ?? true),
+      code: db?.code ?? null,
+      // 스토리지만 볼 때는 DB를 안 봤다 — 화면이 "데이터베이스 연결됨"을 그리면 거짓말이 된다
+      database: db ? { ok: db.ok } : null,
       storage,
       igdb,
       translate,
     };
   });
 
+  /**
+   * 기동. 화면은 `{ mode, target, resume? }`를 준다 — `resume`은 [최근 접속]에서 눌렀다는 뜻이다.
+   *
+   * ## 실패하면 반드시 돌아온다 (2026-10-25)
+   *
+   * 90초 안에 안 뜨면 서버를 **내리고** `TIMEOUT`으로 답한다. 예전엔 타임아웃 뒤 "서버가 죽기를"
+   * 기다렸는데 살아 있는 서버는 안 죽어서, 입구가 "기록을 여는 중"에 영원히 멈췄다.
+   * [취소](`launch:cancel`)·겹친 기동은 `launchSeq`로 가른다 — 낡은 기동은 아무 말 없이 `SUPERSEDED`로 끝난다
+   */
   handle("launch", async (_e, request) => {
     if (request?.mode !== "local" && request?.mode !== "cloud") throw new Error("잘못된 모드입니다");
-    const profile = request.mode === "cloud" ? await findProfile(request.target) : null;
+    const mine = ++launchSeq;
+    const stale = () => mine !== launchSeq;
+    const superseded = { ok: false, code: "SUPERSEDED" };
+    pendingEntryError = null;
+    const target = request.mode === "local" ? assertSaveName(request.target) : String(request.target ?? "");
+    const fail = (code) => {
+      launching = { mode: request.mode, target };
+      progress({ phase: "error", code });
+      return { ok: false, code };
+    };
+
+    /*
+     * [최근 접속]은 **있는 것만** 연다 (2026-10-25). 세이브는 폴더가 없으면 PGlite가 그 이름으로
+     * 빈 DB를 만든다 — 지우거나 이름을 바꾼 세이브를 누르면 "빈 세이브가 되살아난" 걸로 보였다.
+     * 새 세이브 만들기는 `resume` 없이 오므로 그대로 만들어진다
+     */
+    if (request.resume && request.mode === "local" && !saveFiles.exists(dataDirs(), target)) {
+      forgetLastTarget("local", target);
+      return fail("SAVE_MISSING");
+    }
+    // 붓는 중인 세이브는 시험용이 쥐고 있다 — 열면 같은 폴더를 두 프로세스가 연다
+    if (request.mode === "local" && pouring.has(target)) return fail("DB_IN_USE");
+    const profile = request.mode === "cloud"
+      ? (await store.getConnections()).find((p) => p.name === target) ?? null
+      : null;
+    if (stale()) return superseded;
+    if (request.mode === "cloud" && !profile) {
+      forgetLastTarget("cloud", target);
+      return fail("CONNECTION_MISSING");
+    }
     /*
      * 키체인에서 못 푼 연결 — 빈 비밀번호로 띄우면 "비밀번호가 틀렸다"로 보여 원인이 가려진다.
      * 다시 입력하라고 분명히 말한다
      */
-    if (profile?.locked) {
-      launching = { mode: request.mode, target: request.target };
-      progress({ phase: "error", code: "CREDENTIALS_LOCKED" });
-      return { ok: false, code: "CREDENTIALS_LOCKED" };
-    }
-    const config = request.mode === "local"
-      ? localConfig(assertSaveName(request.target))
-      : cloudConfig(profile);
+    if (profile?.locked) return fail("CREDENTIALS_LOCKED");
+    const config = request.mode === "local" ? localConfig(target) : cloudConfig(profile);
 
     /*
-     * ⚠️ **먼저 옛 백엔드를 죽이고 기다린다.**
-     *
-     * 입구로 나가도 백엔드를 안 죽이기로 하면서 여기가 위험해졌다 — 살아 있는 놈이
-     * 세이브파일을 쥔 채로 같은 폴더를 다시 열면 `DB_IN_USE`다.
-     * 다른 세이브를 골랐더라도 마찬가지로 죽인다: 백엔드는 한 번에 하나면 충분하고,
-     * 둘을 살려두면 "지금 보고 있는 게 어느 쪽이냐"가 흐려진다
+     * ⚠️ **먼저 옛 백엔드를 죽이고 기다린다.** 살아 있는 놈이 세이브파일을 쥔 채로 같은 폴더를
+     * 다시 열면 `DB_IN_USE`다. 다른 세이브를 골랐더라도 죽인다: 백엔드는 한 번에 하나다
      */
-    launching = { mode: request.mode, target: request.target };
+    launching = { mode: request.mode, target };
     progress({ phase: "starting" });
     await stopBackend();
+    if (stale()) return superseded;
 
     /*
-     * 로컬 모드는 띄우기 **전에** 백업한다. DB가 닫혀 있는 유일한 순간이라
-     * 그냥 파일을 복사하면 되고, 스키마 자동 업그레이드가 일어난다면 그 직전이 된다.
-     * 실패해도 기동은 막지 않는다 — 백업이 본체를 막으면 본말전도다
+     * 로컬 모드는 띄우기 **전에** 백업한다. DB가 닫혀 있는 유일한 순간이라 그냥 묶으면 되고,
+     * 스키마 업그레이드가 일어난다면 그 직전이 된다. 실패해도 기동은 막지 않는다
      */
     if (request.mode === "local") {
       try {
-        backup.autoBackup(dataDirs(), request.target);
+        backup.autoBackup(dataDirs(), target);
       } catch (e) {
         console.error("[backup] 자동 백업 실패 — 기동은 계속한다", e);
       }
     }
 
     const port = await freePort();
-    const { exited } = startBackend(port, config);
+    if (stale()) return superseded;
+    const { proc, exited } = startBackend(port, config);
 
     progress({ phase: "waiting" });
     try {
-      await waitForBackend(port);
-    } catch {
-      const result = await exited;
-      const code = result?.diagnostic ?? "BACKEND_DIED";
-      progress({ phase: "error", code });
-      return { ok: false, code };
+      // 그 프로세스의 생사만 본다 — 겹친 기동이 띄운 남의 서버를 내 것으로 보면 안 된다
+      await waitForBackend(port, LAUNCH_TIMEOUT_MS, () => proc !== null && backend === proc);
+    } catch (e) {
+      if (stale()) return superseded;
+      let code;
+      if (e.message === "TIMEOUT") {
+        if (backend === proc) await stopBackend();
+        code = "TIMEOUT";
+      } else {
+        code = (await exited)?.diagnostic ?? "BACKEND_DIED";
+      }
+      if (stale()) return superseded;
+      return fail(code);
     }
+    // 뜬 사이 [취소]나 다른 기동이 왔다 — 그쪽이 이 서버를 내린다
+    if (stale() || backend !== proc) return superseded;
 
-    session = { mode: request.mode, target: request.target };
-    store.patchSettings({ lastMode: request.mode, lastTarget: request.target });
+    session = { mode: request.mode, target };
+    // 서버는 이미 떴다 — 설정 파일 하나 못 쓴다고(윈도우 백신 EPERM) 기동을 실패로 돌리지 않는다
+    try {
+      store.patchSettings({ lastMode: request.mode, lastTarget: target });
+    } catch (err) {
+      console.error("[settings] 마지막 접속을 저장하지 못했습니다", err);
+    }
     progress({ phase: "ready" });
     backendStorage = csp.storageOrigins([{ endpoint: config.env.APP_STORAGE_ENDPOINT, publicBaseUrl: config.env.APP_STORAGE_PUBLIC_BASE_URL }]);
     /*
@@ -1447,63 +1485,61 @@ function registerIpc() {
   });
 
   /**
-   * 입구로 나간다. **백엔드는 그대로 둔다** (2026-08-28 결정).
-   *
-   * 예전엔 여기서 죽였다 — "DB를 갈아끼우러 나가는 것"으로 봤기 때문이다.
-   * 그런데 실제로는 잘못 들어왔거나 설정을 보러 나가는 쪽이 훨씬 흔하고,
-   * 그때마다 5초를 다시 기다리는 건 값을 못 한다. 살려두면 [최근 접속]이 **즉시**다
+   * 기동 대기 중의 [취소] (2026-10-25). 지금 기동을 낡은 것으로 만들고 띄우던 서버를 내린다.
+   * 입구는 "기록을 여는 중"에서 빠져나올 길이 없었다 — 콜드스타트가 길면 앱을 꺼야 했다
    */
+  handle("launch:cancel", async () => {
+    launchSeq += 1;
+    launching = null;
+    await stopBackend();
+    return true;
+  });
+
+  /** 앱 안에서 서버가 죽어 입구로 왔을 때의 이유. **한 번 가져가면 지운다** — 다시 들어올 때 또 뜨면 안 된다 */
+  handle("launch:takeError", () => {
+    const found = pendingEntryError;
+    pendingEntryError = null;
+    return found;
+  });
+
   /**
    * 클라우드 데이터를 **로컬 세이브파일로 뽑는다** (architecture §6).
    *
-   * ## "복원"이라는 과정이 없다
-   *
-   * 세이브파일이 H2 파일 그 자체라서, 뽑아낸 순간 그건 이미 열 수 있는 상태다.
-   * 백업 파일을 어딘가에 두고 나중에 되돌리는 절차가 아예 생기지 않는다.
-   *
-   * ## 이미 있는 것을 쓴다
-   *
-   * architecture는 "JDBC로 행을 복사"라고 했지만, **`/api/me/export`와 `import`가 이미 있고
-   * 실데이터로 검증까지 됐다.** 직접 복사로 가면 identity 시퀀스 리셋과 FK 순서를 새로 짜야 하고,
-   * 이 규모(항목 수십 건)에서 그 값을 못 한다.
-   *
-   * 새로 만들 것은 **빈 세이브파일에 스키마를 만드는 부분**뿐인데, 그것도 백엔드를 한 번
-   * 띄우면 Flyway가 알아서 한다. 그래서 흐름이 이렇게 된다:
+   * 세이브파일은 PGlite 폴더 그 자체라서, 뽑아낸 순간 이미 열 수 있는 상태다 — "복원" 절차가 없다.
+   * 행을 직접 복사하지 않고 **이미 실데이터로 검증된 `/api/me/export`·`import`**를 쓴다:
    *
    * <pre>
    *   1. 지금 붙어 있는 클라우드에서 JSON을 받는다
-   *   2. 새 이름으로 로컬 백엔드를 잠깐 띄운다 → Flyway가 빈 스키마를 만든다
-   *   3. 그 백엔드에 JSON을 부어넣는다
+   *   2. 새 이름으로 로컬 서버를 잠깐 띄운다 → 마이그레이션이 빈 스키마를 만든다
+   *   3. 그 서버에 JSON을 부어넣는다
    *   4. 내린다. 세이브파일 하나가 남는다
    * </pre>
    *
+   * ## 🔴 지금 쓰는 백엔드를 안 건드린다 (2026-08-28)
+   *
+   * 예전엔 클라우드 백엔드를 죽이고 → 로컬을 띄워 부어넣고 → **새 포트로** 되살렸는데 창을 옮기는 줄이
+   * 없어서, 뽑기가 성공한 순간부터 앱 전체가 `Failed to fetch`가 됐다. 상대는 다른 DB의 다른 포트라
+   * 시험용처럼 격리해서 띄우고 내리면 창도 세션도 그대로다.
+   *
    * ⚠️ **커버 실물은 안 따라온다.** 클라우드 커버는 스토리지에 있다.
-   * 가져오기가 "파일 없으면 건너뛴다"로 처리하므로 마스터 커버로 폴백된다 —
-   * 화면이 그걸 미리 말해준다
+   * 가져오기가 "파일 없으면 건너뛴다"로 처리하므로 마스터 커버로 폴백된다 — 화면이 그걸 미리 말해준다
    */
   handle("cloud:toSaveFile", async (_e, saveName) => {
     if (session?.mode !== "cloud" || !backendPort) {
       throw new Error("클라우드 모드로 접속 중일 때만 뽑을 수 있습니다");
     }
+    // 시작한 순간의 서버를 붙든다 — 오래 걸리는 사이 다른 연결로 들어가면 엉뚱한 서버에서 받는다
+    const port = backendPort;
     const clean = assertSaveName(saveName);
     const dirs = dataDirs();
-    if (saveFiles.taken(dirs, clean)) {
-      throw new Error("같은 이름의 세이브파일이 이미 있습니다");
+    reserveSave(dirs, clean);
+    let dump;
+    try {
+      dump = await getJson(port, "/api/me/export");
+    } catch (e) {
+      pouring.delete(clean);
+      throw e;
     }
-
-    const dump = await getJson(backendPort, "/api/me/export");
-
-    /*
-     * ## 🔴 지금 쓰는 백엔드를 안 건드린다 (2026-08-28 전면 수정)
-     *
-     * 예전엔 클라우드 백엔드를 죽이고 → 로컬을 띄워 부어넣고 → **새 포트로** 클라우드를
-     * 되살렸다. 그런데 창을 옮기는 줄이 없었다. 이 기능은 앱 안(`/settings`)에서 부르므로
-     * 창은 **죽은 옛 포트**를 계속 보게 되고, 뽑기가 성공한 그 순간부터 앱 전체가
-     * `Failed to fetch`가 됐다. 연결 테스트에서 고쳤던 것과 똑같은 실수다.
-     *
-     * 죽일 이유가 애초에 없다 — 상대는 **다른 DB의 다른 포트**다. 시험용과 같은 방식으로
-     * 격리해서 띄우고 내리면 창도 세션도 그대로다
-     */
     await pourInto(clean, dump);
     return { saveName: clean };
   });
@@ -1520,13 +1556,16 @@ function registerIpc() {
    *
    * ## 본 백엔드는 계속 살아 있다
    *
-   * 읽어올 세이브파일은 **시험용처럼 격리해서** 잠깐 띄운다. 뽑기에서 창이 죽은 포트를
-   * 보게 됐던 실수를 여기서 되풀이하지 않는다
+   * 읽어올 세이브파일은 **시험용처럼 격리해서** 잠깐 띄운다.
+   * ⚠️ 시작한 순간의 서버(포트)를 붙들고, 덮어쓰기 직전에 **아직 그 서버인지** 다시 본다 —
+   * 수십 초 사이 다른 연결로 들어갔으면 엉뚱한 DB를 덮어쓴다
    */
   handle("saveFile:toCloud", async (_e, saveName) => {
     if (session?.mode !== "cloud" || !backendPort) {
       throw new Error("데이터베이스로 접속 중일 때만 올릴 수 있습니다");
     }
+    const port = backendPort;
+    const owner = session;
     const clean = assertSaveName(saveName);
     const dirs = dataDirs();
     if (!saveFiles.exists(dirs, clean)) {
@@ -1535,29 +1574,41 @@ function registerIpc() {
 
     /*
      * ① 안전망. 지금 데이터베이스에 든 것을 세이브파일 하나로 뽑아둔다.
-     *    이름이 겹치면 뒤에 번호를 붙인다 — 여러 번 덮어써도 매번 남아야 한다
+     *    이름이 겹치면 뒤에 번호를 붙인다 — 여러 번 덮어써도 매번 남아야 한다.
+     *    시각은 백업과 같은 **로컬 시각**이다 (예전엔 여기만 UTC라 9시간 어긋났다)
      */
-    const stamp = new Date().toISOString().slice(0, 16).replace(/[-T:]/g, "").replace(/^(\d{8})/, "$1_");
-    let safety = names.fit(`덮어쓰기 전 ${session.target} ${stamp}`);
-    for (let i = 2; saveFiles.taken(dirs, safety); i += 1) {
-      safety = names.fit(`덮어쓰기 전 ${session.target} ${stamp}`, `-${i}`);
+    const stamp = backup.stamp(new Date());
+    let safety = names.fit(`덮어쓰기 전 ${owner.target} ${stamp}`);
+    for (let i = 2; pouring.has(safety) || saveFiles.taken(dirs, safety); i += 1) {
+      safety = names.fit(`덮어쓰기 전 ${owner.target} ${stamp}`, `-${i}`);
     }
-    const before = await getJson(backendPort, "/api/me/export");
+    reserveSave(dirs, safety);
+    let before;
+    try {
+      before = await getJson(port, "/api/me/export");
+    } catch (e) {
+      pouring.delete(safety);
+      throw e;
+    }
     await pourInto(safety, before);
 
     // ② 올릴 것을 읽어온다. 세이브파일을 격리해서 잠깐 띄운다
-    const port = await freePort();
-    const probe = spawnProbe(port, localConfig(clean));
+    const probePort = await freePort();
+    const probe = spawnProbe(probePort, localConfig(clean));
     let dump;
     try {
-      await waitForBackend(port, 90_000, probe.isAlive);
-      dump = await getJson(port, "/api/me/export");
+      const up = await settleProbe(probe, probePort);
+      if (!up.ready) throw new Error(`세이브파일을 열지 못했습니다 (${up.code})`);
+      dump = await getJson(probePort, "/api/me/export");
     } finally {
       await probe.stop();
     }
 
     // ③ 덮어쓴다. 여기서 실패해도 ①이 남아 있다
-    const result = await postJson(backendPort, "/api/me/replace", dump);
+    if (backendPort !== port || session !== owner) {
+      throw new Error(`접속이 바뀌어 덮어쓰지 않았습니다. 안전망 세이브(${safety})는 남아 있습니다`);
+    }
+    const result = await postJson(port, "/api/me/replace", dump);
 
     /*
      * 창이 보고 있는 건 **덮어쓰기 전의 데이터**다. 그대로 두면 없는 항목을 눌러
@@ -1567,22 +1618,37 @@ function registerIpc() {
     return { ...result, safetySaveName: safety };
   });
 
+  /**
+   * 입구로 나간다. **백엔드는 그대로 둔다** (2026-08-28 결정).
+   *
+   * 예전엔 여기서 죽였다 — "DB를 갈아끼우러 나가는 것"으로 봤기 때문이다.
+   * 그런데 실제로는 잘못 들어왔거나 설정을 보러 나가는 쪽이 훨씬 흔하고,
+   * 그때마다 다시 기다리는 건 값을 못 한다. 살려두면 [최근 접속]이 **즉시**다
+   */
   handle("backToEntry", () => {
     loadEntry();
     return true;
   });
 
-  /** 입구 화면이 [최근 접속] 버튼을 그릴지, 그게 즉시인지 기동인지 정하는 데 쓴다 */
-  handle("session:current", () => {
-    const settings = store.getSettings();
+  /**
+   * 입구 화면이 [최근 접속] 버튼을 그릴지, 그게 즉시인지 기동인지 정하는 데 쓴다.
+   * 지난 기록은 **아직 있는 것만** 준다 — 탐색기에서 지웠거나 다른 곳에서 이름을 바꿨을 수 있다
+   */
+  handle("session:current", async () => {
     if (session && backendPort) {
       return { ...session, alive: true };
     }
-    // 서버는 없지만 지난번 기록은 있다 — 고르는 단계를 건너뛸 수는 있다
-    if (settings.lastMode && settings.lastTarget) {
-      return { mode: settings.lastMode, target: settings.lastTarget, alive: false };
+    const settings = store.getSettings();
+    if (!settings.lastMode || !settings.lastTarget) return null;
+    try {
+      const there = settings.lastMode === "local"
+        ? saveFiles.exists(dataDirs(), settings.lastTarget)
+        : (await store.getConnections()).some((p) => p.name === settings.lastTarget);
+      if (!there) return null;
+    } catch {
+      return null;
     }
-    return null;
+    return { mode: settings.lastMode, target: settings.lastTarget, alive: false };
   });
 
   /** 살아 있는 백엔드로 되돌아간다. 창만 옮기면 끝이라 기다릴 게 없다 */
@@ -1595,10 +1661,100 @@ function registerIpc() {
   });
 }
 
-async function findProfile(name) {
-  const found = (await store.getConnections()).find((p) => p.name === name);
-  if (!found) throw new Error(`연결 설정을 찾을 수 없습니다: ${name}`);
-  return found;
+/** [최근 접속]이 없어진 대상을 가리키면 지운다 */
+function forgetLastTarget(mode, target) {
+  try {
+    const settings = store.getSettings();
+    if (settings.lastMode === mode && settings.lastTarget === target) {
+      store.patchSettings({ lastMode: null, lastTarget: null });
+    }
+  } catch { /* 못 지워도 다음 `session:current`가 걸러낸다 */ }
+}
+
+/**
+ * 연결 이름이 바뀌었다 — 지금 세션·[최근 접속]이 옛 이름을 가리키면 따라 옮긴다 (2026-10-25).
+ * 앱 안 연결 탭에서 이름을 고치면 세션이 옛 이름을 들고 있어서, 탭을 다시 열면 프로필을 못 찾아
+ * 스켈레톤이 영원히 돌았다
+ */
+function retargetConnection(from, to) {
+  if (session?.mode === "cloud" && session.target === from) session = { ...session, target: to };
+  if (launching?.mode === "cloud" && launching.target === from) launching = { ...launching, target: to };
+  try {
+    const settings = store.getSettings();
+    if (settings.lastMode === "cloud" && settings.lastTarget === from) store.patchSettings({ lastTarget: to });
+  } catch { /* 다음 `session:current`가 걸러낸다 */ }
+}
+
+/** DB만 본다 — 열어 보고 진단만 내는 점검 전용 기동. 대상 DB에 스키마·행을 만들지 않는다 */
+async function checkDatabase(profile) {
+  const base = cloudConfig(profile);
+  const config = { ...base, env: { ...base.env, STARLOG_CHECK_ONLY: "true" } };
+  const port = await freePort();
+  const probe = spawnProbe(port, config);
+  try {
+    const up = await settleProbe(probe, port, { checkOnly: true });
+    return up.ready ? { ok: true, code: null } : { ok: false, code: up.code };
+  } finally {
+    await probe.stop();
+  }
+}
+
+/**
+ * 스토리지·IGDB·번역 — **메모리 DB**로 띄운 시험용에 눌러 본다.
+ *
+ * 우리 서버가 버킷을 눌러 보는 방식이라 서버가 떠야 하는데, 사용자의 DB로 띄우면 DB가 틀렸을 때
+ * 스토리지는 멀쩡해도 "실패"가 되고, 맞을 때는 시험만으로 그 DB에 쓴다
+ */
+async function checkServices(profile, want) {
+  const base = cloudConfig(profile);
+  const config = {
+    ...base,
+    env: {
+      ...base.env,
+      STARLOG_DB_URL: undefined,
+      STARLOG_DB_USER: undefined,
+      STARLOG_DB_PASSWORD: undefined,
+      STARLOG_DB_SCHEMA: undefined,
+      STARLOG_DB_DIR: "memory://",
+    },
+  };
+  const port = await freePort();
+  const probe = spawnProbe(port, config);
+  try {
+    const up = await settleProbe(probe, port);
+    if (!up.ready) {
+      const down = { ok: false, message: `시험용 서버를 띄우지 못했습니다 (${up.code})` };
+      return {
+        storage: want.storage ? down : null,
+        igdb: want.igdb ? down : null,
+        translate: want.translate ? down : null,
+      };
+    }
+    const failed = (e) => ({ ok: false, message: String(e?.message ?? e) });
+    const out = { storage: null, igdb: null, translate: null };
+    if (want.igdb) {
+      out.igdb = await postJson(port, "/api/system/settings/igdb/test", {
+        clientId: profile.igdb.clientId,
+        clientSecret: profile.igdb.clientSecret,
+      }).catch(failed);
+    }
+    if (want.storage) {
+      /*
+       * ⚠️ **실제로 버킷을 눌러본다.** `/api/system`의 `configured`는 "값이 채워져 있나"일 뿐이라
+       * 비밀번호를 틀려도 통과했다
+       */
+      out.storage = await getJson(port, "/api/system/storage/check").catch(failed);
+    }
+    if (want.translate) {
+      // ⚠️ 글자를 안 쓰는 방법(`languages`)으로 시험한다 — 번역은 보낸 글자에 값이 매겨진다
+      out.translate = await postJson(port, "/api/system/settings/translate/test", {
+        apiKey: profile.translate.apiKey,
+      }).catch(failed);
+    }
+    return out;
+  } finally {
+    await probe.stop();
+  }
 }
 
 function localConfig(saveName) {
@@ -1606,7 +1762,7 @@ function localConfig(saveName) {
   return {
     mode: "local",
     env: {
-      // 세이브파일 = PGlite 데이터 폴더 (v2). 자바 시절엔 `jdbc:h2:file:...` 주소였다
+      // 세이브파일 = PGlite 데이터 폴더
       STARLOG_DB_DIR: saveFiles.dirOf(paths.subPaths(dataRoot), saveName),
       STARLOG_DATA_ROOT: dataRoot,
       /*
@@ -1628,10 +1784,9 @@ function cloudConfig(profile) {
     mode: "cloud",
     env: {
       /*
-       * 주소는 연결 설정에 저장된 그대로(`jdbc:postgresql://...`) 넘긴다 — 서버가 `jdbc:`를 뗀다.
-       * 사용자·비번·스키마는 따로. 스키마 지정(결정 60)은 자바 땐 URL의 `currentSchema`였고,
-       * 이제 서버가 연결마다 `search_path`로 건다. 있으면 남의 테이블과 한 DB에서 공존해
-       * DB_NOT_EMPTY가 아예 안 생긴다
+       * 주소는 연결 설정에 저장된 그대로 넘긴다 — `jdbc:postgresql://…`(옛 연결)이면 서버가 `jdbc:`를 떼고,
+       * `postgresql://…`도 그대로 된다. 사용자·비번·스키마는 따로. 스키마(결정 60)는 서버가 연결마다
+       * `search_path`로 건다 — 있으면 남의 테이블과 한 DB에서 공존해 DB_NOT_EMPTY가 아예 안 생긴다
        */
       STARLOG_DB_URL: db.url,
       STARLOG_DB_USER: db.user,
@@ -1641,10 +1796,11 @@ function cloudConfig(profile) {
       /*
        * 무엇을 스토리지에 올릴지 (사용자 결정 2026-08-28).
        * 체크 안 한 것은 데이터 루트에 저장된다. **자격증명이 없으면 서버가 무시한다** —
-       * 올릴 데가 없는데 켜져 있으면 업로드가 502로 실패할 뿐이다 (MediaTargets)
+       * 올릴 데가 없는데 켜져 있으면 업로드가 502로 실패할 뿐이다 (MediaTargets).
+       * ⚠️ 스크린샷은 아직 서버가 스토리지에 올리지 않는다(데이터 폴더 전용) — 저장된 체크가 있어도 끈 채로 넘긴다
        */
       STARLOG_MEDIA_USE_STORAGE_FOR_COVERS: String(!!profile.mediaTargets?.covers),
-      STARLOG_MEDIA_USE_STORAGE_FOR_SCREENSHOTS: String(!!profile.mediaTargets?.screenshots),
+      STARLOG_MEDIA_USE_STORAGE_FOR_SCREENSHOTS: "false",
       APP_STORAGE_ENDPOINT: storage.endpoint,
       APP_STORAGE_BUCKET: storage.bucket,
       APP_STORAGE_ACCESS_KEY: storage.accessKey,
@@ -1728,6 +1884,13 @@ app.whenReady().then(() => {
    * 이걸 안 하면 **앱을 켰더니 기록이 통째로 사라진 것**처럼 보인다
    */
   paths.migrateLegacyAppData();
+  // 지난 실행이 붓다 만 세이브(앱이 도중에 꺼졌다) — 목록에 멀쩡한 세이브처럼 뜨지 않게 치운다
+  try {
+    const removed = saveFiles.cleanPartials(dataDirs());
+    if (removed.length) console.error(`[saves] 만들다 만 세이브를 치웠습니다: ${removed.join(", ")}`);
+  } catch (e) {
+    console.error("[saves] 만들다 만 세이브를 치우지 못했습니다", e);
+  }
   protocol.handle("app", serveWeb);
   lockPermissions();
   registerIpc();
@@ -1749,10 +1912,15 @@ app.on("window-all-closed", () => app.quit());
  */
 let quitting = false;
 app.on("before-quit", (event) => {
-  if (quitting || !backend) return;
+  if (quitting || (!backend && probes.size === 0)) return;
   event.preventDefault();
   quitting = true;
-  stopBackend().finally(() => app.quit());
+  /*
+   * 시험용도 같이 내린다 (2026-10-25). 예전엔 본 서버만 봐서, 세이브를 붓는 중에 닫으면 시험용이 그냥 잘려
+   * 반쪽 세이브가 남았다. 내린 뒤의 반쪽 폴더는 `.partial` 표시가 있어 다음 기동이 치운다
+   */
+  Promise.allSettled([stopBackend(), ...[...probes].map((p) => p.stop())])
+    .finally(() => app.quit());
 });
 
 /**
@@ -1765,5 +1933,8 @@ app.on("before-quit", (event) => {
 process.on("exit", () => {
   if (backend) {
     try { backend.kill("SIGTERM"); } catch { /* 이미 죽었으면 무시 */ }
+  }
+  for (const probe of probes) {
+    try { probe.stop(); } catch { /* 이미 죽었으면 무시 */ }
   }
 });

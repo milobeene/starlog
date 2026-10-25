@@ -14,9 +14,8 @@ import { useEntryFlow } from "@/components/entry/useEntryFlow";
  *
  * ## 이 화면만 백엔드가 없다
  *
- * 일렉트론이 `app://`로 **스프링보다 먼저** 로드한다. 그래서 여기서는 `/api/*`를 부를 수
+ * 일렉트론이 `app://`로 **서버보다 먼저** 로드한다. 그래서 여기서는 `/api/*`를 부를 수
  * 없고, 필요한 일은 전부 `window.starlog`(preload)를 통한다.
- * "스프링이 프론트를 전부 서빙한다"는 원칙의 **유일한 예외**다.
  *
  * ## 브라우저에서 열면 예전 모습이다
  *
@@ -24,7 +23,7 @@ import { useEntryFlow } from "@/components/entry/useEntryFlow";
  * 하나로 폴백한다 — **백엔드를 고칠 때 일렉트론을 거치지 않는 길**이 살아 있어야 한다.
  */
 export default function EntryPage() {
-  const { current, setStep, progress, backupTarget, setBackupTarget, session, resume, launch } =
+  const { current, setStep, progress, cancelLaunch, backupTarget, setBackupTarget, session, resume, launch } =
     useEntryFlow();
 
   const compact = current !== "mode" && current !== "web";
@@ -110,6 +109,7 @@ export default function EntryPage() {
             <LaunchOverlay
               progress={progress}
               onRetry={() => setStep("mode")}
+              onCancel={() => void cancelLaunch()}
               /*
                 손상됐을 때만 뜨는 길. **실패한 그 세이브파일의 백업**으로 곧장 보낸다 —
                 "백업에서 되돌리세요"라고만 하면 모드 고르기부터 다시 밟아야 하고,

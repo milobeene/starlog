@@ -5,12 +5,12 @@ import { useEffect, useState } from "react";
 import EntryPanel from "./EntryPanel";
 import { Button, FIELD_INPUT } from "@/components/ui/Field";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
-import { getBridge, type SaveFile } from "@/lib/desktop";
+import { bridgeMessage, getBridge, type SaveFile } from "@/lib/desktop";
 
 /**
  * 로컬 모드 — 세이브파일 고르기 (architecture §5).
  *
- * **세이브파일은 백업 JSON이 아니라 H2 DB 파일 그 자체다.** 고르면 그게 곧 현재 DB고,
+ * **세이브파일은 백업 JSON이 아니라 DB 폴더(PGlite) 그 자체다.** 고르면 그게 곧 현재 DB고,
  * 저장 버튼이 없다. 게임 세이브파일과 같은 은유라서 "내보내기(백업)"가
  * 별개 개념으로 깨끗하게 갈린다
  */
@@ -43,7 +43,7 @@ export default function SaveList({
       .then(setSaves)
       .catch((e) => {
         setSaves([]);
-        setError(e instanceof Error ? e.message : String(e));
+        setError(bridgeMessage(e, "처리하지 못했습니다"));
       });
   useEffect(() => { reload(); }, []);
 
@@ -55,7 +55,7 @@ export default function SaveList({
       setRenaming(null);
       reload();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(bridgeMessage(e, "처리하지 못했습니다"));
     }
   };
 
@@ -65,7 +65,7 @@ export default function SaveList({
       const clean = await getBridge()!.saves.create(newName);
       onLaunch(clean);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(bridgeMessage(e, "처리하지 못했습니다"));
     }
   };
 

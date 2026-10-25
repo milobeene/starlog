@@ -9,9 +9,9 @@ import type { MeResponse } from "./types";
  *
  * 예전엔 "로그인했는가"를 담는 세션 상태였다. 로그인이 사라지면서
  * **"내 프로필을 받아왔는가"**가 됐다 — 닉네임·배경색·역할이 화면 여섯 곳에서 쓰인다.
- * `guest`는 이제 서버가 401/403을 줄 때만 나오는데, 그런 경로가 없어서
- * 사실상 loading → member 두 상태만 돈다. 타입은 남겨둔다 —
- * 백엔드가 안 떴을 때(일렉트론 기동 중)를 loading으로 구분해야 하기 때문이다
+ * `guest`는 서버가 401/403을 줄 때다 — 로그인은 없지만 API 토큰·Host 검사(2026-10-25)가
+ * 어긋나면 실제로 난다. 앱 껍데기(`(app)/layout.tsx`)가 그때 [다시 시도]·[입구로]를 띄운다.
+ * loading은 백엔드가 아직 안 떴거나 답이 없는 상태다
  */
 export type SessionState =
   | { status: "loading"; me: null }
@@ -19,9 +19,8 @@ export type SessionState =
   | { status: "member"; me: MeResponse };
 
 /**
- * 로그인 여부 판정. 서버 컴포넌트에서 못 부르는 이유 —
- * 세션 쿠키가 브라우저에 있고 백엔드가 다른 도메인이라 수동 포워딩이 필요하다.
- * 그래서 **탭을 처음 연 순간**의 첫 페인트는 loading이다.
+ * 프로필 판정. 정적 내보내기라 서버에서 미리 못 그린다 —
+ * 그래서 **문서를 처음 연 순간**의 첫 페인트는 loading이다.
  *
  * **훅이 아니라 모듈 스토어다.** 예전에는 `useSession()`을 부르는 컴포넌트마다
  * 각자 /api/me를 때리고 각자 상태를 들었다. 그래서 두 가지가 어긋났다:
@@ -32,7 +31,7 @@ export type SessionState =
  * 지금은 상태가 한 벌이고 구독자에게 방송된다. 요청도 한 번만 나간다
  * (in-flight 약속을 공유한다).
  *
- * 캐시를 두면서도 매번 다시 묻는 이유 — 다른 탭에서 로그아웃했을 수 있다.
+ * 캐시를 두면서도 다시 묻는 이유 — 창이 다시 보일 때 서버가 바뀌었을 수 있다.
  * 화면은 옛 답으로 즉시 그리고, 새 답이 오면 조용히 갈아끼운다
  */
 let state: SessionState = { status: "loading", me: null };
@@ -40,9 +39,9 @@ let inFlight: Promise<void> | null = null;
 /**
  * 세대 번호. **늦게 도착한 옛 답이 새 답을 덮는 걸 막는다.**
  *
- * `inFlight = null`은 약속 참조를 버릴 뿐 요청을 취소하지 않는다. 그래서 로그인 직후
- * `refreshSession()`이 새 요청을 띄워도, 그 전에 나갔던(예: 잠든 서버를 기다리던) 요청이
- * 뒤늦게 401로 도착하면 **로그인 성공을 비로그인으로 덮어쓴다.**
+ * `inFlight = null`은 약속 참조를 버릴 뿐 요청을 취소하지 않는다. 그래서 다른 세이브로 옮긴 직후
+ * `clearSessionCache()`가 새 요청을 띄워도, 그 전에 나갔던 요청이 뒤늦게 도착하면
+ * **옛 세이브의 프로필로 덮어쓴다.**
  */
 let generation = 0;
 const listeners = new Set<() => void>();
@@ -148,9 +147,9 @@ export async function refreshSession(): Promise<void> {
   await load();
 }
 
-/** 로그아웃·탈퇴처럼 판정이 확실히 뒤집히는 순간에 부른다 */
+/** 다른 세이브·연결로 들어가는 순간처럼 판정이 확실히 뒤집힐 때 부른다 */
 export function clearSessionCache() {
-  // 세대를 올려야 한다 — 안 그러면 진행 중이던 요청이 로그아웃 직후 member를 되살린다
+  // 세대를 올려야 한다 — 안 그러면 진행 중이던 옛 서버의 요청이 새 세션을 옛 프로필로 덮는다
   generation += 1;
   inFlight = null;
   publish({ status: "loading", me: null });

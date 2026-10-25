@@ -45,8 +45,12 @@ type Span = Pick<PlaythroughRow, "sequenceNo" | "startedOn" | "finishedOn"> & { 
 const MAX_DATE = "￿";      // 진행 중 회차는 시작일부터 무한대까지 점유한다
 const until = (p: Span) => p.finishedOn ?? MAX_DATE;
 
-/** BR-PT-02 기간 겹침 (닫힌 구간 — 하루라도 닿으면 겹침) */
-const overlaps = (a: Span, b: Span) => !(a.startedOn > until(b)) && !(b.startedOn > until(a));
+/**
+ * BR-PT-02 기간 겹침. **같은 날 맞닿는 건 겹침이 아니다** — 앞 회차가 끝난 날 다음 회차를 시작할 수 있다
+ * (2026-10-25 사용자 결정. 그 전엔 닫힌 구간이라 오늘 끝낸 회차 뒤 [플레이 시작]이 늘 409였다).
+ * 날짜 단위라 하루 안의 순서는 못 보므로 경계 하루는 양쪽이 같이 써도 된다
+ */
+const overlaps = (a: Span, b: Span) => a.startedOn < until(b) && b.startedOn < until(a);
 
 /** 형제를 봐야 하는 검증 둘. 판정 기준은 상태가 아니라 **종료일**이다 */
 function validateAgainstSiblings(target: Span, siblings: Span[]) {

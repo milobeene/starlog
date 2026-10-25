@@ -14,6 +14,7 @@ import { Conflict, InvalidInput, NotFound } from "../../common/errors";
 import { normalize } from "../../common/text";
 import { nowKst } from "../../common/clock";
 import { opt, zLong, zText } from "../../common/schemas";
+import { PALETTE } from "./service";
 
 export const routes = new Hono();
 
@@ -31,14 +32,6 @@ function checkName(r: z.output<typeof NameRequest>) {
     .throwIfAny();
 }
 
-/**
- * 팔레트에 있는 이름만 받는다. 목록은 화면도 같은 것을 쓴다 —
- * 한쪽만 늘리면 저장은 되는데 안 보이는 색이 생긴다
- */
-export const PALETTE = [
-  "rose", "coral", "amber", "sand", "olive", "sage", "mint", "teal",
-  "sky", "denim", "lavender", "plum", "mauve", "clay",
-] as const;
 
 // ───────────── 태그 ─────────────
 

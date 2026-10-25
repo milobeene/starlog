@@ -19,7 +19,7 @@ const MAX_LENGTH = 50;
 /**
  * 윈도우가 **파일 이름으로 못 쓰는 이름들** (10단계 대비).
  *
- * 장치 이름이라 확장자를 붙여도 안 된다 — `CON.mv.db`도 거부된다. 맥에서는 아무 문제
+ * 장치 이름이라 확장자를 붙여도 안 된다 — `CON.txt`도 거부된다. 맥에서는 아무 문제
  * 없이 만들어지므로 **여기서 안 막으면 윈도우에서만 터진다.** 지금 막는 게 싸다
  */
 const RESERVED = /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])$/i;
@@ -30,6 +30,8 @@ function isValid(name) {
     && name.length <= MAX_LENGTH
     && ALLOWED.test(name)
     && !name.includes("..")
+    // 점으로 시작하면 숨김 폴더가 되고 `saveFiles.dirOf`가 거절한다 — 만들기는 되는데 열리지 않는 이름이었다
+    && !name.startsWith(".")
     // 끝의 공백·점은 윈도우가 조용히 잘라낸다 → 목록의 이름과 실제 파일이 어긋난다
     && !/[\s.]$/.test(name)
     && !RESERVED.test(name.split(".")[0]);
@@ -50,12 +52,12 @@ function assertSaveName(name) {
  * `suffix`를 **따로 받는 게 요점이다.** 통째로 자르면 `... (2)`의 꼬리가 먼저 잘려나가
  * 충돌 회피가 무의미해진다. 꼬리 자리를 먼저 떼어두고 앞을 줄인다.
  *
- * 끝의 공백·점을 걷어내는 건 윈도우 대비다 — `이름 .mv.db`를 만들 수 없다
+ * 끝의 공백·점을 걷어내는 건 윈도우 대비다 — 끝이 점인 폴더 이름은 윈도우가 조용히 잘라낸다
  */
 function fit(base, suffix = "") {
   const cleaned = String(base).replace(/[^가-힣a-zA-Z0-9 _.-]+/g, "-").replace(/\.{2,}/g, ".");
   const room = Math.max(1, MAX_LENGTH - suffix.length);
-  const head = cleaned.slice(0, room).replace(/[\s.]+$/, "") || "backup";
+  const head = cleaned.slice(0, room).replace(/[\s.]+$/, "").replace(/^[\s.]+/, "") || "backup";
   const name = head + suffix;
   // 다듬고도 규칙을 어기면(예약어 등) 안전한 이름으로 물러난다. 조용히 못 쓰는 파일을 만드느니
   return isValid(name) ? name : `backup${suffix}`;

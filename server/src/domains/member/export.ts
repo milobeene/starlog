@@ -8,7 +8,7 @@
  * `where` 없이 통째로 읽어 물리 순서를 그대로** 쓴다 — 같은 키끼리의 상대 순서는 키로 거른 읽기와 같다
  */
 import { alias } from "drizzle-orm/pg-core";
-import { asc, eq } from "drizzle-orm";
+import { asc, desc, eq, sql } from "drizzle-orm";
 import type { Db } from "../../db/client";
 import {
   acquisition, backlogDeveloperOverride, backlogEntry, backlogEntryGenre, backlogPublisherOverride, coverImage,
@@ -16,18 +16,32 @@ import {
 } from "../../db/schema";
 import { nowKst } from "../../common/clock";
 import { ldt, moneyJson } from "../../common/json";
-import {
-  accountFindSelectable, deviceFindSelectable, emulatorFindSelectable, inputMethodFindSelectable,
-  platformFindSelectable,
-} from "../platform/service";
 import { gameCollections, type GameRow } from "../game/service";
+import type { TagRow } from "../tag/service";
 import { FORMAT_VERSION } from "./dump";
-import { colorsOf, presetsOf, subscriptionsOf } from "./query";
+import { colorsOf, presetsOf } from "./query";
 import { findProfile, type ProfileRow } from "./profile";
 
-/** IGDB id가 있으면 그것, 없으면(수동 등록) 이름. 새 DB에서 항목이 게임을 찾는 열쇠다 */
+type SubscriptionRow = typeof subscription.$inferSelect;
+
+/** IGDB id가 있으면 그것, 없으면(수동 등록) 이름. 형식 4까지는 이게 곧 열쇠였다 */
 export const gameKeyOf = (g: Pick<GameRow, "externalId" | "name">) =>
   g.externalId !== null ? `igdb:${g.externalId}` : `name:${g.name}`;
+
+/**
+ * 덤프 안에서만 쓰는 열쇠 (형식 5). 수동 게임은 이름이 겹칠 수 있어서(`registerManual`이 허용) 겹치면 `#2`…를 붙인다 —
+ * 이름만으로 두면 두 게임이 하나로 합쳐지고 두 항목이 같은 게임을 가리켜 되살리기가 409였다
+ */
+function uniqueKeys() {
+  const used = new Set<string>();
+  return (g: Pick<GameRow, "externalId" | "name">) => {
+    const base = gameKeyOf(g);
+    let key = base;
+    for (let n = 2; used.has(key); n++) key = `${base}#${n}`;
+    used.add(key);
+    return key;
+  };
+}
 
 /**
  * ISO 로컬 날짜시각 — 소수 끝의 0은 안 찍는다 (기존 파일과 같은 모양).
@@ -53,16 +67,19 @@ export async function exportData(d: Db) {
   // 차례로 읽는다 — 열 번 남짓이라 느리지 않고, 풀 연결을 하나만 쓴다 (동시에 열면 이득보다 변수가 크다)
   const collections = await gameCollections(d, [...new Set(entries.map(({ g }) => g.id))]);
   const genreLinks = await d.select().from(backlogEntryGenre);
-  const tagNames = await d.select({ id: tag.id, name: tag.name }).from(tag);
+  // 안 쓰는 태그까지 — 색·순서는 사전 관리 화면에서 정한 것이라 항목과 따로 산다 (형식 5)
+  const tags = await d.select().from(tag).orderBy(asc(tag.sortOrder), asc(tag.name));
   const genreNames = await d.select({ id: genre.id, name: genre.name }).from(genre);
   const devOverrides = await d.select().from(backlogDeveloperOverride);
   const pubOverrides = await d.select().from(backlogPublisherOverride);
   const covers = await d.select().from(coverImage);
   const pts = await playthroughs(d);
-  const acqs = await acquisitions(d);
+  // 같은 서비스를 다시 구독하면 이름이 같은 행이 생긴다 — 취득은 순번으로 가리킨다 (형식 5). 동점은 id로 고정
+  const subs = await d.select().from(subscription).orderBy(desc(subscription.startedOn), asc(subscription.id));
+  const acqs = await acquisitions(d, new Map(subs.map((s, i) => [s.id, i])));
   const records = groupBy(await d.select().from(playRecord).orderBy(asc(playRecord.id)), (r) => r.backlogEntryId,
     (r) => ({ kind: r.kind, minutes: Number(r.minutes), playedOn: r.playedOn, note: r.note }));
-  const tagById = new Map(tagNames.map((t) => [t.id, t.name]));
+  const tagById = new Map(tags.map((t) => [t.id, t.name]));
   const genreById = new Map(genreNames.map((x) => [x.id, x.name]));
   const genresOf = groupBy(genreLinks, (l) => l.backlogEntryId);
   const developersOf = groupBy(devOverrides, (r) => r.backlogEntryId);
@@ -71,22 +88,21 @@ export async function exportData(d: Db) {
   const coverOf = new Map<number, (typeof covers)[number]>();
   for (const c of covers) if (!coverOf.has(c.backlogEntryId)) coverOf.set(c.backlogEntryId, c);
 
-  // 여러 항목이 같은 게임을 가리킬 수는 없지만(uk) 순서를 지키며 중복을 걷는다
+  // 항목당 게임 하나(uk)라 게임도 항목 순서대로 한 번씩
   const games = new Map<string, ReturnType<typeof toGame>>();
   const exported = [];
-  // 쓰인 태그·장르는 UTF-16 코드 유닛 순으로 정렬한다 (JS 기본 정렬)
-  const usedTags = new Set<string>();
+  // 쓰인 장르는 UTF-16 코드 유닛 순으로 정렬한다 (JS 기본 정렬)
   const usedGenres = new Set<string>();
+  const keyOf = uniqueKeys();
 
   for (const { e, g } of entries) {
-    const key = gameKeyOf(g);
-    if (!games.has(key)) games.set(key, toGame(g, collections.get(g.id)!));
+    const key = keyOf(g);
+    games.set(key, toGame(key, g, collections.get(g.id)!));
 
     const genres = (genresOf.get(e.id) ?? []).map((l) => genreById.get(l.genreId)!);
     genres.forEach((n) => usedGenres.add(n));
 
     const tagName = e.tagId === null ? null : tagById.get(e.tagId)!;
-    if (tagName !== null) usedTags.add(tagName);
 
     const c = coverOf.get(e.id);
     exported.push({
@@ -114,7 +130,7 @@ export async function exportData(d: Db) {
     formatVersion: FORMAT_VERSION,
     exportedAt: nowLdt(),
     profile: profile(m),
-    catalog: await catalog(d, [...usedTags].sort(), [...usedGenres].sort()),
+    catalog: await catalog(d, subs, tags, [...usedGenres].sort()),
     games: [...games.values()],
     entries: exported,
   };
@@ -142,31 +158,45 @@ function profile(m: ProfileRow) {
   };
 }
 
-/** 선택지 다섯 종 + 구독 + 쓰인 태그·장르. **계정이 플랫폼을 참조하므로 플랫폼이 먼저다** */
-async function catalog(d: Db, tags: string[], genres: string[]) {
+/**
+ * 선택지 다섯 종 + 구독 + 태그 + 쓰인 장르. **계정이 플랫폼을 참조하므로 플랫폼이 먼저다**.
+ * 선택지는 **지운 행까지** `deletedAt`과 함께 싣는다 (형식 5) — 지운 기기·플랫폼을 가리키는 회차·취득·계정이 살아 있을 수 있다.
+ * 이름(계정은 소속+라벨)이 지운 행까지 유니크라 이름으로 가리켜도 안 겹친다. 순서는 선택지 목록과 같은 열쇠
+ */
+async function catalog(d: Db, subs: SubscriptionRow[], tags: TagRow[], genres: string[]) {
+  const accounts = await d.select({ a: platformAccount, p: platform.name, e: emulator.name })
+    .from(platformAccount)
+    .leftJoin(platform, eq(platformAccount.platformId, platform.id))
+    .leftJoin(emulator, eq(platformAccount.emulatorId, emulator.id))
+    .orderBy(sql`coalesce(${platform.name}, ${emulator.name}) asc`, asc(platformAccount.accountLabel), asc(platformAccount.id));
   return {
-    platforms: (await platformFindSelectable(d)).map((p) => p.name),
+    platforms: (await d.select().from(platform).orderBy(asc(platform.name)))
+      .map((p) => ({ name: p.name, deletedAt: ldt(p.deletedAt) })),
     // 소속은 둘 중 하나만 찬다 (형식 3). 에뮬 소속 계정 때문에 내보내기가 500이던 것(버그 1)을 여기서 고쳤다
-    accounts: (await accountFindSelectable(d)).map((a) => ({
-      label: a.accountLabel, platform: a.platform?.name ?? null, emulator: a.emulator?.name ?? null,
+    accounts: accounts.map(({ a, p, e }) => ({
+      label: a.accountLabel, platform: p, emulator: e, deletedAt: ldt(a.deletedAt),
     })),
-    devices: (await deviceFindSelectable(d)).map((x) => ({ deviceType: x.deviceType, label: x.label, memo: x.memo })),
-    emulators: (await emulatorFindSelectable(d)).map((e) => ({ name: e.name, memo: e.memo })),
-    inputMethods: (await inputMethodFindSelectable(d)).map((i) => i.name),
-    subscriptions: (await subscriptionsOf(d)).map((s) => ({
+    devices: (await d.select().from(device).orderBy(asc(device.label)))
+      .map((x) => ({ deviceType: x.deviceType, label: x.label, memo: x.memo, deletedAt: ldt(x.deletedAt) })),
+    emulators: (await d.select().from(emulator).orderBy(asc(emulator.name)))
+      .map((e) => ({ name: e.name, memo: e.memo, deletedAt: ldt(e.deletedAt) })),
+    inputMethods: (await d.select().from(inputMethod).orderBy(asc(inputMethod.name)))
+      .map((i) => ({ name: i.name, deletedAt: ldt(i.deletedAt) })),
+    subscriptions: subs.map((s) => ({
       serviceName: s.serviceName,
       startedOn: s.startedOn,
       endedOn: s.endedOn,
       fee: moneyJson(s.feeAmount, s.feeCurrency),
       billingCycle: s.billingCycle,
     })),
-    tags,
+    tags: tags.map((t) => ({ name: t.name, color: t.color, sortOrder: t.sortOrder })),
     genres,
   };
 }
 
-function toGame(g: GameRow, c: { developers: string[]; publishers: string[]; masterGenres: string[]; releasePlatforms: string[] }) {
+function toGame(key: string, g: GameRow, c: { developers: string[]; publishers: string[]; masterGenres: string[]; releasePlatforms: string[] }) {
   return {
+    key,
     externalId: g.externalId,
     source: g.source,
     name: g.name,
@@ -231,7 +261,7 @@ async function playthroughs(d: Db) {
 }
 
 /** `platform`은 **취득 자체의** 플랫폼이고, `platformAccountPlatform`·`…Emulator`는 **계정의** 소속이다 */
-async function acquisitions(d: Db) {
+async function acquisitions(d: Db, subscriptionIndex: Map<number, number>) {
   const rows = await d.select({
     a: acquisition, platform: platform.name, account: platformAccount.accountLabel,
     ap: accountPlatform, ae: accountEmulator, subscription: subscription.serviceName,
@@ -248,6 +278,7 @@ async function acquisitions(d: Db) {
     platformAccount: r.account,
     ...accountOwner(r.account, r.ap, r.ae),
     subscription: r.subscription,
+    subscriptionIndex: r.a.subscriptionId === null ? null : subscriptionIndex.get(r.a.subscriptionId) ?? null,
     price: moneyJson(r.a.priceAmount, r.a.priceCurrency),
     acquiredOn: r.a.acquiredOn,
     label: r.a.label,

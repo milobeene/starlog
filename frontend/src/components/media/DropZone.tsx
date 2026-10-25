@@ -53,7 +53,8 @@ export default function DropZone({
   /*
    * 붙여넣기는 **문서 전체**에서 듣는다. 드롭 영역에만 걸면 거기를 먼저 클릭해
    * 포커스를 줘야 하는데, 스크린샷을 찍고 온 사람은 그걸 모른다.
-   * 대신 이 영역이 화면에 있을 때만 산다 — 언마운트되면 리스너도 사라진다
+   * 대신 이 영역이 화면에 있을 때만 산다 — 언마운트되면 리스너도 사라진다.
+   * 화면에 여럿 있으면(스크린샷 구역 + 커버 팝업) 맨 위 층의 칸만 받는다
    */
   useEffect(() => {
     if (disabled) return;
@@ -61,6 +62,11 @@ export default function DropZone({
     const onPaste = (e: ClipboardEvent) => {
       const files = Array.from(e.clipboardData?.files ?? []);
       if (files.length === 0) return;
+      // 위에 팝업·갤러리가 떠 있으면 뒤에 깔린 칸은 안 받는다 — 커버 팝업에 붙인 그림이
+      // 스크린샷으로도 올라가던 것. 열린 팝업 전부의 안쪽에 있는 칸만 맨 위다
+      // (겹친 팝업은 형제로 그리므로 아래 팝업의 칸은 위 팝업 안에 없다)
+      const modals = document.querySelectorAll('[aria-modal="true"]');
+      if ([...modals].some((modal) => !modal.contains(zone.current))) return;
       e.preventDefault();
       setRejected(null);
       onFiles(multiple ? files : files.slice(0, 1));

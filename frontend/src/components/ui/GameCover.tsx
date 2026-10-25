@@ -26,8 +26,10 @@ export default function GameCover({
   size?: IgdbSize;
   className?: string;
 }) {
-  const [broken, setBroken] = useState(false);
-  const src = broken ? null : coverSrc(coverUrl, coverImageId, size);
+  // 깨진 **주소**를 기억한다 — boolean이면 커버를 새로 바꿔도 이 칸은 플레이스홀더로 남는다
+  const [brokenSrc, setBrokenSrc] = useState<string | null>(null);
+  const wanted = coverSrc(coverUrl, coverImageId, size);
+  const src = wanted === brokenSrc ? null : wanted;
 
   return (
     <div
@@ -38,7 +40,7 @@ export default function GameCover({
           src={src}
           alt={name}
           loading="lazy"
-          onError={() => setBroken(true)}
+          onError={() => setBrokenSrc(wanted)}
           className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.06]"
         />
       ) : (

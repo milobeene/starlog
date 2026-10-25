@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # 데스크탑 빌드 (v2) — 프론트를 정적으로 뽑고, 서버를 번들 하나로 묶는다.
 #
-# 자바 시절엔 정적 파일을 **두 곳**(jar 안 = 본 앱, desktop/web = 입구)에 넣고 jar를 구웠다.
-# v2 서버는 desktop/web을 그대로 서빙하므로 한 곳이면 된다. jar도 JRE도 없다.
+# 정적 파일은 desktop/web **한 곳**이다 — 입구·본 앱(app://)도, 서버의 http 사본도 이걸 쓴다.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT=$(pwd)

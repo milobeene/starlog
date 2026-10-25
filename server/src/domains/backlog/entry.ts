@@ -98,7 +98,7 @@ export async function updatePersonalRecord(d: Db, entryId: number,
   const minutes = validatePlayTimeMinutes(playTime.minutes);
   const add = playTime.addMinutes === null ? null : tenthsOf(playTime.addMinutes);
   const target = minutes !== null ? minutes
-    : hours !== null && !sameValue(hours, e.playTimeHours) ? tenthsFromHours(hours) : null;
+    : hours !== null && !sameValue(hours, e.playTimeHours, true) ? tenthsFromHours(hours) : null;
   await recordPlayTimeChange(d, e, target, add);
   await syncPlayTime(d, e, { rating: scaledRating, memo: normalize(memo) });
 }

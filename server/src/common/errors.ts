@@ -57,7 +57,6 @@ export class TooManyRequests extends AppError {
 export const EXTERNAL_SERVICE = {
   GAME_CATALOG: "게임 정보 서비스",
   FILE_STORAGE: "이미지 저장소",
-  MAIL: "메일 발송 서비스",
   TRANSLATE: "번역 서비스",
 } as const;
 export type ExternalService = keyof typeof EXTERNAL_SERVICE;

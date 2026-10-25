@@ -7,9 +7,6 @@ export const FIELD_INPUT =
 /** 옵션 목록은 OS가 그리는 팝업이라 어두운 배경을 직접 지정해야 흰 판이 안 뜬다 */
 export const FIELD_SELECT = `${FIELD_INPUT} [&>option]:bg-neutral-900`;
 
-/** 달력 아이콘이 기본 검정이라 어두운 배경에서 안 보인다 — invert로 뒤집는다 */
-export const FIELD_DATE = `${FIELD_INPUT} num [&::-webkit-calendar-picker-indicator]:invert`;
-
 /**
  * 라벨 + 입력 한 칸.
  *
@@ -81,24 +78,3 @@ export function Button({
   );
 }
 
-/** 편집 가능한 섹션 제목 옆의 연필 */
-export function EditButton({ onClick, label }: { onClick: () => void; label: string }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      title={label}
-      className="flex h-6 w-6 items-center justify-center rounded text-white/35 transition-colors hover:bg-white/10 hover:text-white"
-    >
-      <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth="2"
-          d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-        />
-      </svg>
-    </button>
-  );
-}

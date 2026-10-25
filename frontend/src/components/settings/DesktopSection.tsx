@@ -6,6 +6,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { getBridge, type SaveFile, type SessionInfo } from "@/lib/desktop";
 import { putTask, updateTask, useTaskRunning } from "@/lib/tasks";
 import { api } from "@/lib/api";
+import { invalidateQueries } from "@/lib/useApi";
 
 /**
  * 데스크탑 앱에서만 보이는 칸 (v1.0 5단계).
@@ -37,7 +38,8 @@ export default function DesktopSection() {
       </div>
 
       {/* 클라우드로 접속 중일 때만. 로컬은 이미 세이브파일이 그 자체로 있다 */}
-      {session?.mode === "cloud" ? (
+      {/* 받기 전엔 아무 문구도 안 낸다 — 클라우드 접속에서 "로컬 세이브파일" 안내가 번쩍이면 안 된다 */}
+      {session === null ? null : session.mode === "cloud" ? (
         <>
           <CloudExtract />
           {/*
@@ -182,9 +184,11 @@ function SaveFileUpload() {
    */
   const busy = useTaskRunning(UPLOAD_TASK);
 
-  useEffect(() => {
+  // 같은 화면의 뽑기·안전망이 새 세이브를 만들므로 한 번만 받으면 목록이 낡는다 — 고를 때마다 다시 받는다
+  const loadSaves = () => {
     getBridge()?.saves.list().then(setSaves).catch(() => setSaves([]));
-  }, []);
+  };
+  useEffect(loadSaves, []);
 
   const upload = async () => {
     setConfirming(false);
@@ -196,6 +200,9 @@ function SaveFileUpload() {
     });
     try {
       const r = await getBridge()!.saveFileToCloud(picked);
+      // DB가 통째로 바뀌었다 — 들고 있던 응답은 전부 옛 DB 것이다
+      invalidateQueries();
+      loadSaves();
       updateTask(UPLOAD_TASK, {
         progress: undefined,
         title: "데이터베이스 덮어쓰기",
@@ -234,6 +241,7 @@ function SaveFileUpload() {
           <select
             value={picked}
             onChange={(e) => setPicked(e.target.value)}
+            onFocus={loadSaves}
             /* 덮어쓰는 동안 대상을 못 바꾼다 — 지금 붓고 있는 것과 어긋나면 안 된다 */
             disabled={busy}
             className={FIELD_INPUT}

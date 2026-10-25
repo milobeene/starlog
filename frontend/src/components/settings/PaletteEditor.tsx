@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import FluidCanvas from "@/components/background/FluidCanvas";
 import {
   DEFAULT_PALETTE,
@@ -12,6 +12,7 @@ import {
   unifyHue,
   type SavedPalette,
 } from "@/lib/palette";
+import { errorMessage } from "@/lib/api";
 
 const MAX_PRESETS = 12;
 const sameColors = (a: string[], b: string[]) =>
@@ -71,11 +72,34 @@ export default function PaletteEditor({
     };
   }, []);
   const [naming, setNaming] = useState<string | null>(null);
+  const [presetError, setPresetError] = useState<string | null>(null);
   const commitPresets = (next: SavedPalette[]) => {
     const before = presets;
     setPresets(next);
-    storePresets(next).catch(() => setPresets(before));
+    setPresetError(null);
+    // 되돌리기만 하면 "저장했는데 사라졌다"로 보인다 — 실패했다고 한 줄 남긴다
+    storePresets(next).catch((caught: unknown) => {
+      setPresets(before);
+      setPresetError(errorMessage(caught, "프리셋을 저장하지 못했습니다."));
+    });
   };
+
+  /*
+   * 이름 칸의 Esc는 이름 입력만 접는다. Modal은 document 리스너라 React의 stopPropagation이
+   * 안 닿는다 — capture에서 끊어야 팔레트 대화상자까지 닫히지 않는다
+   */
+  const namingInput = useRef<HTMLInputElement>(null);
+  const namingOpen = naming !== null;
+  useEffect(() => {
+    if (!namingOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.isComposing || event.target !== namingInput.current) return;
+      event.stopImmediatePropagation();
+      setNaming(null);
+    };
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+  }, [namingOpen]);
   const savePreset = () => {
     const name = (naming ?? "").trim().slice(0, 30);
     if (!name) return;
@@ -214,18 +238,16 @@ export default function PaletteEditor({
         ) : (
           <>
             <input
+              ref={namingInput}
               autoFocus
               value={naming}
               onChange={(event) => setNaming(event.target.value)}
               onKeyDown={(event) => {
-                // 다이얼로그의 Enter(저장)·Esc(닫기)가 이름 입력까지 먹지 않게
+                // 다이얼로그의 Enter(저장)가 이름 입력까지 먹지 않게 (Esc는 위 capture 리스너가 맡는다)
                 if (event.key === "Enter") {
                   event.preventDefault();
                   event.stopPropagation();
                   savePreset();
-                } else if (event.key === "Escape") {
-                  event.stopPropagation();
-                  setNaming(null);
                 }
               }}
               maxLength={30}
@@ -251,6 +273,7 @@ export default function PaletteEditor({
         {presets.some((preset) => preset.name === (naming ?? "").trim()) && (
           <span className="text-[11px] text-amber-300/80">같은 이름이 있어 덮어씁니다</span>
         )}
+        {presetError && <span className="text-[11px] text-red-400">{presetError}</span>}
       </div>
     </div>
   );

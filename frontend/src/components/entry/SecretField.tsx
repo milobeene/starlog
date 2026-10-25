@@ -35,12 +35,22 @@ export default function SecretField({
 }) {
   const [shown, setShown] = useState(false);
   const [revealing, setRevealing] = useState(false);
+  const [revealError, setRevealError] = useState<string | null>(null);
 
   const toggle = async () => {
-    if (!shown && masked && onReveal) {
+    setRevealError(null);
+    if (!shown && masked) {
+      /* 진짜 값을 못 받으면 펼치지 않는다 — 펼치면 가린 점이 "값"처럼 보인다 */
+      if (!onReveal) {
+        setRevealError("저장된 값을 볼 수 없습니다");
+        return;
+      }
       setRevealing(true);
       try {
         await onReveal();
+      } catch (e) {
+        setRevealError(e instanceof Error ? e.message : String(e));
+        return;
       } finally {
         setRevealing(false);
       }
@@ -84,6 +94,7 @@ export default function SecretField({
           {shown ? <EyeOff /> : <Eye />}
         </button>
       </div>
+      {revealError && <span className="text-[11px] text-red-400">{revealError}</span>}
     </div>
   );
 }

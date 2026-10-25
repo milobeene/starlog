@@ -125,7 +125,19 @@ function getSettings() {
   return {
     ...s,
     dataRoot: s.dataRoot || DEFAULT_DATA_ROOT,
-    window: { ...SETTINGS_DEFAULT.window, ...(s.window ?? {}) },
+    window: windowOf(s.window),
+  };
+}
+
+/** 창 크기는 숫자·범위까지 본다 — 문자열이나 음수가 들어 있으면 `BrowserWindow`가 던져 창이 안 뜬다 */
+function windowOf(saved) {
+  const base = SETTINGS_DEFAULT.window;
+  const w = saved && typeof saved === "object" && !Array.isArray(saved) ? saved : {};
+  const size = (v, min, fallback) => (Number.isFinite(v) ? Math.min(Math.max(Math.round(v), min), 10000) : fallback);
+  return {
+    width: size(w.width, 380, base.width),
+    height: size(w.height, 480, base.height),
+    maximized: typeof w.maximized === "boolean" ? w.maximized : base.maximized,
   };
 }
 
@@ -324,36 +336,63 @@ function unmask(incoming, stored) {
   return out;
 }
 
-/** `previousName` — 이름을 고치는 중이면 저장된 쪽은 옛 이름이다 */
-function findStored(profiles, name, previousName) {
-  return profiles.find((p) => p.name === name) ?? profiles.find((p) => p.name === previousName) ?? null;
+/**
+ * 저장된 쪽을 찾는다. **옛 이름(`previousName`)으로만** 찾는다 (2026-10-25).
+ *
+ * 예전엔 새 이름을 먼저 봤다. A를 이미 있는 B로 바꾸면 B가 걸려서, A의 가린 값이 **B의 진짜 비밀**로
+ * 풀렸다 — 12자 미만은 가린 모양이 전부 `••••••••`로 같아서 짧은 비번이 그대로 섞였다.
+ * 새 연결(옛 이름 없음)은 풀 것이 없다
+ */
+function findStored(profiles, previousName) {
+  if (typeof previousName !== "string" || !previousName) return null;
+  return profiles.find((p) => p.name === previousName) ?? null;
 }
 
 /** 연결 테스트·기동에 쓸 진짜 값. 화면이 안 고친 칸은 저장된 값으로 */
 async function resolveProfile(input, previousName) {
   const clean = cleanProfile(input);
-  const stored = findStored(await getConnections(), clean.name, previousName);
+  const stored = findStored(await getConnections(), previousName);
   return unmask(clean, stored);
 }
 
 /**
- * 이름이 같으면 덮어쓰고 없으면 추가한다.
+ * 키체인에서 못 푼 연결에 비밀을 **일부만** 다시 넣으면 나머지는 사라진다 — 옛 봉투는 열 수 없어
+ * 합칠 방법이 없다. 주소는 남고 키만 빠진 반쪽 설정이 조용히 생기지 않게 거절한다
+ */
+function assertLockedComplete(next) {
+  const missing = [];
+  if ((getField(next, "storage.endpoint") || getField(next, "storage.bucket"))
+    && (!getField(next, "storage.accessKey") || !getField(next, "storage.secretKey"))) missing.push("스토리지 키");
+  if (getField(next, "igdb.clientId") && !getField(next, "igdb.clientSecret")) missing.push("IGDB 시크릿");
+  if (missing.length) {
+    throw new Error(`키체인에서 열지 못한 연결입니다 — ${missing.join("·")}도 함께 다시 입력해 주세요`);
+  }
+}
+
+/**
+ * 저장한다. `previousName`이 있으면 **그 항목을 제자리에서 바꾼다**(이름 바꾸기 포함), 없으면 새로 붙인다.
  *
- * 이름을 키로 쓰는 이유 — 사람이 "내 Neon", "실험용"처럼 부르는 게 목록의 전부고,
- * id를 따로 두면 화면이 그걸 들고 다녀야 한다. 겹치면 덮어쓰는 게 기대하는 동작이다
+ * ⚠️ **이름이 겹치면 거절한다** (2026-10-25). 예전엔 "겹치면 덮어쓰기"였는데, 새 연결에 이미 있는 이름을
+ * 쓰거나 A를 B로 바꾸면 남의 연결이 조용히 사라졌다. 이름이 곧 키라 사람이 고르게 한다
  */
 function saveConnection(input, previousName) {
   return serial(async () => {
     const profiles = await readProfiles();
     const clean = cleanProfile(input);
-    const stored = findStored(profiles, clean.name, previousName);
+    const stored = findStored(profiles, previousName);
+    const clash = profiles.find((p) => p.name === clean.name);
+    if (clash && clash !== stored) throw new Error(`같은 이름의 연결이 이미 있습니다: ${clean.name}`);
     const next = unmask(clean, stored);
-    // 안 풀렸던 프로필에서 비밀 칸을 그대로 두고 저장하면 봉투를 지키고 잠금도 유지한다
-    if (stored?.locked && SECRET_FIELDS.every((f) => !getField(next, f))) {
-      next.locked = true;
-      Object.defineProperty(next, "sealedKeep", { value: stored.sealedKeep, enumerable: false });
+    if (stored?.locked) {
+      // 안 풀렸던 프로필에서 비밀 칸을 그대로 두고 저장하면 봉투를 지키고 잠금도 유지한다
+      if (SECRET_FIELDS.every((f) => !getField(next, f))) {
+        next.locked = true;
+        Object.defineProperty(next, "sealedKeep", { value: stored.sealedKeep, enumerable: false });
+      } else {
+        assertLockedComplete(next);
+      }
     }
-    const at = profiles.findIndex((p) => p.name === next.name);
+    const at = stored ? profiles.indexOf(stored) : -1;
     if (at >= 0) profiles[at] = next;
     else profiles.push(next);
     await writeProfiles(profiles);

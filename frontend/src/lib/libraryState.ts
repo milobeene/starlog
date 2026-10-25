@@ -30,6 +30,8 @@ type LibraryState = {
   openFolder: string | null;
   /** 마지막 목록 응답. 돌아왔을 때 스켈레톤 없이 그린다 */
   cards: PageResponse<BacklogCard> | null;
+  /** `cards`를 받은 요청 주소. 돌아왔을 때 조건이 하나라도 다르면 안 쓴다 */
+  cardsPath: string | null;
 };
 
 let saved: LibraryState | null = null;
@@ -41,9 +43,4 @@ export function rememberLibrary(state: LibraryState) {
 /** 마지막 상태. 없으면 null — 호출부가 기본값을 쓴다 */
 export function takeLibrary(): LibraryState | null {
   return saved;
-}
-
-/** 목록만 갈아 끼운다. 상태는 그대로 두고 응답만 최신으로 */
-export function rememberCards(cards: PageResponse<BacklogCard> | null) {
-  if (saved) saved.cards = cards;
 }

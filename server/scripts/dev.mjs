@@ -25,7 +25,9 @@ if (process.argv.includes("--fixture")) {
   console.log("실데이터 픽스처를 복사했다 → .dev/db");
 }
 fs.mkdirSync(dev, { recursive: true });
-spawnSync(path.join(root, "node_modules/.bin/tsx"), ["scripts/gen-migrations.ts"], { cwd: root, stdio: "inherit" });
+// 생성이 실패하면 멈춘다 — 옛 생성 파일로 뜨면 새 SQL이 빠진 DB가 만들어진다
+const gen = spawnSync(path.join(root, "node_modules/.bin/tsx"), ["scripts/gen-migrations.ts"], { cwd: root, stdio: "inherit" });
+if (gen.status !== 0) process.exit(gen.status ?? 1);
 spawn(path.join(root, "node_modules/.bin/tsx"), ["watch", "src/main.ts"], {
   cwd: root, stdio: "inherit",
   env: {

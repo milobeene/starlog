@@ -90,16 +90,16 @@ export type LaunchProgress =
       exitCode?: number;
       message?: string;
       /**
-       * 무엇을 띄우려다 실패했나.
+       * 무엇을 띄우려다(또는 열고 있다가) 실패했나.
        *
-       * ⚠️ **화면 상태로는 못 안다** — 기동이 실패하면 창이 입구로 **통째로 다시 로드**되어
-       * 리액트 상태가 통째로 날아간다. 그래서 일렉트론이 실어 보낸다
+       * ⚠️ **화면 상태로는 못 안다** — 앱 안에서 서버가 죽으면 입구로 라우팅되며 무엇을 열고
+       * 있었는지를 잃는다. 그래서 일렉트론이 실어 보낸다
        */
       mode?: LaunchMode;
       target?: string;
     };
 
-/** 백업 한 벌 (9단계). 세이브파일과 같은 `.mv.db`라 고르면 바로 열 수 있다 */
+/** 백업 한 벌 (9단계). 세이브 폴더를 묶은 `.tar.gz`다 — 되돌리면 새 세이브파일이 하나 생긴다 */
 export interface BackupFile {
   fileName: string;
   label: string;
@@ -123,7 +123,7 @@ export interface BackupUsage {
 export interface ConnectionTestResult {
   ok: boolean;
   code: string | null;
-  /** ⚠️ `scope: "storage"`면 null이다 — 그때의 DB는 메모리라 사용자의 것과 무관하다 */
+  /** ⚠️ `scope: "storage"`면 null이다 — DB는 안 봤다 (스토리지는 메모리 DB 시험용으로 본다) */
   database: { ok: boolean } | null;
   storage: { ok: boolean; message?: string } | null;
   igdb: { ok: boolean; message?: string } | null;
@@ -217,8 +217,8 @@ export interface StarlogBridge {
       profile: ConnectionProfile,
       /**
        * `"all"`은 전부, 나머지는 그 하나만 본다.
-       * ⚠️ `"storage"`는 **메모리 DB로** 시험용을 띄운다 — 사용자의 DB가 틀려도
-       * 스토리지만 따로 볼 수 있어야 섹션별 테스트가 뜻을 갖는다
+       * DB는 **열어 보기만** 하고(스키마를 만들지 않는다), 스토리지·키는 **메모리 DB** 시험용으로 본다 —
+       * 사용자의 DB가 틀려도 스토리지만 따로 볼 수 있어야 섹션별 테스트가 뜻을 갖는다
        */
       options?: { scope?: "all" | "db" | "storage"; previousName?: string },
     ): Promise<ConnectionTestResult>;
@@ -259,12 +259,19 @@ export interface StarlogBridge {
   }>;
   /**
    * 성공하면 `port`가 온다. 그 포트로 API 주소를 세우고 화면이 스스로 들어간다.
-   * `reload`면 지금 문서의 CSP에 이 연결의 스토리지 주소가 없다 — 문서를 새로 받아야 커버가 뜬다
+   * `reload`면 지금 문서의 CSP에 이 연결의 스토리지 주소가 없다 — 문서를 새로 받아야 커버가 뜬다.
+   * `resume`은 [최근 접속] — 없어진 세이브를 같은 이름의 빈 세이브로 만들지 않고 거절한다.
+   * `code: "SUPERSEDED"`는 [취소]나 뒤이은 기동에 밀린 것이다 — 아무것도 띄우지 않는다
    */
   launch(request: {
     mode: LaunchMode;
     target: string;
+    resume?: boolean;
   }): Promise<{ ok: boolean; code?: string; port?: number; reload?: boolean }>;
+  /** 기동 대기 중의 [취소]. 옛 preload에는 없다 */
+  cancelLaunch?(): Promise<boolean>;
+  /** 앱 안에서 서버가 죽어 입구로 왔을 때의 이유. 한 번 가져가면 지워진다. 옛 preload에는 없다 */
+  takeLaunchError?(): Promise<Extract<LaunchProgress, { phase: "error" }> | null>;
   onProgress(callback: (p: LaunchProgress) => void): () => void;
   backToEntry(): Promise<boolean>;
   /**
@@ -274,7 +281,7 @@ export interface StarlogBridge {
   backendPort(): number | null;
   /**
    * "입구로 가라". 백엔드가 혼자 죽었거나 앱 안에서 [나가기]를 눌렀을 때 온다.
-   * 예전엔 일렉트론이 문서를 다시 로드했지만 이제는 알리기만 한다
+   * 죽은 이유는 이 이벤트에 안 실린다 — 입구가 마운트되며 `takeLaunchError`로 가져간다
    */
   onGoEntry(callback: () => void): () => void;
 }
@@ -342,6 +349,20 @@ export const DIAGNOSTIC_MESSAGE: Record<string, { title: string; hint: string }>
     title: "세이브파일이 손상됐습니다",
     hint: "파일 일부가 잘렸습니다. 백업에서 되돌리면 그 시점의 기록을 그대로 살릴 수 있습니다.",
   },
+  /* 90초 안에 안 떴다 — 일렉트론이 띄우던 서버를 내렸다. 콜드스타트·느린 회선이면 다시 누르면 된다 */
+  TIMEOUT: {
+    title: "앱 서버가 제때 뜨지 않았습니다",
+    hint: "띄우던 서버는 내렸습니다. 데이터베이스가 깨어나는 중일 수 있으니 잠시 뒤 다시 시도해 주세요.",
+  },
+  /* [최근 접속]이 가리키던 세이브파일이 사라졌다 — 같은 이름의 빈 세이브를 만들지 않고 멈춘다 */
+  SAVE_MISSING: {
+    title: "그 세이브파일이 없습니다",
+    hint: "지웠거나 이름이 바뀐 것 같습니다. 로컬 세이브파일 목록에서 골라 주세요.",
+  },
+  CONNECTION_MISSING: {
+    title: "그 연결 설정이 없습니다",
+    hint: "지웠거나 이름이 바뀐 것 같습니다. 데이터베이스 연결 목록에서 골라 주세요.",
+  },
   /* 키체인 항목이 사라졌거나 다른 컴퓨터에서 옮겨 온 connections.json — 지우지 않고 다시 입력을 받는다 */
   CREDENTIALS_LOCKED: {
     title: "저장된 비밀번호를 열지 못했습니다",
@@ -374,4 +395,14 @@ export const DIAGNOSTIC_MESSAGE: Record<string, { title: string; hint: string }>
 
 export function diagnosticOf(code: string | undefined | null) {
   return DIAGNOSTIC_MESSAGE[code ?? ""] ?? DIAGNOSTIC_MESSAGE.BACKEND_DIED;
+}
+
+/**
+ * 일렉트론이 던진 오류의 사람 말 부분만. IPC를 건너오면 `Error invoking remote method 'x': Error: …`가
+ * 앞에 붙는다 — 그대로 띄우면 안내문보다 그 머리가 먼저 읽힌다
+ */
+export function bridgeMessage(caught: unknown, fallback: string): string {
+  const raw = caught instanceof Error ? caught.message : typeof caught === "string" ? caught : "";
+  const clean = raw.replace(/^Error invoking remote method '[^']*': (?:\w*Error: )?/, "").trim();
+  return clean || fallback;
 }

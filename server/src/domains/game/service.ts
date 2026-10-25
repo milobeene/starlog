@@ -1,14 +1,16 @@
 /**
  * 마스터 게임 — 조회·담기·검색·목록·수정·재동기화·삭제.
  *
- * 다른 도메인이 쓰는 것: `resolveGame`(담기), `findGame`·`requireGame`, `masterInfo`(상세), `searchGamesByName`(가져오기),
- * `findIgdbGameId`, `findGameByMediaFolder`·`uniqueMediaSlug`(스크린샷 폴더), `gameCollections`.
+ * 다른 도메인이 쓰는 것: `resolveGame`(담기), `masterInfo`(상세), `searchGamesByName`·`findIgdbGame`(가져오기),
+ * `findGameByMediaFolder`·`uniqueMediaSlug`·`assignMediaFolder`·`mediaSlugGiven`(스크린샷 폴더), `gameCollections`(내보내기).
  *
  * ## 컬렉션 4종 (`game_developer`·`game_publisher`·`game_master_genre`·`game_release_platform`)
  *
  * 순서 컬럼이 없는 목록이라 바뀌면 **통째로 지우고 다시 넣는다.**
  * 컬렉션만 바뀌면 게임 행은 UPDATE하지 않는다(`updated_at` 그대로).
  */
+import fs from "fs";
+import path from "path";
 import { and, asc, count, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { db, type Db } from "../../db/client";
 import {
@@ -20,10 +22,10 @@ import { normalize, normalizeAll, slug, sortKey } from "../../common/text";
 import { amountJson, compareAmount, type Money } from "../../common/money";
 import { nowKst } from "../../common/clock";
 import { ldt, moneyJson, page, type Page } from "../../common/json";
+import { isRealDirectory, isSafeFolderName, mediaDir, mediaFolder } from "../../common/storage";
 import { igdbFindById, igdbSearch, type CatalogGameDetail } from "./igdb";
 
 export type GameRow = typeof game.$inferSelect;
-export const GAME_SOURCES = ["IGDB", "MANUAL"] as const;
 
 const notFound = (gameId: number) => new NotFound(`게임을 찾을 수 없습니다. id=${gameId}`);
 
@@ -188,20 +190,27 @@ async function updateGameIfChanged(d: Db, before: GameRow, changes: GameChanges,
   await d.update(game).set({ ...changes, updatedAt: now }).where(eq(game.id, before.id));
 }
 
-/** 마스터 이름 전파 — 이름 오버라이드가 없는 항목만, 삭제된 것도 포함 */
+/**
+ * 마스터 이름 전파 — 이름 오버라이드가 없는 항목만, 삭제된 것도 포함.
+ * **값이 다른 행만** 쓴다 (원칙 7) — 다 쓰면 재동기화 때마다 `updated_at`이 오르고 "N건 갱신"이 부푼다
+ */
 async function propagateName(d: Db, gameId: number, name: string, now: string): Promise<number> {
+  const key = sortKey(name);
   const r = await d.update(backlogEntry)
-    .set({ displayName: name, displayNameSortKey: sortKey(name), updatedAt: now })
-    .where(and(eq(backlogEntry.gameId, gameId), isNull(backlogEntry.nameOverride)))
+    .set({ displayName: name, displayNameSortKey: key, updatedAt: now })
+    .where(and(eq(backlogEntry.gameId, gameId), isNull(backlogEntry.nameOverride),
+      or(sql`${backlogEntry.displayName} is distinct from ${name}`, sql`${backlogEntry.displayNameSortKey} is distinct from ${key}`)))
     .returning({ id: backlogEntry.id });
   return r.length;
 }
 
 /** 출시일 전파 — 출시일 오버라이드가 없는 항목만, 삭제된 것도 포함 */
 async function propagateReleasedOn(d: Db, gameId: number, releasedOn: string | null, now: string): Promise<number> {
+  // 이름 전파와 같이 바뀌는 행만
   const r = await d.update(backlogEntry)
     .set({ releasedOnResolved: releasedOn, updatedAt: now })
-    .where(and(eq(backlogEntry.gameId, gameId), isNull(backlogEntry.releasedOnOverride)))
+    .where(and(eq(backlogEntry.gameId, gameId), isNull(backlogEntry.releasedOnOverride),
+      sql`${backlogEntry.releasedOnResolved} is distinct from ${releasedOn}::date`))
     .returning({ id: backlogEntry.id });
   return r.length;
 }
@@ -496,13 +505,20 @@ export async function resyncGame(gameId: number): Promise<GameResyncResult> {
  *
  * **순서가 전부다.** 항목 ↔ 회차가 서로를 참조하므로(`last_playthrough_id`) 항목의 참조를 먼저 끊는다.
  * 항목 하위 테이블(개발사·퍼블리셔 오버라이드 등)과 게임의 컬렉션 4종을 FK 순서대로 먼저 비운다.
- * 커버 파일은 지우지 않는다 (스토리지·로컬 파일이 고아로 남는다)
+ * 커버 파일은 지우지 않는다 (스토리지·로컬 파일이 고아로 남는다).
+ * 스크린샷 폴더는 커밋 뒤 `media/.deleted/`로 옮긴다 — 그 자리에 두면 이름이 같은 새 게임이 "칸이 비었는데 이름 폴더가 있다"로
+ * 물려받아 남의 스크린샷이 붙는다. 지우지는 않는다 (사람이 탐색기로 넣은 파일일 수 있다)
  *
  * @returns 함께 사라진 항목 수 (휴지통에 있던 것 포함)
  */
 export async function deleteGame(gameId: number): Promise<number> {
-  return db().transaction(async (tx) => {
-    await requireGame(tx, gameId);
+  const { entries, folder } = await db().transaction(async (tx) => {
+    const g = await requireGame(tx, gameId);
+    // 칸이 비었어도 이름 폴더가 있으면 이 게임 것으로 쓰이던 폴더다 (`media.ts folderOf`와 같은 규칙).
+    // 단 칸이 빈 같은 이름 게임이 또 있으면 그쪽 폴더일 수도 있어서 안 건드린다
+    const twins = g.mediaFolder !== null ? [] : (await tx.select({ id: game.id, name: game.name }).from(game)
+      .where(and(isNull(game.mediaFolder), sql`${game.id} <> ${gameId}`))).filter((o) => slug(o.name) === slug(g.name));
+    const folder = g.mediaFolder ?? (twins.length ? null : await uniqueMediaSlug(tx, g));
     const [c] = await tx.select({ n: count() }).from(backlogEntry).where(eq(backlogEntry.gameId, gameId));
     const entries = Number(c!.n);
 
@@ -523,6 +539,25 @@ export async function deleteGame(gameId: number): Promise<number> {
     await tx.delete(game).where(eq(game.id, gameId));
 
     console.log(`마스터 게임 삭제. gameId=${gameId} 함께 사라진 항목=${entries}`);
-    return entries;
+    return { entries, folder };
   });
+  if (folder !== null) retireMediaFolder(folder, gameId);
+  return entries;
+}
+
+/** 옮기다 실패해도 삭제는 이미 커밋됐다 — 로그만 남긴다 (남은 폴더는 같은 이름 게임이 물려받을 수 있다) */
+function retireMediaFolder(name: string, gameId: number) {
+  try {
+    if (!isSafeFolderName(name)) return;
+    const from = mediaFolder(name);
+    if (!isRealDirectory(from)) return;
+    const trash = path.join(mediaDir(), ".deleted");
+    fs.mkdirSync(trash, { recursive: true });
+    let to = path.join(trash, `${name}-${gameId}`);
+    for (let n = 2; fs.existsSync(to); n++) to = path.join(trash, `${name}-${gameId}-${n}`);
+    fs.renameSync(from, to);
+    console.log(`지운 게임의 스크린샷 폴더를 옮겼다. gameId=${gameId} → .deleted/${path.basename(to)}`);
+  } catch (e) {
+    console.warn(`지운 게임의 스크린샷 폴더를 못 옮겼다. gameId=${gameId}`, e);
+  }
 }

@@ -1,7 +1,7 @@
 /**
  * 상세 화면 카드·요약 줄의 연필 버튼.
  *
- * `Field`의 `EditButton`(24px)은 손으로 맞추기 작아서 실기에서 지적받았다. 36px 칸에 16px 아이콘.
+ * 예전 `Field`의 `EditButton`(24px)은 손으로 맞추기 작아서 실기에서 지적받았다. 36px 칸에 16px 아이콘.
  * 제목 줄에 놓을 때는 `className`에 음수 마진(`-my-2 -mr-2`)을 줘서 줄 높이와 아이콘 정렬을 지킨다
  */
 export default function EditPencil({

@@ -44,8 +44,11 @@ export default function MonthlyCompletionsChart({ data }: { data: MonthlyComplet
     return { counts, itemsByMonth };
   }, [data.months, year]);
 
-  /** 축 최댓값. 1보다 작게 잡으면 0인 해에서 0으로 나눈다 */
-  const max = Math.max(...counts, 1);
+  /**
+   * 축 최댓값. 1보다 작게 잡으면 0인 해에서 0으로 나눈다.
+   * 눈금이 넷으로 나뉘므로 4의 배수로 올린다 — 개수 축에 3.75 같은 눈금이 반올림돼 5,4,3,1,0으로 찍혔다
+   */
+  const max = Math.ceil(Math.max(...counts, 1) / 4) * 4;
   const yOf = (value: number) => PAD.top + (1 - value / max) * PLOT_H;
 
   const yearTotal = data.years.find((y) => y.year === year)?.count ?? 0;

@@ -15,7 +15,8 @@ export default function FormDialog({
 }: {
   title: string;
   onClose: () => void;
-  onSubmit: () => Promise<void>;
+  /** `"keep-open"`을 돌려주면 닫지 않는다 — 저장 대신 다른 선택지(되살리기 확인)로 갈아탈 때 */
+  onSubmit: () => Promise<void | "keep-open">;
   /** 메모 입력칸이 있는 폼 — 높이를 고정하고 `flex-1` 칸이 남는 높이를 먹는다 (`Modal tall`) */
   tall?: boolean;
   children: React.ReactNode;
@@ -39,7 +40,10 @@ export default function FormDialog({
               setBusy(true);
               setError(null);
               try {
-                await onSubmit();
+                if ((await onSubmit()) === "keep-open") {
+                  setBusy(false);
+                  return;
+                }
                 onClose();
               } catch (caught) {
                 setError(errorMessage(caught, "저장하지 못했습니다. 잠시 후 다시 시도해 주세요."));

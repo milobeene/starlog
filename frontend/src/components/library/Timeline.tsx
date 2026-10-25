@@ -93,12 +93,25 @@ function buildPoints(detail: BacklogDetail): Point[] {
 
   const points = raw.filter((item): item is Point => item !== null);
 
-  // 같은 날짜에 여러 점이 겹치면 뒤엣것만 남긴다 — 첫 플레이와 마지막 플레이가
-  // 같은 날인 1회차 게임에서 점 두 개가 포개진다
-  const byDate = new Map<string, Point>();
-  points.forEach((item) => byDate.set(item.date, item));
+  /*
+   * 같은 날짜의 점은 하나로 합치고 이름을 잇는다 — 뒤엣것만 남기면 같은 날 담고·시작하고·깬 게임이
+   * "Last Play" 한 점이 됐다. 마지막 플레이는 같은 날의 첫 플레이·첫 완주가 이미 말해 주므로 그때만 뺀다
+   */
+  const byDate = new Map<string, Point[]>();
+  points.forEach((item) => byDate.set(item.date, [...(byDate.get(item.date) ?? []), item]));
 
-  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+  return [...byDate.entries()]
+    .map(([date, group]) => {
+      const shown = group.some((item) => item.key === "first" || item.key === "cleared")
+        ? group.filter((item) => item.key !== "last")
+        : group;
+      return {
+        key: shown.map((item) => item.key).join("+"),
+        label: shown.map((item) => item.label).join(" · "),
+        date,
+      };
+    })
+    .sort((a, b) => a.date.localeCompare(b.date));
 }
 
 function point(key: string, label: string, date: string | null): Point | null {

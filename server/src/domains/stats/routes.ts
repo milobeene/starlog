@@ -13,6 +13,7 @@ import {
 import { query } from "../../http/params";
 import { todayKst } from "../../common/clock";
 import { amountJson, scale2, toCents } from "../../common/money";
+import { freshPlayTimes } from "../backlog/playtime";
 
 const MAX_TOP = 50;
 
@@ -35,6 +36,8 @@ const ym = (date: string) => Number(date.slice(0, 4)) * 12 + (Number(date.slice(
 const ymString = (n: number) => `${String(Math.floor(n / 12)).padStart(4, "0")}-${String((n % 12) + 1).padStart(2, "0")}`;
 
 export const routes = new Hono();
+
+routes.use("/api/stats/*", freshPlayTimes);
 
 /**
  * 장르별 분포 (FR-STAT-01). 개인 장르가 1개라도 있는 항목은 개인 것만, 하나도 없으면 마스터 것 (§6.7).

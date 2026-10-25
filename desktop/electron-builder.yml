@@ -16,17 +16,11 @@ directories:
 
 # ⚠️ **화이트리스트다.** 안 적으면 안 들어간다.
 # (`node_modules`의 운영 의존성 — PGlite — 는 electron-builder가 알아서 싣는다)
+# 앱 모듈은 이름 대신 `*.js`로 싣는다 (2026-10-25) — 새 모듈을 여기 안 적으면 패키지에서만
+# "Cannot find module"로 기동하자마자 죽었다(`csp.js`가 그럴 뻔했다). 맨 위 폴더의 .js는 전부 앱 코드다.
+# `tools/check-package.js`가 require 그래프와 이 목록을 대조한다
 files:
-  - main.js
-  - preload.js
-  - paths.js
-  - settings.js
-  - backup.js
-  - saveName.js
-  - saveFiles.js
-  - tarball.js
-  - media.js
-  - csp.js
+  - "*.js"
   - web/**/*
   - server/main.mjs
   - server/THIRD_PARTY_LICENSES.txt

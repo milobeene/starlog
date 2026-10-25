@@ -16,6 +16,12 @@
  * 뒤엣것이 중요한 이유 — "잘못 건드렸으니 나갔다 오면 되겠지"가 자연스러운 기대인데,
  * 아무거나 붙들고 있으면 그 기대가 깨진다.
  *
+ * ## 끝난 테스트의 값은 한 번만 되살린다 (2026-10-25)
+ *
+ * 테스트가 끝났을 때 폼을 보고 있으면 바로 놓는다. 떠나 있었으면 **다음에 그 폼을 열 때 한 번만**
+ * 되살리고 놓는다 — 예전엔 저장 안 하고 알림을 닫으면 값이(비밀 포함) 모듈에 계속 남아
+ * 같은 폼을 열 때마다 옛 값이 되살아났다.
+ *
  * ## 새로고침하면 사라진다
  *
  * 모듈 스코프라 문서가 다시 로드되면 통째로 없어진다 — 그게 맞는 동작이다.
@@ -39,6 +45,8 @@ type Draft = {
   from: string;
   /** 섹션별로 붙들어둔 값. **여기 있는 것만** 되살아난다 */
   sections: Partial<Record<SectionKey, unknown>>;
+  /** 테스트가 끝난 섹션 — 되살리면 곧바로 놓는다 */
+  settled: Partial<Record<SectionKey, true>>;
   /** 이름 칸은 어느 섹션에도 안 붙는다 — 하나라도 붙들고 있으면 함께 살린다 */
   name?: string;
 };
@@ -53,17 +61,24 @@ export function keepSection(
   from: string,
 ) {
   if (!draft || draft.originalName !== profile.originalName) {
-    draft = { originalName: profile.originalName, from, sections: {} };
+    draft = { originalName: profile.originalName, from, sections: {}, settled: {} };
   }
   draft.from = from;
   draft.name = profile.name;
   draft.sections[key] = value;
+  delete draft.settled[key];
+}
+
+/** 그 섹션의 테스트가 끝났는데 폼이 화면에 없었다 — 다음에 열 때 한 번 되살리고 놓는다 */
+export function settleSection(key: SectionKey) {
+  if (draft && key in draft.sections) draft.settled[key] = true;
 }
 
 /** 그 섹션은 이제 안 붙든다. 테스트가 끝나고 저장했거나 결과를 닫았을 때 */
 export function releaseSection(key: SectionKey) {
   if (!draft) return;
   delete draft.sections[key];
+  delete draft.settled[key];
   if (Object.keys(draft.sections).length === 0) draft = null;
 }
 
@@ -90,13 +105,17 @@ export function restoreDraft(
   return next;
 }
 
-export function draftOrigin(): string | null {
-  return draft?.from ?? null;
+/**
+ * 되살린 뒤 부른다 — 끝난 섹션을 놓는다. `restoreDraft`는 `useState` 초기화에서 불려 두 번 돌 수 있어
+ * (개발 모드의 StrictMode) 거기서 지우면 두 번째 호출이 빈손이 된다
+ */
+export function consumeSettled() {
+  if (!draft) return;
+  for (const key of Object.keys(draft.settled) as SectionKey[]) releaseSection(key);
 }
 
-/** 붙들고 있는 섹션이 있나 — 화면이 "다녀오셔도 됩니다"를 띄울지 정한다 */
-export function heldSections(): SectionKey[] {
-  return draft ? (Object.keys(draft.sections) as SectionKey[]) : [];
+export function draftOrigin(): string | null {
+  return draft?.from ?? null;
 }
 
 export function clearDraft() {

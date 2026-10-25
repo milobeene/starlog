@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Modal from "@/components/ui/Modal";
 import { Button, FIELD_INPUT } from "@/components/ui/Field";
-import { getBridge } from "@/lib/desktop";
+import { bridgeMessage, getBridge } from "@/lib/desktop";
 
 /**
  * 데이터 폴더 (v1.0, 2026-08-28).
@@ -41,6 +41,8 @@ export default function DataRootDialog({
   const [draft, setDraft] = useState(current);
   const [check, setCheck] = useState<Inspection | null>(null);
   const [busy, setBusy] = useState(false);
+  /** 저장 거절(고르지 않은 경로·권한 등). 예전엔 삼켜져서 눌러도 아무 일이 없었다 */
+  const [error, setError] = useState<string | null>(null);
 
   /* 입력하는 동안 계속 살펴본다 — 저장을 누르고 나서 틀렸다고 하면 늦다 */
   useEffect(() => {
@@ -63,11 +65,14 @@ export default function DataRootDialog({
 
   const save = async () => {
     setBusy(true);
+    setError(null);
     try {
       // 저장하면서 없는 폴더를 만든다 — "구조 생성"을 따로 누를 필요가 없다
       await getBridge()!.settings.setDataRoot(draft);
       onChanged(draft);
       onClose();
+    } catch (e) {
+      setError(bridgeMessage(e, "저장하지 못했습니다"));
     } finally {
       setBusy(false);
     }
@@ -92,6 +97,7 @@ export default function DataRootDialog({
       }
     >
       <div className="flex flex-col gap-5">
+        {error && <p className="text-xs text-red-400">{error}</p>}
         <div>
           <p className="text-[11px] leading-relaxed text-white/45">
             기록과 파일이 저장되는 곳입니다. 이 폴더 하나만 통째로 복사하면 다른 컴퓨터로 옮길 수

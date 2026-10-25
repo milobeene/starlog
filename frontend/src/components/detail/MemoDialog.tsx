@@ -49,6 +49,8 @@ export default function MemoDialog({
       title="메모"
       onClose={onClose}
       tall
+      // 고친 게 있으면 Esc·바깥 누르기로 안 닫는다 — 버리려면 [취소]를 누른다
+      dismissible={memo === (record.memo ?? "")}
       footer={
         <>
           {error && <span className="mr-auto text-xs text-red-400">{error}</span>}

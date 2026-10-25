@@ -34,6 +34,10 @@ export default function SubscriptionDialog({
       title={edit ? "구독 수정" : "구독 추가"}
       onClose={onClose}
       onSubmit={async () => {
+        if (!serviceName.trim()) throw new Error("서비스 이름을 입력해 주세요.");
+        if (!startedOn) throw new Error("시작일을 골라 주세요.");
+        // "1.2." 같은 값이 Number로 NaN이 되면 JSON에서 null로 바뀌어 요금이 조용히 지워진다
+        if (amount && !/^\d+(\.\d+)?$/.test(amount)) throw new Error("요금을 숫자로 입력해 주세요.");
         const body = {
           serviceName,
           startedOn,
@@ -68,7 +72,11 @@ export default function SubscriptionDialog({
           <input
             inputMode="decimal"
             value={amount}
-            onChange={(event) => setAmount(event.target.value.replace(/[^\d.]/g, ""))}
+            // 숫자와 점 하나만 — 두 번째 점부터는 버린다
+            onChange={(event) => {
+              const [whole, ...rest] = event.target.value.replace(/[^\d.]/g, "").split(".");
+              setAmount(rest.length > 0 ? `${whole}.${rest.join("")}` : whole);
+            }}
             className={`${FIELD_INPUT} num`}
           />
         </Field>

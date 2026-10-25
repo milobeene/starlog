@@ -4,7 +4,7 @@ import { Fragment, useState } from "react";
 import SortableChips, { type ChipDrag } from "@/components/settings/SortableChips";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import RenameDialog from "@/components/settings/RenameDialog";
-import { api } from "@/lib/api";
+import { api, errorMessage } from "@/lib/api";
 import { toneOf } from "@/lib/tagColors";
 import type { FacetCount, TagFacet } from "@/lib/types";
 
@@ -47,8 +47,13 @@ export default function Dictionary({
   const [order, setOrder] = useState<FacetCount[] | null>(null);
   const shown = order ?? items;
 
-  /* 바깥에서 목록이 바뀌면(이름 변경·삭제) 내 사본을 버린다 */
-  const itemKey = items.map((i) => i.id).join(",");
+  /*
+   * 바깥에서 목록이 바뀌면(이름 변경·삭제·색) 내 사본을 버린다. id만 보면 순서를 되돌려 놓은 뒤의
+   * 이름 변경이 같은 키로 보여 낡은 이름·개수가 남는다 — 칩에 그리는 값을 전부 넣는다
+   */
+  const itemKey = items
+    .map((i) => `${i.id}:${i.name}:${i.count}:${"color" in i ? ((i as TagFacet).color ?? "") : ""}`)
+    .join("\n");
   const [seenKey, setSeenKey] = useState(itemKey);
   if (seenKey !== itemKey) {
     setSeenKey(itemKey);
@@ -65,12 +70,19 @@ export default function Dictionary({
    * 잠깐 어긋난 채로 또 끌 수 있다.** 짧게 막는 쪽이 "지금 무엇이 참인가"가 분명하다
    */
   const [saving, setSaving] = useState(false);
+  const [orderError, setOrderError] = useState<string | null>(null);
 
   const reorder = async (next: FacetCount[]) => {
+    const before = order;
     setOrder(next);
     setSaving(true);
+    setOrderError(null);
     try {
       await api.put(`${basePath}/order`, { tagIds: next.map((i) => i.id) });
+    } catch (caught) {
+      // 화면만 새 순서로 남으면 서버와 어긋난다 — 놓기 전으로 되돌리고 알린다
+      setOrder(before);
+      setOrderError(errorMessage(caught, "순서를 저장하지 못했습니다."));
     } finally {
       setSaving(false);
     }
@@ -140,8 +152,8 @@ export default function Dictionary({
         </span>
         <span className="num text-[10px] text-white/25">{items.length}</span>
         {reorderable && items.length > 1 && (
-          <span className="text-[10px] text-white/20">
-            {saving ? "저장 중…" : "끌어서 순서 변경"}
+          <span className={`text-[10px] ${orderError ? "text-red-400" : "text-white/20"}`}>
+            {saving ? "저장 중…" : (orderError ?? "끌어서 순서 변경")}
           </span>
         )}
       </div>

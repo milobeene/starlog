@@ -1,6 +1,7 @@
 import { api, errorMessage } from "@/lib/api";
 import { invalidateQueries } from "@/lib/useApi";
 import { putTask } from "@/lib/tasks";
+import { todayKst } from "@/lib/format";
 import type { BacklogDetail, EntryStatus, Playthrough, PlaythroughStatus } from "@/lib/types";
 
 /**
@@ -41,22 +42,23 @@ export function actionsFor(status: EntryStatus): QuickAction[] {
   }
 }
 
-/** 서버는 KST로 날짜를 만든다(시계 규칙). 맥의 시간대가 달라도 같은 날을 가리키게 맞춘다 */
-export function todayKst(): string {
-  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul" }).format(new Date());
+/**
+ * 서버의 최신 회차 규칙과 같다 (`backlog/shared.ts` newer) — COALESCE(종료일, 시작일) 최대,
+ * 같으면 진행 중 → 늦게 시작 → 번호가 큰 쪽. 같은 날 끝내고 바로 시작한 회차가 이겨야 한다
+ */
+function newer(p: Playthrough, q: Playthrough): boolean {
+  const a = p.finishedOn ?? p.startedOn;
+  const b = q.finishedOn ?? q.startedOn;
+  if (a !== b) return a > b;
+  if ((p.finishedOn === null) !== (q.finishedOn === null)) return p.finishedOn === null;
+  if (p.startedOn !== q.startedOn) return p.startedOn > q.startedOn;
+  return p.sequenceNo > q.sequenceNo;
 }
 
-/** 서버의 최신 회차 규칙과 같다 — COALESCE(종료일, 시작일) 최대, 같으면 번호가 큰 쪽 */
 export function latestRun(runs: Playthrough[]): Playthrough | null {
   let latest: Playthrough | null = null;
   for (const run of runs) {
-    if (latest === null) {
-      latest = run;
-      continue;
-    }
-    const a = run.finishedOn ?? run.startedOn;
-    const b = latest.finishedOn ?? latest.startedOn;
-    if (a > b || (a === b && run.sequenceNo > latest.sequenceNo)) latest = run;
+    if (latest === null || newer(run, latest)) latest = run;
   }
   return latest;
 }

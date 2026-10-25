@@ -51,6 +51,8 @@ export default function MediaViewer({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
+      // 영상 컨트롤에 포커스가 있으면 ←/→는 시킹이다 — 항목까지 넘기면 둘이 같이 돈다
+      if ((e.target as HTMLElement | null)?.closest?.("video")) return;
       if (e.key === "ArrowLeft") move(-1);
       if (e.key === "ArrowRight") move(1);
     };
@@ -72,6 +74,10 @@ export default function MediaViewer({
     <div
       /* 바깥을 눌러야 닫힌다. 사진 자체는 안 닫는다 — 보려고 연 것을 보다가 닫히면 안 된다 */
       onClick={onClose}
+      // aria-modal은 DropZone이 "뒤에 깔린 칸인가"를 가리는 표지이기도 하다
+      role="dialog"
+      aria-modal="true"
+      aria-label={item.fileName}
       className="fixed inset-0 z-[200] flex items-center justify-center bg-black/55 p-8 backdrop-blur-md"
     >
       <div

@@ -66,6 +66,14 @@ type State<T> = {
   loading: boolean;
 };
 
+/** 들고 있는 값이 어느 경로의 것인지까지 — 경로가 바뀐 뒤에도 옛 값을 "최신"으로 내면 안 된다 */
+type Held<T> = State<T> & { path: string | null };
+
+function initialFor<T>(path: string | null): Held<T> {
+  const cached = path === null ? undefined : (cache.get(path) as T | undefined);
+  return { path, data: cached ?? null, error: null, loading: path !== null && cached === undefined };
+}
+
 /**
  * 조회 전용 훅. 라이브러리를 안 쓰는 이유 — 화면이 몇 개 안 되고
  * 캐시·재검증이 필요한 자리가 아직 없다. 필요해지면 그때 SWR을 넣는다.
@@ -73,20 +81,17 @@ type State<T> = {
  * path가 null이면 호출하지 않는다 (조건부 조회용).
  * AbortController로 정리하는 이유 — 필터를 빠르게 바꾸면 늦게 온 응답이
  * 최신 응답을 덮어쓴다 (race condition)
+ *
+ * 경로가 바뀌면 — 새 경로의 캐시가 있으면 그것, 없으면 **옛 경로 값을 들고 loading을 켠다.**
+ * 쪽 넘기기마다 그리드가 스켈레톤으로 무너지지 않게 옛 값은 남기되, 받는 중이라는 건 알린다.
+ * 실패하면 같은 경로의 값만 남긴다 — 재검증 한 번 실패로 화면 전체가 에러로 바뀌지 않게
  */
 export function useApi<T>(path: string | null): State<T> & { reload: () => void } {
-  const [state, setState] = useState<State<T>>(() => {
-    /*
-     * 캐시가 있으면 **그것으로 시작한다.** loading을 false로 두는 게 요점 —
-     * true면 화면이 스켈레톤을 먼저 그려서 캐시를 둔 보람이 없다
-     */
-    const cached = path === null ? undefined : (cache.get(path) as T | undefined);
-    return {
-      data: cached ?? null,
-      error: null,
-      loading: path !== null && cached === undefined,
-    };
-  });
+  /*
+   * 캐시가 있으면 **그것으로 시작한다.** loading을 false로 두는 게 요점 —
+   * true면 화면이 스켈레톤을 먼저 그려서 캐시를 둔 보람이 없다
+   */
+  const [state, setState] = useState<Held<T>>(() => initialFor<T>(path));
   const [nonce, setNonce] = useState(0);
   const globalVersion = useSyncExternalStore(subscribeVersion, getVersion, getServerVersion);
 
@@ -107,10 +112,14 @@ export function useApi<T>(path: string | null): State<T> & { reload: () => void 
        * 먼저 검사해서, 재시도를 눌러도 에러 화면이 그대로 걸려 있다 — 누른 티가 안 난다
        */
       /*
-       * 들고 있는 게 있으면 **loading을 안 켠다.** 켜면 화면이 스켈레톤으로 갈아타서
+       * 같은 경로 값을 들고 있으면 **loading을 안 켠다.** 켜면 화면이 스켈레톤으로 갈아타서
        * 조용히 갱신하려던 뜻이 사라진다 — 값이 오면 그때 조용히 바뀐다
        */
-      setState((prev) => ({ data: prev.data, error: null, loading: prev.data === null }));
+      setState((prev) => {
+        if (prev.path === path) return { ...prev, error: null, loading: prev.data === null };
+        const fresh = initialFor<T>(path);
+        return fresh.data !== null ? fresh : { path, data: prev.data, error: null, loading: true };
+      });
     });
 
     api
@@ -118,15 +127,16 @@ export function useApi<T>(path: string | null): State<T> & { reload: () => void 
       .then((data) => {
         if (controller.signal.aborted) return;   // .catch만 가드하고 있었다
         cache.set(path, data);
-        setState({ data, error: null, loading: false });
+        setState({ path, data, error: null, loading: false });
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
-        setState({
-          data: null,
+        setState((prev) => ({
+          path,
+          data: prev.path === path ? prev.data : null,
           error: error instanceof ApiError ? error : new ApiError(0, "NETWORK", String(error)),
           loading: false,
-        });
+        }));
       });
 
     return () => controller.abort();
@@ -135,5 +145,15 @@ export function useApi<T>(path: string | null): State<T> & { reload: () => void 
   // 조건부 조회(path === null)는 상태를 건드리지 않고 여기서 비워 내보낸다
   if (path === null) return { data: null, error: null, loading: false, reload };
 
-  return { ...state, reload };
+  /*
+   * 렌더 시점에 경로가 이미 바뀌었는데 effect가 아직이면 — 캐시가 있으면 그것을, 없으면
+   * 옛 값을 loading으로. 한 프레임이라도 옛 값을 "다 받았다"로 내지 않는다
+   */
+  if (state.path !== path) {
+    const cached = cache.get(path) as T | undefined;
+    if (cached !== undefined) return { data: cached, error: null, loading: false, reload };
+    return { data: state.data, error: null, loading: true, reload };
+  }
+
+  return { data: state.data, error: state.error, loading: state.loading, reload };
 }

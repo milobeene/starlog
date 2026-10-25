@@ -68,7 +68,8 @@ export const tokenGuard: MiddlewareHandler = async (c, next) => {
  * `Sec-Fetch-Site: cross-site` 거절 — 남의 페이지가 `<img src>`·`<form>`으로 부르는 것.
  * ⚠️ 운영에선 **토큰이 맞으면 통과**다. 창(`app://starlog`) → `http://127.0.0.1`은 스킴이 달라 브라우저가
  * 늘 cross-site로 표시하고, `<img>`는 `Origin`도 안 싣는다 — 그 둘로는 내 화면과 남을 못 가른다.
- * 그래서 이 겹은 토큰이 없는 dev·test에서 실제로 일하고, 운영에선 허용 출처가 아닌데 토큰도 없는 경우를 한 번 더 본다
+ * 그래서 이 겹은 **토큰이 없는 dev·test에서만** 실제로 일한다 — 운영에선 앞의 `tokenGuard`가 토큰 없는 요청을 이미
+ * 401로 돌려보내서, 여기까지 온 요청은 늘 토큰이 맞다 (운영 쪽 갈래는 순서가 바뀌어도 안전하라고 남긴 것)
  */
 export const crossSiteGuard: MiddlewareHandler = async (c, next) => {
   if (c.req.header("Sec-Fetch-Site")?.toLowerCase() === "cross-site") {

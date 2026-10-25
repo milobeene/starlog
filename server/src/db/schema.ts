@@ -37,6 +37,7 @@ export const game = pgTable("game", {
 	summaryTranslatedAt: timestamp("summary_translated_at", { precision: 6, mode: 'string' }),
 	storylineKo: text("storyline_ko"),
 }, (table) => [
+	uniqueIndex("uk_game_media_folder").using("btree", table.mediaFolder.asc().nullsLast().op("text_ops")).where(sql`(media_folder IS NOT NULL)`),
 	unique("uk_game_source_external_id").on(table.externalId, table.source),
 	check("chk_game_source", sql`(source)::text = ANY ((ARRAY['IGDB'::character varying, 'MANUAL'::character varying])::text[])`),
 ]);

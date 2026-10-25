@@ -1,0 +1,1036 @@
+{
+ "name": "member-format5",
+ "fixture": "fresh",
+ "note": "내보내기 형식 5 (2026-10-25) — 왕복에서 잃던 것들. 시나리오의 이름은 전부 지어낸 것",
+ "steps": [
+  {
+   "name": "준비 — 같은 이름 수동 게임 하나",
+   "method": "POST",
+   "path": "/api/games",
+   "body": {
+    "name": "ZZ 같은 이름"
+   },
+   "save": {
+    "g1": "id"
+   }
+  },
+  {
+   "name": "준비 — 같은 이름 수동 게임 둘 (registerManual은 같은 이름을 허용)",
+   "method": "POST",
+   "path": "/api/games",
+   "body": {
+    "name": "ZZ 같은 이름"
+   },
+   "save": {
+    "g2": "id"
+   }
+  },
+  {
+   "name": "준비 — 하나 담기",
+   "method": "POST",
+   "path": "/api/backlog",
+   "body": {
+    "gameId": "${g1}"
+   },
+   "save": {
+    "e1": "id"
+   }
+  },
+  {
+   "name": "준비 — 둘 담기",
+   "method": "POST",
+   "path": "/api/backlog",
+   "body": {
+    "gameId": "${g2}"
+   },
+   "save": {
+    "e2": "id"
+   }
+  },
+  {
+   "name": "태그 — 하나에 '가'",
+   "method": "PUT",
+   "path": "/api/backlog/${e1}/tag",
+   "body": {
+    "name": "ZZ 태그 가"
+   }
+  },
+  {
+   "name": "태그 — 둘에 '나'",
+   "method": "PUT",
+   "path": "/api/backlog/${e2}/tag",
+   "body": {
+    "name": "ZZ 태그 나"
+   }
+  },
+  {
+   "name": "태그 — 둘에서 떼기 ('나'는 안 쓰는 태그로 남는다)",
+   "method": "PUT",
+   "path": "/api/backlog/${e2}/tag",
+   "body": {
+    "name": null
+   }
+  },
+  {
+   "name": "태그 — '나'에 색",
+   "method": "PUT",
+   "path": "/api/me/tags/2/color",
+   "body": {
+    "color": "mint"
+   }
+  },
+  {
+   "name": "태그 — 순서 '나' 먼저",
+   "method": "PUT",
+   "path": "/api/me/tags/order",
+   "body": {
+    "tagIds": [
+     2,
+     1
+    ]
+   }
+  },
+  {
+   "name": "구독 — ZZSub 2024",
+   "method": "POST",
+   "path": "/api/me/subscriptions",
+   "body": {
+    "serviceName": "ZZSub",
+    "startedOn": "2024-01-01",
+    "endedOn": "2024-12-31",
+    "fee": {
+     "amount": "10",
+     "currency": "KRW"
+    },
+    "billingCycle": "MONTHLY"
+   },
+   "save": {
+    "s1": "id"
+   }
+  },
+  {
+   "name": "구독 — ZZSub 2025 (재구독 — 같은 이름)",
+   "method": "POST",
+   "path": "/api/me/subscriptions",
+   "body": {
+    "serviceName": "ZZSub",
+    "startedOn": "2025-01-01",
+    "endedOn": null,
+    "fee": {
+     "amount": "12",
+     "currency": "KRW"
+    },
+    "billingCycle": "MONTHLY"
+   },
+   "save": {
+    "s2": "id"
+   }
+  },
+  {
+   "name": "구독 — 같은 값으로 수정 (updated_at 그대로)",
+   "method": "PUT",
+   "path": "/api/me/subscriptions/${s1}",
+   "body": {
+    "serviceName": "ZZSub",
+    "startedOn": "2024-01-01",
+    "endedOn": "2024-12-31",
+    "fee": {
+     "amount": "10.00",
+     "currency": "KRW"
+    },
+    "billingCycle": "MONTHLY"
+   }
+  },
+  {
+   "name": "구독 — 서비스명이 숫자 (zText — 글자로 받는다)",
+   "method": "PUT",
+   "path": "/api/me/subscriptions/${s1}",
+   "body": {
+    "serviceName": 2024,
+    "startedOn": "2024-01-01",
+    "endedOn": "2024-12-31",
+    "fee": {
+     "amount": "10",
+     "currency": "KRW"
+    },
+    "billingCycle": "MONTHLY"
+   }
+  },
+  {
+   "name": "구독 — 이름 되돌림",
+   "method": "PUT",
+   "path": "/api/me/subscriptions/${s1}",
+   "body": {
+    "serviceName": "ZZSub",
+    "startedOn": "2024-01-01",
+    "endedOn": "2024-12-31",
+    "fee": {
+     "amount": "10",
+     "currency": "KRW"
+    },
+    "billingCycle": "MONTHLY"
+   }
+  },
+  {
+   "name": "취득 — 하나: 2025 구독으로",
+   "method": "POST",
+   "path": "/api/backlog/${e1}/acquisitions",
+   "body": {
+    "method": "SUBSCRIPTION",
+    "subscriptionId": "${s2}",
+    "acquiredOn": "2025-02-01"
+   }
+  },
+  {
+   "name": "플랫폼 — 지울 것",
+   "method": "POST",
+   "path": "/api/me/platforms",
+   "body": {
+    "name": "ZZ 지울 플랫폼"
+   },
+   "save": {
+    "p": "id"
+   }
+  },
+  {
+   "name": "계정 — 그 플랫폼에",
+   "method": "POST",
+   "path": "/api/me/platform-accounts",
+   "body": {
+    "platformId": "${p}",
+    "accountLabel": "ZZ 계정"
+   },
+   "save": {
+    "a": "id"
+   }
+  },
+  {
+   "name": "취득 — 둘: 그 플랫폼·계정으로",
+   "method": "POST",
+   "path": "/api/backlog/${e2}/acquisitions",
+   "body": {
+    "method": "PURCHASED",
+    "platformId": "${p}",
+    "platformAccountId": "${a}",
+    "price": {
+     "amount": "1000",
+     "currency": "KRW"
+    },
+    "acquiredOn": "2025-03-01"
+   }
+  },
+  {
+   "name": "플랫폼 — 삭제 (계정도 닫힌다)",
+   "method": "DELETE",
+   "path": "/api/me/platforms/${p}"
+  },
+  {
+   "name": "계정 — 되살리기 (부모는 지워진 채 — 알려진 버그 5)",
+   "method": "POST",
+   "path": "/api/me/platform-accounts/${a}/revive"
+  },
+  {
+   "name": "기기 — 지울 것",
+   "method": "POST",
+   "path": "/api/me/devices",
+   "body": {
+    "deviceType": "PC",
+    "label": "ZZ 지울 기기",
+    "memo": null
+   },
+   "save": {
+    "dv": "id"
+   }
+  },
+  {
+   "name": "회차 — 하나: 그 기기로",
+   "method": "POST",
+   "path": "/api/backlog/${e1}/playthroughs",
+   "body": {
+    "startedOn": "2025-01-01",
+    "finishedOn": "2025-01-10",
+    "status": "COMPLETED",
+    "deviceId": "${dv}"
+   }
+  },
+  {
+   "name": "기기 — 삭제 (회차는 계속 가리킨다)",
+   "method": "DELETE",
+   "path": "/api/me/devices/${dv}"
+  },
+  {
+   "name": "기본 플랫폼 — GOG 삭제",
+   "method": "DELETE",
+   "path": "/api/me/platforms/6"
+  },
+  {
+   "name": "기본 입력방식 — PlayStation 삭제",
+   "method": "DELETE",
+   "path": "/api/me/input-methods/4"
+  },
+  {
+   "name": "닉네임 — '007'",
+   "method": "PUT",
+   "path": "/api/me/profile",
+   "body": {
+    "nickname": "007",
+    "memo": null,
+    "backgroundColors": null
+   }
+  },
+  {
+   "name": "닉네임 — '7' (숫자로는 같지만 글자는 다르다 — 저장돼야 한다)",
+   "method": "PUT",
+   "path": "/api/me/profile",
+   "body": {
+    "nickname": "7",
+    "memo": null,
+    "backgroundColors": null
+   }
+  },
+  {
+   "name": "닉네임 — 내 정보에 '7'",
+   "method": "GET",
+   "path": "/api/me"
+  },
+  {
+   "name": "내보내기 — 형식 5 (지운 카탈로그·태그 색과 순서·게임 key·구독 순번)",
+   "method": "GET",
+   "path": "/api/me/export",
+   "save": {
+    "fv": "formatVersion",
+    "exAt": "exportedAt",
+    "prof": "profile",
+    "cat": "catalog",
+    "games": "games",
+    "entries": "entries"
+   }
+  },
+  {
+   "name": "덮어쓰기 — 형식 5 왕복 (예전엔 같은 이름 게임 409 · 지운 플랫폼 밑 계정 400)",
+   "method": "POST",
+   "path": "/api/me/replace",
+   "body": {
+    "formatVersion": "${fv}",
+    "exportedAt": "${exAt}",
+    "profile": "${prof}",
+    "catalog": "${cat}",
+    "games": "${games}",
+    "entries": "${entries}"
+   }
+  },
+  {
+   "name": "왕복 뒤 — 내보내기 (처음 것과 같아야 한다)",
+   "method": "GET",
+   "path": "/api/me/export"
+  },
+  {
+   "name": "왕복 뒤 — 선택지 (지운 것은 안 보인다)",
+   "method": "GET",
+   "path": "/api/me/options"
+  },
+  {
+   "name": "왕복 뒤 — 카드",
+   "method": "GET",
+   "path": "/api/backlog/cards"
+  },
+  {
+   "name": "빈 세이브로 — 전부 지움",
+   "method": "POST",
+   "path": "/api/me/replace",
+   "body": {
+    "formatVersion": 5,
+    "entries": []
+   }
+  },
+  {
+   "name": "빈 세이브 흉내 — 기본 시드 GOG",
+   "method": "POST",
+   "path": "/api/me/platforms",
+   "body": {
+    "name": "GOG"
+   }
+  },
+  {
+   "name": "빈 세이브 흉내 — 기본 시드 PlayStation 입력",
+   "method": "POST",
+   "path": "/api/me/input-methods",
+   "body": {
+    "name": "PlayStation"
+   }
+  },
+  {
+   "name": "빈 세이브 흉내 — 덤프에 없는 플랫폼",
+   "method": "POST",
+   "path": "/api/me/platforms",
+   "body": {
+    "name": "ZZ 덤프에 없음"
+   }
+  },
+  {
+   "name": "가져오기 — 형식 5 (덤프가 지운 시드·덤프에 없는 것은 지운 것으로)",
+   "method": "POST",
+   "path": "/api/me/import",
+   "body": {
+    "formatVersion": "${fv}",
+    "exportedAt": "${exAt}",
+    "profile": "${prof}",
+    "catalog": "${cat}",
+    "games": "${games}",
+    "entries": "${entries}"
+   }
+  },
+  {
+   "name": "가져오기 뒤 — 선택지 (GOG·PlayStation·덤프에 없는 것 안 보임)",
+   "method": "GET",
+   "path": "/api/me/options"
+  },
+  {
+   "name": "가져오기 뒤 — 내보내기",
+   "method": "GET",
+   "path": "/api/me/export"
+  },
+  {
+   "name": "덮어쓰기 — 손으로 쓴 형식 5 (createdAt 되살림 · 같은 이름 구독은 순번 · 지운 기기 참조)",
+   "method": "POST",
+   "path": "/api/me/replace",
+   "body": {
+    "formatVersion": 5,
+    "exportedAt": "2026-10-25T10:00:00",
+    "profile": {
+     "nickname": "손으로 쓴 형식 5",
+     "memo": null,
+     "backgroundColors": null
+    },
+    "catalog": {
+     "platforms": [
+      {
+       "name": "Steam",
+       "deletedAt": null
+      },
+      {
+       "name": "ZZ 옛 플랫폼",
+       "deletedAt": "2025-01-01T00:00:00"
+      }
+     ],
+     "accounts": [
+      {
+       "label": "ZZ 옛 계정",
+       "platform": "ZZ 옛 플랫폼",
+       "emulator": null,
+       "deletedAt": null
+      }
+     ],
+     "devices": [
+      {
+       "deviceType": "PC",
+       "label": "ZZ 옛 기기",
+       "memo": null,
+       "deletedAt": "2025-02-02T00:00:00"
+      }
+     ],
+     "emulators": [],
+     "inputMethods": [
+      {
+       "name": "XInput",
+       "deletedAt": null
+      }
+     ],
+     "subscriptions": [
+      {
+       "serviceName": "ZZSub",
+       "startedOn": "2025-01-01",
+       "endedOn": null,
+       "fee": null,
+       "billingCycle": "MONTHLY"
+      },
+      {
+       "serviceName": "ZZSub",
+       "startedOn": "2024-01-01",
+       "endedOn": "2024-12-31",
+       "fee": null,
+       "billingCycle": "MONTHLY"
+      }
+     ],
+     "tags": [
+      {
+       "name": "ZZ 파랑",
+       "color": "sky",
+       "sortOrder": 0
+      },
+      {
+       "name": "ZZ 안 씀",
+       "color": null,
+       "sortOrder": 1
+      }
+     ],
+     "genres": []
+    },
+    "games": [
+     {
+      "key": "g-a",
+      "externalId": null,
+      "source": "MANUAL",
+      "name": "ZZ 둘",
+      "developers": [],
+      "publishers": [],
+      "masterGenres": [],
+      "releasedOn": null,
+      "listPrice": null,
+      "coverImageId": null,
+      "bannerImageId": null,
+      "summary": null,
+      "storyline": null,
+      "igdbRating": null,
+      "igdbRatingCount": null,
+      "releasePlatforms": [],
+      "mainStoryHours": null,
+      "mainExtraHours": null,
+      "completionistHours": null,
+      "timeToBeatSamples": null,
+      "mediaFolder": null
+     },
+     {
+      "key": "g-b",
+      "externalId": null,
+      "source": "MANUAL",
+      "name": "ZZ 둘",
+      "developers": [],
+      "publishers": [],
+      "masterGenres": [],
+      "releasedOn": null,
+      "listPrice": null,
+      "coverImageId": null,
+      "bannerImageId": null,
+      "summary": null,
+      "storyline": null,
+      "igdbRating": null,
+      "igdbRatingCount": null,
+      "releasePlatforms": [],
+      "mainStoryHours": null,
+      "mainExtraHours": null,
+      "completionistHours": null,
+      "timeToBeatSamples": null,
+      "mediaFolder": null
+     }
+    ],
+    "entries": [
+     {
+      "gameKey": "g-a",
+      "createdAt": "2020-05-05T10:00:00",
+      "deletedAt": null,
+      "nameOverride": null,
+      "developerOverrides": [],
+      "publisherOverrides": [],
+      "releasedOnOverride": null,
+      "listPriceOverride": null,
+      "rating": null,
+      "playTimeHours": null,
+      "memo": null,
+      "tag": "ZZ 파랑",
+      "genres": [],
+      "cover": null,
+      "playthroughs": [
+       {
+        "sequenceNo": 1,
+        "startedOn": "2024-03-01",
+        "finishedOn": "2024-03-02",
+        "status": "COMPLETED",
+        "label": null,
+        "device": "ZZ 옛 기기",
+        "platformAccount": null,
+        "platformAccountPlatform": null,
+        "platformAccountEmulator": null,
+        "emulator": null,
+        "inputMethod": null
+       }
+      ],
+      "acquisitions": [
+       {
+        "method": "SUBSCRIPTION",
+        "platform": null,
+        "platformAccount": null,
+        "platformAccountPlatform": null,
+        "platformAccountEmulator": null,
+        "subscription": "ZZSub",
+        "subscriptionIndex": 1,
+        "price": null,
+        "acquiredOn": "2024-03-01",
+        "label": null
+       }
+      ],
+      "playRecords": []
+     },
+     {
+      "gameKey": "g-b",
+      "createdAt": "2021-06-06T11:00:00",
+      "deletedAt": null,
+      "nameOverride": null,
+      "developerOverrides": [],
+      "publisherOverrides": [],
+      "releasedOnOverride": null,
+      "listPriceOverride": null,
+      "rating": null,
+      "playTimeHours": null,
+      "memo": null,
+      "tag": null,
+      "genres": [],
+      "cover": null,
+      "playthroughs": [],
+      "acquisitions": [
+       {
+        "method": "PURCHASED",
+        "platform": "ZZ 옛 플랫폼",
+        "platformAccount": "ZZ 옛 계정",
+        "platformAccountPlatform": "ZZ 옛 플랫폼",
+        "platformAccountEmulator": null,
+        "subscription": null,
+        "subscriptionIndex": null,
+        "price": {
+         "amount": "1000",
+         "currency": "KRW"
+        },
+        "acquiredOn": "2024-04-01",
+        "label": null
+       }
+      ],
+      "playRecords": []
+     }
+    ]
+   }
+  },
+  {
+   "name": "손으로 쓴 형식 5 뒤 — 내보내기",
+   "method": "GET",
+   "path": "/api/me/export"
+  },
+  {
+   "name": "손으로 쓴 형식 5 뒤 — 카드",
+   "method": "GET",
+   "path": "/api/backlog/cards"
+  },
+  {
+   "name": "덮어쓰기 — 구독 순번이 사전 밖 (400, 롤백)",
+   "method": "POST",
+   "path": "/api/me/replace",
+   "body": {
+    "formatVersion": 5,
+    "exportedAt": "2026-10-25T10:00:00",
+    "profile": {
+     "nickname": "손으로 쓴 형식 5",
+     "memo": null,
+     "backgroundColors": null
+    },
+    "catalog": {
+     "platforms": [
+      {
+       "name": "Steam",
+       "deletedAt": null
+      },
+      {
+       "name": "ZZ 옛 플랫폼",
+       "deletedAt": "2025-01-01T00:00:00"
+      }
+     ],
+     "accounts": [
+      {
+       "label": "ZZ 옛 계정",
+       "platform": "ZZ 옛 플랫폼",
+       "emulator": null,
+       "deletedAt": null
+      }
+     ],
+     "devices": [
+      {
+       "deviceType": "PC",
+       "label": "ZZ 옛 기기",
+       "memo": null,
+       "deletedAt": "2025-02-02T00:00:00"
+      }
+     ],
+     "emulators": [],
+     "inputMethods": [
+      {
+       "name": "XInput",
+       "deletedAt": null
+      }
+     ],
+     "subscriptions": [
+      {
+       "serviceName": "ZZSub",
+       "startedOn": "2025-01-01",
+       "endedOn": null,
+       "fee": null,
+       "billingCycle": "MONTHLY"
+      },
+      {
+       "serviceName": "ZZSub",
+       "startedOn": "2024-01-01",
+       "endedOn": "2024-12-31",
+       "fee": null,
+       "billingCycle": "MONTHLY"
+      }
+     ],
+     "tags": [
+      {
+       "name": "ZZ 파랑",
+       "color": "sky",
+       "sortOrder": 0
+      },
+      {
+       "name": "ZZ 안 씀",
+       "color": null,
+       "sortOrder": 1
+      }
+     ],
+     "genres": []
+    },
+    "games": [
+     {
+      "key": "g-a",
+      "externalId": null,
+      "source": "MANUAL",
+      "name": "ZZ 둘",
+      "developers": [],
+      "publishers": [],
+      "masterGenres": [],
+      "releasedOn": null,
+      "listPrice": null,
+      "coverImageId": null,
+      "bannerImageId": null,
+      "summary": null,
+      "storyline": null,
+      "igdbRating": null,
+      "igdbRatingCount": null,
+      "releasePlatforms": [],
+      "mainStoryHours": null,
+      "mainExtraHours": null,
+      "completionistHours": null,
+      "timeToBeatSamples": null,
+      "mediaFolder": null
+     },
+     {
+      "key": "g-b",
+      "externalId": null,
+      "source": "MANUAL",
+      "name": "ZZ 둘",
+      "developers": [],
+      "publishers": [],
+      "masterGenres": [],
+      "releasedOn": null,
+      "listPrice": null,
+      "coverImageId": null,
+      "bannerImageId": null,
+      "summary": null,
+      "storyline": null,
+      "igdbRating": null,
+      "igdbRatingCount": null,
+      "releasePlatforms": [],
+      "mainStoryHours": null,
+      "mainExtraHours": null,
+      "completionistHours": null,
+      "timeToBeatSamples": null,
+      "mediaFolder": null
+     }
+    ],
+    "entries": [
+     {
+      "gameKey": "g-a",
+      "createdAt": "2020-05-05T10:00:00",
+      "deletedAt": null,
+      "nameOverride": null,
+      "developerOverrides": [],
+      "publisherOverrides": [],
+      "releasedOnOverride": null,
+      "listPriceOverride": null,
+      "rating": null,
+      "playTimeHours": null,
+      "memo": null,
+      "tag": "ZZ 파랑",
+      "genres": [],
+      "cover": null,
+      "playthroughs": [
+       {
+        "sequenceNo": 1,
+        "startedOn": "2024-03-01",
+        "finishedOn": "2024-03-02",
+        "status": "COMPLETED",
+        "label": null,
+        "device": "ZZ 옛 기기",
+        "platformAccount": null,
+        "platformAccountPlatform": null,
+        "platformAccountEmulator": null,
+        "emulator": null,
+        "inputMethod": null
+       }
+      ],
+      "acquisitions": [
+       {
+        "method": "SUBSCRIPTION",
+        "platform": null,
+        "platformAccount": null,
+        "platformAccountPlatform": null,
+        "platformAccountEmulator": null,
+        "subscription": "ZZSub",
+        "subscriptionIndex": 5,
+        "price": null,
+        "acquiredOn": "2024-03-01",
+        "label": null
+       }
+      ],
+      "playRecords": []
+     },
+     {
+      "gameKey": "g-b",
+      "createdAt": "2021-06-06T11:00:00",
+      "deletedAt": null,
+      "nameOverride": null,
+      "developerOverrides": [],
+      "publisherOverrides": [],
+      "releasedOnOverride": null,
+      "listPriceOverride": null,
+      "rating": null,
+      "playTimeHours": null,
+      "memo": null,
+      "tag": null,
+      "genres": [],
+      "cover": null,
+      "playthroughs": [],
+      "acquisitions": [
+       {
+        "method": "PURCHASED",
+        "platform": "ZZ 옛 플랫폼",
+        "platformAccount": "ZZ 옛 계정",
+        "platformAccountPlatform": "ZZ 옛 플랫폼",
+        "platformAccountEmulator": null,
+        "subscription": null,
+        "subscriptionIndex": null,
+        "price": {
+         "amount": "1000",
+         "currency": "KRW"
+        },
+        "acquiredOn": "2024-04-01",
+        "label": null
+       }
+      ],
+      "playRecords": []
+     }
+    ]
+   }
+  },
+  {
+   "name": "덮어쓰기 — 태그 색이 팔레트 밖 (400, 롤백)",
+   "method": "POST",
+   "path": "/api/me/replace",
+   "body": {
+    "formatVersion": 5,
+    "exportedAt": "2026-10-25T10:00:00",
+    "profile": {
+     "nickname": "손으로 쓴 형식 5",
+     "memo": null,
+     "backgroundColors": null
+    },
+    "catalog": {
+     "platforms": [
+      {
+       "name": "Steam",
+       "deletedAt": null
+      },
+      {
+       "name": "ZZ 옛 플랫폼",
+       "deletedAt": "2025-01-01T00:00:00"
+      }
+     ],
+     "accounts": [
+      {
+       "label": "ZZ 옛 계정",
+       "platform": "ZZ 옛 플랫폼",
+       "emulator": null,
+       "deletedAt": null
+      }
+     ],
+     "devices": [
+      {
+       "deviceType": "PC",
+       "label": "ZZ 옛 기기",
+       "memo": null,
+       "deletedAt": "2025-02-02T00:00:00"
+      }
+     ],
+     "emulators": [],
+     "inputMethods": [
+      {
+       "name": "XInput",
+       "deletedAt": null
+      }
+     ],
+     "subscriptions": [
+      {
+       "serviceName": "ZZSub",
+       "startedOn": "2025-01-01",
+       "endedOn": null,
+       "fee": null,
+       "billingCycle": "MONTHLY"
+      },
+      {
+       "serviceName": "ZZSub",
+       "startedOn": "2024-01-01",
+       "endedOn": "2024-12-31",
+       "fee": null,
+       "billingCycle": "MONTHLY"
+      }
+     ],
+     "tags": [
+      {
+       "name": "ZZ 파랑",
+       "color": "neon",
+       "sortOrder": 0
+      },
+      {
+       "name": "ZZ 안 씀",
+       "color": null,
+       "sortOrder": 1
+      }
+     ],
+     "genres": []
+    },
+    "games": [
+     {
+      "key": "g-a",
+      "externalId": null,
+      "source": "MANUAL",
+      "name": "ZZ 둘",
+      "developers": [],
+      "publishers": [],
+      "masterGenres": [],
+      "releasedOn": null,
+      "listPrice": null,
+      "coverImageId": null,
+      "bannerImageId": null,
+      "summary": null,
+      "storyline": null,
+      "igdbRating": null,
+      "igdbRatingCount": null,
+      "releasePlatforms": [],
+      "mainStoryHours": null,
+      "mainExtraHours": null,
+      "completionistHours": null,
+      "timeToBeatSamples": null,
+      "mediaFolder": null
+     },
+     {
+      "key": "g-b",
+      "externalId": null,
+      "source": "MANUAL",
+      "name": "ZZ 둘",
+      "developers": [],
+      "publishers": [],
+      "masterGenres": [],
+      "releasedOn": null,
+      "listPrice": null,
+      "coverImageId": null,
+      "bannerImageId": null,
+      "summary": null,
+      "storyline": null,
+      "igdbRating": null,
+      "igdbRatingCount": null,
+      "releasePlatforms": [],
+      "mainStoryHours": null,
+      "mainExtraHours": null,
+      "completionistHours": null,
+      "timeToBeatSamples": null,
+      "mediaFolder": null
+     }
+    ],
+    "entries": [
+     {
+      "gameKey": "g-a",
+      "createdAt": "2020-05-05T10:00:00",
+      "deletedAt": null,
+      "nameOverride": null,
+      "developerOverrides": [],
+      "publisherOverrides": [],
+      "releasedOnOverride": null,
+      "listPriceOverride": null,
+      "rating": null,
+      "playTimeHours": null,
+      "memo": null,
+      "tag": "ZZ 파랑",
+      "genres": [],
+      "cover": null,
+      "playthroughs": [
+       {
+        "sequenceNo": 1,
+        "startedOn": "2024-03-01",
+        "finishedOn": "2024-03-02",
+        "status": "COMPLETED",
+        "label": null,
+        "device": "ZZ 옛 기기",
+        "platformAccount": null,
+        "platformAccountPlatform": null,
+        "platformAccountEmulator": null,
+        "emulator": null,
+        "inputMethod": null
+       }
+      ],
+      "acquisitions": [
+       {
+        "method": "SUBSCRIPTION",
+        "platform": null,
+        "platformAccount": null,
+        "platformAccountPlatform": null,
+        "platformAccountEmulator": null,
+        "subscription": "ZZSub",
+        "subscriptionIndex": 1,
+        "price": null,
+        "acquiredOn": "2024-03-01",
+        "label": null
+       }
+      ],
+      "playRecords": []
+     },
+     {
+      "gameKey": "g-b",
+      "createdAt": "2021-06-06T11:00:00",
+      "deletedAt": null,
+      "nameOverride": null,
+      "developerOverrides": [],
+      "publisherOverrides": [],
+      "releasedOnOverride": null,
+      "listPriceOverride": null,
+      "rating": null,
+      "playTimeHours": null,
+      "memo": null,
+      "tag": null,
+      "genres": [],
+      "cover": null,
+      "playthroughs": [],
+      "acquisitions": [
+       {
+        "method": "PURCHASED",
+        "platform": "ZZ 옛 플랫폼",
+        "platformAccount": "ZZ 옛 계정",
+        "platformAccountPlatform": "ZZ 옛 플랫폼",
+        "platformAccountEmulator": null,
+        "subscription": null,
+        "subscriptionIndex": null,
+        "price": {
+         "amount": "1000",
+         "currency": "KRW"
+        },
+        "acquiredOn": "2024-04-01",
+        "label": null
+       }
+      ],
+      "playRecords": []
+     }
+    ]
+   }
+  },
+  {
+   "name": "실패 뒤 — 그대로",
+   "method": "GET",
+   "path": "/api/me/export"
+  }
+ ]
+}

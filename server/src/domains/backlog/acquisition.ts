@@ -79,7 +79,8 @@ export async function updateAcquisition(d: Db, acquisitionId: number, cmd: Acqui
   const { a, entry } = await findAcquisition(d, acquisitionId);
   const v = apply(cmd);
   const refs = await resolveReferences(d, cmd);
-  await saveIfChanged(d, a, { ...v, ...refs }, (patch) => d.update(acquisition).set(patch).where(eq(acquisition.id, a.id)));
+  await saveIfChanged(d, a, { ...v, ...refs }, (patch) => d.update(acquisition).set(patch).where(eq(acquisition.id, a.id)),
+    ["priceAmount"]);
   // 취득이 남아 있는 건 그대로라 상태는 회차 쪽만 다시 본다 (드리프트가 있으면 여기서 맞춰진다)
   await syncEntry(d, entry, true);
 }

@@ -11,6 +11,10 @@
  *   `http://127.0.0.1:포트`로 → CORS). 처음엔 창을 http로 옮겨 열어서 **CORS가 빠진 걸 못 잡았다** (2026-10-24)
  *
  * 클라우드 모드는 시험하지 않는다 — 실제 Neon에 붙기 때문이다.
+ * 서버가 안 뜨거나(멈춤·진단 없이 죽음) 점검 전용 기동은 **가짜 서버**로 본다 — 서버 번들 앞에 끼운
+ * 작은 스크립트가 제어 파일을 읽고 흉내 내거나 진짜 번들을 불러온다 (`robustnessSteps`).
+ *
+ * 임시 폴더는 끝나면 지운다 (`STARLOG_E2E_KEEP=1`이면 남긴다).
  */
 const path = require("path");
 const fs = require("fs");
@@ -27,6 +31,14 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "starlog-e2e-"));
  */
 process.env.STARLOG_PROFILE = "dev";
 process.env.STARLOG_THUMBNAILER = "copy";
+// 기동 대기 한계를 줄인다 — 멈춘 서버의 TIMEOUT을 90초 기다리지 않게 (메인은 줄이는 것만 받는다)
+process.env.STARLOG_LAUNCH_TIMEOUT_MS = "8000";
+
+// 실패가 사람 화면에 대화상자로 뜨지 않게 — 적고 실패로 센다
+require("electron").dialog.showErrorBox = (title, content) => console.error(`[error box] ${title}: ${content}`);
+process.on("uncaughtException", (e) => { console.error("[uncaught]", e?.stack ?? e); require("electron").app.exit(1); });
+// 전체 와치독 — 어디서 멈추면 영영 안 끝나서 CI·스크립트가 못 잡았다
+setTimeout(() => { console.error("✗ 10분 안에 끝나지 않았다"); require("electron").app.exit(1); }, 10 * 60_000).unref();
 
 // ── 창 숨기기 + 경로 바꾸기 (main.js가 불리기 전에) ──
 const realElectron = require("electron");
@@ -59,11 +71,45 @@ class HiddenWindow extends RealWindow {
   focus() {}
   maximize() {}
 }
+/*
+ * 서버 번들 앞에 끼우는 스크립트. 제어 파일(`FAKE_CTL`)이 시키는 대로 흉내 내고, 시키는 게 없으면 진짜 번들을 부른다.
+ * 기동마다 받은 환경(점검 전용인가·어느 DB인가)을 `FAKE_LOG`에 한 줄씩 남긴다 — 값이 아니라 모양만
+ */
+const FAKE_CTL = path.join(TMP, "fake-ctl.json");
+const FAKE_LOG = path.join(TMP, "fake-spawns.jsonl");
+const FAKE_SERVER = path.join(TMP, "server-shim.mjs");
+fs.writeFileSync(FAKE_SERVER, `import fs from "fs";
+import { pathToFileURL } from "url";
+let ctl = {};
+try { ctl = JSON.parse(fs.readFileSync(${JSON.stringify(FAKE_CTL)}, "utf8")); } catch {}
+fs.appendFileSync(${JSON.stringify(FAKE_LOG)}, JSON.stringify({ pid: process.pid, mode: ctl.mode ?? null,
+  checkOnly: process.env.STARLOG_CHECK_ONLY ?? null, dbDir: process.env.STARLOG_DB_DIR ?? null, dbUrl: Boolean(process.env.STARLOG_DB_URL) }) + "\\n");
+const pp = process.parentPort;
+if (ctl.fakeCheck && process.env.STARLOG_CHECK_ONLY === "true") {
+  console.log("STARLOG_CHECKED");
+  pp?.postMessage({ type: "checked" });
+  setTimeout(() => process.exit(0), 50);
+} else if (ctl.mode === "hang") {
+  pp?.on("message", (e) => { if (e.data?.type === "shutdown") process.exit(0); });
+  setInterval(() => {}, 1000);
+} else if (ctl.mode === "crash") {
+  setTimeout(() => process.exit(1), 200);
+} else {
+  await import(${JSON.stringify(url.pathToFileURL(path.join(ROOT, "desktop/server/main.mjs")).href)});
+}
+`);
+const fakeMode = (ctl) => fs.writeFileSync(FAKE_CTL, JSON.stringify(ctl ?? {}));
+const spawnLog = () => (fs.existsSync(FAKE_LOG) ? fs.readFileSync(FAKE_LOG, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)) : []);
+fakeMode({});
+
 const load = Module._load;
 Module._load = function (request, ...rest) {
   const m = load.call(this, request, ...rest);
   if (request === "electron") {
     return new Proxy(m, { get: (t, k) => (k === "BrowserWindow" ? HiddenWindow : k === "shell" ? fakeShell : t[k]) });
+  }
+  if (request === "./paths" && typeof m?.serverEntry === "function") {
+    return { ...m, serverEntry: () => FAKE_SERVER };
   }
   return m;
 };
@@ -570,7 +616,7 @@ async function connectionSteps() {
   await cspStorageSteps();
 
   // 가린 값 그대로 저장 → 진짜 값 유지. 눈 버튼으로 칸 하나씩
-  await js(`window.starlog.connections.list().then((l) => window.starlog.connections.save({ ...l[0], db: { ...l[0].db, user: "u2" } }))`);
+  await js(`window.starlog.connections.list().then((l) => window.starlog.connections.save({ ...l[0], db: { ...l[0].db, user: "u2" } }, { previousName: l[0].name }))`);
   const revealed = await js(`Promise.all(${JSON.stringify(["db.password", "storage.accessKey", "storage.secretKey", "igdb.clientSecret", "translate.apiKey"])}.map((f) => window.starlog.connections.reveal("E2E 연결", f)))`);
   check("가린 값을 안 고치고 저장하면 진짜 값이 남는다 (reveal로 확인)", JSON.stringify(revealed) === JSON.stringify(SECRETS), JSON.stringify(revealed));
   // 이름 바꾸기 — 진짜 값은 옛 이름 쪽에서 푼다
@@ -579,6 +625,28 @@ async function connectionSteps() {
   check("이름을 바꿔도 가린 값이 진짜 값으로 이어진다 (previousName)", renamed === SECRETS[0], renamed);
   const forged = await js(`window.starlog.connections.reveal("E2E 연결2", "db.url").then(() => "통과", () => "거절")`);
   check("reveal — 비밀 칸이 아닌 이름은 거절", forged === "거절");
+
+  // 이름 겹침 — 새 연결도, 이름 바꾸기도 남의 연결을 덮지 않는다. 짧은 비번(가린 모양이 같다)이 섞이지 않는다
+  const short = { ...profile, name: "짧은 비번", db: { ...profile.db, password: "short1" }, storage: {}, igdb: {}, translate: {} };
+  await js(`window.starlog.connections.save(${JSON.stringify(short)})`);
+  const dupNew = await js(`window.starlog.connections.save(${JSON.stringify({ ...profile, name: "짧은 비번" })}).then(() => "통과", (e) => String(e))`);
+  const dupRename = await js(`window.starlog.connections.list().then((l) => window.starlog.connections.save({ ...l.find((p) => p.name === "E2E 연결2"), name: "짧은 비번" }, { previousName: "E2E 연결2" })).then(() => "통과", (e) => String(e))`);
+  const shortPw = await js(`window.starlog.connections.reveal("짧은 비번", "db.password")`);
+  check("연결 이름 겹침 — 새 연결·이름 바꾸기 모두 거절, 남의 비번 그대로",
+    /이미 있습니다/.test(dupNew) && /이미 있습니다/.test(dupRename) && shortPw === "short1", `${dupNew} / ${dupRename} / ${shortPw}`);
+  // 이름 바꾸기는 제자리에서 — 옛 이름이 안 남고 [최근 접속]도 따라간다
+  const SETTINGS = path.join(TMP, "appData/starlog/settings.json");
+  const settingsBefore = JSON.parse(fs.readFileSync(SETTINGS, "utf8"));
+  fs.writeFileSync(SETTINGS, JSON.stringify({ ...settingsBefore, lastMode: "cloud", lastTarget: "E2E 연결2" }));
+  await js(`window.starlog.connections.list().then((l) => window.starlog.connections.save({ ...l.find((p) => p.name === "E2E 연결2"), name: "E2E 연결3" }, { previousName: "E2E 연결2" }))`);
+  const names3 = (await js("window.starlog.connections.list()")).map((p) => p.name);
+  const moved = JSON.parse(fs.readFileSync(SETTINGS, "utf8")).lastTarget;
+  const pw3 = await js(`window.starlog.connections.reveal("E2E 연결3", "db.password")`);
+  check("연결 이름 바꾸기 — 옛 항목 없이 제자리, 비번 유지, [최근 접속]도 새 이름",
+    !names3.includes("E2E 연결2") && names3.includes("E2E 연결3") && pw3 === SECRETS[0] && moved === "E2E 연결3", `${names3.join(",")} / ${moved}`);
+  await js(`window.starlog.connections.remove("E2E 연결3")`);
+  check("연결 지우기 — [최근 접속]도 지운다", JSON.parse(fs.readFileSync(SETTINGS, "utf8")).lastTarget == null);
+  fs.writeFileSync(SETTINGS, JSON.stringify({ ...JSON.parse(fs.readFileSync(SETTINGS, "utf8")), lastMode: settingsBefore.lastMode, lastTarget: settingsBefore.lastTarget }));
 
   // 옛 평문 파일 → 처음 읽을 때 잠가서 다시 쓴다. 못 푸는 봉투는 지우지 않고 locked
   fs.writeFileSync(CONN, JSON.stringify({ version: 1, profiles: [
@@ -602,6 +670,125 @@ async function connectionSteps() {
   const aside = fs.readdirSync(dir).filter((f) => f.startsWith("connections.json.corrupt-"));
   check("깨진 connections.json은 .corrupt-<시각>으로 보존 (덮어쓰지 않는다)",
     afterCorrupt.length === 0 && aside.length === 1 && fs.readFileSync(path.join(dir, aside[0]), "utf8") === "{ not json", aside.join(","));
+}
+
+/** 그 pid가 아직 살아 있나 — 우리가 띄운 서버만 본다 */
+const pidAlive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+async function gone(pid, ms = 4000) {
+  for (let t = 0; t < ms; t += 100) { if (!pidAlive(pid)) return true; await sleep(100); }
+  return !pidAlive(pid);
+}
+const lastSpawn = () => spawnLog().at(-1);
+
+/**
+ * 흐름이 막히거나 거짓말하던 것들 (코드 리뷰 2026-10-25) — 기동 타임아웃·취소·겹친 기동·앱 안 죽음·
+ * 연결 테스트 판정·[최근 접속]·자동 백업·반쪽 세이브·이름 규칙
+ */
+async function robustnessSteps(save, other) {
+  const savesDir = path.join(TMP, "appData/starlog/data/saves");
+  const dirs = { saves: savesDir, backups: path.join(TMP, "appData/starlog/data/backups") };
+  const saveFiles = require(path.join(ROOT, "desktop/saveFiles.js"));
+
+  // ── 이름 규칙: 점으로 시작하는 이름은 만들기부터 거절 (예전엔 만들기는 되고 열기에서 던졌다)
+  const dot = await js(`window.starlog.saves.create(".abc").then(() => "통과", () => "거절")`);
+  check("세이브 이름 — 점으로 시작하면 만들 때 거절", dot === "거절");
+
+  // ── 자동 백업은 내용이 바뀌었을 때만 — 열고 닫기만 하면 늘지 않는다
+  const count = async () => (await js(`window.starlog.backups.usage(${JSON.stringify(save)})`)).count;
+  await js(`window.starlog.launch({ mode: "local", target: ${JSON.stringify(other)} })`);   // 한 번 닫아 둔다
+  const before = await count();
+  for (let i = 0; i < 3; i += 1) {
+    await js(`window.starlog.launch({ mode: "local", target: ${JSON.stringify(save)} })`);
+    await js(`window.starlog.launch({ mode: "local", target: ${JSON.stringify(other)} })`);
+  }
+  const after = await count();
+  check("자동 백업 — 읽기만 한 기동 세 번에 백업이 쌓이지 않는다 (힌트 비트로 많아야 1장)", after - before <= 1, `${before} → ${after}`);
+
+  // ── 겹친 기동: 늦은 쪽이 이기고, 앞엣것은 조용히 SUPERSEDED. ready 뒤에 오류가 날아오지 않는다
+  await js(`window.__prog = []; window.__unsub = window.starlog.onProgress((p) => window.__prog.push(p.phase + ":" + (p.code ?? "") + ":" + (p.target ?? ""))); 0`);
+  const both = await js(`Promise.all([
+    window.starlog.launch({ mode: "local", target: ${JSON.stringify(save)} }),
+    window.starlog.launch({ mode: "local", target: ${JSON.stringify(other)} }),
+  ])`);
+  await sleep(1500);
+  const prog = await js("window.__prog");
+  check("겹친 기동 — 앞엣것은 SUPERSEDED, 뒤엣것은 성공, 오류 이벤트 없음",
+    both[0].code === "SUPERSEDED" && both[1].ok === true && !prog.some((p) => p.startsWith("error")), `${JSON.stringify(both)} ${prog.join(" ")}`);
+
+  // ── 앱 안에서 서버가 혼자 죽으면 입구로 오면서 이유를 띄운다 (예전엔 이벤트를 받을 화면이 없어 이유가 사라졌다)
+  await goto("app://starlog/dashboard");
+  const pid = Number(fs.readFileSync(path.join(savesDir, `${other}.lock`), "utf8"));
+  process.kill(pid, "SIGKILL");
+  await gone(pid);
+  // 강제로 죽인 서버의 잠금이 남는다 — 다음 서버가 죽은 pid의 잠금은 넘겨받지만, 끝의 "잠금 없음" 검사를 위해 치운다
+  fs.rmSync(path.join(savesDir, `${other}.lock`), { force: true });
+  await sleep(2000);
+  const shown = await js("({ url: location.pathname, text: document.body.innerText })");
+  const again = await js("window.starlog.takeLaunchError()");
+  check("앱 안에서 서버가 죽으면 — 입구로 와서 이유를 띄우고, 이유는 한 번만 쓰인다",
+    shown.url === "/" && shown.text.includes("앱 서버가 예기치 않게 종료됐습니다") && again === null,
+    `${shown.url} ${shown.text.slice(0, 120).replace(/\n/g, " ")}`);
+  await goto("app://starlog/");
+
+  // ── 90초(여기선 8초) 안에 안 뜨면 내리고 TIMEOUT으로 돌아온다
+  fakeMode({ mode: "hang" });
+  let t = Date.now();
+  const timedOut = await js(`window.starlog.launch({ mode: "local", target: ${JSON.stringify(save)} })`);
+  const hungPid = lastSpawn()?.pid;
+  check("기동 타임아웃 — 영원히 기다리지 않고 TIMEOUT, 띄우던 서버는 내린다",
+    timedOut.ok === false && timedOut.code === "TIMEOUT" && Date.now() - t < 15_000 && await gone(hungPid),
+    `${JSON.stringify(timedOut)} ${Date.now() - t}ms`);
+  const afterTimeout = await js("window.starlog.session.current()");
+  check("기동 타임아웃 — 살아 있는 세션으로 남지 않는다", !afterTimeout?.alive, JSON.stringify(afterTimeout));
+
+  // ── 기다리다 [취소]
+  t = Date.now();
+  // 끝에 `0` — 식의 값이 약속이면 executeJavaScript가 그걸 기다린다
+  await js(`window.__launch = window.starlog.launch({ mode: "local", target: ${JSON.stringify(save)} }); 0`);
+  await sleep(800);
+  await js("window.starlog.cancelLaunch()");
+  const canceled = await js("window.__launch");
+  const cancelPid = lastSpawn()?.pid;
+  check("기동 [취소] — 곧바로 SUPERSEDED, 띄우던 서버는 내린다",
+    canceled.code === "SUPERSEDED" && Date.now() - t < 5000 && await gone(cancelPid), `${JSON.stringify(canceled)} ${Date.now() - t}ms`);
+
+  // ── 연결 테스트: 진단 없이 죽으면 실패, DB는 점검 전용으로만 띄운다
+  const probeProfile = { name: "시험 대상", db: { url: "postgresql://203.0.113.9/none", user: "u", password: "p" } };
+  fakeMode({ mode: "crash" });
+  const crashed = await js(`window.starlog.connections.test(${JSON.stringify(probeProfile)}, { scope: "db" })`);
+  check("연결 테스트 — 서버가 진단 없이 죽으면 성공이 아니라 BACKEND_DIED",
+    crashed.ok === false && crashed.database?.ok === false && crashed.code === "BACKEND_DIED", JSON.stringify(crashed));
+  fakeMode({ fakeCheck: true });
+  const mark = spawnLog().length;
+  const checked = await js(`window.starlog.connections.test(${JSON.stringify(probeProfile)}, { scope: "all" })`);
+  const spawned = spawnLog().slice(mark);
+  check("연결 테스트 — DB는 점검 전용(STARLOG_CHECK_ONLY)으로만 띄운다 (키가 없으면 다른 시험용도 안 띄운다)",
+    checked.ok === true && checked.database?.ok === true && spawned.length === 1 && spawned[0].checkOnly === "true" && spawned[0].dbUrl,
+    `${JSON.stringify(checked)} ${JSON.stringify(spawned)}`);
+  fakeMode({});
+
+  // ── [최근 접속]은 있는 것만: 지운 세이브를 누르면 빈 세이브를 만들지 않는다
+  const GONE = "지울 세이브";
+  await js(`window.starlog.launch({ mode: "local", target: ${JSON.stringify(GONE)} })`);
+  await js(`window.starlog.saves.remove(${JSON.stringify(GONE)})`);
+  const missing = await js(`window.starlog.launch({ mode: "local", target: ${JSON.stringify(GONE)}, resume: true })`);
+  check("[최근 접속] — 지운 세이브는 SAVE_MISSING, 같은 이름의 빈 세이브가 안 생긴다",
+    missing.code === "SAVE_MISSING" && !fs.existsSync(path.join(savesDir, GONE)), JSON.stringify(missing));
+  const SETTINGS = path.join(TMP, "appData/starlog/settings.json");
+  fs.writeFileSync(SETTINGS, JSON.stringify({ ...JSON.parse(fs.readFileSync(SETTINGS, "utf8")), lastMode: "cloud", lastTarget: "없는 연결" }));
+  check("[최근 접속] — 없는 연결을 가리키면 버튼을 안 그린다 (session.current null)", (await js("window.starlog.session.current()")) === null);
+  fs.writeFileSync(SETTINGS, JSON.stringify({ ...JSON.parse(fs.readFileSync(SETTINGS, "utf8")), lastMode: null, lastTarget: null }));
+
+  // ── 붓다 만 세이브(.partial)는 목록에 안 뜨고, 기동 때 치워진다
+  const HALF = "반쪽 세이브";
+  fs.mkdirSync(path.join(savesDir, HALF), { recursive: true });
+  fs.writeFileSync(path.join(savesDir, HALF, "PG_VERSION"), "17");
+  fs.writeFileSync(path.join(savesDir, `${HALF}.partial`), "1");
+  const listed = (await js("window.starlog.saves.list()")).map((x) => x.name);
+  const removed = saveFiles.cleanPartials(dirs);
+  check("반쪽 세이브 — 목록에 안 뜨고 정리되면 폴더째 사라진다",
+    !listed.includes(HALF) && removed.includes(HALF) && !fs.existsSync(path.join(savesDir, HALF)) && !fs.existsSync(path.join(savesDir, `${HALF}.partial`)),
+    `${listed.join(",")} / ${removed.join(",")}`);
 }
 
 realElectron.app.whenReady().then(async () => {
@@ -631,7 +818,7 @@ realElectron.app.whenReady().then(async () => {
     const dash = await js("document.body.innerText");
     check("대시보드 렌더 (app:// → API는 교차 출처)", /TOTAL GAMES/i.test(dash) && /\b0\b|\b1\b/.test(dash), `${dash.length}자`);
 
-    // 다른 출처(아무 웹페이지)에서 API를 부르면 막혀야 한다 — 자바 DesktopCorsConfig와 같게
+    // 다른 출처(아무 웹페이지)에서 API를 부르면 막혀야 한다 (`http/cors.ts`)
     const foreign = await fetch(`http://127.0.0.1:${port}/api/me`, { headers: { Origin: "https://evil.example" } });
     check("남의 출처 요청은 403", foreign.status === 403, String(foreign.status));
 
@@ -676,6 +863,8 @@ realElectron.app.whenReady().then(async () => {
     const again2 = await js(`window.starlog.launch({ mode: "local", target: ${JSON.stringify(SAVE)} })`);
     check("같은 세이브를 바로 다시 열기", again2.ok === true);
 
+    await robustnessSteps(SAVE, restored);
+
     const log = path.join(TMP, "appData/starlog/backend.log");
     check("backend.log — 0600", (fs.statSync(log).mode & 0o777) === 0o600);
     const dirs = path.join(TMP, "appData/starlog/data/saves");
@@ -690,8 +879,13 @@ realElectron.app.whenReady().then(async () => {
     const locks = fs.existsSync(saves) ? fs.readdirSync(saves).filter((f) => f.endsWith(".lock")) : [];
     check("종료 후 잠금 파일 없음", locks.length === 0, locks.join(","));
     const failed = results.filter((r) => !r.ok).length;
-    console.log(`\n── ${results.length - failed} 통과 / ${failed} 실패  (임시 폴더: ${TMP})`);
-    console.log(`── 서버 로그: ${path.join(TMP, "appData/starlog/backend.log")}`);
+    const keep = Boolean(process.env.STARLOG_E2E_KEEP);
+    console.log(`\n── ${results.length - failed} 통과 / ${failed} 실패  (임시 폴더: ${keep ? TMP : "지움 — 남기려면 STARLOG_E2E_KEEP=1"})`);
+    if (keep) console.log(`── 서버 로그: ${path.join(TMP, "appData/starlog/backend.log")}`);
+    // 세이브 여러 벌(PGlite 폴더)이 임시 폴더에 쌓이지 않게 — 실패를 들여다볼 땐 STARLOG_E2E_KEEP=1
+    if (!process.env.STARLOG_E2E_KEEP) {
+      try { fs.rmSync(TMP, { recursive: true, force: true }); } catch { /* 다음 정리 때 */ }
+    }
     // 일렉트론은 `process.exitCode`를 안 본다 — 실패가 있어도 0으로 끝나 CI·스크립트가 못 잡았다
     realElectron.app.exit(failed ? 1 : 0);
   });

@@ -30,11 +30,17 @@ export function DatabaseSection({
 }: SectionProps & { setDb: (p: Partial<ConnectionProfile["db"]>) => void }) {
   return (
     <Section title="데이터베이스" required disabled={disabled}>
-      <Labeled label="JDBC 주소" keyName="url" bad={bad("db.url")}>
+      {/* 옛 연결은 `jdbc:` 주소로 저장돼 있다 — 서버가 떼고 읽으므로 둘 다 받는다 */}
+      <Labeled
+        label="주소"
+        keyName="url"
+        hint="postgresql://… 주소입니다. 예전 jdbc:postgresql://… 주소도 그대로 됩니다."
+        bad={bad("db.url")}
+      >
         <input
           value={form.db.url}
           onChange={(e) => setDb({ url: e.target.value })}
-          placeholder="jdbc:postgresql://호스트/DB이름?sslmode=require"
+          placeholder="postgresql://호스트/DB이름?sslmode=require"
           spellCheck={false}
           className={FIELD_INPUT}
         />
@@ -156,16 +162,15 @@ export function StorageSection({
             disabled={!storageReady}
             onChange={(v) => setTargets({ covers: v })}
           />
-          <Check
-            label="스크린샷"
-            checked={Boolean(form.mediaTargets?.screenshots)}
-            disabled={!storageReady}
-            onChange={(v) => setTargets({ screenshots: v })}
-          />
+          {/*
+            ⚠️ **스크린샷은 아직 스토리지에 못 올린다** (2026-10-25). 체크해도 서버가 아무 일도 안 했다 —
+            켜진 것처럼 보이는 껍데기라 꺼 둔 채 막는다. 서버가 올리게 되면 다시 연다
+          */}
+          <Check label="스크린샷 (준비 중)" checked={false} disabled onChange={() => {}} />
         </div>
         <p className="mt-2.5 text-[11px] leading-relaxed text-white/30">
           {storageReady
-            ? "체크하지 않은 것은 데이터 폴더에 저장됩니다."
+            ? "체크하지 않은 것은 데이터 폴더에 저장됩니다. 스크린샷은 지금은 늘 데이터 폴더에 저장됩니다."
             : "스토리지 칸을 모두 채우시면 켤 수 있습니다. 지금은 모두 데이터 폴더에 저장됩니다."}
         </p>
       </div>

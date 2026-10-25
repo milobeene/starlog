@@ -16,7 +16,8 @@
  *   1. 응답마다 — 상태코드, Location 헤더, 본문(JSON은 구조 비교 / 그 외는 해시)
  *   2. 끝나고 — **DB에서 바뀐 행**(시작 픽스처 대비), 데이터 루트 파일 트리
  *
- * 정규화: 숫자는 값으로(`12000.00` = `12000`), 실행 중 생긴 시각은 `<NOW>`, 실행한 날의 날짜는 `<TODAY>`, `updated_at`만 다른 건 경고.
+ * 정규화: 숫자는 값으로(`12000.00` = `12000`), 실행 중 생긴 시각은 `<NOW>`(실행 시작 ~ 지금+1분, 주소의 `?v=<ms>`도),
+ * 실행한 날의 날짜는 `<TODAY>`. `updated_at`만 다른 것도 실패로 센다. 녹화본 단계 수가 시나리오와 다르면 실패.
  *
  * ## 픽스처 (전부 로컬 전용 — 실데이터다)
  *   real   `docs/backup-*-neon/`(Neon JSON 백업)에서 만든다 → `server/.dev/fixture`
@@ -129,6 +130,12 @@ function stop(proc: ChildProcess, ms = 25000) {
 // ───────────── 정규화·비교 ─────────────
 const TS_RE = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?$/;
 let runStartKst = "";   // "YYYY-MM-DD HH:mm:ss" (KST 벽시계) — 이 이후 시각은 <NOW>
+let runStartMs = 0;
+/**
+ * <NOW>의 위쪽 끝 — 정규화하는 순간 + 여유. 위가 열려 있으면 "미래로 틀어진 시각"(이중 변환으로 +9시간 같은)이
+ * <NOW>로 덮여 안 보인다. 실행 중에 생긴 시각은 정규화하는 순간보다 늦을 수 없다
+ */
+const NOW_SLACK_MS = 60_000;
 
 function kstNow(d = new Date()) {
   const f = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
@@ -140,10 +147,19 @@ function normScalar(v: unknown): unknown {
   // 서버가 "오늘"로 채운 날짜(플레이 기록의 기본 날짜 등) — 녹화한 날과 다음 날 결과가 갈리지 않게
   if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && v === runStartKst.slice(0, 10)) return "<TODAY>";
   if (typeof v === "string" && TS_RE.test(v)) {
-    // 실행 중에 생긴 시각만 <NOW>. UTC 표기(Z)는 스프링 오류 본문 timestamp뿐이라 그것도 <NOW>
-    if (/Z$|[+-]\d{2}:\d{2}$/.test(v)) return "<NOW>";
+    // 실행 중에 생긴 시각만 <NOW>. 오프셋이 붙은 것(스프링 오류 본문 timestamp·파일 수정 시각)은 값으로 본다
+    if (/Z$|[+-]\d{2}:\d{2}$/.test(v)) {
+      const ms = Date.parse(v);
+      return ms >= runStartMs - 1000 && ms <= Date.now() + NOW_SLACK_MS ? "<NOW>" : v;
+    }
     const s = v.replace("T", " ").slice(0, 19);
-    if (s.length >= 16 && s >= runStartKst.slice(0, s.length)) return "<NOW>";
+    const cap = kstNow(new Date(Date.now() + NOW_SLACK_MS));
+    if (s.length >= 16 && s >= runStartKst.slice(0, s.length) && s <= cap.slice(0, s.length)) return "<NOW>";
+  }
+  // 파일 주소의 `?v=<수정 시각 ms>` — 실행 중에 만든 파일이면 실행마다 다르다
+  if (typeof v === "string" && /[?&]v=\d{13}\b/.test(v)) {
+    return v.replace(/([?&]v=)(\d{13})\b/g, (m, k: string, n: string) =>
+      (Number(n) >= runStartMs - 1000 && Number(n) <= Date.now() + NOW_SLACK_MS ? `${k}<NOW>` : m));
   }
   return v;
 }
@@ -238,6 +254,18 @@ async function dumpDbRaw(dir: string) {
   return out;
 }
 
+/**
+ * 서버가 기동 때 지울 API 호출 기록(30일 지남)을 **미리** 지운다 — 안 그러면 날이 갈수록 픽스처의 옛 행이 하나씩
+ * "지운 행"으로 녹화본 diff에 끼어들어 모든 시나리오가 어느 날 갑자기 깨진다. 1시간 여유를 둬서 서버 쪽 기준과 안 겹친다.
+ * 이 표의 날짜에 묶인 값(오늘·이번 달 사용량)은 `system` 시나리오가 자기 행을 넣어서 본다
+ */
+async function pruneOldApiCalls(dir: string) {
+  const threshold = kstNow(new Date(Date.now() - 30 * 86_400_000 + 3_600_000));
+  const db = await PGlite.create(dir);
+  await db.query(`delete from api_call_log where called_at < $1`, [threshold]);
+  await db.close();
+}
+
 function rowKey(r: Record<string, unknown>) {
   return "id" in r ? String(r.id) : JSON.stringify(Object.entries(r).filter(([k]) => !/_at$/.test(k)).sort());
 }
@@ -276,7 +304,7 @@ function changes(base: Rows, after: Rows): Changes {
   return out;
 }
 
-/** 녹화본의 바뀐 행 vs 지금 바뀐 행. `updated_at`만 다른 건 경고 */
+/** 녹화본의 바뀐 행 vs 지금 바뀐 행. `updated_at`만 다른 건 따로 센다 (둘 다 실패) */
 function diffChanges(expected: Changes, actual: Changes) {
   const errors: string[] = [], warnings: string[] = [];
   const strip = (c: Changes) => JSON.stringify(c, (k, v) => (k === "updated_at" ? undefined : v));
@@ -322,6 +350,7 @@ async function main() {
     // ⚠️ 픽스처는 **복사해서** 연다 — 원본을 열면 PGlite가 파일을 건드린다
     fs.cpSync(fixture(scenario.fixture ?? "real"), dbDir, { recursive: true });
   }
+  if (!scenario.emptyDb && (scenario.fixture ?? "real") === "real") await pruneOldApiCalls(dbDir);
   if (scenario.sql?.length) {
     const o = await openDb({ kind: "pglite", dir: dbDir });
     await migrate(o);
@@ -333,7 +362,8 @@ async function main() {
   const base = await dumpDbRaw(dbDir);
 
   const port = await freePort();
-  runStartKst = kstNow();
+  runStartMs = Date.now();
+  runStartKst = kstNow(new Date(runStartMs));
   /*
    * 운영 프로필 그대로 띄운다 — 토큰이 없으면 서버가 기동을 거절하므로 일렉트론처럼 매번 새로 만들어 넣는다.
    * dev·test 프로필 시나리오는 거꾸로 토큰이 있으면 거절된다. 밖의 환경변수가 섞이지 않게 둘 다 지우고 시작
@@ -406,20 +436,26 @@ async function main() {
     return;
   }
 
+  // 시나리오 끝 단계를 지웠는데 녹화본이 그대로면 단계별 대조로는 안 보인다 (`--only`는 일부만 돈다)
+  if (!only && golden.steps.length !== scenario.steps.length) {
+    console.log(`✗ 녹화본 단계 ${golden.steps.length}개 ≠ 시나리오 ${scenario.steps.length}개 — 시나리오를 바꿨으면 --update`);
+    fails++;
+  }
   const { errors, warnings } = diffChanges(golden.db, now);
   const fileDiffs = [...new Set([...Object.keys(golden.files), ...Object.keys(files)])].filter(k => golden.files[k] !== files[k])
     .map(k => `${k}: 녹화=${golden.files[k] ?? "(없음)"} 지금=${files[k] ?? "(없음)"}`);
 
   console.log(`\n── 응답 ${passes} 통과 / ${fails} 실패`);
-  console.log(`── DB ${errors.length ? `${errors.length}건 다름` : "같음"}${warnings.length ? ` (updated_at만 다름 ${warnings.length}건 — 경고)` : ""}`);
+  console.log(`── DB ${errors.length ? `${errors.length}건 다름` : "같음"}${warnings.length ? ` (updated_at만 다름 ${warnings.length}건)` : ""}`);
   for (const e of errors.slice(0, 30)) console.log(`    ${e}`);
-  for (const w of warnings.slice(0, 5)) console.log(`    (경고) ${w}`);
+  for (const w of warnings.slice(0, 5)) console.log(`    (updated_at) ${w}`);
   console.log(`── 파일 ${fileDiffs.length ? `${fileDiffs.length}건 다름` : "같음"}`);
   for (const f of fileDiffs.slice(0, 20)) console.log(`    ${f}`);
 
   if (keep) console.log(`\n작업 폴더 유지: ${work}  (server.log · db · data)`);
   else fs.rmSync(work, { recursive: true, force: true });
-  if (fails || errors.length || fileDiffs.length) {
+  // `updated_at`만 다른 것도 실패다 — "값이 바뀌었는데 `updated_at`이 그대로"(원칙 7 위반)가 이것으로만 보인다
+  if (fails || errors.length || warnings.length || fileDiffs.length) {
     const errLines = log.join("").split("\n").filter(l => /Error|에러|처리 못 한/.test(l)).slice(0, 10);
     if (errLines.length) console.log(`\n서버 로그의 오류 줄:\n${errLines.join("\n")}`);
     process.exit(1);

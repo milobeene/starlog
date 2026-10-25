@@ -1,8 +1,8 @@
 /**
  * 커버·스크린샷.
  *
- * 스토리지·파일시스템 왕복은 **트랜잭션 밖**에서, DB는 짧은 트랜잭션으로. PGlite는 트랜잭션 동안
- * 다른 요청을 다 세운다.
+ * 스토리지 왕복은 **트랜잭션 밖**에서, DB는 짧은 트랜잭션으로. PGlite는 트랜잭션 동안 다른 요청을 다 세운다.
+ * 스크린샷 한 장 쓰기·지우기는 로컬 디스크라 짧아서 폴더 이름을 정하는 트랜잭션 안에서 한다 (이름 경합을 같이 막는다)
  */
 import fs from "fs";
 import path from "path";
@@ -164,8 +164,9 @@ export async function removeFile(target: Replaced) {
   const valid = target.location === "LOCAL" ? isLocalCoverName(target.storageKey) : isExternalCoverKey(target.storageKey);
   if (!valid) { console.warn(`모양이 틀린 커버 키라 파일을 지우지 않는다. location=${target.location}`); return; }
   if (target.location === "LOCAL") { localDelete(coversDir(), target.storageKey); return; }
-  await fileStorage().delete(target.storageKey);
-  await recordApiCall("STORAGE", "delete", true);
+  // 실제로 부른 것만, 결과대로 센다 — 스토리지가 없으면 호출도 기록도 없다
+  const ok = await fileStorage().delete(target.storageKey);
+  if (ok !== null) await recordApiCall("STORAGE", "delete", ok);
 }
 
 /** EXTERNAL 확정. 클라이언트의 "올렸어요"를 안 믿고 HEAD와 매직 넘버로 실물을 본다 */
@@ -296,7 +297,8 @@ function statOf(folder: string, name: string): fs.BigIntStats {
 function describe(entryId: number, folder: string, name: string, st: fs.BigIntStats = statOf(folder, name)) {
   return {
     fileName: name,
-    url: screenshotUrl(entryId, name),
+    // 원본도 1년 immutable 캐시라 버전을 단다 — 마지막 번호를 지우고 다시 올리면 같은 이름이 돌아와 옛 그림이 떴다
+    url: `${screenshotUrl(entryId, name)}?v=${mtimeMsOf(st)}`,
     sizeBytes: Number(st.size),
     contentType: mediaContentTypeOf(name),
     takenAt: instantText(st.mtimeNs),
@@ -479,6 +481,8 @@ export async function listGallery(entryId: number | null, kind: GalleryKind) {
     pruneOrphans(folder, new Set(names));
     let images = 0, videos = 0;
     for (const name of names) {
+      // 항목 목록과 같은 거름 — `._001.png`(맥 AppleDouble) 같은 점 파일은 열리지 않는 칸이 된다
+      if (!isServableName(name)) continue;
       const k = mediaKindOf(name);
       if (k === null) continue;
       if (k === "IMAGE") images++; else videos++;

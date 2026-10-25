@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Field, FIELD_INPUT } from "@/components/ui/Field";
 import FormDialog from "@/components/settings/FormDialog";
-import { api } from "@/lib/api";
+import { api, errorMessage } from "@/lib/api";
 import { TAG_COLOR_NAMES, TAG_COLORS } from "@/lib/tagColors";
 import type { FacetCount, TagFacet } from "@/lib/types";
 
@@ -36,7 +36,13 @@ export default function RenameDialog({
          * 성질이 다르다. 안 바뀌었으면 부르지 않는다
          */
         if (colorable && color !== ((item as TagFacet).color ?? null)) {
-          await api.put(`${basePath}/${item.id}/color`, { color });
+          try {
+            await api.put(`${basePath}/${item.id}/color`, { color });
+          } catch (caught) {
+            // 이름은 이미 바뀌었다 — 목록은 새로 읽고, 창은 열어 둔 채 색만 실패했다고 알린다
+            onSaved();
+            throw new Error(errorMessage(caught, "이름은 바꿨지만 색은 저장하지 못했습니다."));
+          }
         }
         onSaved();
       }}

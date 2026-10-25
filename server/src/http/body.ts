@@ -29,17 +29,6 @@ export async function readBody<S extends z.ZodType>(c: Context, schema: S): Prom
   return r.data;
 }
 
-/** 본문이 없어도 되는 자리(`@RequestBody(required = false)`) */
-export async function readOptionalBody<S extends z.ZodType>(c: Context, schema: S): Promise<z.output<S> | null> {
-  const text = await c.req.text().catch(() => "");
-  if (text.trim() === "") return null;
-  let raw: unknown;
-  try { raw = JSON.parse(text); } catch { throw new Unreadable(); }
-  const r = schema.safeParse(raw);
-  if (!r.success) throw new Unreadable();
-  return r.data;
-}
-
 /**
  * Bean Validation 흉내. 규칙은 Hibernate Validator 기준:
  * - `notBlank`: null이거나 **자바 공백(`Character.isWhitespace`)만**이면 위반 — 전각 공백(U+3000)도 공백이다.
@@ -92,13 +81,10 @@ export function violations() {
 export const DEFAULT_MSG = {
   notBlank: "공백일 수 없습니다",
   notNull: "널이어서는 안됩니다",
-  notEmpty: "비어 있을 수 없습니다",
   positive: "0보다 커야 합니다",
   /** `@Size(max = 100)`이면 min은 0. `@Size(min = 1)`만이면 max는 2147483647 */
   size: (min: number, max: number) => `크기가 ${min}에서 ${max} 사이여야 합니다`,
   pattern: (regexp: string) => `"${regexp}"와 일치해야 합니다`,
-  min: (v: number) => `${v} 이상이어야 합니다`,
-  max: (v: number) => `${v} 이하여야 합니다`,
 } as const;
 
 // ───────────── 원문 숫자를 그대로 읽는 본문 ─────────────

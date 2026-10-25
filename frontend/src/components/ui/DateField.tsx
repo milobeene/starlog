@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { placeBelow, type AnchorPlacement } from "@/lib/anchorPosition";
+import { todayKst } from "@/lib/format";
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
@@ -114,7 +115,7 @@ export default function DateField({
   }, [open, cursor]);
 
 
-  const today = todayString();
+  const today = todayKst();
   const days = monthGrid(cursor);
 
   /*
@@ -329,19 +330,15 @@ function monthOf(value: string): Month {
       return { year, month };
     }
   }
-  const now = new Date();
-  return { year: now.getFullYear(), month: now.getMonth() + 1 };
+  // "오늘"과 같은 기준(KST) — 자정 무렵 시간대가 다른 맥에서 달력이 다른 달로 열리지 않게
+  const today = todayKst();
+  return { year: Number(today.slice(0, 4)), month: Number(today.slice(5, 7)) };
 }
 
 function addMonths({ year, month }: Month, delta: number): Month {
   const total = year * 12 + (month - 1) + delta;
   // JS의 %는 나머지 부호가 피제수를 따라간다 — `-1 % 12 === -1`이라 그냥 쓰면 month가 0이 된다
   return { year: Math.floor(total / 12), month: ((total % 12) + 12) % 12 + 1 };
-}
-
-function todayString(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
 function pad(value: number): string {

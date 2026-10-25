@@ -3,10 +3,11 @@
 import { takeAppPath } from "@/lib/lastAppPath";
 import { clearApiCache } from "@/lib/useApi";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { setBackendPort } from "@/lib/apiBase";
 import { clearSessionCache } from "@/lib/session";
 import {
+  bridgeMessage,
   getBridge,
   type LaunchMode,
   type LaunchProgress,
@@ -53,30 +54,57 @@ export function useEntryFlow() {
   // 아직 아무것도 안 골랐으면 다리 유무가 시작점을 정한다
   const current: Step = step ?? (hasBridge ? "mode" : "web");
 
+  /** [취소]를 누른 기동. 그 뒤에 돌아온 답은 버린다 — 이미 모드 선택으로 돌아왔다 */
+  const canceled = useRef(false);
+
   /*
-   * 진행 상황 구독. 백엔드가 **도중에 혼자 죽었을 때도** 여기로 온다 —
-   * 그때 일렉트론이 창을 입구로 되돌리고 error를 쏘므로, 이 화면이 이유를 띄운다
+   * 진행 상황 구독 + **앱 안에서 서버가 죽은 이유** (2026-10-25).
+   *
+   * 앱 안에서 죽으면 일렉트론이 "입구로 가라"와 error를 함께 쏘는데, 그 순간 이 화면은 아직 없다 —
+   * 라우팅이 끝나야 마운트되고 그제야 구독이 붙는다. 그래서 이유 없는 입구만 남았다.
+   * 일렉트론이 그 오류를 들고 있다가 여기서 마운트될 때 가져간다. 구독 중에 받은 것도 가져가 지운다 —
+   * 안 지우면 다음에 입구로 올 때 옛 오류가 또 뜬다
    */
   useEffect(() => {
     const bridge = getBridge();
     if (!bridge) return;
-    return bridge.onProgress((next) => {
+    const unsubscribe = bridge.onProgress((next) => {
+      if (canceled.current) return;
       setProgress(next);
-      if (next.phase === "error") setStep("launching");
+      if (next.phase === "error") {
+        setStep("launching");
+        void bridge.takeLaunchError?.();
+      }
     });
+    let cancelled = false;
+    bridge.takeLaunchError?.().then((found) => {
+      if (cancelled || !found) return;
+      setProgress(found);
+      setStep("launching");
+    }).catch(() => {});
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, []);
 
+  /*
+   * 지난 접속은 **모드 선택으로 돌아올 때마다** 다시 받는다 (2026-10-25). 마운트 때 한 번만 받으면
+   * 세이브 목록에서 지우거나 이름을 바꾼 뒤 [뒤로]로 와도 옛 이름이 남았고, 누르면 그 이름으로 빈 세이브가 생겼다
+   */
   useEffect(() => {
     const bridge = getBridge();
-    if (!bridge) return;
+    if (!bridge || current !== "mode") return;
     let cancelled = false;
     bridge.session.current().then((found) => {
       if (!cancelled) setSession(found);
+    }).catch(() => {
+      if (!cancelled) setSession(null);
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [current]);
 
   /**
    * 앱으로 들어간다.
@@ -100,7 +128,7 @@ export function useEntryFlow() {
      * ⚠️ **`app://`가 아니면 통째로 옮긴다** (v1.2).
      *
      * 창은 평생 `app://` 한 장이라는 게 v1.0의 전제인데, 어떤 이유로든 창이
-     * `http://127.0.0.1:포트`(스프링이 서빙하는 사본)에 가 있으면 **거기서 빠져나올 길이
+     * `http://127.0.0.1:포트`(서버가 서빙하는 사본)에 가 있으면 **거기서 빠져나올 길이
      * 없다** — `router.push`는 지금 오리진 안에서 도는데, 세이브를 바꾸면 그 포트가
      * 죽어서 빈 화면이 되고 새로고침하면 검은 화면이 된다.
      *
@@ -150,10 +178,14 @@ export function useEntryFlow() {
         return;
       }
     }
-    launch(session.mode, session.target);
+    launch(session.mode, session.target, true);
   };
 
-  const launch = async (mode: LaunchMode, target: string) => {
+  /**
+   * @param resume [최근 접속]에서 왔다 — 없어진 세이브를 같은 이름의 빈 세이브로 만들지 않게 일렉트론에 알린다
+   */
+  const launch = async (mode: LaunchMode, target: string, resume = false) => {
+    canceled.current = false;
     setProgress({ phase: "starting" });
     setStep("launching");
     /*
@@ -164,14 +196,30 @@ export function useEntryFlow() {
      * 영영 안 와서 **로딩 화면이 안 걷혔다.** 잡아서 같은 error 갈래로 합친다
      */
     try {
-      const result = await getBridge()!.launch({ mode, target });
+      const result = await getBridge()!.launch({ mode, target, ...(resume ? { resume } : {}) });
+      if (canceled.current || result?.code === "SUPERSEDED") return;
       if (result?.ok) enter(result.port, result.reload);
     } catch (e) {
+      if (canceled.current) return;
       setProgress({
         phase: "error",
         code: "LAUNCH_REFUSED",
-        message: e instanceof Error ? e.message : String(e),
+        message: bridgeMessage(e, "기동하지 못했습니다"),
       });
+    }
+  };
+
+  /**
+   * 기동 대기 중의 [취소]. 띄우던 서버를 내리고 모드 선택으로 돌아간다.
+   * 일렉트론이 먼저 이 기동을 낡은 것으로 만들므로 늦게 온 "ready"·오류는 무시된다
+   */
+  const cancelLaunch = async () => {
+    canceled.current = true;
+    setStep("mode");
+    try {
+      await getBridge()?.cancelLaunch?.();
+    } catch {
+      /* 내리지 못했으면 다음 기동이 먼저 내린다 */
     }
   };
 
@@ -179,6 +227,7 @@ export function useEntryFlow() {
     current,
     setStep,
     progress,
+    cancelLaunch,
     backupTarget,
     setBackupTarget,
     session,

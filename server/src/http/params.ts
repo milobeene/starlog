@@ -118,12 +118,6 @@ export class Query {
     if (!all || all.length === 0) return null;
     return all.flatMap(v => v.split(",")).map(s => s.trim()).filter(s => s !== "").map(s => parseLong(name, s));
   }
-
-  strList(name: string): string[] | null {
-    const all = this.c.req.queries(name);
-    if (!all || all.length === 0) return null;
-    return all.flatMap(v => v.split(",")).map(s => s.trim());
-  }
 }
 
 export const query = (c: Context) => new Query(c);

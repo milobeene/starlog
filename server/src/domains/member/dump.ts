@@ -22,12 +22,20 @@ import { opt, zDate, zDecimal, zLong, zText } from "../../common/schemas";
  * 항목의 `playRecords`(플레이타임 기록, v2 S4)는 **번호를 안 올리고** 더했다 — 양쪽으로 안전해서다.
  * 옛 앱은 모르는 키를 버리고 `playTimeHours`(합계, 그대로 싣는다)를 쓰고, 새 앱은 `playRecords`가 없는
  * 옛 파일을 합계에서 BASELINE 한 줄로 만든다
+ * 5 — 왕복에서 잃던 것을 싣는다 (2026-10-25). 플랫폼·입력방식·태그가 이름 글자에서 객체로 바뀌어 옛 앱은 못 읽는다
+ *     - 카탈로그는 **지운 행까지** `deletedAt`과 함께 — 살아 있는 계정·회차·취득이 지운 소속을 가리킬 수 있다.
+ *       가져오기는 파일에 없는 기본 플랫폼·입력방식을 지운 것으로 둔다 (안 그러면 빈 세이브의 시드가 되살아난다)
+ *     - 태그는 `{name, color, sortOrder}`, 안 쓰는 태그까지
+ *     - 게임마다 `key` — 이름이 같은 수동 게임이 키 하나로 합쳐지지 않게 덤프 안에서만 쓰는 열쇠
+ *     - 취득의 `subscriptionIndex` — 구독은 이름이 겹칠 수 있어(재구독) `catalog.subscriptions`의 순번으로 가리킨다
+ *     - 항목 `createdAt`을 그대로 되살린다
+ *     4 이하는 예전과 똑같이 읽는다
  */
-export const FORMAT_VERSION = 4;
+export const FORMAT_VERSION = 5;
 
 /**
  * ISO 로컬 날짜시각 (`2026-08-28T15:14:26.781806`, 초·소수는 생략 가능).
- * 못 읽으면 본문 전체가 400이다 (가져오기는 `createdAt`을 안 쓰지만 읽기는 한다)
+ * 못 읽으면 본문 전체가 400이다
  */
 const zLdt = z.string().refine((s) => {
   const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?$/.exec(s);
@@ -62,21 +70,32 @@ const Money = opt(z.object({ amount: decimal, currency: text }));
 /** `backgroundPresets`는 모양 검사를 `presetsValue`가 한다 (프로필 수정과 같은 규칙·메시지) */
 const Profile = z.object({ nickname: text, memo: longText, backgroundColors: texts, backgroundPresets: z.unknown().optional() });
 
+const deletedAt = opt(zLdt);
+
+/** 형식 4까지는 이름 글자, 5부터 `{name, deletedAt}` — 읽은 뒤엔 한 모양이다 (null 원소는 이름 null → 만들 때 400) */
+const namedList = opt(z.array(z.union([shortText, z.object({ name: text, deletedAt })]).nullable()).max(MAX_ITEMS)
+  .transform((vs) => vs.map((v) => (v === null || typeof v === "string" ? { name: v, deletedAt: null } : v))));
+
+/** 형식 4까지는 이름 글자, 5부터 `{name, color, sortOrder}` */
+const tagList = opt(z.array(z.union([shortText, z.object({ name: text, color: text, sortOrder: int })]).nullable()).max(MAX_ITEMS)
+  .transform((vs) => vs.map((v) => (v === null || typeof v === "string" ? { name: v, color: null, sortOrder: null } : v))));
+
 const Catalog = z.object({
-  platforms: opt(z.array(shortText.nullable()).max(MAX_ITEMS)),
+  platforms: namedList,
   /** 형식 2 이하엔 `emulator`가 없다 → null → 플랫폼 계정 */
-  accounts: bigList(z.object({ label: text, platform: text, emulator: text })),
-  devices: bigList(z.object({ deviceType: text, label: text, memo: longText })),
-  emulators: bigList(z.object({ name: text, memo: longText })),
-  inputMethods: opt(z.array(shortText.nullable()).max(MAX_ITEMS)),
+  accounts: bigList(z.object({ label: text, platform: text, emulator: text, deletedAt })),
+  devices: bigList(z.object({ deviceType: text, label: text, memo: longText, deletedAt })),
+  emulators: bigList(z.object({ name: text, memo: longText, deletedAt })),
+  inputMethods: namedList,
   subscriptions: bigList(z.object({
     serviceName: text, startedOn: opt(zDate), endedOn: opt(zDate), fee: Money, billingCycle: text,
   })),
-  tags: opt(z.array(shortText.nullable()).max(MAX_ITEMS)),
+  tags: tagList,
   genres: opt(z.array(shortText.nullable()).max(MAX_ITEMS)),
 });
 
 const Game = z.object({
+  key: text,
   externalId: text, source: text, name: text,
   developers: texts, publishers: texts, masterGenres: texts,
   releasedOn: opt(zDate), listPrice: Money,
@@ -102,7 +121,7 @@ const Playthrough = z.object({
 
 const Acquisition = z.object({
   method: text, platform: text, platformAccount: text, platformAccountPlatform: text, platformAccountEmulator: text,
-  subscription: text, price: Money, acquiredOn: opt(zDate), label: text,
+  subscription: text, subscriptionIndex: int, price: Money, acquiredOn: opt(zDate), label: text,
 });
 
 /** STARLOG 기록만 — homeops 일정은 homeops 쪽 데이터라 안 싣는다(합계 차이는 가져올 때 메운다) */

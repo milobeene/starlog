@@ -52,7 +52,7 @@ describe("스토리지 요청 — 틀린 키는 네트워크로 나가지 않는
     const bad = `covers/entry-237/../entry-5/${U}.png`;
     await expect(s3.head(bad)).rejects.toThrow();
     await expect(s3.readHead(bad, 12)).rejects.toThrow();
-    await expect(s3.delete(bad)).resolves.toBeUndefined();   // 던지지 않지만 보내지도 않는다
+    await expect(s3.delete(bad)).resolves.toBe(false);       // 던지지 않지만 보내지도 않는다 — 사용량엔 실패로
     await expect(s3.presignUpload(bad, "image/png", 10, 600)).rejects.toThrow();
     expect(f).not.toHaveBeenCalled();
     await s3.delete(`covers/1/57/${U}.jpg`);                 // 옛 모양은 나간다

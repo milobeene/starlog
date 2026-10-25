@@ -12,7 +12,7 @@
  *
  * 값 컬렉션(개발사·유통사·장르·출시 기종, 항목의 오버라이드)은 id가 없어 INSERT 순서가 상관없다.
  */
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, notInArray } from "drizzle-orm";
 import type { Db } from "../../db/client";
 import {
   acquisition, backlogDeveloperOverride, backlogEntry, backlogEntryGenre, backlogPublisherOverride, coverImage,
@@ -29,6 +29,7 @@ import { findGameByMediaFolder, findIgdbGame, searchGamesByName, type GameRow } 
 import type { PlatformAccountRow, PlatformRow } from "../platform/service";
 import { ACQUISITION_METHODS, PLAYTHROUGH_STATUSES, deriveState } from "../backlog/shared";
 import { belongsTo } from "../backlog/refs";
+import { PALETTE } from "../tag/service";
 import { FORMAT_VERSION, npe, valueOf, type DumpCatalog, type DumpCover, type DumpEntry, type DumpGame, type DumpMoney, type DumpPlayRecord, type DumpProfile, type MemberDump } from "./dump";
 import { PLAY_RECORD_KINDS, hoursText, minutesText, tenthsFromHours, tenthsOf } from "../backlog/playtime";
 import { presetsValue, profileValues, saveProfile } from "./query";
@@ -81,7 +82,7 @@ export async function importInto(d: Db, data: MemberDump): Promise<ImportResult>
   if (existing) throw new Conflict("이미 데이터가 있는 계정입니다. 빈 계정에만 가져올 수 있습니다");
 
   const games = await importGames(d, data.games);
-  const catalog = await importCatalog(d, data.catalog);
+  const catalog = await importCatalog(d, data.catalog, version);
   await importProfile(d, m, data.profile);
 
   let playthroughs = 0;
@@ -90,7 +91,7 @@ export async function importInto(d: Db, data: MemberDump): Promise<ImportResult>
     if (item === null) npe("entry");
     const g = games.get(item.gameKey as string);
     if (!g) throw new InvalidInput(`항목이 가리키는 게임이 백업에 없습니다: ${item.gameKey}`);
-    await importEntry(d, g, item, catalog);
+    await importEntry(d, g, item, catalog, version);
     playthroughs += item.playthroughs?.length ?? 0;
     acquisitions += item.acquisitions?.length ?? 0;
   }
@@ -101,13 +102,22 @@ export async function importInto(d: Db, data: MemberDump): Promise<ImportResult>
 
 // ───────────── 마스터 게임 ─────────────
 
-/** 이미 있으면 그대로 쓴다 — 마스터는 항목과 따로 사는 데이터라 덮어쓰기에서도 안 지운다 */
+/**
+ * 이미 있으면 그대로 쓴다 — 마스터는 항목과 따로 사는 데이터라 덮어쓰기에서도 안 지운다.
+ * 열쇠는 형식 5부터 파일의 `key`(덤프 안에서만 유일), 그 전엔 IGDB id 또는 이름.
+ * 한 번 쓴 마스터는 다른 덤프 게임에 다시 안 준다 — 두 항목이 한 게임을 가리키면 `uk_backlog_entry_game` 409다
+ */
 async function importGames(d: Db, exported: (DumpGame | null)[] | null): Promise<Map<string, GameRow>> {
   const byKey = new Map<string, GameRow>();
+  const claimed = new Set<number>();
   for (const item of exported ?? []) {
     if (item === null) npe("game");
-    const g = (await findExisting(d, item)) ?? (await createGame(d, item));
-    byKey.set(item.externalId !== null ? `igdb:${item.externalId}` : `name:${item.name}`, g);
+    const key = item.key ?? (item.externalId !== null ? `igdb:${item.externalId}` : `name:${item.name}`);
+    // 옛 파일에서 열쇠가 겹치면 예전처럼 같은 게임이다 (그때는 같은 행을 다시 찾았다)
+    if (byKey.has(key)) continue;
+    const g = (await findExisting(d, item, claimed)) ?? (await createGame(d, item));
+    claimed.add(g.id);
+    byKey.set(key, g);
   }
   return byKey;
 }
@@ -116,14 +126,24 @@ async function importGames(d: Db, exported: (DumpGame | null)[] | null): Promise
  * IGDB 게임은 `externalId`로, 수동 등록은 이름으로. 이름 조회는 부분 일치 검색(20건)을 재활용하고
  * **결과를 정확 일치로 거른다** — 21번째 너머에 있으면 못 찾는다 (기존 동작 그대로).
  * 이름은 **저장할 때와 같이 정규화한 뒤** 비교한다 — 원문으로 비교하면 앞뒤 공백이 있는 덤프에서
- * 가져올 때마다 같은 게임이 새로 생겼다 (고친 버그 20, `docs/v2-plan.md`). 비면 못 찾고 `createGame`에서 400
+ * 가져올 때마다 같은 게임이 새로 생겼다 (고친 버그 20, `docs/v2-plan.md`). 비면 못 찾고 `createGame`에서 400.
+ *
+ * 수동 게임은 이름이 겹칠 수 있다. 후보가 여럿이면 스크린샷 폴더가 같은 것만 같은 게임으로 보고,
+ * 아니면 **새로 만든다** — 이름만 보고 고르면 남의 마스터(요약·커버·폴더)가 붙는다
  */
-async function findExisting(d: Db, item: DumpGame): Promise<GameRow | undefined> {
-  if (item.externalId !== null) return findIgdbGame(d, item.externalId);
+async function findExisting(d: Db, item: DumpGame, claimed: Set<number>): Promise<GameRow | undefined> {
+  if (item.externalId !== null) {
+    const g = await findIgdbGame(d, item.externalId);
+    return g && !claimed.has(g.id) ? g : undefined;
+  }
   const name = normalize(item.name);
   if (name === null) return undefined;
-  return (await searchGamesByName(d, name, 20))
-    .find((g) => g.source === "MANUAL" && equalsIgnoreCase(g.name, name));
+  const same = (await searchGamesByName(d, name, 20))
+    .filter((g) => g.source === "MANUAL" && equalsIgnoreCase(g.name, name));
+  const folder = normalize(item.mediaFolder);
+  const byFolder = folder === null ? undefined : same.find((g) => g.mediaFolder === folder);
+  if (byFolder) return claimed.has(byFolder.id) ? undefined : byFolder;
+  return same.length === 1 && !claimed.has(same[0]!.id) ? same[0] : undefined;
 }
 
 /**
@@ -202,6 +222,8 @@ interface Catalog {
   emulators: Map<string | null, Row<typeof emulator>>;
   inputMethods: Map<string | null, Row<typeof inputMethod>>;
   subscriptions: Map<string | null, Row<typeof subscription>>;
+  /** 파일 순서 그대로 — 형식 5의 취득은 `subscriptionIndex`로 가리킨다 (이름은 겹칠 수 있다) */
+  subscriptionList: Row<typeof subscription>[];
   tags: Map<string | null, Row<typeof tag>>;
   genres: Map<string | null, Row<typeof genre>>;
 }
@@ -215,24 +237,34 @@ const accountKey = (kind: "P" | "E", ownerName: string | null, label: string | n
 /**
  * ⚠️ **기본 카탈로그 시드(`seedDefaultCatalog`)와 짝이 맞아야 한다.** 프로필은 기본 플랫폼·입력방식을
  * 늘 갖고 시작하므로 그 둘만 "있으면 재사용"이다 (삭제된 행이어도 그대로 쓴다 — 유니크가 삭제된 행도 본다).
- * 나머지는 빈 기록에 없으니 무조건 만든다
+ * 나머지는 빈 기록에 없으니 무조건 만든다.
+ *
+ * 형식 5는 지운 행까지 싣는다 — 재사용한 행도 파일의 삭제 상태로 맞추고, **파일에 없는 살아 있는 행은 지운 것으로 둔다**
+ * (사용자가 지운 기본 플랫폼이 빈 세이브의 시드로 되살아나던 것). 4 이하는 지운 행을 안 실어서 예전대로 둔다
  */
-async function importCatalog(d: Db, data: DumpCatalog | null): Promise<Catalog> {
+async function importCatalog(d: Db, data: DumpCatalog | null, version: number): Promise<Catalog> {
   const c: Catalog = {
     platforms: new Map(), accounts: new Map(), accountsByOwner: new Map(), devices: new Map(),
-    emulators: new Map(), inputMethods: new Map(), subscriptions: new Map(), tags: new Map(), genres: new Map(),
+    emulators: new Map(), inputMethods: new Map(), subscriptions: new Map(), subscriptionList: [],
+    tags: new Map(), genres: new Map(),
   };
   if (data === null) return c;
   const now = nowKst();
   const stamp = () => ({ createdAt: now, updatedAt: now });
+  const withDeleted = version >= 5;
+  /** 형식 5만 파일의 삭제 시각을 쓴다 (4 이하는 늘 null — 살아 있는 것만 실렸다) */
+  const deletedAtOf = (v: string | null) => (withDeleted ? ldtToDb(v) : null);
 
-  for (const name of data.platforms ?? []) {
+  for (const { name, deletedAt } of data.platforms ?? []) {
     // 이름이 null이면 조회 없이 만들러 가서 `require`에서 400이 난다
     const [found] = name === null ? [] : await d.select().from(platform)
       .where(eq(platform.name, name));
-    c.platforms.set(name, found ?? (await d.insert(platform)
-      .values({ ...stamp(), name: require(name, "플랫폼 이름은 비울 수 없습니다") }).returning())[0]!);
+    c.platforms.set(name, found
+      ? (withDeleted ? await syncDeleted(d, platform, found, deletedAtOf(deletedAt), now) : found)
+      : (await d.insert(platform)
+        .values({ ...stamp(), name: require(name, "플랫폼 이름은 비울 수 없습니다"), deletedAt: deletedAtOf(deletedAt) }).returning())[0]!);
   }
+  if (withDeleted) await retireMissing(d, platform, [...c.platforms.values()].map((r) => r.id), now);
 
   // 에뮬 소속 계정은 에뮬을 만든 뒤에 (형식 3). `emulator`가 없으면(형식 2 이하) 예전처럼 플랫폼 계정이다
   const emulatorAccounts: NonNullable<DumpCatalog["accounts"]>[number][] = [];
@@ -248,6 +280,7 @@ async function importCatalog(d: Db, data: DumpCatalog | null): Promise<Catalog> 
     const [a] = await d.insert(platformAccount).values({
       ...stamp(), platformId: p.id, emulatorId: null,
       accountLabel: require(item.label, "계정 라벨은 비울 수 없습니다"), ownerKey: `P${p.id}`,
+      deletedAt: deletedAtOf(item.deletedAt),
     }).returning();
     c.accounts.set(item.label, a!);
     c.accountsByOwner.set(accountKey("P", p.name, item.label), a!);
@@ -257,14 +290,18 @@ async function importCatalog(d: Db, data: DumpCatalog | null): Promise<Catalog> 
     if (item === null) npe("device");
     const deviceType = require(item.deviceType, "기기 유형은 비울 수 없습니다");
     const label = require(item.label, "기기 라벨은 비울 수 없습니다");
-    const [row] = await d.insert(device).values({ ...stamp(), deviceType, label, memo: normalize(item.memo) }).returning();
+    const [row] = await d.insert(device).values({
+      ...stamp(), deviceType, label, memo: normalize(item.memo), deletedAt: deletedAtOf(item.deletedAt),
+    }).returning();
     c.devices.set(item.label, row!);
   }
 
   for (const item of data.emulators ?? []) {
     if (item === null) npe("emulator");
     const name = require(item.name, "에뮬레이터 이름은 비울 수 없습니다");
-    const [row] = await d.insert(emulator).values({ ...stamp(), name, memo: normalize(item.memo) }).returning();
+    const [row] = await d.insert(emulator).values({
+      ...stamp(), name, memo: normalize(item.memo), deletedAt: deletedAtOf(item.deletedAt),
+    }).returning();
     c.emulators.set(item.name, row!);
   }
 
@@ -274,18 +311,22 @@ async function importCatalog(d: Db, data: DumpCatalog | null): Promise<Catalog> 
     const [a] = await d.insert(platformAccount).values({
       ...stamp(), platformId: null, emulatorId: e.id,
       accountLabel: require(item!.label, "계정 라벨은 비울 수 없습니다"), ownerKey: `E${e.id}`,
+      deletedAt: deletedAtOf(item!.deletedAt),
     }).returning();
     c.accounts.set(item!.label, a!);
     c.accountsByOwner.set(accountKey("E", e.name, item!.label), a!);
   }
 
   // 입력방식도 기본 시드와 부딪힌다 (Keyboard & Mouse 등) — 플랫폼과 같은 규칙
-  for (const name of data.inputMethods ?? []) {
+  for (const { name, deletedAt } of data.inputMethods ?? []) {
     const [found] = name === null ? [] : await d.select().from(inputMethod)
       .where(eq(inputMethod.name, name));
-    c.inputMethods.set(name, found ?? (await d.insert(inputMethod)
-      .values({ ...stamp(), name: require(name, "입력 방식 이름은 비울 수 없습니다") }).returning())[0]!);
+    c.inputMethods.set(name, found
+      ? (withDeleted ? await syncDeleted(d, inputMethod, found, deletedAtOf(deletedAt), now) : found)
+      : (await d.insert(inputMethod)
+        .values({ ...stamp(), name: require(name, "입력 방식 이름은 비울 수 없습니다"), deletedAt: deletedAtOf(deletedAt) }).returning())[0]!);
   }
+  if (withDeleted) await retireMissing(d, inputMethod, [...c.inputMethods.values()].map((r) => r.id), now);
 
   for (const item of data.subscriptions ?? []) {
     if (item === null) npe("subscription");
@@ -303,11 +344,16 @@ async function importCatalog(d: Db, data: DumpCatalog | null): Promise<Catalog> 
       feeAmount: fee?.amount ?? null, feeCurrency: fee?.currency ?? null,
     }).returning();
     c.subscriptions.set(item.serviceName, row!);
+    c.subscriptionList.push(row!);
   }
 
-  for (const name of data.tags ?? []) {
+  for (const { name, color: rawColor, sortOrder } of data.tags ?? []) {
+    const tagName = require(name, "태그 이름은 비울 수 없습니다");
+    // 색은 사전 관리와 같은 팔레트만 (형식 5). 4 이하는 늘 null·0
+    const color = normalize(rawColor);
+    if (color !== null && !(PALETTE as readonly string[]).includes(color)) throw new InvalidInput(`고를 수 없는 색입니다: ${color}`);
     const [row] = await d.insert(tag)
-      .values({ ...stamp(), name: require(name, "태그 이름은 비울 수 없습니다"), sortOrder: 0, color: null }).returning();
+      .values({ ...stamp(), name: tagName, sortOrder: sortOrder ?? 0, color }).returning();
     c.tags.set(name, row!);
   }
 
@@ -316,6 +362,22 @@ async function importCatalog(d: Db, data: DumpCatalog | null): Promise<Catalog> 
     c.genres.set(name, row!);
   }
   return c;
+}
+
+type SoftDeletable = typeof platform | typeof inputMethod;
+
+/** 재사용한 행의 삭제 상태를 파일에 맞춘다 — 바뀔 때만 UPDATE (변경 감지와 같은 결) */
+async function syncDeleted<R extends { id: number; deletedAt: string | null }>(
+  d: Db, table: SoftDeletable, row: R, deletedAt: string | null, now: string): Promise<R> {
+  if ((row.deletedAt === null) === (deletedAt === null)) return row;
+  await d.update(table).set({ deletedAt, updatedAt: now }).where(eq(table.id, row.id));
+  return { ...row, deletedAt };
+}
+
+/** 파일에 없는 살아 있는 행(빈 세이브의 기본 시드)을 지운 것으로 — 물리 삭제는 안 한다 (다른 행이 가리킬 수 있다) */
+async function retireMissing(d: Db, table: SoftDeletable, keep: number[], now: string) {
+  await d.update(table).set({ deletedAt: now, updatedAt: now })
+    .where(keep.length ? and(isNull(table.deletedAt), notInArray(table.id, keep)) : isNull(table.deletedAt));
 }
 
 /** 옛 파일(형식 3 이하)의 이메일은 버린다. 프리셋은 파일에 있을 때만 갈아 넣는다 (프로필 수정과 같은 규칙) */
@@ -359,6 +421,16 @@ function required<T>(byName: Map<string | null, T>, name: string | null, what: s
   return found;
 }
 
+/** 형식 5는 순번으로(이름이 같은 구독이 여럿일 수 있다), 순번이 없으면 예전처럼 이름으로 */
+function subscriptionOf(c: Catalog, name: string | null, index: number | null): Row<typeof subscription> | null {
+  if (index !== null) {
+    const found = c.subscriptionList[index];
+    if (!found) throw new InvalidInput(`구독이 백업의 사전에 없습니다: ${name} (#${index})`);
+    return found;
+  }
+  return name === null ? null : required(c.subscriptions, name, "구독");
+}
+
 /**
  * 계정을 **소속까지 보고** 찾는다 (형식 2, 종류는 형식 3). 라벨만으로는 `Beene(Steam)`과 `Beene(Nintendo)`가 뭉개진다.
  * 형식 2의 `platformAccountPlatform`은 플랫폼 계정만 가리킨다 (그때 사전엔 플랫폼 계정뿐이었다).
@@ -373,13 +445,13 @@ function accountOf(c: Catalog, label: string | null, platformName: string | null
   return exact ?? c.accounts.get(label) ?? null;
 }
 
-async function importEntry(d: Db, g: GameRow, item: DumpEntry, c: Catalog) {
+async function importEntry(d: Db, g: GameRow, item: DumpEntry, c: Catalog, version: number) {
   const now = nowKst();
-  // 담는 순간은 위시리스트, 표시값은 마스터에서
+  // 담는 순간은 위시리스트, 표시값은 마스터에서. 담은 시각은 형식 5부터 파일 것 (4 이하는 예전대로 지금)
   const [e] = await d.insert(backlogEntry).values({
     gameId: g.id, status: "WISHLIST",
     displayName: g.name, displayNameSortKey: sortKey(g.name), releasedOnResolved: g.releasedOn,
-    createdAt: now, updatedAt: now,
+    createdAt: version >= 5 && item.createdAt !== null ? ldtToDb(item.createdAt) : now, updatedAt: now,
   }).returning({ id: backlogEntry.id });
   const entryId = e!.id;
 
@@ -446,7 +518,7 @@ async function importEntry(d: Db, g: GameRow, item: DumpEntry, c: Catalog) {
     if (account !== null && p !== null && !belongsTo(account, p.id, null)) {
       throw new InvalidInput("계정이 고른 플랫폼의 것이 아닙니다");
     }
-    const sub = ac.subscription === null ? null : required(c.subscriptions, ac.subscription, "구독");
+    const sub = subscriptionOf(c, ac.subscription, version >= 5 ? ac.subscriptionIndex : null);
     await d.insert(acquisition).values({
       backlogEntryId: entryId, method, priceAmount: price?.amount ?? null, priceCurrency: price?.currency ?? null,
       acquiredOn: ac.acquiredOn, label: normalize(ac.label),

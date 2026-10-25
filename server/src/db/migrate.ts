@@ -7,7 +7,7 @@
  *
  * Flyway 체크섬은 **같은 값으로 적되 검사하지는 않는다.** 적는 이유는 Flyway가 이 이력을 읽어도
  * 어긋나지 않게 하려는 것이다. 검사할 이유는 없다 (SQL 파일은 앱 안에 박혀 있어서 바뀔 수가 없다).
- * 하나씩 트랜잭션으로 돌리고, 실패하면 거기서 멈춘다.
+ * 로컬은 하나씩 트랜잭션으로 돌리고, 실패하면 거기서 멈춘다 (클라우드는 아래 `exclusive`).
  */
 import { sql } from "drizzle-orm";
 import type { OpenDb } from "./client";
@@ -17,12 +17,16 @@ import { rows } from "./raw";
 const HISTORY = `"flyway_schema_history"`;
 
 export async function migrate(open: OpenDb): Promise<{ applied: string[] }> {
-  const { db } = open;
   /*
-   * ⚠️ 테이블·컬럼 이름을 큰따옴표로 감싼다. Flyway는 H2에도 소문자로 만들었는데
-   * 안 감싸면 대문자로 올라가 못 찾는다 (진단이 이전에 밟은 함정).
-   * Postgres만 남았지만 같은 습관을 유지한다
+   * 클라우드는 이력을 읽고 쓰는 것까지 잠금 안에서 — 남이 먼저 올렸으면 기다린 뒤 읽은 이력에 이미 있다.
+   * 그쪽은 남은 마이그레이션 전부가 **한 트랜잭션**이다 (하나가 실패하면 이번에 올린 것 전부 롤백)
    */
+  return open.exclusive ? open.exclusive((o) => migrateLocked(o)) : migrateLocked(open);
+}
+
+async function migrateLocked(open: Pick<OpenDb, "db" | "execScript">): Promise<{ applied: string[] }> {
+  const { db } = open;
+  // 이름을 큰따옴표로 감싼다 — Flyway가 만든 이력 테이블 이름 그대로를 가리키려고 (대소문자를 접지 않게)
   await open.execScript(`create table if not exists ${HISTORY} (
     "installed_rank" integer not null primary key,
     "version" varchar(50),

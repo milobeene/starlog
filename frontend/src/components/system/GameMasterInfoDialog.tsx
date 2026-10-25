@@ -22,6 +22,11 @@ export default function InfoDialog({
   const [publishers, setPublishers] = useState("");
   const [genres, setGenres] = useState("");
   /*
+   * 정가는 이 창에 칸이 없지만 PUT이 전체 교체라 **받은 그대로 돌려보낸다.**
+   * `null`로 보내던 때는 장르 한 글자만 고쳐도 그 게임의 정가가 지워졌다
+   */
+  const [listPrice, setListPrice] = useState<MasterInfo["listPrice"]>(null);
+  /*
    * 현재 값 미리 채우기. 목록 행에는 이 셋이 없어서 열 때 한 번 받아온다.
    * ⚠️ **받기 전에 저장하면 전체 교체라 셋이 비워진다** — 받는 동안 칸을 잠그고 저장을 막는다.
    * 받기 실패(서버가 `GET /api/games/{id}`를 안 주는 등)면 예전처럼 빈 칸 + 경고로 둔다
@@ -30,12 +35,13 @@ export default function InfoDialog({
   useEffect(() => {
     let alive = true;
     api
-      .get<Pick<MasterInfo, "developers" | "publishers" | "genres">>(`/api/games/${game.gameId}`)
+      .get<Pick<MasterInfo, "developers" | "publishers" | "genres" | "listPrice">>(`/api/games/${game.gameId}`)
       .then((info) => {
         if (!alive) return;
         setDevelopers(info.developers.join(", "));
         setPublishers(info.publishers.join(", "));
         setGenres(info.genres.join(", "));
+        setListPrice(info.listPrice ?? null);
         setPrefill("done");
       })
       .catch(() => alive && setPrefill("failed"));
@@ -80,7 +86,7 @@ export default function InfoDialog({
             publishers: toList(publishers),
             genres: toList(genres),
             releasedOn: releasedOn || null,
-            listPrice: null,
+            listPrice,
           },
         );
         propagated += result.updatedEntries;
@@ -103,7 +109,7 @@ export default function InfoDialog({
       {prefill === "failed" ? (
         <p className="rounded-md border border-amber-400/25 bg-amber-400/10 px-3 py-2 text-[11px] leading-relaxed text-amber-200/80">
           <b className="text-amber-100">현재 값을 불러오지 못했습니다.</b> 아래 셋은 전체 교체라
-          비워 두신 칸은 마스터에서 지워집니다. 유지하시려면 그대로 다시 입력해 주세요.
+          비워 두신 칸은 마스터에서 지워집니다. 유지하시려면 그대로 다시 입력해 주세요. 정가도 함께 지워집니다.
         </p>
       ) : (
         <p className="text-[11px] leading-relaxed text-white/40">

@@ -1,8 +1,8 @@
 "use client";
 
 import Bytes from "@/components/ui/Bytes";
-import { Suspense, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import PageHeading from "@/components/ui/PageHeading";
 import ErrorNotice from "@/components/ui/ErrorNotice";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -50,12 +50,14 @@ export default function SystemPage() {
 function SystemContent() {
   /*
    * **주소가 탭을 정한다** (2026-08-28). 알림의 [설정으로]가 여기로 돌려보내는데,
-   * 탭이 상태에만 있으면 늘 첫 탭(사용량)에서 시작해서 **연결 설정을 다시 찾아 들어가야 했다**
+   * 탭이 상태에만 있으면 늘 첫 탭(사용량)에서 시작해서 **연결 설정을 다시 찾아 들어가야 했다**.
+   * 처음 한 번만 읽던 때는 이미 `/system`에 있을 때 `?tab=keys`로 보내도 탭이 안 바뀌었다 —
+   * 이제 주소가 유일한 원본이고, 탭을 누르면 주소를 바꾼다(기록은 안 쌓는다)
    */
+  const router = useRouter();
   const requested = useSearchParams().get("tab");
-  const [tab, setTab] = useState<Tab>(
-    TABS.some((t) => t.key === requested) ? (requested as Tab) : "usage",
-  );
+  const tab: Tab = TABS.some((t) => t.key === requested) ? (requested as Tab) : "usage";
+  const setTab = (next: Tab) => router.replace(`/system?tab=${next}`, { scroll: false });
 
   return (
     <main className="h-full overflow-y-auto">

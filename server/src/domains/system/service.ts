@@ -317,7 +317,7 @@ export async function translateGame(gameId: number): Promise<TranslationResult> 
 
 // ───────────── 시스템 현황 ─────────────
 
-/** 호출 기록 보존 기간. `startup.ts`의 정리와 같은 값 */
+/** 호출 기록 보존 기간 — 사용량 "지난 30일"과 기동 때 정리(`startup.ts`)가 같이 쓴다 */
 export const RETENTION_DAYS = 30;
 
 const minusMs = (now: Date, ms: number) => nowKst(new Date(now.getTime() - ms));

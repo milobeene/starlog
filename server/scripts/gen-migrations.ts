@@ -7,8 +7,14 @@ import fs from "fs";
 import zlib from "zlib";
 import path from "path";
 const dir = path.resolve(import.meta.dirname, "../migrations");
-const files = fs.readdirSync(dir).filter(f => /^V\d+__.+\.sql$/.test(f))
-  .sort((a, b) => +a.match(/^V(\d+)/)![1]! - +b.match(/^V(\d+)/)![1]!);
+const all = fs.readdirSync(dir).filter(f => f.endsWith(".sql"));
+// 이름 규칙에 안 맞는 SQL은 조용히 빠지면 안 된다 (`v17__x.sql`·`V17_x.sql` — 적용 안 된 채 넘어간다)
+const odd = all.filter(f => !/^V\d+__.+\.sql$/.test(f));
+if (odd.length) { console.error(`마이그레이션 이름이 규칙(V<번호>__<설명>.sql)에 안 맞는다: ${odd.join(", ")}`); process.exit(1); }
+const files = all.sort((a, b) => +a.match(/^V(\d+)/)![1]! - +b.match(/^V(\d+)/)![1]!);
+const versions = files.map(f => String(+f.match(/^V(\d+)/)![1]!));
+const dup = versions.filter((v, i) => versions.indexOf(v) !== i);
+if (dup.length) { console.error(`같은 번호의 마이그레이션이 둘 이상이다: V${[...new Set(dup)].join(", V")}`); process.exit(1); }
 const items = files.map(f => {
   const [, v, desc] = f.match(/^V(\d+)__(.+)\.sql$/)!;
   const sql = fs.readFileSync(path.join(dir, f), "utf8");

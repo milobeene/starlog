@@ -44,18 +44,6 @@ export function minutesToHours(total: number): number {
 }
 
 /**
- * 지금까지 + 더할 시간 → 합계(분). 둘 다 비면 null (플레이타임 없음).
- * 상한을 넘으면 `over: true` — 저장 버튼을 막는 데 쓴다
- */
-export function sumSegs(base: DurSegs, add: DurSegs): { minutes: number | null; over: boolean } {
-  const a = minutesFromSegs(base);
-  const b = minutesFromSegs(add);
-  if (a == null && b == null) return { minutes: null, over: false };
-  const minutes = (a ?? 0) + (b ?? 0);
-  return { minutes, over: minutes > MAX_MINUTES };
-}
-
-/**
  * ↑↓ 한 번. **시 자리**는 시만 ±1. **분 자리**는 전체 분을 ±1 해서 올림·내림이 시로 번진다
  * (10시간 59분 ↑ → 11시간 00분, 11시간 00분 ↓ → 10시간 59분). 0시간 00분 아래로는 안 간다.
  * homeops 시각 칸은 59분 ↑이 00분으로 돌고 시는 그대로인데, 우리는 시각이 아니라 **길이**라서 다르다

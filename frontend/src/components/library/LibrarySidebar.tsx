@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import { invalidateQueries, useApi } from "@/lib/useApi";
-import { api } from "@/lib/api";
+import { api, errorMessage } from "@/lib/api";
+import { reportTagMoveFailure } from "@/lib/tasks";
 import { Skeleton } from "@/components/ui/Skeleton";
 import ScreenshotGallery from "@/components/media/ScreenshotGallery";
 import { useDragAutoScroll } from "@/components/library/useDragAutoScroll";
@@ -154,9 +155,14 @@ export default function LibrarySidebar() {
     if (current === next) return;
 
     // 엔드포인트가 **이름**을 받는다(다이얼로그와 같은 길). null이면 태그가 벗겨진다
-    await api.put(`/api/backlog/${entryId}/tag`, {
-      name: tagKey === UNTAGGED ? null : tagKey,
-    });
+    try {
+      await api.put(`/api/backlog/${entryId}/tag`, {
+        name: tagKey === UNTAGGED ? null : tagKey,
+      });
+    } catch (caught) {
+      reportTagMoveFailure(errorMessage(caught, "잠시 후 다시 시도해 주세요."));
+      return;
+    }
     /*
      * ⚠️ **화면 전체를 무를 수 있다.** 예전엔 사이드바의 세 응답만 다시 받아서
      * **폴더 탭은 옛 상태로 남았다** — 반대도 마찬가지였다.

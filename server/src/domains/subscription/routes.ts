@@ -15,12 +15,13 @@ import { InvalidInput, NotFound } from "../../common/errors";
 import { normalize } from "../../common/text";
 import { money } from "../../common/money";
 import { nowKst } from "../../common/clock";
-import { opt, zDate, zMoney } from "../../common/schemas";
+import { opt, zDate, zMoney, zText } from "../../common/schemas";
+import { saveIfChanged } from "../../db/changes";
 
 export const BILLING_CYCLES = ["MONTHLY", "YEARLY"] as const;
 
 const SubscriptionRequest = z.object({
-  serviceName: opt(z.string()),
+  serviceName: opt(zText),
   startedOn: opt(zDate),
   endedOn: opt(zDate),
   fee: zMoney,
@@ -87,10 +88,11 @@ routes.put("/api/me/subscriptions/:subscriptionId", async (c) => {
   const r = await readBody(c, SubscriptionRequest);
   validate(r);
   await db().transaction(async (tx) => {
-    await findSubscription(tx, subscriptionId);
+    const before = await findSubscription(tx, subscriptionId);
     const v = apply(r);
-    await tx.update(subscription).set({ ...v, updatedAt: nowKst() })
-      .where(eq(subscription.id, subscriptionId));
+    // 같은 값으로 저장하면 `updated_at`도 그대로 (원칙 7)
+    await saveIfChanged(tx, before, v, (patch) => tx.update(subscription).set(patch).where(eq(subscription.id, subscriptionId)),
+      ["feeAmount"]);
   });
   return c.body(null, 200);
 });

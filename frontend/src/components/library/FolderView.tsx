@@ -6,7 +6,8 @@ import GameCard from "@/components/ui/GameCard";
 import FolderCovers, { pickFolderCovers } from "@/components/library/FolderCovers";
 import EmptyState from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { api } from "@/lib/api";
+import { api, errorMessage } from "@/lib/api";
+import { reportTagMoveFailure } from "@/lib/tasks";
 import { invalidateQueries, useApi } from "@/lib/useApi";
 import { rememberLibrary, takeLibrary } from "@/lib/libraryState";
 import { GAME_GRID } from "@/lib/useGridColumns";
@@ -96,9 +97,14 @@ export default function FolderView({
     const from = folders?.find((f) => f.cards.some((c) => c.entryId === entryId));
     if (from?.key === folder.key) return;
 
-    await api.put(`/api/backlog/${entryId}/tag`, {
-      name: folder.key === "untagged" ? null : folder.label,
-    });
+    try {
+      await api.put(`/api/backlog/${entryId}/tag`, {
+        name: folder.key === "untagged" ? null : folder.label,
+      });
+    } catch (caught) {
+      reportTagMoveFailure(errorMessage(caught, "잠시 후 다시 시도해 주세요."));
+      return;
+    }
     /* 화면 전체를 무른다 — 사이드바까지 함께 맞아야 한다 */
     invalidateQueries();
     onMoved?.();
@@ -137,8 +143,13 @@ export default function FolderView({
     if (sort === "rating") {
       picked.sort((a, b) => (b.rating ?? -1) - (a.rating ?? -1));
     } else if (sort === "lastPlayed") {
-      picked.sort((a, b) =>
-        (b.lastPlaythrough?.startedOn ?? "").localeCompare(a.lastPlaythrough?.startedOn ?? ""),
+      // 그리드(서버 `orderBy`)와 같은 기준 — 플레이 중이 먼저, 그다음 마지막 활동일(종료일 우선)
+      const lastOn = (card: BacklogCard) =>
+        card.lastPlaythrough ? (card.lastPlaythrough.finishedOn ?? card.lastPlaythrough.startedOn) : "";
+      picked.sort(
+        (a, b) =>
+          Number(b.status === "PLAYING") - Number(a.status === "PLAYING") ||
+          lastOn(b).localeCompare(lastOn(a)),
       );
     } else if (sort === "playtime" && picked.some((c) => c.playTimeHours !== undefined)) {
       picked.sort((a, b) => (b.playTimeHours ?? -1) - (a.playTimeHours ?? -1));

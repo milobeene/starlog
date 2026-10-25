@@ -1,27 +1,19 @@
 /**
- * 세이브파일 백업 (v1.0 9단계, architecture §5).
+ * 세이브파일 백업 (v1.0 9단계 → v2, architecture §5).
  *
- * ## `BACKUP TO`를 안 쓴다
+ * ## DB가 닫혀 있는 순간에 일렉트론이 한다
  *
- * 문서는 "쓰는 중인 `.mv.db`를 `cp`로 복사하면 손상되니 H2의 `BACKUP TO`를 쓰라"고 했다.
- * 맞는 말이지만 **그건 DB가 열려 있을 때 이야기다.** 우리 구조에는 닫혀 있는 순간이
- * 분명히 있다 — 백엔드를 띄우기 **전**, 즉 입구 화면이다.
+ * 쓰는 중인 DB 폴더를 그대로 묶으면 찢어진 백업이 된다. 우리 구조에는 닫혀 있는 순간이
+ * 분명히 있다 — 백엔드를 띄우기 **전**, 즉 입구 화면이다. 거기서 묶으면 파일 복사로 충분하다.
+ * 그래서 백업은 전부 일렉트론이 하고, 백엔드는 백업 폴더에 손을 안 댄다.
  *
- * 거기서 복사하면 그냥 파일 복사로 충분하고, 백업이 **세이브파일과 똑같은 `.mv.db`**로 남는다.
- * `BACKUP TO`는 zip을 뱉어서 되돌릴 때 압축을 풀어야 하는데, 그 복잡도가 통째로 사라진다.
- * → 그래서 백업은 전부 일렉트론이 한다. 백엔드는 이 일에 손을 안 댄다.
+ * 세이브파일은 PGlite **폴더**라 `.tar.gz` 한 장으로 묶는다 (`tarball.js`).
+ * 실데이터 기준 폴더 41MB → 묶음 5MB. 자바 시절의 `.mv.db` 백업은 목록에 안 나온다 (새 앱이 열 수 없다).
  *
  * ## 클라우드 모드에는 백업이 없다
  *
  * 복사할 파일이 아예 없다 — 데이터가 남의 서버에 있다.
  * 클라우드 쪽 대응물은 "로컬 세이브파일로 뽑기"(§6)이고, 그건 백업이 아니라 **생성**이다.
- *
- * ## v2 (PGlite)
- *
- * 세이브파일이 파일이 아니라 **폴더**가 됐다. 백업은 그 폴더를 `.tar.gz` 한 장으로 묶는다
- * (`tarball.js`). 실데이터 기준 폴더 41MB → 묶음 5MB. 원칙은 그대로 —
- * **DB가 닫혀 있는 순간(입구 화면)에 일렉트론이 한다.** 백엔드는 백업 폴더에 손을 안 댄다.
- * 자바 시절의 `.mv.db` 백업은 목록에 안 나온다 (H2 파일은 새 앱이 열 수 없다).
  */
 const fs = require("fs");
 const path = require("path");
@@ -32,6 +24,8 @@ const tarball = require("./tarball");
 const KEEP_COUNT = 30;
 const KEEP_BYTES = 100 * 1024 * 1024;   // 100MB
 const EXT = ".tar.gz";
+/** 마지막 백업이 묶은 내용의 지문 — 자동 백업이 "바뀌었나"를 이걸로 본다 (목록은 `.tar.gz`만 보므로 안 섞인다) */
+const FINGERPRINT = ".fingerprint.json";
 
 function stamp(date) {
   const p = (n) => String(n).padStart(2, "0");
@@ -89,11 +83,9 @@ function create(dirs, saveName, at = new Date()) {
   const folder = folderOf(dirs, saveName);
   fs.mkdirSync(folder, { recursive: true });
   const target = path.join(folder, `${stamp(at)}${EXT}`);
-  /*
-   * 묶는 사이에 누가 썼으면 찢어진 백업이다 — 앞뒤로 가장 늦은 수정 시각을 비교한다.
-   * 자바 시절의 "복사 전후 크기·mtime 비교"와 같은 자리다
-   */
+  /* 묶는 사이에 누가 썼으면 찢어진 백업이다 — 앞뒤로 가장 늦은 수정 시각을 비교한다 */
   const before = tarball.latestMtime(source);
+  const print = fingerprint(source);
   tarball.pack(source, target);
   if (tarball.latestMtime(source) !== before) {
     fs.rmSync(target, { force: true });
@@ -102,21 +94,63 @@ function create(dirs, saveName, at = new Date()) {
       + "STARLOG가 두 번 떠 있지 않은지 확인해 주세요.");
   }
   fs.utimesSync(target, at, at);
+  try {
+    fs.writeFileSync(path.join(folder, FINGERPRINT), JSON.stringify({ fileName: path.basename(target), fingerprint: print }));
+  } catch { /* 지문을 못 남기면 다음 기동에 한 번 더 뜰 뿐이다 */ }
   // **만든 직후에 정리한다.** 개수가 늘어나는 순간이 여기뿐이라 다른 곳에서 볼 이유가 없다
   const removed = prune(dirs, saveName);
   return { fileName: path.basename(target), removed };
 }
 
-/** 열 때 자동 백업 — **마지막 백업 뒤로 바뀐 게 있을 때만** */
+/**
+ * 내용의 지문 — **표 데이터 파일만** 본다 (`base/`·`global/`의 크기·수정 시각).
+ *
+ * ⚠️ 폴더 전체의 최신 수정 시각은 못 쓴다. PGlite는 **열고 닫기만 해도** WAL·`pg_control`·
+ * `pg_internal.init`·`pg_xact` 등을 다시 쓴다 (실측 2026-10-25). 그걸로 보면 "바뀌었을 때만"이
+ * 늘 참이라 아무것도 안 고쳐도 기동 30번에 한도가 차서 몇 주 전의 백업이 밀려났다.
+ * 표에 쓴 것은 닫을 때 체크포인트가 `base/`에 내려 쓰므로 여기에 드러난다.
+ * (읽기만 한 뒤에도 힌트 비트 때문에 한 번은 바뀔 수 있다 — 쓴 다음 한 번 더 뜨는 정도다)
+ */
+const VOLATILE = new Set(["pg_internal.init", "pg_control", "pg_filenode.map.tmp"]);
+
+function fingerprint(dir) {
+  const parts = [];
+  const walk = (rel) => {
+    const full = path.join(dir, rel);
+    if (!fs.existsSync(full)) return;
+    for (const e of fs.readdirSync(full, { withFileTypes: true })) {
+      const child = path.join(rel, e.name);
+      if (e.isDirectory()) walk(child);
+      else if (!VOLATILE.has(e.name)) {
+        const st = fs.statSync(path.join(dir, child));
+        parts.push(`${child.split(path.sep).join("/")}:${st.size}:${Math.floor(st.mtimeMs)}`);
+      }
+    }
+  };
+  walk("base");
+  walk("global");
+  return require("crypto").createHash("sha256").update(parts.sort().join("\n")).digest("hex");
+}
+
+function readFingerprint(dirs, saveName) {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(folderOf(dirs, saveName), FINGERPRINT), "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+/** 열 때 자동 백업 — **마지막 백업 뒤로 내용이 바뀐 게 있을 때만** */
 function autoBackup(dirs, saveName) {
   if (!saveFiles.exists(dirs, saveName)) {
     return null;   // 새로 만드는 세이브파일이다. 백업할 내용이 아직 없다
   }
   const latest = list(dirs, saveName)[0];
   if (latest) {
-    const changedAt = tarball.latestMtime(saveFiles.dirOf(dirs, saveName));
-    const backedUpAt = fs.statSync(path.join(folderOf(dirs, saveName), latest.fileName)).mtimeMs;
-    if (changedAt <= backedUpAt) {
+    const saved = readFingerprint(dirs, saveName);
+    // 지문이 가리키는 백업이 지금 가장 최신일 때만 믿는다 — 최신을 지웠으면 지문은 남의 것이다
+    if (saved && saved.fileName === latest.fileName
+      && saved.fingerprint === fingerprint(saveFiles.dirOf(dirs, saveName))) {
       return null;
     }
   }
@@ -165,4 +199,4 @@ function removeAll(dirs, saveName) {
   fs.rmSync(folderOf(dirs, saveName), { recursive: true, force: true });
 }
 
-module.exports = { list, usage, create, autoBackup, restore, remove, removeAll, KEEP_COUNT, KEEP_BYTES };
+module.exports = { list, usage, create, autoBackup, restore, remove, removeAll, fingerprint, stamp, KEEP_COUNT, KEEP_BYTES };

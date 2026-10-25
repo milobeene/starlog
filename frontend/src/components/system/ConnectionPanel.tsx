@@ -2,23 +2,10 @@
 
 import { useEffect, useState } from "react";
 import ConnectionDialog from "@/components/entry/ConnectionDialog";
-import { api } from "@/lib/api";
-import { getBridge, type ConnectionProfile, type SessionInfo } from "@/lib/desktop";
+import { Button } from "@/components/ui/Field";
+import { api, errorMessage } from "@/lib/api";
+import { getBridge, type ConnectionProfile, type SecretFieldPath, type SessionInfo } from "@/lib/desktop";
 
-/**
- * 지금 붙어 있는 연결 (2026-08-28에 목록 → 단일 폼으로).
- *
- * ## 왜 목록이 아닌가
- *
- * **앱 안에서는 연결이 언제나 하나다** — 지금 그걸로 접속해 있으니까.
- * 목록으로 두면 한 줄짜리 표를 만들고 그걸 또 눌러 들어가야 했다.
- * 여기서는 바로 그 연결의 폼을 편다. 나가려면 탭을 옮기면 된다.
- *
- * ## 고쳐도 지금 세션에는 안 먹는다
- *
- * DataSource·스토리지는 **부팅할 때 조립된다**(architecture §2). 그래서 여기서 바꾼 값은
- * 다음에 그 연결로 들어올 때부터 적용되고, 화면이 그걸 분명히 말해야 한다
- */
 /**
  * 로컬 세이브파일의 연결 탭 (v1.2에서 클라우드와 **한 컴포넌트로 합침**).
  *
@@ -31,30 +18,66 @@ import { getBridge, type ConnectionProfile, type SessionInfo } from "@/lib/deskt
  */
 function LocalConnectionSettings() {
   const [initial, setInitial] = useState<ConnectionProfile | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     /*
-     * 지금 세이브의 IGDB·번역 키를 백엔드에서 받아 폼의 초기값으로 쓴다.
-     * `GET /api/system/settings`는 비밀을 가려서 준다(보안 점검 2026-10-25) — 폼은 눈 버튼으로
-     * 오타를 확인하는 자리라 원문이 필요해서 `reveal`로 따로 받는다 (결정 63)
+     * 지금 세이브의 IGDB·번역 키를 **가린 채로** 받아 폼의 초기값으로 쓴다 (2026-10-25).
+     * 예전엔 탭을 여는 즉시 `reveal`로 원문을 받아 상태에 넣었다 — 눈 버튼을 누를 때만 원문이라는
+     * 설계(결정 63)와 어긋났다. 가린 값을 그대로 저장·시험하면 서버가 저장된 원문으로 바꿔 쓴다
      */
+    let cancelled = false;
     api
-      .post<{ igdbClientId: string; igdbClientSecret: string | null; translateApiKey: string | null }>(
-        "/api/system/settings/reveal",
-      )
-      .then((found) =>
+      .get<{
+        igdbClientId: string | null;
+        igdbClientSecret: string | null;
+        hasIgdbClientSecret: boolean;
+        translateApiKey: string | null;
+        hasTranslateApiKey: boolean;
+      }>("/api/system/settings")
+      .then((found) => {
+        if (cancelled) return;
+        setError(null);
         setInitial({
           name: "",
           db: { url: "", user: "", password: "", schema: "" },
-          storage: { endpoint: "", region: "", bucket: "", accessKey: "", secretKey: "", publicBaseUrl: "" },
+          storage: { endpoint: "", bucket: "", accessKey: "", secretKey: "", publicBaseUrl: "" },
           igdb: { clientId: found.igdbClientId ?? "", clientSecret: found.igdbClientSecret ?? "" },
           translate: { apiKey: found.translateApiKey ?? "" },
           mediaTargets: { covers: false, screenshots: false },
-        } as ConnectionProfile),
-      )
-      .catch(() => setInitial(null));
-  }, []);
+          hasSecret: {
+            "igdb.clientSecret": found.hasIgdbClientSecret,
+            "translate.apiKey": found.hasTranslateApiKey,
+          },
+        });
+      })
+      // 거부되면 스켈레톤이 영원히 돌았다 — 이유와 [다시 시도]를 보여준다
+      .catch((e) => {
+        if (!cancelled) setError(errorMessage(e, "설정을 불러오지 못했습니다."));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [attempt]);
 
+  /** 눈 버튼 — 그 칸 하나의 원문만 서버에서 받는다 */
+  const reveal = async (path: SecretFieldPath) => {
+    const found = await api.post<{ igdbClientSecret: string | null; translateApiKey: string | null }>(
+      "/api/system/settings/reveal",
+    );
+    if (path === "igdb.clientSecret") return found.igdbClientSecret ?? "";
+    if (path === "translate.apiKey") return found.translateApiKey ?? "";
+    return null;
+  };
+
+  if (error) {
+    return (
+      <Problem message={error}>
+        <Button onClick={() => setAttempt((n) => n + 1)}>다시 시도</Button>
+      </Problem>
+    );
+  }
   if (!initial) return <div className="h-40 skeleton-sweep rounded-lg bg-white/[0.06]" />;
 
   return (
@@ -67,6 +90,7 @@ function LocalConnectionSettings() {
         initial={initial}
         inline
         mode="local"
+        reveal={reveal}
         onClose={() => {}}
         onSaved={() => {}}
       />
@@ -74,20 +98,46 @@ function LocalConnectionSettings() {
   );
 }
 
+/**
+ * 지금 붙어 있는 연결 (2026-08-28에 목록 → 단일 폼으로).
+ *
+ * ## 왜 목록이 아닌가
+ *
+ * **앱 안에서는 연결이 언제나 하나다** — 지금 그걸로 접속해 있으니까.
+ * 목록으로 두면 한 줄짜리 표를 만들고 그걸 또 눌러 들어가야 했다.
+ * 여기서는 바로 그 연결의 폼을 편다. 나가려면 탭을 옮기면 된다.
+ *
+ * ## 고쳐도 지금 세션에는 안 먹는다
+ *
+ * DB 연결·스토리지는 **부팅할 때 조립된다**(architecture §2). 그래서 여기서 바꾼 값은
+ * 다음에 그 연결로 들어올 때부터 적용되고, 화면이 그걸 분명히 말해야 한다
+ *
+ * ## 이름을 바꿔도 된다 (2026-10-25)
+ *
+ * 일렉트론이 지금 세션과 [최근 접속]을 새 이름으로 옮긴다. 예전엔 옛 이름을 들고 있어서
+ * 탭을 다시 열면 프로필을 못 찾아 스켈레톤이 영원히 돌았다
+ */
 export default function ConnectionPanel() {
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [profile, setProfile] = useState<ConnectionProfile | null>(null);
+  /** 찾지 못했거나 읽지 못했다 — 스켈레톤을 영원히 돌리지 않고 이유와 입구로 가는 길을 보여준다 */
+  const [missing, setMissing] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     const bridge = getBridge();
     if (!bridge) return;
-    bridge.session.current().then(async (found) => {
-      setSession(found);
-      if (found?.mode !== "cloud") return;
-      const list = await bridge.connections.list();
-      setProfile(list.find((p) => p.name === found.target) ?? null);
-    });
+    bridge.session
+      .current()
+      .then(async (found) => {
+        setSession(found);
+        if (found?.mode !== "cloud") return;
+        const list = await bridge.connections.list();
+        const mine = list.find((p) => p.name === found.target) ?? null;
+        setProfile(mine);
+        if (!mine) setMissing(`지금 접속한 연결(${found.target})의 설정을 찾지 못했습니다. 입구에서 지웠거나 이름을 바꾼 것 같습니다.`);
+      })
+      .catch((e) => setMissing(errorMessage(e, "연결 설정을 읽지 못했습니다.")));
   }, []);
 
   if (!getBridge()) {
@@ -106,6 +156,14 @@ export default function ConnectionPanel() {
    */
   if (session && session.mode !== "cloud") {
     return <LocalConnectionSettings />;
+  }
+
+  if (missing) {
+    return (
+      <Problem message={missing}>
+        <Button onClick={() => void getBridge()?.backToEntry()}>입구로</Button>
+      </Problem>
+    );
   }
 
   if (!profile) {
@@ -145,6 +203,15 @@ export default function ConnectionPanel() {
         위 연결 설정 폼 안에 이미 번역 키 칸이 있어서 **같은 것이 두 군데**가 됐다 —
         IGDB에서 똑같은 실수를 했다가 고친 적이 있다. 클라우드는 연결 폼 하나로 끝낸다
       */}
+    </div>
+  );
+}
+
+function Problem({ message, children }: { message: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col items-start gap-3 rounded-lg border border-red-400/20 bg-red-400/[0.05] px-4 py-5">
+      <p className="text-sm leading-relaxed text-red-300/90">{message}</p>
+      {children}
     </div>
   );
 }

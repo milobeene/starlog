@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { describe, expect, it } from "vitest";
 import { loadConfig, setConfig } from "../../src/config";
-import { cspForHtml, inlineScriptHashes, originOf } from "../../src/http/csp";
+import { buildCsp, cspForHtml, inlineScriptHashes, originOf } from "../../src/http/csp";
 
 const sha = (s: string) => `'sha256-${crypto.createHash("sha256").update(s, "utf8").digest("base64")}'`;
 const directive = (p: string, name: string) => p.split("; ").find((d) => d.startsWith(name + " ")) ?? "";
@@ -41,5 +41,31 @@ describe("CSP", () => {
     expect(originOf("javascript:alert(1)")).toBeNull();
     expect(originOf("not a url")).toBeNull();
     expect(originOf("")).toBeNull();
+  });
+});
+
+/**
+ * 같은 정책이 두 벌이다 — `app://` 문서는 일렉트론(`desktop/csp.js`)이, http 사본은 서버가 붙인다.
+ * 한쪽만 고치면 한쪽 창에서만 커버·영상이 막힌다. 같은 입력이면 같은 글자여야 한다 (데스크탑 파일은 읽기만)
+ */
+describe("CSP 두 벌 대조", async () => {
+  const { createRequire } = await import("module");
+  const desktop = createRequire(import.meta.url)("../../../desktop/csp.js") as {
+    buildCsp: typeof buildCsp; inlineScriptHashes: typeof inlineScriptHashes; originOf: typeof originOf;
+  };
+  const inputs = [
+    { scriptHashes: [], imgOrigins: [], connectOrigins: [] },
+    { scriptHashes: [sha("a()"), sha("b()")], imgOrigins: ["https://covers.fake.example"], connectOrigins: ["https://acct.fake-r2.example"] },
+    { scriptHashes: [sha("a()"), sha("a()")], imgOrigins: ["https://x.example", "https://x.example"], connectOrigins: [] },
+  ];
+  it("buildCsp가 같은 글자를 낸다", () => {
+    for (const i of inputs) expect(desktop.buildCsp(i)).toBe(buildCsp(i));
+  });
+  it("인라인 해시·출처 거르기도 같다", () => {
+    const html = `<script src="/a.js"></script><script>x()</script><script id="y">y()</script><script></script>`;
+    expect(desktop.inlineScriptHashes(html)).toEqual(inlineScriptHashes(html));
+    for (const raw of ["https://a.example/b/c", " http://127.0.0.1:9000/x ", "ftp://a.example", "not a url", "https://a.example; script-src *", ""]) {
+      expect(desktop.originOf(raw)).toBe(originOf(raw));
+    }
   });
 });

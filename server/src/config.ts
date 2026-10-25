@@ -36,6 +36,11 @@ export interface Config {
   };
   media: { useStorageForCovers: boolean; useStorageForScreenshots: boolean };
   translateApiKey: string | null;
+  /**
+   * 연결 시험 — 열어서 진단(`select 1`·스키마 검사)까지만 하고 내려간다. **마이그레이션을 안 돈다** —
+   * 시험 버튼이 남의 DB(또는 아직 안 고른 DB)에 테이블을 만들면 안 된다. 성공 신호는 `STARLOG_CHECKED`·`{type: "checked"}`
+   */
+  checkOnly: boolean;
 }
 
 const blank = (v: string | undefined) => (v === undefined || v.trim() === "" ? null : v.trim());
@@ -69,6 +74,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       useStorageForScreenshots: flag(env.STARLOG_MEDIA_USE_STORAGE_FOR_SCREENSHOTS),
     },
     translateApiKey: blank(env.TRANSLATE_API_KEY),
+    checkOnly: flag(env.STARLOG_CHECK_ONLY),
   };
 }
 

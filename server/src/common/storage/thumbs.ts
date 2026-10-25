@@ -2,7 +2,7 @@
  * 스크린샷 썸네일 — `<게임 폴더>/.thumbs/<원본 이름>.jpg`.
  *
  * **만드는 건 일렉트론 메인 프로세스다** (`nativeImage.createThumbnailFromPath`가 메인 전용).
- * 서버(utilityProcess)는 `parentPort`로 부탁하고 답을 기다린다 — 짝은 `desktop/thumbnails.js`.
+ * 서버(utilityProcess)는 `parentPort`로 부탁하고 답을 기다린다 — 짝은 `desktop/media.js`.
  * 일렉트론 없이 도는 개발 서버·녹화본 장치는 만들 수 없다 → 목록의 `thumbUrl`이 null이고 화면이 원본을 쓴다.
  *
  * 신선한지는 **썸네일 수정시각 = 원본 수정시각**으로 본다. 만드는 쪽이 원본 시각을 심는다.

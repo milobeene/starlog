@@ -835,11 +835,27 @@
    }
   },
   {
-   "name": "회차 — 기간 겹침",
+   "name": "회차 — 기간 겹침 (진행 중 회차 시작일을 하루 넘김)",
    "method": "POST",
    "path": "/api/backlog/86/playthroughs",
    "body": {
     "startedOn": "2026-09-01",
+    "finishedOn": "2026-10-02",
+    "status": "COMPLETED",
+    "deviceId": 9,
+    "platformId": 11,
+    "emulatorId": null,
+    "platformAccountId": 6,
+    "inputMethodId": 6,
+    "label": "  첫 회차  "
+   }
+  },
+  {
+   "name": "회차 — 같은 날 맞닿음은 겹침이 아니다 (진행 중 회차를 시작한 날 끝난 과거 회차 — 사용자 결정 2026-10-25)",
+   "method": "POST",
+   "path": "/api/backlog/86/playthroughs",
+   "body": {
+    "startedOn": "2026-09-20",
     "finishedOn": "2026-10-01",
     "status": "COMPLETED",
     "deviceId": 9,
@@ -2340,6 +2356,63 @@
    "name": "플레이 기록 — 번호가 숫자 아님",
    "method": "DELETE",
    "path": "/api/play-records/abc"
+  },
+  {
+   "name": "이름순 — 준비: 소문자로 시작하는 수동 게임",
+   "method": "POST",
+   "path": "/api/games",
+   "body": {
+    "name": "aaa zz lower"
+   },
+   "save": {
+    "lowG": "id"
+   }
+  },
+  {
+   "name": "이름순 — 준비: 담기",
+   "method": "POST",
+   "path": "/api/backlog",
+   "body": {
+    "gameId": "${lowG}"
+   },
+   "save": {
+    "lowE": "id"
+   }
+  },
+  {
+   "name": "이름순 — 정렬 키로 (대소문자 무시 — DB 콜레이션이면 대문자 영문 뒤로 밀린다)",
+   "method": "GET",
+   "path": "/api/backlog?sort=name&size=8"
+  },
+  {
+   "name": "이름순 — 전량 카드도 같은 순서",
+   "method": "GET",
+   "path": "/api/backlog/cards"
+  },
+  {
+   "name": "메모 — 숫자 모양 글자 '007'",
+   "method": "PUT",
+   "path": "/api/backlog/${lowE}/personal-record",
+   "body": {
+    "rating": null,
+    "playTimeHours": null,
+    "memo": "007"
+   }
+  },
+  {
+   "name": "메모 — '7'로 (숫자로 같아도 글자는 다르다 — 저장돼야 한다)",
+   "method": "PUT",
+   "path": "/api/backlog/${lowE}/personal-record",
+   "body": {
+    "rating": null,
+    "playTimeHours": null,
+    "memo": "7"
+   }
+  },
+  {
+   "name": "메모 — 상세에 '7'",
+   "method": "GET",
+   "path": "/api/backlog/${lowE}"
   }
  ]
 }

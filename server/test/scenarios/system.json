@@ -1,5 +1,11 @@
 {
  "name": "system",
+ "note": "API 사용량(오늘·이번 달·지난 30일)은 달력에 묶여 있다 — 픽스처의 실제 호출 기록을 쓰면 녹화한 날이 지나면 깨진다. 그래서 픽스처 기록을 비우고 '지금 기준' 행을 넣는다: 1초 전 번역 582자(오늘·이번 달), 40일 전 번역(기동 정리가 지운다)",
+ "sql": [
+  "delete from api_call_log",
+  "insert into api_call_log (provider, operation, called_at, success, units, created_at, updated_at) values ('TRANSLATE', 'translate', (now() at time zone 'Asia/Seoul') - interval '1 second', true, 582, (now() at time zone 'Asia/Seoul') - interval '1 second', (now() at time zone 'Asia/Seoul') - interval '1 second')",
+  "insert into api_call_log (provider, operation, called_at, success, units, created_at, updated_at) values ('TRANSLATE', 'translate', (now() at time zone 'Asia/Seoul') - interval '40 days', true, 999, (now() at time zone 'Asia/Seoul') - interval '40 days', (now() at time zone 'Asia/Seoul') - interval '40 days')"
+ ],
  "steps": [
   {
    "name": "현황 — 처음 (쓰기 전)",

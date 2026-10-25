@@ -12,7 +12,7 @@ import GameMasterList from "@/components/system/GameMasterList";
 import { applyPick, type GameRow } from "@/components/system/gameMaster";
 import { useApi } from "@/lib/useApi";
 import { api, errorMessage, qs } from "@/lib/api";
-import { putTask, updateTask } from "@/lib/tasks";
+import { putTask, updateTask, useTaskRunning } from "@/lib/tasks";
 import type {
   GameMaster,
   GameResyncResult,
@@ -54,6 +54,20 @@ export default function GameMasterMaster() {
   /** 중단 신호. 루프가 매 바퀴 확인한다 — 되돌릴 게 없어서 그냥 멈추면 된다 */
   const abort = useRef(false);
   const [dialog, setDialog] = useState<{ kind: "info"; game: GameRow } | null>(null);
+  const syncing = useTaskRunning("bulk-sync");
+
+  /*
+   * 쪽·검색어·IGDB 포함이 바뀌면 선택을 비운다. 남겨 두면 화면에 안 보이는 행까지 [선택 삭제]에
+   * 실려 기록째 지워졌다 — 고른 것은 늘 눈앞에 있어야 한다
+   */
+  const clearSelection = () => {
+    setSelected(new Set());
+    anchor.current = null;
+  };
+  const goPage = (next: number) => {
+    setPage(next);
+    clearSelection();
+  };
 
   const masterList = useApi<PageResponse<GameMaster>>(
     includeExternal ? null : `/api/games/master${qs({ q: keyword, page, size: PAGE_SIZE })}`,
@@ -77,7 +91,7 @@ export default function GameMasterMaster() {
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
-    setPage(0);
+    goPage(0);
     setKeyword(draft.trim());
   };
 
@@ -140,7 +154,9 @@ export default function GameMasterMaster() {
         진행률은 따로 저장하지 않는다: `lastSyncedAt`이 이미 상태라 다시 물어보면 남은 것만 나온다
       */}
       <div className="flex flex-wrap items-center gap-2">
-        <Button onClick={() => setSyncDialog({})}>일괄 동기화</Button>
+        <Button onClick={() => setSyncDialog({})} disabled={syncing}>
+          {syncing ? "동기화 중" : "일괄 동기화"}
+        </Button>
         {selected.size > 0 && (
           <>
             <span className="text-xs text-white/40">{selected.size}개 선택</span>
@@ -149,14 +165,14 @@ export default function GameMasterMaster() {
               고른 것만 돌리고 싶을 때가 있다 — 방금 고친 몇 개를 다시 받아오는 경우다.
               같은 진행 표시(bulk-sync)를 쓴다: 사용자에겐 같은 종류의 일이다
             */}
-            <Button onClick={() => setSyncDialog({ scope: "selected" })}>
+            <Button onClick={() => setSyncDialog({ scope: "selected" })} disabled={syncing}>
               선택 동기화
             </Button>
             <Button variant="danger" onClick={() => setBulkDeleting(true)}>
               선택 삭제
             </Button>
             <button
-              onClick={() => setSelected(new Set())}
+              onClick={clearSelection}
               className="text-[11px] text-white/35 underline underline-offset-2 hover:text-white"
             >
               선택 해제
@@ -185,7 +201,7 @@ export default function GameMasterMaster() {
             checked={includeExternal}
             onChange={(event) => {
               setIncludeExternal(event.target.checked);
-              setPage(0);
+              goPage(0);
             }}
             className="accent-white"
           />
@@ -241,7 +257,7 @@ export default function GameMasterMaster() {
 
       {/* IGDB 검색은 외부 호출이라 총 건수를 모른다 — 페이지네이션은 마스터 목록에만 붙는다 */}
       {!includeExternal && masterList.data && (
-        <Pagination page={page} totalPages={masterList.data.totalPages} onChange={setPage} />
+        <Pagination page={page} totalPages={masterList.data.totalPages} onChange={goPage} />
       )}
 
       {/*
@@ -261,22 +277,40 @@ export default function GameMasterMaster() {
       {bulkDeleting && (
         <ConfirmDialog
           title="선택한 마스터 삭제"
-          message={`${selected.size}개를 완전히 지웁니다. 담겨 있는 기록(평점·메모·회차·취득)도 함께 사라지며 되돌릴 수 없습니다.`}
-          confirmLabel="삭제"
+          message={
+            <>
+              아래 {selected.size}개를 완전히 지웁니다. 담겨 있는 기록(평점·메모·회차·취득)도 함께 사라지며
+              되돌릴 수 없습니다.
+              {/* 무엇이 지워지는지 이름으로 — 개수만으로는 잘못 고른 걸 알아챌 수 없다 */}
+              <ul className="mt-3 max-h-48 list-disc overflow-y-auto pl-5 text-xs text-white/70">
+                {rows
+                  .filter((row) => row.gameId != null && selected.has(row.gameId))
+                  .map((row) => (
+                    <li key={row.gameId}>{row.name}</li>
+                  ))}
+              </ul>
+            </>
+          }
+          confirmLabel={`${selected.size}개 삭제`}
           onClose={() => setBulkDeleting(false)}
           onConfirm={async () => {
             setBulkDeleting(false);
+            setError(null);
+            setNotice(null);
             let removed = 0;
+            const failed: string[] = [];
             for (const id of selected) {
               try {
                 await api.del(`/api/games/${id}`);
                 removed += 1;
-              } catch {
-                // 한 건이 실패해도 나머지는 계속
+              } catch (caught) {
+                // 한 건이 실패해도 나머지는 계속 — 대신 몇 건이 왜 남았는지는 알린다
+                failed.push(errorMessage(caught, `#${id}`));
               }
             }
-            setSelected(new Set());
+            clearSelection();
             setNotice(`${removed}개를 삭제했습니다.`);
+            if (failed.length > 0) setError(`${failed.length}개는 지우지 못했습니다: ${failed.join(" · ")}`);
             masterList.reload();
           }}
         />

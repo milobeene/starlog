@@ -9,7 +9,7 @@ import { Button, Field, FIELD_INPUT } from "@/components/ui/Field";
 import { api, errorMessage } from "@/lib/api";
 import { PLAY_RECORD_KIND_LABEL } from "@/lib/labels";
 import { EMPTY_SEGS, MAX_MINUTES, minutesFromSegs, segsFromMinutes, type DurSegs } from "@/lib/playtimeInput";
-import { todayKst } from "@/lib/quickPlay";
+import { todayKst } from "@/lib/format";
 import type { PlayRecord } from "@/lib/types";
 
 /**
@@ -83,103 +83,106 @@ export default function PlayRecordDialog({
   );
 
   return (
-    <Modal
-      title={record ? `플레이 기록 수정 — ${PLAY_RECORD_KIND_LABEL[kind]}` : "플레이 기록 추가"}
-      width="max-w-md"
-      onClose={onClose}
-      footer={
-        <>
-          {record && (
-            <button
-              onClick={() => setRemoving(true)}
-              className="text-xs text-white/30 transition-colors hover:text-red-400"
-            >
-              삭제
-            </button>
-          )}
-          {error && <span className="mr-auto text-xs text-red-400">{error}</span>}
-          {!error && record && <span className="mr-auto" />}
-          <Button onClick={onClose}>취소</Button>
-          <Button variant="primary" onClick={save} disabled={saving || bad}>
-            {saving ? "저장 중" : "저장"}
-          </Button>
-        </>
-      }
-    >
-      <div
-        className="flex flex-col gap-5"
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.nativeEvent.isComposing && !removing) {
-            e.preventDefault();
-            void save();
-          }
-        }}
-      >
-        {removing && record && (
-          <ConfirmDialog
-            title="플레이 기록 삭제"
-            message={
-              <>
-                이 기록을 삭제합니다. 되돌릴 수 없으며,{" "}
-                <b className="text-white">플레이타임 합계에서도 빠집니다.</b>
-              </>
-            }
-            onConfirm={async () => {
-              await api.del(`/api/play-records/${record.recordId}`);
-              onSaved();
-              onClose();
-            }}
-            onClose={() => setRemoving(false)}
-          />
-        )}
-
-        <Field
-          label="Time"
-          composite
-          hint={
-            over
-              ? undefined
-              : signed
-                ? "합계를 고칠 때 생긴 차이입니다. 줄인 기록은 − 입니다"
-                : kind === "ADD"
-                  ? "이번에 플레이하신 시간"
-                  : "이전 기록에서 옮겨 온 합계입니다"
-          }
-        >
-          <div className="flex items-center gap-2">
-            {signed && (
-              <>
-                {signButton(false, "+")}
-                {signButton(true, "−")}
-              </>
+    <>
+      <Modal
+        title={record ? `플레이 기록 수정 — ${PLAY_RECORD_KIND_LABEL[kind]}` : "플레이 기록 추가"}
+        width="max-w-md"
+        onClose={onClose}
+        footer={
+          <>
+            {record && (
+              <button
+                onClick={() => setRemoving(true)}
+                className="text-xs text-white/30 transition-colors hover:text-red-400"
+              >
+                삭제
+              </button>
             )}
-            <DurationField
-              ariaLabel="플레이 시간"
-              prefix={kind === "ADD" ? "+" : undefined}
-              value={amount}
-              onChange={setAmount}
-              hoursRef={hoursRef}
-              invalid={over}
+            {error && <span className="mr-auto text-xs text-red-400">{error}</span>}
+            {!error && record && <span className="mr-auto" />}
+            <Button onClick={onClose}>취소</Button>
+            <Button variant="primary" onClick={save} disabled={saving || bad}>
+              {saving ? "저장 중" : "저장"}
+            </Button>
+          </>
+        }
+      >
+        <div
+          className="flex flex-col gap-5"
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.nativeEvent.isComposing && !removing) {
+              e.preventDefault();
+              void save();
+            }
+          }}
+        >
+          <Field
+            label="Time"
+            composite
+            hint={
+              over
+                ? undefined
+                : signed
+                  ? "합계를 고칠 때 생긴 차이입니다. 줄인 기록은 − 입니다"
+                  : kind === "ADD"
+                    ? "이번에 플레이하신 시간"
+                    : "이전 기록에서 옮겨 온 합계입니다"
+            }
+          >
+            <div className="flex items-center gap-2">
+              {signed && (
+                <>
+                  {signButton(false, "+")}
+                  {signButton(true, "−")}
+                </>
+              )}
+              <DurationField
+                ariaLabel="플레이 시간"
+                prefix={kind === "ADD" ? "+" : undefined}
+                value={amount}
+                onChange={setAmount}
+                hoursRef={hoursRef}
+                invalid={over}
+              />
+            </div>
+            {over && <span className="text-[11px] text-red-400">99,999시간 59분을 넘을 수 없습니다</span>}
+          </Field>
+
+          <Field label="Date" composite>
+            <DateField value={playedOn} onChange={setPlayedOn} />
+          </Field>
+
+          <Field label="Note" hint="100자 이내">
+            <input
+              type="text"
+              value={note}
+              maxLength={100}
+              onChange={(event) => setNote(event.target.value)}
+              placeholder="주말에 몰아서"
+              className={FIELD_INPUT}
             />
-          </div>
-          {over && <span className="text-[11px] text-red-400">99,999시간 59분을 넘을 수 없습니다</span>}
-        </Field>
+          </Field>
+        </div>
+      </Modal>
 
-        <Field label="Date" composite>
-          <DateField value={playedOn} onChange={setPlayedOn} />
-        </Field>
-
-        <Field label="Note" hint="100자 이내">
-          <input
-            type="text"
-            value={note}
-            maxLength={100}
-            onChange={(event) => setNote(event.target.value)}
-            placeholder="주말에 몰아서"
-            className={FIELD_INPUT}
-          />
-        </Field>
-      </div>
-    </Modal>
+      {/* 형제로 그린다 — 판넬 안이면 backdrop-filter가 fixed의 기준이 돼 딤·확인창이 판넬 안에 갇힌다 */}
+      {removing && record && (
+        <ConfirmDialog
+          title="플레이 기록 삭제"
+          message={
+            <>
+              이 기록을 삭제합니다. 되돌릴 수 없으며,{" "}
+              <b className="text-white">플레이타임 합계에서도 빠집니다.</b>
+            </>
+          }
+          onConfirm={async () => {
+            await api.del(`/api/play-records/${record.recordId}`);
+            onSaved();
+            onClose();
+          }}
+          onClose={() => setRemoving(false)}
+        />
+      )}
+    </>
   );
 }

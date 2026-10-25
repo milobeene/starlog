@@ -35,13 +35,21 @@ import type { BacklogDetail, OptionsResponse } from "@/lib/types";
 export default function BacklogDetailPage() {
   return (
     <Suspense fallback={null}>
-      <BacklogDetail />
+      <DetailByEntry />
     </Suspense>
   );
 }
 
-function BacklogDetail() {
+/*
+ * 게임이 바뀌면 트리를 통째로 새로 만든다. 사이드바로 옆 게임에 가면 라우트가 같아
+ * 언마운트가 안 돼서 스크롤·펼침·선택·번역 보기가 이전 게임 것으로 남았다
+ */
+function DetailByEntry() {
   const entryId = useSearchParams().get("entry") ?? "";
+  return <BacklogDetail key={entryId} entryId={entryId} />;
+}
+
+function BacklogDetail({ entryId }: { entryId: string }) {
   const { bannerRef, onScroll } = useBannerScroll();
   const { data, error, reload } = useApi<BacklogDetail>(`/api/backlog/${entryId}`);
   // 선택지는 편집 폼 전부가 공유한다 (기기·에뮬·계정·플랫폼·구독·사전)
@@ -62,7 +70,8 @@ function BacklogDetail() {
     invalidateQueries();
   };
 
-  if (error) return <ErrorNotice error={error} onRetry={reload} />;
+  // 들고 있는 게 있으면 재검증 실패로 화면을 갈아엎지 않는다 — 막 지운 게임이 404로 번쩍이던 것
+  if (error && !data) return <ErrorNotice error={error} onRetry={reload} />;
   /*
    * `loading ||`을 뺐다. 전역 무효화가 돌 때마다 화면이 통째로 스켈레톤으로 무너져
    * **DOM이 파괴됐다 다시 만들어지면서 스크롤이 맨 위로 튀었다.**

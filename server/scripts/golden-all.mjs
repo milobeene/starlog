@@ -10,6 +10,8 @@ const root = path.resolve(import.meta.dirname, "..");
 const dir = path.join(root, "test/scenarios");
 const only = process.argv[2];
 const scenarios = fs.readdirSync(dir).filter((f) => f.endsWith(".json") && (!only || f.includes(only))).sort();
+// 하나도 없으면 "0 / 0 통과"로 초록불이 된다 — 경로가 틀렸거나 필터가 아무것도 못 잡은 것
+if (scenarios.length === 0) { console.error(`시나리오가 없다${only ? ` (필터: ${only})` : ""}`); process.exit(1); }
 let failed = 0;
 for (const f of scenarios) {
   const r = spawnSync(path.join(root, "node_modules/.bin/tsx"), ["test/harness/run.ts", path.join("test/scenarios", f)],

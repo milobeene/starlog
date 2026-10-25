@@ -1,5 +1,7 @@
 "use client";
 
+import { Fragment } from "react";
+
 /** id가 없어 고칠 수 없는 사전 — 무엇이 쌓였는지만 보여준다 */
 export default function ReadOnlyDictionary({ label, names }: { label: string; names: string[] }) {
   return (
@@ -22,16 +24,18 @@ export default function ReadOnlyDictionary({ label, names }: { label: string; na
 
           ⚠️ **`::after` 트릭을 쓰지 않는다.** 그건 마지막 줄까지 억지로 펴는 장치인데,
           그러면 태그가 두 개 남은 줄이 화면 폭만큼 벌어져 보인다 —
-          justify는 원래 마지막 줄을 왼쪽 정렬로 둔다. 그게 맞는 모양이다 (사용자 지정)
+          justify는 원래 마지막 줄을 왼쪽 정렬로 둔다. 그게 맞는 모양이다 (사용자 지정).
+
+          ⚠️ `Dictionary`와 같은 칩이어야 한다 — `inline-flex`·`whitespace-nowrap`이 없으면 justify가
+          이름 **안의** 공백을 늘리고 칩이 두 줄로 쪼개진다. 칩 사이 진짜 공백도 그래서 넣는다
         */
         <div className="text-justify">
           {names.map((name) => (
-            <span
-              key={name}
-              className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-white/60"
-            >
-              {name}
-            </span>
+            <Fragment key={name}>
+              <span className="mb-1.5 inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2.5 py-1 align-middle text-xs whitespace-nowrap text-white/60">
+                {name}
+              </span>{" "}
+            </Fragment>
           ))}
         </div>
       )}

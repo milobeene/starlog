@@ -6,7 +6,7 @@ import { Labeled, SectionFooter } from "./ConnectionFormParts";
 import { DatabaseSection, IgdbSection, StorageSection, TranslateSection } from "./ConnectionSections";
 import { useConnectionForm } from "./useConnectionForm";
 import type { SectionKey } from "@/lib/connectionDraft";
-import type { ConnectionProfile } from "@/lib/desktop";
+import type { ConnectionProfile, SecretFieldPath } from "@/lib/desktop";
 
 /**
  * 데이터베이스 연결 한 벌 (2026-08-28에 팝업으로 다시 만듦).
@@ -31,6 +31,7 @@ export default function ConnectionDialog({
   inline = false,
   mode = "cloud",
   notice = null,
+  reveal,
   onClose,
   onSaved,
 }: {
@@ -54,6 +55,8 @@ export default function ConnectionDialog({
   mode?: "cloud" | "local";
   /** 바깥에서 온 알림(저장 완료 등). 결과·진행과 **같은 자리**에 모아 보여준다 */
   notice?: string | null;
+  /** 눈 버튼이 진짜 값을 받아 오는 곳 — 로컬 세이브는 서버에서 받는다 (`useConnectionForm`) */
+  reveal?: (path: SecretFieldPath) => Promise<string | null>;
   onClose: () => void;
   onSaved: (profile: ConnectionProfile) => void;
 }) {
@@ -69,6 +72,7 @@ export default function ConnectionDialog({
     partResult,
     showGaps,
     gaps,
+    formError,
     storageReady,
     canTest,
     canSave,
@@ -78,7 +82,7 @@ export default function ConnectionDialog({
     testSection,
     saveSection,
     secretProps,
-  } = useConnectionForm({ initial, mode, onSaved });
+  } = useConnectionForm({ initial, mode, onSaved, reveal });
 
   const footer = (part: SectionKey, ready: boolean) => (
     <SectionFooter
@@ -97,16 +101,18 @@ export default function ConnectionDialog({
    */
   const actions = (
     <>
-      <span className="mr-auto text-[11px] text-white/35">
+      <span className={`mr-auto text-[11px] ${formError && !testing ? "text-red-400" : "text-white/35"}`}>
         {testing
           ? "확인 중입니다. 다른 화면에 다녀오셔도 됩니다"
-          : notice
-            ? notice
-            : canSave
-              ? ""
-              : canTest
-                ? "연결 테스트를 통과해야 저장할 수 있습니다"
-                : "필수 항목을 채워 주세요"}
+          : formError
+            ? formError
+            : notice
+              ? notice
+              : canSave
+                ? ""
+                : canTest
+                  ? "연결 테스트를 통과해야 저장할 수 있습니다"
+                  : "필수 항목을 채워 주세요"}
       </span>
       {!inline && (
         <Button onClick={onClose} disabled={testing}>

@@ -5,12 +5,7 @@ import { apiToken, apiUrl } from "@/lib/apiBase";
  *
  * v1.0에서 인증이 사라지면서 쿠키·CSRF가 통째로 빠졌다.
  * 남은 약속은 하나 — `{ code, message }` 에러 형태를 백엔드가 전 계층에서 통일해 준다.
- *
- * `X-Member-Id`는 인증이 아니라 **개발용 스위치**다 (백엔드 LoginMemberArgumentResolver 참고)
  */
-
-/** dev 편의 — 백엔드 dev 프로필의 X-Member-Id 헤더 인증. prod엔 이 빈이 없다 */
-const DEV_MEMBER_ID = process.env.NEXT_PUBLIC_DEV_MEMBER_ID;
 
 export class ApiError extends Error {
   constructor(
@@ -36,7 +31,6 @@ async function request<T>(path: string, options: Options = {}): Promise<T> {
   const method = options.method ?? "GET";
   const headers: Record<string, string> = {};
 
-  if (DEV_MEMBER_ID) headers["X-Member-Id"] = DEV_MEMBER_ID;
   /*
    * 서버는 운영에서 모든 `/api/*`에 이 머리글을 요구한다 (서버 `http/guard.ts`).
    * 주소의 `t=`가 아니라 머리글인 이유 — 서버가 쿼리 토큰은 GET에서만 받는다
@@ -106,20 +100,12 @@ export const api = {
 
 /** 화면이 분기해야 하는 에러 코드만 모아둔다 */
 export const ERROR = {
-  UNAUTHORIZED: "UNAUTHORIZED",
-  SESSION_EXPIRED: "SESSION_EXPIRED",
-  EMAIL_NOT_VERIFIED: "EMAIL_NOT_VERIFIED",
-  APPROVAL_PENDING: "APPROVAL_PENDING",
-  FORBIDDEN: "FORBIDDEN",
   REVIVABLE: "REVIVABLE",
-  /** 429 — 앱 전체가 외부 DB 한도에 닿았다. **1초 안에 풀린다** */
-  CATALOG_BUSY: "CATALOG_BUSY",
-  /** 429 — 내 하루치를 다 썼다. 자정에 풀린다 */
-  QUOTA_EXCEEDED: "QUOTA_EXCEEDED",
 } as const;
 
 /**
- * 429는 **오류가 아니라 "지금은 안 된다"**다. 두 뜻이 한 상태코드에 있어 code로 가른다.
+ * 429는 **오류가 아니라 "지금은 안 된다"**다. 두 뜻이 한 상태코드에 있다 —
+ * `CATALOG_BUSY`(앱 전체가 외부 한도에 닿음, 1초 안에 풀림)와 `QUOTA_EXCEEDED`(내 하루치 소진, 자정에 풀림).
  *
  * 서버가 사람이 읽을 문구를 이미 담아 보내므로 그대로 쓴다 —
  * 여기서 문구를 또 쓰면 서버와 화면이 다른 말을 하게 된다
@@ -127,13 +113,6 @@ export const ERROR = {
 export function busyMessage(error: unknown): string | null {
   if (!(error instanceof ApiError) || error.status !== 429) return null;
   return error.message || "지금은 요청이 많습니다. 잠시 후 다시 시도해 주세요.";
-}
-
-export function isUnauthorized(error: unknown): boolean {
-  return (
-    error instanceof ApiError &&
-    (error.status === 401 || error.code === ERROR.SESSION_EXPIRED)
-  );
 }
 
 /**

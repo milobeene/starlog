@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { coverSrc } from "@/lib/cover";
 import { api, ApiError, busyMessage, ERROR, errorMessage } from "@/lib/api";
 import { closeTask, putTask, updateTask, useTaskRunning } from "@/lib/tasks";
+import { invalidateQueries } from "@/lib/useApi";
 import type { GameSearchResult } from "@/lib/types";
 
 /** 마스터에 없는 게임은 gameId가 없어 externalId가 유일한 식별자다 */
@@ -61,6 +62,7 @@ export default function AddPage() {
     api
       .get<GameSearchResult[]>(`/api/games?q=${encodeURIComponent(debounced)}`, controller.signal)
       .then((data) => {
+        if (controller.signal.aborted) return;
         setResults(data);
         setSearching(false);
       })
@@ -82,6 +84,8 @@ export default function AddPage() {
     return () => {
       live = false;
       controller.abort();
+      // 끊긴 요청은 catch에서 그냥 돌아간다 — 입력을 지워 다음 검색이 안 돌면 스켈레톤이 그대로 남는다
+      setSearching(false);
     };
   }, [debounced]);
 
@@ -118,6 +122,8 @@ export default function AddPage() {
         gameId: game.gameId,
         externalId: game.externalId,
       });
+      // 쓰기 뒤에는 캐시를 버린다 — 라이브러리·사이드바가 담기 전 목록으로 한 번 그려진다
+      invalidateQueries();
       updateTask("add-game", {
         title: "라이브러리에 담았습니다",
         progress: undefined,
@@ -234,31 +240,14 @@ export default function AddPage() {
       </div>
 
       {revive && (
-        <Modal
-          title="이전에 담으셨던 게임입니다"
-          width="max-w-md"
+        <ReviveDialog
+          revive={revive}
           onClose={() => setRevive(null)}
-          footer={
-            <>
-              <Button onClick={() => setRevive(null)}>취소</Button>
-              <Button
-                variant="primary"
-                onClick={async () => {
-                  await api.post(`/api/backlog/${revive.targetId}/revive`);
-                  router.push(`/library/detail?entry=${revive.targetId}`);
-                }}
-              >
-                되살리기
-              </Button>
-            </>
-          }
-        >
-          <p className="text-sm leading-relaxed text-white/70">
-            <b className="text-white">{revive.name}</b>은(는) 이전에 담았다가 삭제하신 게임입니다.
-            <br />
-            복구하시면 <b className="text-white">이전 회차·취득·메모가 그대로 복원됩니다.</b>
-          </p>
-        </Modal>
+          onRevived={() => {
+            invalidateQueries();
+            router.push(`/library/detail?entry=${revive.targetId}`);
+          }}
+        />
       )}
 
       {manualOpen && (
@@ -277,6 +266,57 @@ export default function AddPage() {
         />
       )}
     </main>
+  );
+}
+
+/** 되살리기 확인 — 두 번 눌러 두 번 나가지 않게 busy를 들고, 실패는 문구로 보인다 */
+function ReviveDialog({
+  revive,
+  onClose,
+  onRevived,
+}: {
+  revive: { name: string; targetId: number };
+  onClose: () => void;
+  onRevived: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  return (
+    <Modal
+      title="이전에 담으셨던 게임입니다"
+      width="max-w-md"
+      onClose={onClose}
+      footer={
+        <>
+          {error && <span className="mr-auto text-xs text-red-400">{error}</span>}
+          <Button onClick={onClose}>취소</Button>
+          <Button
+            variant="primary"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              setError(null);
+              try {
+                await api.post(`/api/backlog/${revive.targetId}/revive`);
+                onRevived();
+              } catch (caught) {
+                setError(errorMessage(caught, "되살리지 못했습니다. 잠시 후 다시 시도해 주세요."));
+                setBusy(false);
+              }
+            }}
+          >
+            되살리기
+          </Button>
+        </>
+      }
+    >
+      <p className="text-sm leading-relaxed text-white/70">
+        <b className="text-white">{revive.name}</b>은(는) 이전에 담았다가 삭제하신 게임입니다.
+        <br />
+        복구하시면 <b className="text-white">이전 회차·취득·메모가 그대로 복원됩니다.</b>
+      </p>
+    </Modal>
   );
 }
 

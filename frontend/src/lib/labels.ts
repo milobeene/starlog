@@ -2,22 +2,12 @@ import type {
   AcquisitionMethod,
   BillingCycle,
   EntryStatus,
-  GameSource,
   Money,
   PlayRecordKind,
   PlaythroughStatus,
 } from "./types";
 
 /** enum 표시 라벨은 프론트가 정한다. 백엔드는 코드만 준다. */
-
-export const STATUS_LABEL: Record<EntryStatus, string> = {
-  WISHLIST: "위시리스트",
-  BACKLOG: "백로그",
-  PLAYING: "플레이 중",
-  PAUSED: "일시 중단",
-  DROPPED: "중도 포기",
-  COMPLETED: "완료",
-};
 
 export const PLAYTHROUGH_STATUS_LABEL: Record<PlaythroughStatus, string> = {
   PLAYING: "플레이 중",
@@ -48,11 +38,6 @@ export const BILLING_CYCLE_LABEL: Record<BillingCycle, string> = {
   YEARLY: "연간",
 };
 
-export const SOURCE_LABEL: Record<GameSource, string> = {
-  IGDB: "IGDB",
-  MANUAL: "직접 등록",
-};
-
 const CURRENCY_LOCALE: Record<Money["currency"], string> = {
   KRW: "ko-KR",
   USD: "en-US",
@@ -78,11 +63,6 @@ export function moneyParts(money: Money | null): Intl.NumberFormatPart[] | null 
 
 export function formatDate(date: string | null): string {
   return date ?? "—";
-}
-
-/** 종료일 null이면 물결로 끝낸다 — 진행 중이라는 건 상태 배지가 말한다 */
-export function formatPeriod(startedOn: string, finishedOn: string | null): string {
-  return `${startedOn} ~ ${finishedOn ?? ""}`;
 }
 
 /**

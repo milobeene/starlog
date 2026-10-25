@@ -43,12 +43,14 @@ function Toast({ task }: { task: Task }) {
   const ok = task.result?.ok;
   const [hovered, setHovered] = useState(false);
 
-  // 끝난 순간부터 센다. 호버를 벗어나면 처음부터 다시 5초 (읽던 걸 끝까지 읽게)
+  // 끝난 순간부터 센다. 호버를 벗어나면 처음부터 다시 5초 (읽던 걸 끝까지 읽게).
+  // 결과 객체도 본다 — 같은 id로 새 결과가 오면(빠른 실행 연타) 컴포넌트가 재사용돼 옛 타이머가 남는다
+  const result = task.result;
   useEffect(() => {
-    if (!done || hovered) return;
+    if (!result || hovered) return;
     const timer = setTimeout(() => closeTask(task.id), AUTO_CLOSE_MS);
     return () => clearTimeout(timer);
-  }, [done, hovered, task.id]);
+  }, [result, hovered, task.id]);
 
   return (
     <div

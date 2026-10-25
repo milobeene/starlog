@@ -843,7 +843,7 @@
    "path": "/api/backlog/deleted/${twinEntryA}"
   },
   {
-   "name": "폴더 찾기 — 게임 A 삭제",
+   "name": "폴더 찾기 — 게임 A 삭제 (폴더는 media/.deleted/로 옮긴다 — 파일 트리가 증거)",
    "method": "DELETE",
    "path": "/api/games/${twinA}"
   },
@@ -870,12 +870,12 @@
    }
   },
   {
-   "name": "폴더 찾기 — B 목록 (있던 파일이 보인다)",
+   "name": "폴더 찾기 — B 목록 (지운 게임의 폴더를 물려받지 않는다 — R1-M2, 2026-10-25)",
    "method": "GET",
    "path": "/api/backlog/${twinEntryB}/screenshots"
   },
   {
-   "name": "폴더 찾기 — B 원본",
+   "name": "폴더 찾기 — B 원본 (없음)",
    "method": "GET",
    "path": "/api/backlog/${twinEntryB}/screenshots/001.jpg"
   },

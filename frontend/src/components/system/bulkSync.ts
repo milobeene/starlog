@@ -1,6 +1,6 @@
 import type { MutableRefObject } from "react";
 import { api } from "@/lib/api";
-import { putTask, updateTask } from "@/lib/tasks";
+import { isTaskRunning, putTask, updateTask } from "@/lib/tasks";
 import type { GameMaster } from "@/lib/types";
 
 /** 발사 간격. IGDB 한도(초당 4회 = 250ms)보다 느슨하게 잡았다 — 여유 50ms */
@@ -26,6 +26,11 @@ export function formatSyncEstimate(seconds: number): string {
  * `abort`는 알림의 [중단]이 켜는 신호다 — 다이얼로그가 닫혀도 알림이 살아 있어서 ref로 넘겨 받는다
  */
 export async function runBulkSync(targets: GameMaster[], abort: MutableRefObject<boolean>) {
+  /*
+   * 겹쳐 돌면 안 된다 — 두 번째가 `abort`를 false로 되돌려 첫 번째의 [중단]이 안 먹고,
+   * 두 타이머 줄이 같이 돌아 초당 4회 한도를 넘는다. 버튼도 막지만 마지막 방어선은 여기다
+   */
+  if (targets.length === 0 || isTaskRunning("bulk-sync")) return;
   /*
    * **알림으로 옮겼다** (2026-08-28). 예전엔 여기 상태에 진행을 담았는데,
    * 다른 탭으로 옮기면 이 컴포넌트가 언마운트되어 **UI만 사라지고 동기화는 계속** 돌았다.

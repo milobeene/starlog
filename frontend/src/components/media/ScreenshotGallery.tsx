@@ -10,6 +10,7 @@ import ShareMenu from "@/components/media/ShareMenu";
 import MediaViewer from "@/components/library/MediaViewer";
 import { api, errorMessage, qs } from "@/lib/api";
 import { backendUrl } from "@/lib/apiBase";
+import { kstDate } from "@/lib/format";
 import { usePick } from "@/lib/usePick";
 import { invalidateQueries } from "@/lib/useApi";
 import type { GalleryItem, GalleryResponse } from "@/lib/types";
@@ -21,12 +22,7 @@ function formatTaken(iso: string | null): string {
   if (!iso) return "";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat("sv-SE", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
+  return kstDate(date);
 }
 
 /**

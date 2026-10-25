@@ -113,162 +113,166 @@ export default function AcquisitionDialog({
   };
 
   return (
-    <Modal
-      title={acquisition ? "취득 기록 수정" : "취득 기록 추가"}
-      onClose={onClose}
-      footer={
-        <>
-          {/* 회차와 같은 이유로 수정할 때만 뜬다 — 지울 방법이 여기밖에 없다 (FR-ACQ-07) */}
-          {acquisition && (
-            <button
-              onClick={() => setRemoving(true)}
-              className="text-xs text-white/30 transition-colors hover:text-red-400"
+    <>
+      <Modal
+        title={acquisition ? "취득 기록 수정" : "취득 기록 추가"}
+        onClose={onClose}
+        footer={
+          <>
+            {/* 회차와 같은 이유로 수정할 때만 뜬다 — 지울 방법이 여기밖에 없다 (FR-ACQ-07) */}
+            {acquisition && (
+              <button
+                onClick={() => setRemoving(true)}
+                className="text-xs text-white/30 transition-colors hover:text-red-400"
+              >
+                삭제
+              </button>
+            )}
+            {error && <span className="mr-auto text-xs text-red-400">{error}</span>}
+            {!error && acquisition && <span className="mr-auto" />}
+            <Button onClick={onClose}>취소</Button>
+            <Button variant="primary" onClick={save} disabled={saving}>
+              {saving ? "저장 중" : "저장"}
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-4">
+
+          <Field label="Method">
+            <select
+              value={method}
+              onChange={(event) => setMethod(event.target.value as AcquisitionMethod)}
+              className={FIELD_SELECT}
             >
-              삭제
-            </button>
+              {METHODS.map((item) => (
+                <option key={item} value={item}>
+                  {ACQUISITION_METHOD_LABEL[item]}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          {/*
+            ⚠️ **구매가 아니면 가격을 못 넣는다** (v1.2, 사용자 결정).
+            안 가진 게임(NOT_OWNED)이나 무료(FREE)에 금액이 붙으면 뜻이 없다 —
+            저장은 어차피 KRW 0으로 나가고, 서버도 같은 규칙으로 한 번 더 막는다
+          */}
+          <div className="grid grid-cols-[1fr_auto] gap-3">
+            <Field
+              label="Price"
+              hint={
+                paid
+                  ? "실제 결제하신 금액. 비워 두시면 0원으로 저장됩니다"
+                  : "구매일 때만 입력하실 수 있습니다"
+              }
+            >
+              <input
+                type="text"
+                inputMode="decimal"
+                disabled={!paid}
+                value={paid ? amount : ""}
+                onChange={(event) => setAmount(event.target.value.replace(/[^\d.]/g, ""))}
+                placeholder="15000"
+                className={`${FIELD_INPUT} num disabled:cursor-not-allowed disabled:opacity-40`}
+              />
+            </Field>
+            <Field label="Currency">
+              <select
+                value={currency}
+                disabled={!paid}
+                onChange={(event) => setCurrency(event.target.value as Currency)}
+                className={`${FIELD_SELECT} disabled:cursor-not-allowed disabled:opacity-40`}
+              >
+                {CURRENCIES.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+
+          <Field label="Acquired On" hint="지출 통계가 이 날짜를 기준으로 집계됩니다" composite>
+            <DateField value={acquiredOn} onChange={setAcquiredOn} />
+          </Field>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Platform">
+              <select value={platformId} onChange={(e) => changePlatform(e.target.value)} className={FIELD_SELECT}>
+                <option value="">선택 안 함</option>
+                {withCurrent(options?.platforms ?? [], acquisition?.platform && { id: acquisition.platform.platformId, name: acquisition.platform.name }).map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Account">
+              <select
+                value={accountId}
+                onChange={(e) => setAccountId(e.target.value)}
+                className={FIELD_SELECT}
+                disabled={!platformId}
+              >
+                <option value="">{platformId ? "선택 안 함" : "플랫폼을 먼저 고르세요"}</option>
+                {accountChoices.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+
+          {method === "SUBSCRIPTION" && (
+            <Field label="Subscription">
+              <select
+                value={subscriptionId}
+                onChange={(e) => setSubscriptionId(e.target.value)}
+                className={FIELD_SELECT}
+              >
+                <option value="">선택 안 함</option>
+                {withCurrent(options?.subscriptions ?? [], acquisition?.subscription && { id: acquisition.subscription.subscriptionId, name: acquisition.subscription.serviceName }).map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
           )}
-          {error && <span className="mr-auto text-xs text-red-400">{error}</span>}
-          {!error && acquisition && <span className="mr-auto" />}
-          <Button onClick={onClose}>취소</Button>
-          <Button variant="primary" onClick={save} disabled={saving}>
-            {saving ? "저장 중" : "저장"}
-          </Button>
-        </>
-      }
-    >
-      <div className="flex flex-col gap-4">
-        {removing && (
-          <ConfirmDialog
-            title="취득 기록 삭제"
-            message={
-              <>
-                이 취득 기록을 삭제합니다. 되돌릴 수 없으며,{" "}
-                <b className="text-white">지출 통계에서도 빠집니다.</b>
-              </>
-            }
-            onConfirm={async () => {
-              await api.del(`/api/acquisitions/${acquisition!.acquisitionId}`);
-              onSaved();
-              onClose();
-            }}
-            onClose={() => setRemoving(false)}
-          />
-        )}
 
-        <Field label="Method">
-          <select
-            value={method}
-            onChange={(event) => setMethod(event.target.value as AcquisitionMethod)}
-            className={FIELD_SELECT}
-          >
-            {METHODS.map((item) => (
-              <option key={item} value={item}>
-                {ACQUISITION_METHOD_LABEL[item]}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        {/*
-          ⚠️ **구매가 아니면 가격을 못 넣는다** (v1.2, 사용자 결정).
-          안 가진 게임(NOT_OWNED)이나 무료(FREE)에 금액이 붙으면 뜻이 없다 —
-          저장은 어차피 KRW 0으로 나가고, 서버도 같은 규칙으로 한 번 더 막는다
-        */}
-        <div className="grid grid-cols-[1fr_auto] gap-3">
-          <Field
-            label="Price"
-            hint={
-              paid
-                ? "실제 결제하신 금액. 비워 두시면 0원으로 저장됩니다"
-                : "구매일 때만 입력하실 수 있습니다"
-            }
-          >
+          <Field label="Label" hint="예) 스팀 여름 세일">
             <input
               type="text"
-              inputMode="decimal"
-              disabled={!paid}
-              value={paid ? amount : ""}
-              onChange={(event) => setAmount(event.target.value.replace(/[^\d.]/g, ""))}
-              placeholder="15000"
-              className={`${FIELD_INPUT} num disabled:cursor-not-allowed disabled:opacity-40`}
+              value={label}
+              onChange={(event) => setLabel(event.target.value)}
+              maxLength={100}
+              className={FIELD_INPUT}
             />
           </Field>
-          <Field label="Currency">
-            <select
-              value={currency}
-              disabled={!paid}
-              onChange={(event) => setCurrency(event.target.value as Currency)}
-              className={`${FIELD_SELECT} disabled:cursor-not-allowed disabled:opacity-40`}
-            >
-              {CURRENCIES.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-          </Field>
         </div>
+      </Modal>
 
-        <Field label="Acquired On" hint="지출 통계가 이 날짜를 기준으로 집계됩니다" composite>
-          <DateField value={acquiredOn} onChange={setAcquiredOn} />
-        </Field>
-
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Platform">
-            <select value={platformId} onChange={(e) => changePlatform(e.target.value)} className={FIELD_SELECT}>
-              <option value="">선택 안 함</option>
-              {withCurrent(options?.platforms ?? [], acquisition?.platform && { id: acquisition.platform.platformId, name: acquisition.platform.name }).map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Account">
-            <select
-              value={accountId}
-              onChange={(e) => setAccountId(e.target.value)}
-              className={FIELD_SELECT}
-              disabled={!platformId}
-            >
-              <option value="">{platformId ? "선택 안 함" : "플랫폼을 먼저 고르세요"}</option>
-              {accountChoices.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </div>
-
-        {method === "SUBSCRIPTION" && (
-          <Field label="Subscription">
-            <select
-              value={subscriptionId}
-              onChange={(e) => setSubscriptionId(e.target.value)}
-              className={FIELD_SELECT}
-            >
-              <option value="">선택 안 함</option>
-              {withCurrent(options?.subscriptions ?? [], acquisition?.subscription && { id: acquisition.subscription.subscriptionId, name: acquisition.subscription.serviceName }).map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-        )}
-
-        <Field label="Label" hint="예) 스팀 여름 세일">
-          <input
-            type="text"
-            value={label}
-            onChange={(event) => setLabel(event.target.value)}
-            maxLength={100}
-            className={FIELD_INPUT}
-          />
-        </Field>
-      </div>
-    </Modal>
+      {/* 형제로 그린다 — 판넬 안이면 backdrop-filter가 fixed의 기준이 돼 딤·확인창이 판넬 안에 갇힌다 */}
+      {removing && (
+        <ConfirmDialog
+          title="취득 기록 삭제"
+          message={
+            <>
+              이 취득 기록을 삭제합니다. 되돌릴 수 없으며,{" "}
+              <b className="text-white">지출 통계에서도 빠집니다.</b>
+            </>
+          }
+          onConfirm={async () => {
+            await api.del(`/api/acquisitions/${acquisition!.acquisitionId}`);
+            onSaved();
+            onClose();
+          }}
+          onClose={() => setRemoving(false)}
+        />
+      )}
+    </>
   );
 }
 

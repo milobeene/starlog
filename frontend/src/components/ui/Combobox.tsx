@@ -128,6 +128,24 @@ export default function Combobox({
     return () => document.removeEventListener("mousedown", onPointerDown);
   }, [open, value, options]);
 
+  /*
+   * 목록이 떠 있을 때의 Esc는 목록만 닫는다. Modal은 document 리스너라 React의 stopPropagation이
+   * 안 닿는다 — Dropdown처럼 capture에서 끊어야 바깥 다이얼로그(입력 중인 칩까지)가 안 닫힌다
+   */
+  const listShown = open && matches.length > 0;
+  const valueLabel = labelOf(value);
+  useEffect(() => {
+    if (!listShown) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.isComposing) return;
+      event.stopImmediatePropagation();
+      setOpen(false);
+      setQuery(valueLabel);
+    };
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+  }, [listShown, valueLabel]);
+
   const commit = (option: ComboOption) => {
     // 조합 중에 값을 덮으면 IME가 마지막 음절을 다시 써넣는다 — blur가 조합을 먼저 확정시킨다.
     // (blur → compositionend → onChange가 먼저 돌고, 아래 값이 그걸 이긴다)

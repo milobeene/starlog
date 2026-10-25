@@ -8,8 +8,9 @@
  *
  * 단위는 분이고 소수 첫째 자리까지다(V15 머리말). 계산은 **0.1분 단위 정수(BigInt)** 로만 한다.
  */
-import { and, asc, eq, lte, sql } from "drizzle-orm";
-import type { Db } from "../../db/client";
+import { and, asc, eq, inArray, lte, sql } from "drizzle-orm";
+import type { MiddlewareHandler } from "hono";
+import { db, type Db } from "../../db/client";
 import { backlogEntry, homeopsPlayLog, playRecord } from "../../db/schema";
 import { InvalidInput, NotFound } from "../../common/errors";
 import { nowKst, todayKst } from "../../common/clock";
@@ -116,6 +117,32 @@ export async function syncAllPlayTimes(d: Db): Promise<number> {
   }
   return changed;
 }
+
+/**
+ * homeops 일정이 **앱이 도는 중에** 끝나면(또는 클라우드에서 homeops가 그사이 쓰면) 캐시가 낡는다 — 읽기 전에 맞춘다.
+ * 낡은 캐시를 화면이 "지금까지"의 기준값으로 보여 주면, 그 값으로 저장할 때 끝난 일정 몫이 ADJUST로 지워진다.
+ * 일정이 있는 항목만 본다 (없으면 쿼리 하나로 끝)
+ */
+export async function refreshHomeopsTotals(d: Db): Promise<number> {
+  const ids = await d.selectDistinct({ id: homeopsPlayLog.backlogEntryId }).from(homeopsPlayLog);
+  if (ids.length === 0) return 0;
+  const sums = await sumsByEntry(d, nowKst());
+  const entries = await d.select().from(backlogEntry).where(inArray(backlogEntry.id, ids.map((r) => r.id)));
+  let changed = 0;
+  for (const e of entries) {
+    if (await saveEntryIfChanged(d, e, { playTimeHours: totalOf(sums.get(e.id)) })) changed++;
+  }
+  return changed;
+}
+
+/** 합계를 보여 주는 조회(백로그·통계) 앞에 거는 미들웨어. 쓰기 요청은 자기 쪽에서 합을 새로 센다 */
+export const freshPlayTimes: MiddlewareHandler = async (c, next) => {
+  if (c.req.method === "GET") {
+    // 맞추기는 덤이다 — 실패해도 조회는 그대로 (낡은 캐시를 보여 주는 것뿐이고, 진짜 DB 고장이면 본 처리에서 드러난다)
+    try { await db().transaction((tx) => refreshHomeopsTotals(tx)); } catch (e) { console.warn("플레이타임 합계 맞추기 실패", e); }
+  }
+  await next();
+};
 
 /**
  * 바꾼 뒤의 합계가 0 밑이거나 상한 위면 거절. homeops 몫까지 더한 합으로 본다.
@@ -229,7 +256,7 @@ export async function updatePlayRecord(d: Db, recordId: number, cmd: PlayRecordC
   const before = await currentTenths(d, entry.id);
   guard(before, before - tenthsOf(r.minutes) + t);
   await saveIfChanged(d, r, { minutes: minutesText(t), playedOn: cmd.playedOn ?? todayKst(), note: normalize(cmd.note) },
-    (patch) => d.update(playRecord).set(patch).where(eq(playRecord.id, r.id)));
+    (patch) => d.update(playRecord).set(patch).where(eq(playRecord.id, r.id)), ["minutes"]);
   await syncPlayTime(d, entry);
 }
 

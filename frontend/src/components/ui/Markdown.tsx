@@ -24,10 +24,23 @@ function externalHref(href: string | undefined): string | null {
   }
 }
 
-/** 불러와도 되는 이미지. IGDB 커버와 우리 서버(`/api/…`)뿐 */
+/**
+ * 우리 서버에서 불러와도 되는 이미지 — 커버 파일과 스크린샷(원본·썸네일)만.
+ * `/api/` 아래 아무 GET이나 열어 두면 메모 한 줄이 앱 토큰을 단 요청을 아무 데나 쏘게 된다.
+ * `..`·인코딩된 `/`는 경로를 빠져나갈 수 있어 통째로 거른다
+ */
+const OWN_IMAGE = [
+  /^\/api\/backlog\/\d+\/cover\/file(\?[^#]*)?$/,
+  /^\/api\/backlog\/\d+\/screenshots\/[^/?#]+(\/thumb)?(\?[^#]*)?$/,
+];
+
+/** 불러와도 되는 이미지. IGDB 커버와 우리 서버의 커버·스크린샷뿐 */
 function allowedImage(src: string | undefined): string | null {
   if (!src) return null;
-  if (src.startsWith("/api/")) return backendUrl(src);
+  if (src.startsWith("/")) {
+    if (/\.\.|%2f|%5c|\\/i.test(src)) return null;
+    return OWN_IMAGE.some((pattern) => pattern.test(src)) ? backendUrl(src) : null;
+  }
   try {
     const url = new URL(src);
     return url.protocol === "https:" && url.hostname === "images.igdb.com" ? url.href : null;

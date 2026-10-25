@@ -4,7 +4,7 @@
  * ⚠️ 고정 경로(`/api/backlog/cards` 등)를 변수 경로(`/api/backlog/:entryId`)보다 **먼저** 건다.
  * Hono는 등록 순서대로 매칭해서, 뒤에 걸면 `cards`가 `:entryId`로 읽힌다.
  *
- * 커버·스크린샷 파일 처리는 `media.ts`, 멀티파트·Range 응답은 `http.ts`.
+ * 커버·스크린샷 파일 처리는 `media.ts`, 멀티파트·Range 응답은 `http/files.ts`.
  */
 import { Hono, type Context } from "hono";
 import { z } from "zod";
@@ -33,9 +33,12 @@ import { findAliveEntry404 } from "./shared";
 import { resolveGame } from "../game/service";
 import { translateGame } from "../system/service";
 import { addAcquisition, deleteAcquisition, updateAcquisition } from "./acquisition";
-import { addPlayRecord, deletePlayRecord, listPlayRecords, updatePlayRecord } from "./playtime";
+import { addPlayRecord, deletePlayRecord, freshPlayTimes, listPlayRecords, updatePlayRecord } from "./playtime";
 
 export const routes = new Hono();
+
+// `/api/backlog/*`는 `/api/backlog`(목록)도 잡는다
+routes.use("/api/backlog/*", freshPlayTimes);
 
 
 // ───────────── 요청 모양 ─────────────

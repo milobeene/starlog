@@ -9,6 +9,7 @@ import {
   runBulkSync,
 } from "@/components/system/bulkSync";
 import { api, qs } from "@/lib/api";
+import { useTaskRunning } from "@/lib/tasks";
 import type { GameMaster, PageResponse } from "@/lib/types";
 
 type Scope = "outdated" | "selected" | "all";
@@ -42,7 +43,7 @@ export default function BulkSyncDialog({
   onClose,
   onDone,
 }: {
-  /** 목록에서 고른 마스터 번호 — 다른 페이지에서 고른 것도 들어 있다 */
+  /** 목록에서 고른 마스터 번호 — 지금 보이는 쪽의 것만이다 (쪽·검색이 바뀌면 부모가 비운다) */
   selectedIds: number[];
   initialScope?: Scope;
   abort: MutableRefObject<boolean>;
@@ -54,6 +55,8 @@ export default function BulkSyncDialog({
   const [all, setAll] = useState<GameMaster[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [picked, setPicked] = useState<Scope | null>(initialScope ?? null);
+  /* 이미 도는 동기화가 있으면 승인을 막는다 — 겹치면 한도를 넘고 [중단]이 먹통이 된다 */
+  const running = useTaskRunning("bulk-sync");
 
   useEffect(() => {
     let alive = true;
@@ -99,7 +102,7 @@ export default function BulkSyncDialog({
           <Button onClick={onClose}>취소</Button>
           <Button
             variant="primary"
-            disabled={current.length === 0}
+            disabled={current.length === 0 || running}
             onClick={async () => {
               const list = current;
               onClose();
@@ -107,7 +110,7 @@ export default function BulkSyncDialog({
               onDone();
             }}
           >
-            {forced ? "강제 동기화" : "동기화"}
+            {running ? "동기화 중" : forced ? "강제 동기화" : "동기화"}
           </Button>
         </>
       }

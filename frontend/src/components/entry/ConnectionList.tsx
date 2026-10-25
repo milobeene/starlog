@@ -127,7 +127,7 @@ export default function ConnectionList({
   );
 }
 
-/** `jdbc:postgresql://호스트/DB?...` 에서 사람이 알아볼 부분만 */
+/** `(jdbc:)postgresql://호스트/DB?...` 에서 사람이 알아볼 부분만 */
 function hostOf(url: string) {
   const found = url.match(/\/\/([^/?]+)\/?([^?]*)/);
   if (!found) return url;

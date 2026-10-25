@@ -57,21 +57,30 @@ process.on("unhandledRejection", (e) => {
 /**
  * 로컬 세이브파일 잠금. **두 프로세스가 같은 PGlite 폴더를 열면 망가진다** — PGlite엔 파일 잠금이
  * 없어서 직접 건다(`DB_IN_USE`). 살아 있는 pid가 쥐고 있으면 거절한다.
- * 죽은 pid의 잠금(강제 종료 흔적)은 넘겨받는다
+ * 죽은 pid의 잠금(강제 종료 흔적)은 지우고 다시 잡는다.
+ * 만들기는 `wx`(있으면 실패)다 — 읽고 나서 쓰면 그 틈에 둘이 동시에 "비었다"고 보고 둘 다 연다
  */
 function lock(dir: string): () => void {
-  // 폴더 **바깥**에 둔다 — 안에 두면 `dumpDataDir` 백업에 딸려 들어가 되살릴 때 남의 pid를 들고 온다
+  // 폴더 **바깥**에 둔다 — 안에 두면 세이브파일 백업(`desktop/tarball.js`가 폴더를 묶는다)에 딸려 들어가 되살릴 때 남의 pid를 들고 온다
   fs.mkdirSync(path.dirname(path.resolve(dir)), { recursive: true });
   const file = path.resolve(dir) + ".lock";
-  try {
-    const pid = Number(fs.readFileSync(file, "utf8").trim());
+  for (let attempt = 0; ; attempt++) {
+    try {
+      fs.writeFileSync(file, String(process.pid), { flag: "wx" });
+      break;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST" || attempt > 0) throw e;
+    }
+    let pid = 0;
+    try { pid = Number(fs.readFileSync(file, "utf8").trim()); } catch { /* 그사이 사라졌다 — 다시 잡는다 */ }
     if (pid && pid !== process.pid && alive(pid)) throw new DiagnosticFailure("DB_IN_USE");
-  } catch (e) {
-    if (e instanceof DiagnosticFailure) throw e;
+    try { fs.unlinkSync(file); } catch { /* 이미 없다 */ }
   }
-  fs.writeFileSync(file, String(process.pid));
   return () => { try { if (fs.readFileSync(file, "utf8").trim() === String(process.pid)) fs.unlinkSync(file); } catch { /* 이미 없다 */ } };
 }
+
+/** 기동이 중간에 실패해도 잠금은 푼다 — 남기면 pid가 재사용됐을 때 가짜 `DB_IN_USE`가 난다 */
+let unlock: () => void = () => {};
 
 function alive(pid: number) {
   try { process.kill(pid, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code === "EPERM"; }
@@ -93,16 +102,27 @@ async function open(cfg: ReturnType<typeof loadConfig>): Promise<OpenDb> {
   return opened;
 }
 
+/** 종료 때 처리 중인 응답을 기다려 주는 시간. 일렉트론의 강제 종료(25초)보다 한참 짧게 */
+const SHUTDOWN_GRACE_MS = 3000;
+
 async function main() {
   const cfg = loadConfig();
   const unsafe = unsafeStartup(cfg);
   if (unsafe) throw new DiagnosticFailure(unsafe);
   setConfig(cfg);
   // `memory://`는 연결 시험용 일회성 DB다 — 잠글 파일이 없다
-  const unlock = cfg.db.kind === "pglite" && !cfg.db.dir.startsWith("memory://") ? lock(cfg.db.dir) : () => {};
+  if (cfg.db.kind === "pglite" && !cfg.db.dir.startsWith("memory://")) unlock = lock(cfg.db.dir);
 
   const opened = await open(cfg);
   setDb(opened);
+  if (cfg.checkOnly) {
+    // 진단은 `open()`에서 끝났다 — 여기서 멈춰야 시험이 대상 DB를 안 바꾼다 (마이그레이션·프로필 시드 전)
+    await opened.close().catch(() => {});
+    unlock();
+    console.log("STARLOG_CHECKED");
+    emit({ type: "checked" });
+    process.exit(0);
+  }
   if (shutdownRequested) {
     // 여는 도중에 내려가라는 요청이 왔다 — 마이그레이션도 리슨도 하지 않고 곱게 닫는다
     await opened.close().catch(() => {});
@@ -133,7 +153,19 @@ async function main() {
     if (closing) return;
     closing = true;
     console.log(`종료 (${why})`);
-    await new Promise<void>((r) => server.close(() => r()));
+    /*
+     * `close()`는 처리 중인 연결이 끝날 때까지 기다린다 — 영상 Range 스트리밍 하나가 몇 분씩 잡고 있으면
+     * DB를 못 닫은 채 일렉트론의 강제 종료(25초)를 맞는다. 놀고 있는 연결은 바로 끊고, 조금 기다려도 남으면 다 끊는다
+     */
+    const http = server as unknown as { closeIdleConnections?: () => void; closeAllConnections?: () => void };
+    const closed = new Promise<void>((r) => server.close(() => r()));
+    http.closeIdleConnections?.();
+    const late = await Promise.race([closed.then(() => false), new Promise<boolean>((r) => setTimeout(() => r(true), SHUTDOWN_GRACE_MS).unref())]);
+    if (late) {
+      console.log("응답 중인 연결을 끊는다");
+      http.closeAllConnections?.();
+      await closed;
+    }
     await opened.close().catch((e) => console.error("DB 닫기 실패", e));
     unlock();
     emit({ type: "closed" });
@@ -153,6 +185,7 @@ async function main() {
 }
 
 main().catch((e) => {
+  unlock();
   if (e instanceof DiagnosticFailure) {
     console.log(e.message);
     if (e.reason) console.error(e.reason);

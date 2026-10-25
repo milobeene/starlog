@@ -42,6 +42,22 @@ jobs:
             frontend/package-lock.json
             server/package-lock.json
 
+      # ⚠️ **태그와 버전이 같아야 한다.** electron-builder는 태그가 아니라 package.json 버전으로 파일 이름을 짓는다 —
+      # v2.x 태그에 `STARLOG-Setup-1.1.3.exe`가 붙어 나갈 뻔했다. 본문도 그 태그의 것이 있어야 한다
+      - name: 태그 · 버전 · 릴리스 노트
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version="v$(node -p "require('./desktop/package.json').version")"
+          if [ "$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::태그($GITHUB_REF_NAME)와 desktop/package.json 버전($version)이 다릅니다"; exit 1
+          fi
+          test -s ".github/release-notes/${GITHUB_REF_NAME}.md" \
+            || { echo "::error::.github/release-notes/${GITHUB_REF_NAME}.md가 없습니다"; exit 1; }
+
+      # 새 앱 모듈을 electron-builder.yml이 안 싣는지 — 패키지에서만 기동하자마자 죽는다
+      - name: 패키지 파일 목록
+        run: node tools/check-package.js
+
       - name: 의존성
         run: |
           npm ci --prefix frontend
@@ -109,6 +125,14 @@ jobs:
           # 올리는 건 아래 release 잡이 gh로 한다
           npx electron-builder ${{ matrix.args }} --publish never
 
+      # 실제로 묶인 asar를 연다 — require 그래프가 다 들어갔고 서버·화면·PGlite가 asar 밖에 풀렸나
+      - name: 묶인 앱 점검
+        shell: bash
+        run: |
+          asar=$(find desktop/dist -name app.asar -path '*esources*' | head -n 1)
+          test -n "$asar" || { echo "::error::app.asar를 찾지 못했습니다"; exit 1; }
+          node tools/check-package.js --asar "$asar"
+
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 (= v4.6.2)
         with:
           name: dist-${{ matrix.os }}
@@ -127,7 +151,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      # 릴리스 본문 파일(.github/release-notes.md)을 읽어야 하므로 체크아웃한다
+      # 릴리스 본문 파일(.github/release-notes/<태그>.md)을 읽어야 하므로 체크아웃한다
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 (= v4.4.0)
         with:
           # 토큰을 .git/config에 남기지 않는다 — 뒤 단계(npm 설치 스크립트 등)가 집어 갈 수 없게
@@ -145,10 +169,11 @@ jobs:
           GH_REPO: ${{ github.repository }}
         # ⚠️ **--draft다.** 만들어만 놓고 공개는 사람이 누른다.
         # 서명이 없어서 첫 실행에 경고가 뜨는 앱이라, 안내문을 확인하고 내보내는 게 맞다
-        # 릴리스 본문은 `.github/release-notes.md`에 손으로 쓴다.
+        # 릴리스 본문은 태그마다 `.github/release-notes/<태그>.md`에 손으로 쓴다 — 한 파일을 덮어 쓰면
+        # 지난 노트가 새 태그에 그대로 붙어 나간다(1.1.3 노트가 남아 있었다).
         # `--generate-notes`는 커밋 제목을 나열할 뿐이라 **읽는 사람 기준의 글이 안 된다**
         run: |
           gh release create "${GITHUB_REF_NAME}" dist/* \
             --draft \
             --title "STARLOG ${GITHUB_REF_NAME}" \
-            --notes-file .github/release-notes.md
+            --notes-file ".github/release-notes/${GITHUB_REF_NAME}.md"

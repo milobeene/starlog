@@ -1,13 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import AppHeader from "@/components/layout/AppHeader";
 import CardStatsHost from "@/components/library/CardStatsHost";
 import TaskToasts from "@/components/layout/TaskToasts";
+import { Button } from "@/components/ui/Field";
 import { getBridge } from "@/lib/desktop";
 import { rememberAppPath } from "@/lib/lastAppPath";
-import { useSession } from "@/lib/session";
+import { refreshSession, useSession } from "@/lib/session";
 
 /**
  * 앱 구역. 헤더는 fixed라 본문이 그 아래로 흐른다 —
@@ -19,8 +20,14 @@ import { useSession } from "@/lib/session";
  * 남은 건 **기다림**이다 — 프로필(`/api/me`)이 도착해야 닉네임·배경색이 그려진다.
  * 일렉트론에서는 백엔드가 뜨는 몇 초 동안 여기가 `loading`으로 머문다.
  *
- * 빈 화면을 그리지 않는 이유는 그대로다 — 빈 목록이 잠깐 스쳤다 채워지면 어수선하다
+ * 빈 화면을 그리지 않는 이유는 그대로다 — 빈 목록이 잠깐 스쳤다 채워지면 어수선하다.
+ *
+ * ⚠️ **기다림에는 끝이 있다** (2026-10-25). API 토큰·Host 검사가 들어간 뒤로는 401/403·네트워크 실패가
+ * 실제로 나는 길이라, 답이 안 오면 검은 화면에서 새로고침 말고 할 수 있는 게 없었다.
+ * 거절(guest)이면 바로, 답이 없으면 8초 뒤 이유와 [다시 시도]·[입구로]를 보여준다
  */
+const STUCK_AFTER_MS = 8_000;
+
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const session = useSession();
   const router = useRouter();
@@ -46,7 +53,44 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     [router],
   );
 
-  if (session.status !== "member") return null;
+  const [stuck, setStuck] = useState(false);
+  useEffect(() => {
+    if (session.status === "member") return;
+    const timer = setTimeout(() => setStuck(true), session.status === "guest" ? 0 : STUCK_AFTER_MS);
+    return () => {
+      clearTimeout(timer);
+      setStuck(false);
+    };
+  }, [session.status]);
+
+  if (session.status !== "member") {
+    if (!stuck) return null;
+    return (
+      <div className="flex h-full w-full items-center justify-center px-4">
+        <div className="glass-panel w-full max-w-md rounded-xl !bg-neutral-950/92 px-6 py-7 text-center">
+          <p className="text-sm font-medium text-red-300">
+            {session.status === "guest" ? "앱 서버가 이 화면의 요청을 거절했습니다" : "앱 서버의 답이 없습니다"}
+          </p>
+          <p className="mt-2 text-xs leading-relaxed text-white/45">
+            다시 시도해 보시고, 그래도 안 되면 입구로 나가 다시 들어와 주세요.
+          </p>
+          <div className="mt-6 flex justify-center gap-2">
+            <Button onClick={() => void refreshSession()}>다시 시도</Button>
+            <Button
+              variant="primary"
+              onClick={() => {
+                const bridge = getBridge();
+                if (bridge) void bridge.backToEntry();
+                else router.push("/");
+              }}
+            >
+              입구로
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>

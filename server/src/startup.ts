@@ -7,15 +7,13 @@ import { db } from "./db/client";
 import { apiCallLog } from "./db/schema";
 import { nowKst } from "./common/clock";
 import { syncAllPlayTimes } from "./domains/backlog/playtime";
-
-/** API 호출 기록 보존 기간 */
-export const API_CALL_RETENTION_DAYS = 30;
+import { RETENTION_DAYS } from "./domains/system/service";
 
 export async function runStartupTasks() {
   try {
-    const threshold = nowKst(new Date(Date.now() - API_CALL_RETENTION_DAYS * 86_400_000));
+    const threshold = nowKst(new Date(Date.now() - RETENTION_DAYS * 86_400_000));
     const removed = await db().delete(apiCallLog).where(lt(apiCallLog.calledAt, threshold)).returning({ id: apiCallLog.id });
-    if (removed.length > 0) console.log(`API 호출 기록 ${removed.length}건 정리 (보존 ${API_CALL_RETENTION_DAYS}일)`);
+    if (removed.length > 0) console.log(`API 호출 기록 ${removed.length}건 정리 (보존 ${RETENTION_DAYS}일)`);
   } catch (e) {
     console.warn("API 호출 기록 정리 실패 — 서비스는 계속 뜬다", e);
   }

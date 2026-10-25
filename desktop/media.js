@@ -135,14 +135,28 @@ async function makeThumbnail(request, mediaRoot) {
  * 합쳐서 메인 스레드를 오래 잡지 않게
  */
 const MAX_PARALLEL = 2;
+/**
+ * 한 장에 주는 시간. 서버는 20초 뒤 포기하는데(`thumbs.ts`) 여기 끝이 없으면 QuickLook이 멈춘 한 장이
+ * 슬롯을 영영 쥐어 **그 뒤 모든 서버의 썸네일이 막힌다.** 늦게 끝난 작업은 그냥 버린다
+ */
+const JOB_TIMEOUT_MS = 30_000;
 let active = 0;
 const waiting = [];
+
+function withTimeout(promise, ms) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("시간 초과")), ms); }),
+  ]).finally(() => clearTimeout(timer));
+}
 
 function enqueue(job) {
   return new Promise((resolve) => {
     const run = () => {
       active++;
-      job().then(resolve, (e) => { console.warn("썸네일 실패", e?.message ?? e); resolve(false); })
+      withTimeout(Promise.resolve().then(job), JOB_TIMEOUT_MS)
+        .then(resolve, (e) => { console.warn("썸네일 실패", e?.message ?? e); resolve(false); })
         .finally(() => { active--; waiting.shift()?.(); });
     };
     if (active < MAX_PARALLEL) run(); else waiting.push(run);

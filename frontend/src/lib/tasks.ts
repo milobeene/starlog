@@ -29,7 +29,9 @@ export type TaskKind =
   /** 스크린샷 복사·저장 결과 (F5) */
   | "media-share"
   /** 플레이 시작·완료·중단 같은 한 번 누르기 (v2 U2). 결과 한 줄만 띄우고 5초 뒤 닫힌다 */
-  | "quick-play";
+  | "quick-play"
+  /** 끌어다 놓아 태그 옮기기 — 실패만 띄운다. 성공은 화면이 바로 보여준다 */
+  | "tag-move";
 
 export type Task = {
   id: string;
@@ -74,8 +76,8 @@ export function updateTask(id: string, patch: Partial<Task>) {
 }
 
 /**
- * 닫는다. **스스로 사라지지 않는다** (사용자 결정 2026-08-28) —
- * 자동으로 없어지면 다른 화면을 보는 사이에 결과를 놓친다
+ * 닫는다. 진행 중인 알림은 이걸로만 닫히고, 끝난 알림은 `TaskToasts`가 5초 뒤 부른다
+ * (2026-10-24 사용자 결정 — 처음엔 닫기 버튼으로만 닫게 했는데 결과가 계속 쌓였다)
  */
 export function closeTask(id: string) {
   publish(tasks.filter((t) => t.id !== id));
@@ -98,6 +100,11 @@ export function useTaskRunning(id: string): boolean {
   return tasks.some((task) => task.id === id && !task.result);
 }
 
+/** `useTaskRunning`의 훅 아닌 판 — 시작하는 함수가 마지막으로 한 번 더 확인할 때 */
+export function isTaskRunning(id: string): boolean {
+  return tasks.some((task) => task.id === id && !task.result);
+}
+
 const SERVER_SNAPSHOT: Task[] = [];
 
 export function useTasks(): Task[] {
@@ -110,4 +117,9 @@ export function useTasks(): Task[] {
     /* 정적 빌드는 Node에서 그린다 — 매번 새 배열을 주면 무한 렌더가 된다 */
     () => SERVER_SNAPSHOT,
   );
+}
+
+/** 끌어다 놓기처럼 기다리는 화면이 없는 쓰기의 실패 — 조용히 삼키면 "놓았는데 안 옮겨진다"로만 보인다 */
+export function reportTagMoveFailure(message: string) {
+  putTask({ id: "tag-move", kind: "tag-move", title: "태그를 옮기지 못했습니다", result: { ok: false, message } });
 }
