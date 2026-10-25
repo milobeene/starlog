@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import Markdown from "@/components/ui/Markdown";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { api } from "@/lib/api";
 
@@ -24,7 +23,7 @@ export function CatalogRow({ memo, children }: { memo: string | null; children: 
       <div className="flex items-center gap-3">{children}</div>
       {memo && (
         <div className="markdown mt-2 border-t border-white/10 pt-2 text-xs leading-relaxed font-light text-white/55">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{memo}</ReactMarkdown>
+          <Markdown>{memo}</Markdown>
         </div>
       )}
     </li>

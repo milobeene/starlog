@@ -1,4 +1,4 @@
-import { backendUrl } from "@/lib/apiBase";
+import { apiToken, apiUrl } from "@/lib/apiBase";
 
 /**
  * 백엔드 호출 단일 창구.
@@ -27,8 +27,6 @@ export class ApiError extends Error {
 type Options = {
   method?: string;
   body?: unknown;
-  /** 로그인만 form 형식이다 (JSON이 아니다) */
-  form?: Record<string, string>;
   /** 파일 업로드용. 있으면 Content-Type을 안 붙인다 (브라우저가 boundary와 함께 채운다) */
   multipart?: FormData;
   signal?: AbortSignal;
@@ -39,6 +37,12 @@ async function request<T>(path: string, options: Options = {}): Promise<T> {
   const headers: Record<string, string> = {};
 
   if (DEV_MEMBER_ID) headers["X-Member-Id"] = DEV_MEMBER_ID;
+  /*
+   * 서버는 운영에서 모든 `/api/*`에 이 머리글을 요구한다 (서버 `http/guard.ts`).
+   * 주소의 `t=`가 아니라 머리글인 이유 — 서버가 쿼리 토큰은 GET에서만 받는다
+   */
+  const token = apiToken();
+  if (token) headers["X-Starlog-Token"] = token;
 
   let payload: BodyInit | undefined;
   if (options.multipart) {
@@ -47,9 +51,6 @@ async function request<T>(path: string, options: Options = {}): Promise<T> {
      * FormData를 body로 주면 브라우저가 boundary까지 붙여 알아서 채운다
      */
     payload = options.multipart;
-  } else if (options.form) {
-    headers["Content-Type"] = "application/x-www-form-urlencoded";
-    payload = new URLSearchParams(options.form).toString();
   } else if (options.body !== undefined) {
     headers["Content-Type"] = "application/json";
     payload = JSON.stringify(options.body);
@@ -59,14 +60,12 @@ async function request<T>(path: string, options: Options = {}): Promise<T> {
    * 주소를 **부를 때마다** 정한다. 모듈 상수로 두면 안 된다 — 데스크탑은 접속 대상을 바꿀 때
    * 포트가 바뀌는데, 상수는 처음 값에 굳어서 그 뒤 전부 옛 포트로 나간다
    */
-  const res = await fetch(backendUrl(path), {
+  const res = await fetch(apiUrl(path), {
     method,
     headers,
     body: payload,
     signal: options.signal,
   });
-
-  // 서버는 매 응답에 현재 토큰을 실어준다. 로그인·로그아웃 때 회전하므로 항상 최신으로 덮는다
 
   if (res.status === 204) return undefined as T;
 
@@ -100,8 +99,6 @@ export const api = {
     request<T>(path, { method: "POST", body, signal }),
   put: <T>(path: string, body?: unknown) => request<T>(path, { method: "PUT", body }),
   del: <T>(path: string) => request<T>(path, { method: "DELETE" }),
-  postForm: <T>(path: string, form: Record<string, string>) =>
-    request<T>(path, { method: "POST", form }),
   /** 파일 업로드 (v1.0 6·7단계). 커버 로컬 저장과 스크린샷이 쓴다 */
   postMultipart: <T>(path: string, multipart: FormData) =>
     request<T>(path, { method: "POST", multipart }),

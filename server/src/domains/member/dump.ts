@@ -37,38 +37,50 @@ const zLdt = z.string().refine((s) => {
     && +m[4]! < 24 && +m[5]! < 60 && +(m[6] ?? 0) < 60;
 });
 
-const text = opt(zText);
+/**
+ * 길이 상한 — 본문 한도(~50MB) 안에서도 한 칸이 수십 MB거나 배열이 수백만 개면 DB·메모리가 먼저 죽는다.
+ * 실제 내보내기가 340KB 안팎이라 넉넉하게 잡았다 (한도를 넘는 파일은 400 "읽을 수 없습니다")
+ */
+const MAX_TEXT = 20_000;
+const MAX_LONG_TEXT = 200_000;   // 요약·줄거리·메모
+const MAX_ITEMS = 20_000;        // 게임·항목·카탈로그 목록
+const MAX_SUB_ITEMS = 2_000;     // 항목 하나의 회차·취득·장르 따위
+
+const shortText = zText.refine((v) => String(v).length <= MAX_TEXT);
+const longText = opt(zText.refine((v) => String(v).length <= MAX_LONG_TEXT));
+const text = opt(shortText);
 const decimal = opt(zDecimal.transform(String));
 const int = opt(zLong);
 /** 문자열 목록 — 원소 null도 그대로 들어온다 (정규화 단계에서 걸러진다) */
-const texts = opt(z.array(zText.nullable()));
+const texts = opt(z.array(shortText.nullable()).max(MAX_SUB_ITEMS));
 /** 객체 목록 — 원소가 null이면 꺼내 쓰는 자리에서 NPE 500이 난다 (`npe`). 그 자리까지 그대로 들고 간다 */
-const list = <T extends z.ZodType>(t: T) => opt(z.array(t.nullable()));
+const list = <T extends z.ZodType>(t: T, max = MAX_SUB_ITEMS) => opt(z.array(t.nullable()).max(max));
+const bigList = <T extends z.ZodType>(t: T) => list(t, MAX_ITEMS);
 
 const Money = opt(z.object({ amount: decimal, currency: text }));
 
 /** `backgroundPresets`는 모양 검사를 `presetsValue`가 한다 (프로필 수정과 같은 규칙·메시지) */
-const Profile = z.object({ nickname: text, memo: text, backgroundColors: texts, backgroundPresets: z.unknown().optional() });
+const Profile = z.object({ nickname: text, memo: longText, backgroundColors: texts, backgroundPresets: z.unknown().optional() });
 
 const Catalog = z.object({
-  platforms: texts,
+  platforms: opt(z.array(shortText.nullable()).max(MAX_ITEMS)),
   /** 형식 2 이하엔 `emulator`가 없다 → null → 플랫폼 계정 */
-  accounts: list(z.object({ label: text, platform: text, emulator: text })),
-  devices: list(z.object({ deviceType: text, label: text, memo: text })),
-  emulators: list(z.object({ name: text, memo: text })),
-  inputMethods: texts,
-  subscriptions: list(z.object({
+  accounts: bigList(z.object({ label: text, platform: text, emulator: text })),
+  devices: bigList(z.object({ deviceType: text, label: text, memo: longText })),
+  emulators: bigList(z.object({ name: text, memo: longText })),
+  inputMethods: opt(z.array(shortText.nullable()).max(MAX_ITEMS)),
+  subscriptions: bigList(z.object({
     serviceName: text, startedOn: opt(zDate), endedOn: opt(zDate), fee: Money, billingCycle: text,
   })),
-  tags: texts,
-  genres: texts,
+  tags: opt(z.array(shortText.nullable()).max(MAX_ITEMS)),
+  genres: opt(z.array(shortText.nullable()).max(MAX_ITEMS)),
 });
 
 const Game = z.object({
   externalId: text, source: text, name: text,
   developers: texts, publishers: texts, masterGenres: texts,
   releasedOn: opt(zDate), listPrice: Money,
-  coverImageId: text, bannerImageId: text, summary: text, storyline: text,
+  coverImageId: text, bannerImageId: text, summary: longText, storyline: longText,
   igdbRating: decimal, igdbRatingCount: int, releasePlatforms: texts,
   mainStoryHours: int, mainExtraHours: int, completionistHours: int, timeToBeatSamples: int,
   mediaFolder: text,
@@ -94,15 +106,15 @@ const Acquisition = z.object({
 });
 
 /** STARLOG 기록만 — homeops 일정은 homeops 쪽 데이터라 안 싣는다(합계 차이는 가져올 때 메운다) */
-const PlayRecord = z.object({ kind: text, minutes: decimal, playedOn: opt(zDate), note: text });
+const PlayRecord = z.object({ kind: text, minutes: decimal, playedOn: opt(zDate), note: longText });
 
 const Entry = z.object({
   gameKey: text, createdAt: opt(zLdt), deletedAt: opt(zLdt),
   nameOverride: text, developerOverrides: texts, publisherOverrides: texts,
   releasedOnOverride: opt(zDate), listPriceOverride: Money,
-  rating: decimal, playTimeHours: decimal, memo: text, tag: text, genres: texts,
+  rating: decimal, playTimeHours: decimal, memo: longText, tag: text, genres: texts,
   cover: opt(Cover), playthroughs: list(Playthrough), acquisitions: list(Acquisition),
-  playRecords: list(PlayRecord),
+  playRecords: list(PlayRecord, 20_000),
 });
 
 /** 요청 본문 */
@@ -111,8 +123,8 @@ export const MemberDump = z.object({
   exportedAt: opt(zLdt),
   profile: opt(Profile),
   catalog: opt(Catalog),
-  games: list(Game),
-  entries: list(Entry),
+  games: bigList(Game),
+  entries: bigList(Entry),
 });
 
 export type MemberDump = z.output<typeof MemberDump>;

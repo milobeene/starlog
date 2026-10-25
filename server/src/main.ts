@@ -10,13 +10,14 @@ import fs from "fs";
 import path from "path";
 import { serve } from "@hono/node-server";
 import { sql } from "drizzle-orm";
-import { loadConfig, setConfig } from "./config";
+import { loadConfig, setConfig, unsafeStartup } from "./config";
 import { openDb, setDb, type OpenDb } from "./db/client";
 import { migrate } from "./db/migrate";
 import { DiagnosticFailure, classify, inspectSchema } from "./diagnose";
 import { runStartupTasks } from "./startup";
 import { ensureMediaDirs } from "./common/storage";
 import { createApp } from "./app";
+import { setListenPort } from "./http/guard";
 import { ensureProfile } from "./domains/member/profile";
 
 type ParentPort = { on(ev: "message", fn: (e: { data: unknown }) => void): void; postMessage(m: unknown): void };
@@ -94,6 +95,8 @@ async function open(cfg: ReturnType<typeof loadConfig>): Promise<OpenDb> {
 
 async function main() {
   const cfg = loadConfig();
+  const unsafe = unsafeStartup(cfg);
+  if (unsafe) throw new DiagnosticFailure(unsafe);
   setConfig(cfg);
   // `memory://`는 연결 시험용 일회성 DB다 — 잠글 파일이 없다
   const unlock = cfg.db.kind === "pglite" && !cfg.db.dir.startsWith("memory://") ? lock(cfg.db.dir) : () => {};
@@ -120,6 +123,7 @@ async function main() {
 
   const app = createApp({ staticDir: cfg.staticDir });
   const server = serve({ fetch: app.fetch, port: cfg.port, hostname: cfg.host }, (info) => {
+    setListenPort(info.port);
     console.log(`STARLOG_READY port=${info.port}`);
     emit({ type: "ready", port: info.port });
   });

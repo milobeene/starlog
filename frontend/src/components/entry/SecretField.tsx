@@ -8,7 +8,10 @@ import { FIELD_INPUT } from "@/components/ui/Field";
  *
  * **가리는 게 목적이 아니라 오타를 확인하는 게 목적이다** (결정 63).
  * 혼자 쓰는 앱이라 숨겨서 얻는 게 없고, 안 보이면 "왜 연결이 안 되지"를
- * 영영 못 푼다. 기본은 가려두되 눈 버튼으로 언제든 본다
+ * 영영 못 푼다. 기본은 가려두되 눈 버튼으로 언제든 본다.
+ *
+ * `masked`면 값이 **가린 모양**(`••••abcd`)이다 — 진짜 값은 일렉트론만 들고 있다(보안 점검 2026-10-25).
+ * 눈 버튼이 `onReveal`로 받아와 채운다. 그 칸에 들어가 치기 시작하면 가린 값을 통째로 갈아쓴다
  */
 export default function SecretField({
   label,
@@ -17,6 +20,8 @@ export default function SecretField({
   onChange,
   placeholder,
   bad,
+  masked = false,
+  onReveal,
 }: {
   label: string;
   /** 실제 설정 키 이름. 벤더 문서와 대조하려면 원래 이름이 필요하다 */
@@ -25,8 +30,23 @@ export default function SecretField({
   onChange: (v: string) => void;
   placeholder?: string;
   bad?: boolean;
+  masked?: boolean;
+  onReveal?: () => Promise<void>;
 }) {
   const [shown, setShown] = useState(false);
+  const [revealing, setRevealing] = useState(false);
+
+  const toggle = async () => {
+    if (!shown && masked && onReveal) {
+      setRevealing(true);
+      try {
+        await onReveal();
+      } finally {
+        setRevealing(false);
+      }
+    }
+    setShown((v) => !v);
+  };
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -45,6 +65,10 @@ export default function SecretField({
           type={shown ? "text" : "password"}
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          /* 가린 값 뒤에 이어 치면 "••••abcd새값"이 된다 — 들어오면 통째로 골라 둔다 */
+          onFocus={(e) => {
+            if (masked) e.currentTarget.select();
+          }}
           placeholder={placeholder}
           spellCheck={false}
           autoComplete="off"
@@ -52,7 +76,8 @@ export default function SecretField({
         />
         <button
           type="button"
-          onClick={() => setShown((v) => !v)}
+          onClick={() => void toggle()}
+          disabled={revealing}
           aria-label={shown ? "숨기기" : "보기"}
           className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-white/35 transition-colors hover:text-white/80"
         >

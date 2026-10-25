@@ -39,6 +39,14 @@ function stamp(date) {
     + `_${p(date.getHours())}${p(date.getMinutes())}${p(date.getSeconds())}`;
 }
 
+/** 화면(IPC)에서 오는 값이라 믿지 않는다 — 문자열이고, 이름 하나이고, `.tar.gz`인 것만 */
+function assertBackupFileName(fileName) {
+  if (typeof fileName !== "string" || !fileName.endsWith(EXT) || fileName.length > 200
+    || fileName !== path.basename(fileName) || fileName.includes("\\") || fileName.includes("\0") || fileName.startsWith(".")) {
+    throw new Error("백업 파일 이름이 올바르지 않습니다");
+  }
+}
+
 function folderOf(dirs, saveName) {
   return path.join(dirs.backups, saveName);
 }
@@ -134,7 +142,8 @@ function prune(dirs, saveName) {
 
 /** 백업을 **새 세이브파일로** 되살린다. 원본을 덮지 않는다 */
 function restore(dirs, saveName, fileName) {
-  const source = path.join(folderOf(dirs, saveName), path.basename(fileName));
+  assertBackupFileName(fileName);
+  const source = path.join(folderOf(dirs, saveName), fileName);
   if (!fs.existsSync(source)) {
     throw new Error("백업 파일을 찾을 수 없습니다");
   }
@@ -148,7 +157,8 @@ function restore(dirs, saveName, fileName) {
 }
 
 function remove(dirs, saveName, fileName) {
-  fs.rmSync(path.join(folderOf(dirs, saveName), path.basename(fileName)), { force: true });
+  assertBackupFileName(fileName);
+  fs.rmSync(path.join(folderOf(dirs, saveName), fileName), { force: true });
 }
 
 function removeAll(dirs, saveName) {

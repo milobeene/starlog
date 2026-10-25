@@ -18,6 +18,8 @@ import type { Db } from "./db/client";
 export const DIAGNOSTIC = [
   "DB_UNREACHABLE", "DB_AUTH_FAILED", "DB_NOT_FOUND", "DB_NOT_EMPTY",
   "SCHEMA_TOO_NEW", "DB_UNKNOWN_ERROR", "DB_IN_USE", "DB_CORRUPTED",
+  // 기동 설정이 안전하지 않다 (`main.ts` `checkStartup`). 뒤에 붙인다 — 앞엣것의 종료코드(40+순번)를 안 바꾸려고
+  "API_TOKEN_MISSING", "DEV_PROFILE_WITH_TOKEN",
 ] as const;
 export type DiagnosticCode = (typeof DIAGNOSTIC)[number];
 

@@ -72,18 +72,51 @@ function group(cp: number): string {
   return "3";
 }
 
+/** 폴더 이름 상한 — 파일시스템 이름 한도가 255바이트라 글자 수가 아니라 바이트로 센다 (한글은 글자당 3바이트) */
+export const SLUG_MAX_BYTES = 200;
+
+/** 윈도우 예약 장치 이름 — 폴더 이름이 이거면 만들지도 열지도 못한다 (`con`, `nul`, `com1`…) */
+const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/;
+
+/** UTF-8 바이트 상한까지만 남긴다. 글자(코드포인트)를 쪼개지 않는다 */
+function cutBytes(s: string, maxBytes: number): string {
+  if (Buffer.byteLength(s, "utf8") <= maxBytes) return s;
+  let out = "", bytes = 0;
+  for (const ch of s) {
+    const n = Buffer.byteLength(ch, "utf8");
+    if (bytes + n > maxBytes) break;
+    out += ch;
+    bytes += n;
+  }
+  return out;
+}
+
 /**
- * 폴더 이름용 슬러그 — 결합 문자 제거, 소문자, 글자·숫자 아닌 건 `-`, 최대 80자.
+ * 폴더 이름용 슬러그 — 결합 문자 제거, 소문자, 글자·숫자 아닌 건 `-`, 최대 80자(+ 200바이트).
  * ⚠️ 한글은 NFD로 자모가 갈라졌다가 NFC로 다시 붙는다 — 결합 문자(\p{M})만 지우므로 한글은 살아남는다
+ * ⚠️ 80자 상한이 먼저라 기존 이름은 그대로다. 바이트 상한은 한글 67자 넘는 이름만 건드린다
  */
 export function slug(name: string | null | undefined): string {
   if (name === null || name === undefined || javaStrip(name) === "") return "untitled";
   const decomposed = javaStrip(name).normalize("NFD").replace(/\p{M}/gu, "");
-  const s = decomposed.normalize("NFC").toLowerCase()
+  let s = decomposed.normalize("NFC").toLowerCase()
     .replace(/[^\p{Alphabetic}\p{Nd}]+/gu, "-")
     .replace(/^-+|-+$/g, "");
   if (s === "") return "untitled";
-  return s.length > 80 ? s.slice(0, 80) : s;
+  if (s.length > 80) s = s.slice(0, 80);
+  if (Buffer.byteLength(s, "utf8") > SLUG_MAX_BYTES) s = cutBytes(s, SLUG_MAX_BYTES).replace(/-+$/g, "");
+  return WINDOWS_RESERVED.test(s) ? `${s}-game` : s;
+}
+
+/**
+ * `slug()`가 낼 수 있는 모양인가 — 가져온 파일의 `mediaFolder`를 믿어도 되는지 본다.
+ * 구분자·점·빈 문자열·예약 이름이 걸러진다 (`..`, `a/b`, `con`). 번호가 붙은 `이름-12`도 이 모양이다
+ */
+export function isSlugShaped(v: string): boolean {
+  return v !== "" && Buffer.byteLength(v, "utf8") <= SLUG_MAX_BYTES + 24
+    && /^[\p{Alphabetic}\p{Nd}]+(?:-[\p{Alphabetic}\p{Nd}]+)*$/u.test(v)
+    && !/\p{M}/u.test(v) && v === v.normalize("NFC") && v === v.toLowerCase()
+    && !WINDOWS_RESERVED.test(v);
 }
 
 /**

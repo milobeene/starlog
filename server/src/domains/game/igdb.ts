@@ -124,7 +124,8 @@ function issue(): Promise<string> {
     }
     let body: unknown;
     try {
-      body = await restCall(tokenUrl(c.clientId!, c.clientSecret!), { method: "POST" }, IGDB.timeoutMs);
+      const req = tokenRequest(c.clientId!, c.clientSecret!);
+      body = await restCall(req.url, req.init, IGDB.timeoutMs);
     } catch (e) {
       console.error("Twitch 토큰 발급 실패", e);
       throw new ExternalApi("GAME_CATALOG", "게임 정보 서비스 인증에 실패했습니다");
@@ -143,10 +144,16 @@ function issue(): Promise<string> {
   return p.finally(() => { if (issuing === p) issuing = null; });
 }
 
-/** `encodeURI`만 쓴다 — URL에 못 들어가는 글자만 인코딩되고 `&`·`+` 같은 건 그대로 나간다 (그래야 요청 URL이 이전과 같다) */
-export function tokenUrl(clientId: string, clientSecret: string): string {
-  return `${IGDB.tokenUrl}?client_id=${encodeURI(clientId)}&client_secret=${encodeURI(clientSecret)}&grant_type=client_credentials`;
+/**
+ * 토큰 요청. **시크릿은 폼 본문으로** 보낸다 — 쿼리에 실으면 에러 객체·로그·프록시에 URL째 남는다.
+ * (쿼리일 땐 `encodeURI`라 시크릿의 `+`가 공백으로 읽혀 발급이 실패할 수도 있었다)
+ */
+export function tokenRequest(clientId: string, clientSecret: string, base: RequestInit = {}): { url: string; init: RequestInit } {
+  const body = new URLSearchParams({ client_id: clientId, client_secret: clientSecret, grant_type: "client_credentials" }).toString();
+  const headers = { ...(base.headers as Record<string, string> | undefined), "Content-Type": "application/x-www-form-urlencoded" };
+  return { url: IGDB.tokenUrl, init: { ...base, method: "POST", headers, body } };
 }
+
 
 // ───────────── 전역 게이트 (동시 자리 + 호출 간격) ─────────────
 

@@ -72,33 +72,81 @@ function pack(dir, target) {
   fs.renameSync(tmp, target);
 }
 
-/** `.tar.gz` → 폴더. 폴더가 이미 있으면 거절한다 (덮어쓰지 않는다) */
+/**
+ * 풀기 한도. 실데이터 세이브파일이 42MB(묶음 5MB)라 넉넉하게 잡았다.
+ * 백업 파일은 남이 만든 것일 수도 있다 — 작은 gzip이 수십 GB로 불어나거나(압축 폭탄) 항목이 수백만 개면 디스크·메모리가 먼저 죽는다
+ */
+const MAX_UNPACKED_BYTES = 1024 * 1024 * 1024;   // 1GB
+const MAX_PACKED_BYTES = 512 * 1024 * 1024;      // 백업 한도(100MB)보다 훨씬 크다
+const MAX_ENTRIES = 50000;
+
+/** 헤더 체크섬 — 체크섬 칸(148~155)을 공백으로 보고 512바이트 합. 어긋나면 깨졌거나 tar가 아닌 파일이다 */
+function checksumOk(h) {
+  let sum = 0;
+  for (let i = 0; i < BLOCK; i += 1) sum += i >= 148 && i < 156 ? 32 : h[i];
+  const stored = h.subarray(148, 156).toString("ascii").replace(/[\0 ]+$/g, "").replace(/^ +/, "");
+  return /^[0-7]{1,7}$/.test(stored) && parseInt(stored, 8) === sum;
+}
+
+/** 묶음 안 이름 검사 — 절대 경로·`..`·역슬래시·드라이브 문자·NUL을 거절한다 (`path.resolve`만 믿지 않는다: 윈도우에선 `C:\x`가 루트를 갈아탄다) */
+function entryNameOk(name) {
+  if (name === "" || name.includes("\0") || name.includes("\\") || name.startsWith("/") || /^[A-Za-z]:/.test(name)) return false;
+  return name.split("/").every((seg) => seg !== ".." && seg !== ".");
+}
+
+/** `.tar.gz` → 폴더. 폴더가 이미 있으면 거절한다 (덮어쓰지 않는다). 어디서 실패하든 `.part`를 치운다 */
 function unpack(file, dir) {
   if (fs.existsSync(dir)) throw new Error(`이미 있는 폴더입니다: ${dir}`);
-  const buf = zlib.gunzipSync(fs.readFileSync(file));
   const tmp = `${dir}.part`;
   fs.rmSync(tmp, { recursive: true, force: true });
-  fs.mkdirSync(tmp, { recursive: true });
-  const root = path.resolve(tmp);
-  for (let off = 0; off + BLOCK <= buf.length;) {
-    const h = buf.subarray(off, off + BLOCK);
-    if (h.every((b) => b === 0)) break;
-    const str = (a, n) => h.subarray(a, a + n).toString("utf8").replace(/\0.*$/s, "");
-    const name = (str(345, 155) ? `${str(345, 155)}/` : "") + str(0, 100);
-    const size = parseInt(str(124, 12).trim() || "0", 8);
-    const type = String.fromCharCode(h[156] || 48);
-    off += BLOCK;
-    const full = path.resolve(root, name);
-    // 묶음 밖으로 나가는 경로(`../`)는 거절 — 남이 만든 파일을 풀 일은 없지만 습관으로
-    if (full !== root && !full.startsWith(root + path.sep)) throw new Error(`잘못된 경로: ${name}`);
-    if (type === "5") fs.mkdirSync(full, { recursive: true });
-    else if (type === "0" || type === "\0") {
-      fs.mkdirSync(path.dirname(full), { recursive: true });
-      fs.writeFileSync(full, buf.subarray(off, off + size));
+  try {
+    if (fs.statSync(file).size > MAX_PACKED_BYTES) throw new Error("백업 파일이 너무 큽니다");
+    // maxOutputLength를 넘으면 RangeError — 압축 폭탄을 메모리에 다 풀기 전에 끊는다
+    const buf = zlib.gunzipSync(fs.readFileSync(file), { maxOutputLength: MAX_UNPACKED_BYTES });
+    fs.mkdirSync(tmp, { recursive: true });
+    const root = path.resolve(tmp);
+    let entries = 0;
+    let written = 0;
+    let ended = false;
+    for (let off = 0; off + BLOCK <= buf.length;) {
+      const h = buf.subarray(off, off + BLOCK);
+      if (h.every((b) => b === 0)) { ended = true; break; }
+      if (!checksumOk(h)) throw new Error("백업 파일이 깨져 있습니다 (헤더 검사 실패)");
+      if (++entries > MAX_ENTRIES) throw new Error("백업 파일의 항목이 너무 많습니다");
+      const str = (a, n) => h.subarray(a, a + n).toString("utf8").replace(/\0.*$/s, "");
+      const name = (str(345, 155) ? `${str(345, 155)}/` : "") + str(0, 100);
+      const sizeText = str(124, 12).trim();
+      // 8진수 숫자만. 거짓 크기(음수·NaN·base-256)는 거절 — 예전엔 NaN이 조용히 0바이트 파일로 풀렸다
+      if (!/^[0-7]{1,11}$/.test(sizeText)) throw new Error(`백업 파일이 깨져 있습니다 (크기: ${name})`);
+      const size = parseInt(sizeText, 8);
+      const type = String.fromCharCode(h[156] || 48);
+      off += BLOCK;
+      if (!entryNameOk(name.replace(/\/$/, ""))) throw new Error(`잘못된 경로: ${name}`);
+      const full = path.resolve(root, name);
+      if (full !== root && !full.startsWith(root + path.sep)) throw new Error(`잘못된 경로: ${name}`);
+      if (type === "5") {
+        fs.mkdirSync(full, { recursive: true });
+      } else if (type === "0") {
+        // 크기가 남은 버퍼보다 크면 잘린 파일이다 — 예전엔 있는 만큼만 쓰고 성공으로 끝났다
+        if (off + size > buf.length) throw new Error(`백업 파일이 잘려 있습니다: ${name}`);
+        written += size;
+        if (written > MAX_UNPACKED_BYTES) throw new Error("풀린 크기가 한도를 넘었습니다");
+        fs.mkdirSync(path.dirname(full), { recursive: true });
+        fs.writeFileSync(full, buf.subarray(off, off + size), { flag: "wx" });   // 같은 이름이 두 번 오면 거절
+      } else {
+        // 심볼릭·하드 링크·장치·pax 확장은 우리 `pack`이 안 만든다 — 링크 하나로 풀기 밖을 가리킬 수 있어 거절
+        throw new Error(`지원하지 않는 항목입니다 (type ${JSON.stringify(type)}): ${name}`);
+      }
+      off += Math.ceil(size / BLOCK) * BLOCK;
     }
-    off += Math.ceil(size / BLOCK) * BLOCK;
+    if (!ended) throw new Error("백업 파일이 잘려 있습니다 (끝 표시 없음)");
+    // PGlite 폴더가 아니면 되살려 봐야 못 연다
+    if (!fs.existsSync(path.join(root, "PG_VERSION"))) throw new Error("세이브파일 백업이 아닙니다 (PG_VERSION 없음)");
+    fs.renameSync(tmp, dir);
+  } catch (e) {
+    fs.rmSync(tmp, { recursive: true, force: true });
+    throw e;
   }
-  fs.renameSync(tmp, dir);
 }
 
 /** 폴더 안 파일 중 가장 늦은 수정 시각 — "바뀌었는가" 판정용 */

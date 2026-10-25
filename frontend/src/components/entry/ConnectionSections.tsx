@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import SecretField from "./SecretField";
 import { Check, Labeled, Section } from "./ConnectionFormParts";
 import { FIELD_INPUT } from "@/components/ui/Field";
-import type { ConnectionProfile } from "@/lib/desktop";
+import type { ConnectionProfile, SecretFieldPath } from "@/lib/desktop";
 
 /**
  * 연결 폼의 섹션들. 값과 테스트·저장 상태는 `useConnectionForm`이 들고,
@@ -16,11 +16,14 @@ interface SectionProps {
   /** 이 섹션만 시험·저장 중일 때 잠근다 */
   disabled: boolean;
   footer: ReactNode;
+  /** 비밀 칸이 가린 값인가, 눈 버튼이 무엇을 받아오나 (`useConnectionForm.secretProps`) */
+  secret: (path: SecretFieldPath) => { masked: boolean; onReveal: () => Promise<void> };
 }
 
 export function DatabaseSection({
   form,
   setDb,
+  secret,
   bad,
   disabled,
   footer,
@@ -51,6 +54,7 @@ export function DatabaseSection({
           keyName="password"
           value={form.db.password}
           onChange={(v) => setDb({ password: v })}
+          {...secret("db.password")}
         />
       </div>
       <Labeled
@@ -76,6 +80,7 @@ export function StorageSection({
   setStorage,
   setTargets,
   storageReady,
+  secret,
   bad,
   disabled,
   footer,
@@ -121,21 +126,22 @@ export function StorageSection({
             className={FIELD_INPUT}
           />
         </Labeled>
-        <Labeled label="액세스 키" keyName="access-key" bad={bad("storage.accessKey")}>
-          <input
-            value={form.storage?.accessKey ?? ""}
-            onChange={(e) => setStorage({ accessKey: e.target.value })}
-            spellCheck={false}
-            autoComplete="off"
-            className={FIELD_INPUT}
-          />
-        </Labeled>
+        {/* 액세스 키도 자격증명의 반쪽이라 가린 채로 온다 — 눈 버튼으로 본다 */}
+        <SecretField
+          label="액세스 키"
+          keyName="access-key"
+          value={form.storage?.accessKey ?? ""}
+          onChange={(v) => setStorage({ accessKey: v })}
+          bad={bad("storage.accessKey")}
+          {...secret("storage.accessKey")}
+        />
         <SecretField
           label="시크릿 키"
           keyName="secret-key"
           value={form.storage?.secretKey ?? ""}
           onChange={(v) => setStorage({ secretKey: v })}
           bad={bad("storage.secretKey")}
+          {...secret("storage.secretKey")}
         />
       </div>
 
@@ -175,6 +181,7 @@ export function StorageSection({
 export function IgdbSection({
   form,
   setIgdb,
+  secret,
   bad,
   disabled,
   footer,
@@ -201,6 +208,7 @@ export function IgdbSection({
           value={form.igdb?.clientSecret ?? ""}
           onChange={(v) => setIgdb({ clientSecret: v })}
           bad={bad("igdb.clientSecret")}
+          {...secret("igdb.clientSecret")}
         />
       </div>
       {footer}
@@ -215,9 +223,10 @@ export function IgdbSection({
 export function TranslateSection({
   form,
   onChange,
+  secret,
   disabled,
   footer,
-}: Pick<SectionProps, "form" | "disabled" | "footer"> & { onChange: (apiKey: string) => void }) {
+}: Pick<SectionProps, "form" | "disabled" | "footer" | "secret"> & { onChange: (apiKey: string) => void }) {
   return (
     <Section
       title="번역"
@@ -230,6 +239,7 @@ export function TranslateSection({
         value={form.translate?.apiKey ?? ""}
         onChange={onChange}
         placeholder="AIza…"
+        {...secret("translate.apiKey")}
       />
       <p className="mt-2 text-[11px] leading-relaxed text-amber-200/60">
         무료 한도(월 50만 자)를 넘으면 <b>요금이 청구됩니다.</b> 구글 콘솔에서 하루 할당량을

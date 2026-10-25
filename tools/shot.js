@@ -2,7 +2,7 @@
  * 화면 확인 — 숨긴 창으로 열어 PNG로 찍고, 콘솔 오류·실패한 요청·화면 글자를 출력한다.
  *
  *   desktop/node_modules/.bin/electron tools/shot.js <주소|경로> <out.png> [옵션]
- *     경로만 주면 http://localhost:3000 기준 (tools/dev-up.sh가 띄운 개발 화면)
+ *     경로만 주면 http://127.0.0.1:3000 기준 (tools/dev-up.sh가 띄운 개발 화면 — 127.0.0.1에만 열린다)
  *     --size 1440x900      창 크기 (좁은 창 확인: 380x800)
  *     --wait 1500          로드 뒤 기다릴 ms
  *     --eval "<js>"        찍기 전에 페이지에서 실행 (클릭·입력 등). 여러 번 줄 수 있고 차례로 돈다
@@ -16,7 +16,7 @@ const opt = (name, def) => { const i = args.indexOf(name); return i >= 0 ? args[
 const evals = args.flatMap((a, i) => (a === "--eval" ? [args[i + 1]] : []));
 const [target, out] = args.filter((a, i) => !a.startsWith("--") && !(i > 0 && args[i - 1].startsWith("--")));
 if (!target || !out) { console.error("사용법: electron tools/shot.js <주소|경로> <out.png> [--size WxH] [--wait ms] [--eval js]…"); process.exit(2); }
-const url = /^[a-z]+:\/\//.test(target) ? target : `http://localhost:3000${target.startsWith("/") ? "" : "/"}${target}`;
+const url = /^[a-z]+:\/\//.test(target) ? target : `http://127.0.0.1:3000${target.startsWith("/") ? "" : "/"}${target}`;
 const [w, h] = opt("--size", "1440x900").split("x").map(Number);
 const wait = Number(opt("--wait", "1500"));
 const textLen = Number(opt("--text", "400"));

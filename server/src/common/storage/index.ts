@@ -78,10 +78,46 @@ export function ensureMediaDirs(): void {
  * `AppError`가 아닌 평범한 `Error`로 던져 전역 핸들러가 클라이언트 오류로 접지 않는다
  */
 export function mediaFolder(slug: string): string {
+  // 조각 하나짜리 이름만 — DB 값이 `a/b`나 `.hidden`이어도 `media/` 바로 아래 폴더 하나만 가리키게 한다
+  if (!isSafeFolderName(slug)) throw new Error(`잘못된 폴더 이름입니다: ${slug}`);
   const base = mediaDir();
   const folder = resolveInside(base, slug);
   if (folder === null) throw new Error(`잘못된 폴더 이름입니다: ${slug}`);
   return folder;
+}
+
+/** 폴더 이름 하나(조각 하나). 구분자·NUL·`.`·`..`·점으로 시작하는 이름은 안 된다 */
+export function isSafeFolderName(name: string): boolean {
+  return name !== "" && name.length <= 255 && !name.startsWith(".") && !/[\\/\0]/.test(name);
+}
+
+/** 파일 이름 하나(조각 하나). 하위 경로로 파고드는 이름(`a/b.png`)을 막는다 */
+export function isPlainFileName(name: string): boolean {
+  return name !== "" && name.length <= 255 && name !== "." && name !== ".." && !/[\\/\0]/.test(name);
+}
+
+// 커버 키 모양. 엄격하게 — `startsWith`로 보면 `covers/entry-1/../entry-5/x.png`가 통과한다.
+const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+const IMG_EXT = "(?:jpg|jpeg|png|webp)";
+/** 지금 모양 — `covers/entry-<항목>/<uuid>.<ext>` */
+const NEW_COVER_KEY = new RegExp(`^covers/entry-([0-9]{1,18})/${UUID}\\.${IMG_EXT}$`);
+/** V14 전 모양 — `covers/<회원>/<항목>/<uuid>.<ext>`. 실데이터에 남아 있어 읽기·삭제는 계속 된다 */
+const OLD_COVER_KEY = new RegExp(`^covers/[0-9]{1,18}/[0-9]{1,18}/${UUID}\\.${IMG_EXT}$`);
+/** LOCAL 커버 — 데이터 루트 `covers/` 바로 아래 파일 이름 하나 */
+const LOCAL_COVER_NAME = new RegExp(`^[A-Za-z0-9][A-Za-z0-9._-]{0,120}\\.${IMG_EXT}$`);
+
+/** 이 항목에 새로 붙일 수 있는 EXTERNAL 키인가 (확정 단계) */
+export function isNewCoverKeyOf(entryId: number, key: string): boolean {
+  return NEW_COVER_KEY.exec(key)?.[1] === String(entryId);
+}
+
+/** 스토리지에 HEAD/GET/DELETE를 보내도 되는 키인가 — 새 모양 + 옛 모양 */
+export function isExternalCoverKey(key: string): boolean {
+  return NEW_COVER_KEY.test(key) || OLD_COVER_KEY.test(key);
+}
+
+export function isLocalCoverName(name: string): boolean {
+  return LOCAL_COVER_NAME.test(name);
 }
 
 /**
@@ -122,13 +158,16 @@ function write(target: string, bytes: Uint8Array): void {
   }
 }
 
-function isRegularFile(p: string): boolean {
-  try { return fs.statSync(p).isFile(); } catch { return false; }
+// ⚠️ stat이 아니라 lstat — 심볼릭 링크는 따라가지 않고 "없는 것"으로 본다.
+// 미디어 폴더는 사람이 탐색기로 만지는 곳이라 링크 하나로 폴더 밖 파일(비밀·시스템 파일)이 앱을 통해 읽힐 수 있다
+export function isRegularFile(p: string): boolean {
+  try { return fs.lstatSync(p).isFile(); } catch { return false; }
 }
 
-function isDirectory(p: string): boolean {
-  try { return fs.statSync(p).isDirectory(); } catch { return false; }
+export function isRealDirectory(p: string): boolean {
+  try { return fs.lstatSync(p).isDirectory(); } catch { return false; }
 }
+const isDirectory = isRealDirectory;
 
 /**
  * 파일 하나 저장. **원본 파일명을 안 쓴다** — uuid면 경로 탈출·중복·OS 금지문자가 통째로 사라진다
@@ -148,6 +187,10 @@ export function localSaveAs(directory: string, fileName: string, bytes: Uint8Arr
 
 export function localRead(directory: string, fileName: string): Buffer {
   const file = safeResolve(directory, fileName);
+  // 없는 파일은 아래 읽기에서 그대로 500이다. 링크·폴더·하위 경로만 여기서 막는다
+  let st: fs.Stats | null = null;
+  try { st = fs.lstatSync(file); } catch { /* 없음 */ }
+  if (!isPlainFileName(fileName) || (st !== null && !st.isFile())) throw new InvalidInput(`잘못된 파일 이름입니다: ${fileName}`);
   try {
     return fs.readFileSync(file);
   } catch (e) {
@@ -156,12 +199,15 @@ export function localRead(directory: string, fileName: string): Buffer {
 }
 
 export function localExists(directory: string, fileName: string): boolean {
-  return isRegularFile(safeResolve(directory, fileName));
+  const file = safeResolve(directory, fileName);   // 밖으로 나가는 이름은 여기서 400
+  return isPlainFileName(fileName) && isRegularFile(file);
 }
 
 /** 검증을 마친 경로 — 바이트로 읽지 않고 경로만 필요한 쪽 (영상 스트리밍) */
 export function localResolve(directory: string, fileName: string): string {
-  return safeResolve(directory, fileName);
+  const file = safeResolve(directory, fileName);
+  if (!isPlainFileName(fileName)) throw new InvalidInput(`잘못된 파일 이름입니다: ${fileName}`);
+  return file;
 }
 
 /**
@@ -209,7 +255,7 @@ export function folderSize(dir: string): number {
         const p = path.join(d, e.name);
         if (e.isDirectory()) { if (e.name !== THUMB_DIR) walk(p); }
         else {
-          try { const st = fs.statSync(p); if (st.isFile()) total += st.size; } catch { /* 못 읽는 파일은 0으로 센다 */ }
+          try { const st = fs.lstatSync(p); if (st.isFile()) total += st.size; } catch { /* 못 읽는 파일은 0으로 센다 */ }
         }
       }
     };
@@ -300,6 +346,8 @@ class S3Storage implements FileStoragePort {
 
   /** 서명 + 전송 + 재시도. 응답은 받았는데 2xx가 아니면 `S3Status` */
   private async send(method: string, key: string | null, headers: Record<string, string> = {}): Promise<Response> {
+    // DB에 들어 있던 키·가져온 키가 `..`로 다른 객체를 가리키는 일을 여기서 끊는다 — HEAD·GET·DELETE 모두 이 길을 지난다
+    if (key !== null && !isExternalCoverKey(key)) throw new Error(`허용되지 않는 스토리지 키: ${JSON.stringify(key).slice(0, 80)}`);
     let last: unknown;
     for (let attempt = 0; attempt < 3; attempt++) {
       if (attempt > 0) await new Promise((r) => setTimeout(r, 100 * 2 ** attempt));
@@ -320,6 +368,7 @@ class S3Storage implements FileStoragePort {
   }
 
   async presignUpload(storageKey: string, contentType: string, sizeBytes: number, expiresInSeconds: number, datetime?: string): Promise<PresignedUpload> {
+    if (!isExternalCoverKey(storageKey)) throw new Error("허용되지 않는 스토리지 키");
     return { uploadUrl: await this.presignUrl(storageKey, contentType, sizeBytes, expiresInSeconds, datetime), storageKey, expiresInSeconds };
   }
 

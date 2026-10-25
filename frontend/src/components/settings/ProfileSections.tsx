@@ -1,7 +1,6 @@
 "use client";
 
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import Markdown from "@/components/ui/Markdown";
 import SettingsSection from "@/components/settings/SettingsSection";
 import type { SettingsDialog } from "@/components/settings/settingsDialog";
 import { Button } from "@/components/ui/Field";
@@ -55,7 +54,7 @@ export function MemoSection({ loading, data, onOpen }: Props) {
       ) : data?.profile.memo ? (
         <div className="rounded-lg border border-white/10 bg-white/5 px-5 py-4">
           <div className="markdown text-sm leading-relaxed font-light text-white/80">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{data.profile.memo}</ReactMarkdown>
+            <Markdown>{data.profile.memo}</Markdown>
           </div>
         </div>
       ) : (

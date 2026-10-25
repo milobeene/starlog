@@ -21,11 +21,32 @@ const url = require("url");
 
 const ROOT = path.resolve(__dirname, "..");
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "starlog-e2e-"));
+/*
+ * 사용자 셸에 개발 프로필이 남아 있는 상황을 일부러 만든다 — 메인이 서버에 넘기지 않아야 한다.
+ * 새면 서버가 CORS를 끄고 떠서 아래 "남의 출처 요청은 403"이 깨진다
+ */
+process.env.STARLOG_PROFILE = "dev";
+process.env.STARLOG_THUMBNAILER = "copy";
 
 // ── 창 숨기기 + 경로 바꾸기 (main.js가 불리기 전에) ──
 const realElectron = require("electron");
 realElectron.app.setPath("appData", path.join(TMP, "appData"));
 realElectron.app.setPath("userData", path.join(TMP, "userData"));
+/*
+ * ⚠️ 사용자의 진짜 키체인을 안 건드린다 — 크로미움의 가짜 키체인으로 safeStorage를 돌린다.
+ * 리눅스는 같은 이유로 basic(메모리 키)
+ */
+realElectron.app.commandLine.appendSwitch("use-mock-keychain");
+if (process.platform === "linux") realElectron.app.commandLine.appendSwitch("password-store", "basic");
+/** 메인이 OS에 넘기려던 것(기본 브라우저·탐색기) — 실제로 열지 않고 적어만 둔다 */
+const shellCalls = [];
+const fakeShell = new Proxy(realElectron.shell, {
+  get: (t, k) => {
+    if (k === "openExternal") return async (u) => { shellCalls.push(["openExternal", u]); };
+    if (k === "openPath") return async (p) => { shellCalls.push(["openPath", p]); return ""; };
+    return t[k];
+  },
+});
 const RealWindow = realElectron.BrowserWindow;
 let win = null;
 class HiddenWindow extends RealWindow {
@@ -41,7 +62,9 @@ class HiddenWindow extends RealWindow {
 const load = Module._load;
 Module._load = function (request, ...rest) {
   const m = load.call(this, request, ...rest);
-  if (request === "electron") return new Proxy(m, { get: (t, k) => (k === "BrowserWindow" ? HiddenWindow : t[k]) });
+  if (request === "electron") {
+    return new Proxy(m, { get: (t, k) => (k === "BrowserWindow" ? HiddenWindow : k === "shell" ? fakeShell : t[k]) });
+  }
   return m;
 };
 realElectron.app.dock?.hide();
@@ -63,9 +86,15 @@ async function goto(url) {
   await win.loadURL(url);
   await sleep(1500);   // 화면이 첫 데이터를 받아 그릴 시간
 }
+/** 지금 서버의 토큰 — 기동마다 바뀌므로 매번 다리에 묻는다 (서버가 토큰 검사를 아직 안 해도 무해하다) */
+async function auth() {
+  const token = await js("window.starlog.session.token()");
+  return token ? { "X-Starlog-Token": token } : {};
+}
 async function api(port, method, p, body) {
   const res = await fetch(`http://127.0.0.1:${port}${p}`, {
-    method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined,
+    method, headers: { ...(await auth()), ...(body ? { "Content-Type": "application/json" } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
   return { status: res.status, json: text ? JSON.parse(text) : null };
@@ -112,7 +141,7 @@ async function makeSamples(dir) {
 async function upload(port, entryId, file, takenAt) {
   const fd = new FormData();
   fd.append("file", new Blob([fs.readFileSync(file)]), path.basename(file));
-  const res = await fetch(`http://127.0.0.1:${port}/api/backlog/${entryId}/screenshots?takenAt=${takenAt}`, { method: "POST", body: fd });
+  const res = await fetch(`http://127.0.0.1:${port}/api/backlog/${entryId}/screenshots?takenAt=${takenAt}`, { method: "POST", body: fd, headers: await auth() });
   return { status: res.status, json: await res.json() };
 }
 
@@ -157,7 +186,7 @@ async function mediaSteps(port, entryId) {
     const item = items.find((i) => i.fileName === stored[name]);
     if (!item?.thumbUrl) { sizes[name] = "thumbUrl 없음"; continue; }
     const t = Date.now();
-    const res = await fetch(`http://127.0.0.1:${port}${item.thumbUrl}`);
+    const res = await fetch(`http://127.0.0.1:${port}${item.thumbUrl}`, { headers: await auth() });
     const ms = Date.now() - t;
     if (res.status !== 200) { sizes[name] = `${res.status} ${ms}ms`; continue; }
     const buf = Buffer.from(await res.arrayBuffer());
@@ -188,6 +217,16 @@ async function mediaSteps(port, entryId) {
   const ok = await media.makeThumbnail({ source: outside }, MEDIA_ROOT);
   check("메인 — 밖의 파일로는 썸네일을 안 만든다", ok === false && !fs.existsSync(path.join(TMP, ".thumbs")));
   fs.rmSync(path.join(folder, "link.png"));
+  // `.thumbs`를 밖을 가리키는 링크로 바꿔치기 — 링크를 따라가 밖에 쓰면 안 된다
+  const realThumbs = `${thumbsDir}.real`;
+  const trap = path.join(TMP, "trap");
+  fs.mkdirSync(trap);
+  fs.renameSync(thumbsDir, realThumbs);
+  fs.symlinkSync(trap, thumbsDir);
+  const viaLink = await media.makeThumbnail({ source: path.join(folder, stored["square.png"]) }, MEDIA_ROOT);
+  check("메인 — .thumbs가 심볼릭 링크면 썸네일을 안 쓴다", viaLink === false && fs.readdirSync(trap).length === 0, String(viaLink));
+  fs.rmSync(thumbsDir);
+  fs.renameSync(realThumbs, thumbsDir);
 
   // ── 클립보드 (사용자 클립보드를 잠깐 빌린다 — 끝나면 되돌린다) ──
   // 일렉트론 44부터 읽기는 전부 `clipboard.read()` 하나다 (readImage·readBuffer·availableFormats가 없어졌다)
@@ -256,10 +295,32 @@ async function mediaSteps(port, entryId) {
   // ── 다른 창(우리 앱 문서가 아님)에서는 못 부른다 ──
   const stranger = new RealWindow({ show: false, webPreferences: { contextIsolation: true, preload: path.join(ROOT, "desktop/preload.js") } });
   await stranger.loadURL("data:text/html,stranger");
-  const denied = await stranger.webContents.executeJavaScript(
-    `window.starlog.media.copy({ entryId: ${entryId}, fileName: ${JSON.stringify(stored["land.png"])} }).then(() => "통과", (e) => "거절")`);
+  check("우리 문서가 아니면 다리가 아예 없다 (preload)", (await stranger.webContents.executeJavaScript("typeof window.starlog")) === "undefined");
   stranger.destroy();
-  check("IPC 발신자 검사 — app://starlog 밖의 창은 거절", denied === "거절");
+  /*
+   * preload가 다리를 안 놓아도 메인이 다시 본다 — `ipcRenderer`를 그대로 내준 시험용 preload로
+   * 남의 문서에서 직접 불러 본다
+   */
+  const rawPreload = path.join(TMP, "raw-preload.js");
+  fs.writeFileSync(rawPreload, `const { contextBridge, ipcRenderer } = require("electron");
+    contextBridge.exposeInMainWorld("raw", { invoke: (...a) => ipcRenderer.invoke(...a), sendSync: (...a) => ipcRenderer.sendSync(...a) });`);
+  const raw = new RealWindow({ show: false, webPreferences: { contextIsolation: true, sandbox: true, preload: rawPreload } });
+  await raw.loadURL("data:text/html,raw");
+  const rawResults = await raw.webContents.executeJavaScript(`(async () => {
+    const r = {};
+    for (const [ch, ...args] of [["media:copy", { entryId: ${entryId}, fileName: ${JSON.stringify(stored["land.png"])} }],
+      ["connections:list"], ["saves:list"], ["settings:get"], ["connections:reveal", "x", "db.password"]]) {
+      r[ch] = await window.raw.invoke(ch, ...args).then(() => "통과", () => "거절");
+    }
+    r.port = window.raw.sendSync("session:port");
+    r.token = window.raw.sendSync("session:token");
+    r.bg = window.raw.sendSync("background:get");
+    return r;
+  })()`);
+  raw.destroy();
+  check("IPC 발신자 검사 — 남의 문서의 invoke는 전부 거절 (media·connections·saves·settings)",
+    ["media:copy", "connections:list", "saves:list", "settings:get", "connections:reveal"].every((k) => rawResults[k] === "거절"), JSON.stringify(rawResults));
+  check("IPC 발신자 검사 — 동기 IPC(포트·토큰·배경)도 null", rawResults.port === null && rawResults.token === null && rawResults.bg === null);
 
   // ── 폴더로 저장 (대화상자는 바꿔 끼운다 — 매번 고르는지 센다) ──
   const exportDir = path.join(TMP, "export");
@@ -284,6 +345,175 @@ async function mediaSteps(port, entryId) {
   check("삭제 — 원본과 썸네일이 함께 사라진다", del.json?.deleted === 2
     && !fs.existsSync(path.join(folder, stored["land.png"])) && !left.includes(`${stored["land.png"]}.jpg`) && !left.includes(`${stored["clip.mp4"]}.jpg`),
   left.join(","));
+}
+
+// ── 보안 점검 회귀 (2026-10-25): 창 이동 잠금 · 새 창 · 권한 · 마크다운 · 데이터 루트 · openPath ──
+
+async function securitySteps(port) {
+  const http = require("http");
+  const evil = http.createServer((_req, res) => { res.setHeader("content-type", "text/html"); res.end("<html><body>evil</body></html>"); });
+  await new Promise((r) => evil.listen(0, "127.0.0.1", r));
+  const EVIL = `http://127.0.0.1:${evil.address().port}/`;
+  try {
+    const token = await js("window.starlog.session.token()");
+    check("토큰 — 다리가 지금 서버의 토큰을 준다", typeof token === "string" && token.length >= 43, `${String(token).length}자`);
+
+    await goto("app://starlog/dashboard");
+    shellCalls.length = 0;
+    await js(`location.href = ${JSON.stringify(EVIL)}`);
+    await sleep(800);
+    check("창 이동 잠금 — location.href로 남의 페이지에 못 간다", win.webContents.getURL().startsWith("app://starlog/"), win.webContents.getURL());
+    check("창 이동 잠금 — 밖으로 가려던 http는 기본 브라우저로", shellCalls.some(([k, u]) => k === "openExternal" && u === EVIL), JSON.stringify(shellCalls));
+    await js(`(() => { const a = document.createElement("a"); a.href = ${JSON.stringify(EVIL + "click")}; document.body.append(a); a.click(); })()`);
+    await sleep(800);
+    check("창 이동 잠금 — 링크 클릭도", win.webContents.getURL().startsWith("app://starlog/"), win.webContents.getURL());
+    shellCalls.length = 0;
+    // 파일을 떨어뜨렸을 때와 같은 길 (file:// 이동)
+    await js(`location.href = "file:///etc/hosts"`);
+    await sleep(800);
+    check("창 이동 잠금 — file:// (끌어놓기)도 막고 OS에 안 넘긴다", win.webContents.getURL().startsWith("app://starlog/") && shellCalls.length === 0, JSON.stringify(shellCalls));
+
+    shellCalls.length = 0;
+    await js(`window.open("smb://203.0.113.9/share"); window.open("file:///System/Applications/Calculator.app"); window.open("x-apple.systempreferences:x"); window.open("https://example.com/ok")`);
+    await sleep(500);
+    check("window.open — smb:·file:·앱 스킴은 OS로 안 가고 https만 기본 브라우저로",
+      JSON.stringify(shellCalls) === JSON.stringify([["openExternal", "https://example.com/ok"]]), JSON.stringify(shellCalls));
+
+    const perm = await js(`(async () => ({
+      notif: await Notification.requestPermission(),
+      geo: (await navigator.permissions.query({ name: "geolocation" })).state,
+      clip: await navigator.clipboard.readText().then(() => "granted", () => "denied"),
+    }))()`);
+    check("권한 — 알림·위치·클립보드 읽기 거절", perm.notif === "denied" && perm.geo === "denied" && perm.clip === "denied", JSON.stringify(perm));
+
+    // 메인이 직접 남의 페이지를 띄운 경우까지 — 다리가 없어야 한다 (두 번째 울타리)
+    await win.loadURL(EVIL);
+    await sleep(300);
+    check("남의 페이지에는 다리(window.starlog)가 없다", (await js("typeof window.starlog")) === "undefined");
+    await goto("app://starlog/dashboard");
+
+    // 마크다운 — 링크는 새 창(→ 기본 브라우저), 외부 이미지는 안 불러온다
+    const memo = `[공략](${EVIL}guide) ![추적](${EVIL}track.png) ![커버](https://images.igdb.com/igdb/image/upload/t_thumb/x.jpg) [js](javascript:alert(1)) [파일](file:///etc/passwd)`;
+    const put = await api(port, "PUT", "/api/me/profile", { nickname: "e2e", memo });
+    await goto("app://starlog/settings");
+    const md = await js(`(() => {
+      const root = [...document.querySelectorAll(".markdown")].find((el) => el.textContent.includes("공략"));
+      if (!root) return null;
+      return { a: [...root.querySelectorAll("a")].map((a) => [a.textContent, a.getAttribute("href"), a.target]),
+               img: [...root.querySelectorAll("img")].map((i) => i.getAttribute("src")) };
+    })()`);
+    check("마크다운 — 링크는 http(s)만, 전부 새 창", md !== null && md.a.every(([, h, t]) => /^https?:/.test(h) && t === "_blank")
+      && !md.a.some(([, h]) => /^(javascript|file):/.test(h)), `${put.status} ${JSON.stringify(md)}`);
+    check("마크다운 — 외부 이미지는 링크 글자로, IGDB만 그림으로",
+      md !== null && md.img.length === 1 && md.img[0].startsWith("https://images.igdb.com/") && md.a.some(([t]) => t === "추적"), JSON.stringify(md?.img));
+  } finally {
+    evil.close();
+  }
+}
+
+/** 데이터 루트·openPath·백업 이름 */
+async function pathSteps(save) {
+  const dirs = await js("window.starlog.settings.get().then((s) => s.dirs)");
+  const outside = path.join(TMP, "elsewhere");
+  const r1 = await js(`window.starlog.settings.setDataRoot(${JSON.stringify(outside)}).then(() => "통과", () => "거절")`);
+  check("데이터 루트 — [폴더 고르기]로 안 고른 경로는 거절", r1 === "거절");
+
+  const realDialog = realElectron.dialog.showOpenDialog;
+  try {
+    realElectron.dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [os.homedir()] });
+    const home = await js("window.starlog.pickFolder()");
+    const r2 = await js(`window.starlog.settings.setDataRoot(${JSON.stringify(home)}).then(() => "통과", (e) => "거절")`);
+    check("데이터 루트 — 홈 폴더 자체는 골라도 거절", r2 === "거절");
+
+    // 정상 경로는 고르면 된다 — 그리고 원래 자리로 되돌린다
+    fs.mkdirSync(outside, { recursive: true });
+    realElectron.dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [outside] });
+    const picked = await js("window.starlog.pickFolder()");
+    const r3 = await js(`window.starlog.settings.setDataRoot(${JSON.stringify(picked)}).then(() => "통과", (e) => String(e))`);
+    realElectron.dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [dirs.root] });
+    await js("window.starlog.pickFolder()");
+    const r4 = await js(`window.starlog.settings.setDataRoot(${JSON.stringify(dirs.root)}).then(() => "통과", (e) => String(e))`);
+    check("데이터 루트 — 고른 폴더는 받고, 되돌리기도 된다", r3 === "통과" && r4 === "통과", `${r3} / ${r4}`);
+  } finally {
+    realElectron.dialog.showOpenDialog = realDialog;
+  }
+
+  const file = path.join(dirs.media, "note.command");
+  fs.writeFileSync(file, "#!/bin/sh\necho pwned\n", { mode: 0o755 });
+  const bundle = path.join(dirs.media, "evil.app");
+  fs.mkdirSync(path.join(bundle, "Contents"), { recursive: true });
+  const link = path.join(dirs.media, "escape");
+  fs.symlinkSync(TMP, link);
+  shellCalls.length = 0;
+  const op = async (p) => js(`window.starlog.openPath(${JSON.stringify(p)}).then(() => "통과", () => "거절")`);
+  const results = { file: await op(file), bundle: await op(bundle), link: await op(link), up: await op(path.join(dirs.root, "..")), dir: await op(dirs.media) };
+  check("openPath — 파일·앱 묶음·밖을 가리키는 링크·바깥은 거절, 데이터 루트 안 폴더만",
+    results.file === "거절" && results.bundle === "거절" && results.link === "거절" && results.up === "거절" && results.dir === "통과"
+      && shellCalls.length === 1 && shellCalls[0][0] === "openPath", `${JSON.stringify(results)} ${JSON.stringify(shellCalls)}`);
+  fs.rmSync(file);
+  fs.rmSync(bundle, { recursive: true });
+  fs.rmSync(link);
+
+  const b1 = await js(`window.starlog.backups.remove(${JSON.stringify(save)}, "../../../escape.tar.gz").then(() => "통과", () => "거절")`);
+  const b2 = await js(`window.starlog.backups.remove(${JSON.stringify(save)}, "settings.json").then(() => "통과", () => "거절")`);
+  check("backups:remove — .tar.gz 파일 이름만", b1 === "거절" && b2 === "거절", `${b1} ${b2}`);
+}
+
+/** 연결 설정 — 화면에는 가린 값만, 디스크에는 잠근 값만. 실제 DB에는 안 붙는다(저장·목록만) */
+async function connectionSteps() {
+  const CONN = path.join(TMP, "appData/starlog/connections.json");
+  const SECRETS = ["FAKE_DB_PASSWORD_123456", "FAKE_ACCESS_KEY_ABCDEFG", "FAKE_S3_SECRET_KEY_7890", "FAKE_IGDB_SECRET_00000", "FAKE_TRANSLATE_KEY_11111"];
+  const profile = {
+    name: "E2E 연결",
+    db: { url: "jdbc:postgresql://203.0.113.1/x", user: "u", password: SECRETS[0], schema: "" },
+    storage: { endpoint: "https://203.0.113.2", bucket: "b", accessKey: SECRETS[1], secretKey: SECRETS[2], publicBaseUrl: "https://203.0.113.3" },
+    igdb: { clientId: "cid", clientSecret: SECRETS[3] },
+    translate: { apiKey: SECRETS[4] },
+    mediaTargets: { covers: false, screenshots: false },
+  };
+  const saved = await js(`window.starlog.connections.save(${JSON.stringify(profile)})`);
+  const listed = await js("window.starlog.connections.list()");
+  const listText = JSON.stringify([saved, listed]);
+  check("connections:list — 평문 비밀이 렌더러로 안 온다 (가린 값 + hasSecret)",
+    SECRETS.every((x) => !listText.includes(x)) && listed[0]?.hasSecret?.["db.password"] === true && listed[0]?.db?.password === "••••3456",
+    JSON.stringify(listed[0]?.db));
+  const disk = fs.readFileSync(CONN, "utf8");
+  check("connections.json — 디스크에 평문 비밀이 없다 (safeStorage로 sealed)", SECRETS.every((x) => !disk.includes(x)) && disk.includes("\"sealed\""), disk.slice(0, 160));
+  check("connections.json — 0600", (fs.statSync(CONN).mode & 0o777) === 0o600);
+
+  // 가린 값 그대로 저장 → 진짜 값 유지. 눈 버튼으로 칸 하나씩
+  await js(`window.starlog.connections.list().then((l) => window.starlog.connections.save({ ...l[0], db: { ...l[0].db, user: "u2" } }))`);
+  const revealed = await js(`Promise.all(${JSON.stringify(["db.password", "storage.accessKey", "storage.secretKey", "igdb.clientSecret", "translate.apiKey"])}.map((f) => window.starlog.connections.reveal("E2E 연결", f)))`);
+  check("가린 값을 안 고치고 저장하면 진짜 값이 남는다 (reveal로 확인)", JSON.stringify(revealed) === JSON.stringify(SECRETS), JSON.stringify(revealed));
+  // 이름 바꾸기 — 진짜 값은 옛 이름 쪽에서 푼다
+  await js(`window.starlog.connections.list().then(async (l) => { await window.starlog.connections.save({ ...l[0], name: "E2E 연결2" }, { previousName: "E2E 연결" }); await window.starlog.connections.remove("E2E 연결"); })`);
+  const renamed = await js(`window.starlog.connections.reveal("E2E 연결2", "db.password")`);
+  check("이름을 바꿔도 가린 값이 진짜 값으로 이어진다 (previousName)", renamed === SECRETS[0], renamed);
+  const forged = await js(`window.starlog.connections.reveal("E2E 연결2", "db.url").then(() => "통과", () => "거절")`);
+  check("reveal — 비밀 칸이 아닌 이름은 거절", forged === "거절");
+
+  // 옛 평문 파일 → 처음 읽을 때 잠가서 다시 쓴다. 못 푸는 봉투는 지우지 않고 locked
+  fs.writeFileSync(CONN, JSON.stringify({ version: 1, profiles: [
+    { name: "옛 평문", db: { url: "jdbc:postgresql://203.0.113.1/x", user: "u", password: "OLD_PLAINTEXT_PASSWORD_1" } },
+    { name: "못 푸는 것", db: { url: "jdbc:postgresql://203.0.113.1/y", user: "u" }, sealed: "bm90LWEtcmVhbC1ibG9i" },
+  ] }), { mode: 0o600 });
+  const migrated = await js("window.starlog.connections.list()");
+  const disk2 = fs.readFileSync(CONN, "utf8");
+  const oldPw = await js(`window.starlog.connections.reveal("옛 평문", "db.password")`);
+  check("옛 평문 connections.json은 읽자마자 잠가 다시 쓴다 (값은 그대로)",
+    !disk2.includes("OLD_PLAINTEXT_PASSWORD_1") && oldPw === "OLD_PLAINTEXT_PASSWORD_1", disk2.slice(0, 200));
+  const locked = migrated.find((p) => p.name === "못 푸는 것");
+  check("못 푸는 연결은 locked로 남고 봉투는 보존된다", locked?.locked === true && disk2.includes("bm90LWEtcmVhbC1ibG9i"), JSON.stringify(locked));
+  const launchLocked = await js(`window.starlog.launch({ mode: "cloud", target: "못 푸는 것" })`);
+  check("locked 연결로 기동하면 CREDENTIALS_LOCKED (DB에 붙지 않는다)", launchLocked.ok === false && launchLocked.code === "CREDENTIALS_LOCKED", JSON.stringify(launchLocked));
+
+  // 깨진 파일 — 지우지 않고 옆으로 비켜둔다
+  fs.writeFileSync(CONN, "{ not json", { mode: 0o600 });
+  const afterCorrupt = await js("window.starlog.connections.list()");
+  const dir = path.dirname(CONN);
+  const aside = fs.readdirSync(dir).filter((f) => f.startsWith("connections.json.corrupt-"));
+  check("깨진 connections.json은 .corrupt-<시각>으로 보존 (덮어쓰지 않는다)",
+    afterCorrupt.length === 0 && aside.length === 1 && fs.readFileSync(path.join(dir, aside[0]), "utf8") === "{ not json", aside.join(","));
 }
 
 realElectron.app.whenReady().then(async () => {
@@ -326,9 +556,12 @@ realElectron.app.whenReady().then(async () => {
     check("상세 화면", (await js("document.body.innerText")).includes("E2E 테스트 게임"));
 
     await mediaSteps(port, entry.json?.id);
+    await securitySteps(port);
+    await pathSteps(SAVE);
 
     // ── 입구로 → 백업 (백엔드를 내리고 묶는다) ──
     await goto("app://starlog/");
+    await connectionSteps();
     t = Date.now();
     const backup = await js(`window.starlog.backups.create(${JSON.stringify(SAVE)})`);
     check("백업 만들기", /\.tar\.gz$/.test(backup.fileName), `${backup.fileName}, ${Date.now() - t}ms`);
@@ -350,6 +583,8 @@ realElectron.app.whenReady().then(async () => {
     const again2 = await js(`window.starlog.launch({ mode: "local", target: ${JSON.stringify(SAVE)} })`);
     check("같은 세이브를 바로 다시 열기", again2.ok === true);
 
+    const log = path.join(TMP, "appData/starlog/backend.log");
+    check("backend.log — 0600", (fs.statSync(log).mode & 0o777) === 0o600);
     const dirs = path.join(TMP, "appData/starlog/data/saves");
     console.log(`\n세이브 폴더: ${fs.readdirSync(dirs).join(" · ")}`);
   } catch (e) {

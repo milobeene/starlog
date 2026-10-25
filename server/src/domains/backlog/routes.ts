@@ -295,8 +295,11 @@ routes.post("/api/backlog/:entryId/screenshots", async (c) => {
   return c.json(await saveScreenshot(entryId, file.name, new Uint8Array(await file.arrayBuffer()), takenAt));
 });
 
-/** 탐색기로 열 경로 — `{fileName}`보다 먼저 건다 */
-routes.get("/api/backlog/:entryId/screenshots/folder", async (c) => {
+/**
+ * 탐색기로 열 경로 — `{fileName}`보다 먼저 건다.
+ * **POST다** — 폴더를 만들고 `media_folder`를 DB에 적는 쓰기라서. GET이면 `<img src>`·링크 미리읽기로도 불린다
+ */
+routes.post("/api/backlog/:entryId/screenshots/folder", async (c) => {
   const entryId = pathId(c, "entryId");
   return c.json({ path: await screenshotFolderPath(entryId) });
 });

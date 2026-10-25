@@ -4,7 +4,7 @@
  * **저장하지 않은 값으로 시험한다.** 저장부터 하면 틀린 키가 들어간 뒤에야 알게 되고 그 사이 검색이 다 502다.
  * 둘 다 호출 기록(`api_call_log`)을 남기지 않는다.
  */
-import { IGDB, RestFailure, restCall, tokenUrl } from "../game/igdb";
+import { IGDB, RestFailure, restCall, tokenRequest } from "../game/igdb";
 import { isJavaBlank, javaStrip } from "../../common/text";
 
 export interface IgdbTestResult { ok: boolean; tokenIssued: boolean; searchWorks: boolean; message: string }
@@ -24,7 +24,8 @@ export async function testIgdb(clientId: string | null, clientSecret: string | n
 
   let token: unknown;
   try {
-    const r = await restCall(tokenUrl(id, secret), { method: "POST", headers: { Accept: "application/json" } }, null) as Record<string, unknown> | null;
+    const req = tokenRequest(id, secret, { headers: { Accept: "application/json" } });
+    const r = await restCall(req.url, req.init, null) as Record<string, unknown> | null;
     token = r === null ? null : r.access_token ?? null;
   } catch (e) {
     if (!(e instanceof RestFailure)) throw e;
@@ -59,7 +60,7 @@ const LANGUAGES_URL = "https://translation.googleapis.com/language/translate/v2/
 export async function testTranslate(apiKey: string | null): Promise<{ ok: boolean; message: string }> {
   if (isJavaBlank(apiKey)) return { ok: false, message: "키를 입력해 주세요" };
   try {
-    const res = await fetch(`${LANGUAGES_URL}?key=${encodeURIComponent(apiKey!)}&target=ko`, { headers: { Accept: "application/json" } });
+    const res = await fetch(`${LANGUAGES_URL}?target=ko`, { headers: { Accept: "application/json", "X-Goog-Api-Key": apiKey! } });
     if (res.status >= 400 && res.status < 500) {
       // 구글 문구를 그대로 옮기지 않는다 — 무엇을 고쳐야 하는지 안 알려준다. 실제로 겪는 셋을 갈라준다
       console.warn(`번역 키 확인 실패 — ${res.status}`);

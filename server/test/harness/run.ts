@@ -43,6 +43,11 @@ interface Step {
   rawBody?: string;                   // 깨진 JSON 시험용
   multipart?: Record<string, string | { file: string; filename?: string; type?: string }>;
   headers?: Record<string, string>;
+  /**
+   * API 토큰을 어떻게 싣나 (운영 프로필 시나리오만 — 장치가 서버마다 새 토큰을 넣는다).
+   * 기본은 `X-Starlog-Token` 머리글. `none` 안 싣기 / `wrong` 틀린 값 / `query` 머리글 대신 `?t=`
+   */
+  auth?: "none" | "wrong" | "query";
   save?: Record<string, string>;      // { 변수: "a.b.0.c" } — 응답 JSON 경로 (자바 쪽 값으로 저장)
   ignore?: string[];                  // 이 단계 본문에서 무시할 경로 (예: "items.*.coverUrl") — 남발 금지, 이유를 시나리오 note에
   note?: string;
@@ -189,8 +194,14 @@ function subst<T>(v: T, vars: Record<string, unknown>): T {
 // ───────────── 요청 ─────────────
 interface Resp { status: number; location: string | null; type: string; json?: unknown; hash?: string; text?: string }
 
-async function send(base: string, step: Step, vars: Record<string, unknown>): Promise<Resp> {
+async function send(base: string, step: Step, vars: Record<string, unknown>, token: string | null): Promise<Resp> {
   const headers: Record<string, string> = { "Accept-Language": "ko-KR", ...(step.headers ?? {}) };
+  let url = base + subst(step.path, vars);
+  if (token !== null) {
+    if (step.auth === "query") url += (url.includes("?") ? "&" : "?") + "t=" + token;
+    else if (step.auth === "wrong") headers["X-Starlog-Token"] = "x".repeat(token.length);
+    else if (step.auth !== "none") headers["X-Starlog-Token"] = token;
+  }
   let body: RequestInit["body"];
   if (step.rawBody !== undefined) { body = step.rawBody; headers["Content-Type"] ??= "application/json"; }
   else if (step.body !== undefined) { body = JSON.stringify(subst(step.body, vars)); headers["Content-Type"] ??= "application/json"; }
@@ -205,7 +216,7 @@ async function send(base: string, step: Step, vars: Record<string, unknown>): Pr
     }
     body = fd;
   }
-  const res = await fetch(base + subst(step.path, vars), { method: step.method, headers, body, redirect: "manual" });
+  const res = await fetch(url, { method: step.method, headers, body, redirect: "manual" });
   const type = res.headers.get("content-type") ?? "";
   const buf = Buffer.from(await res.arrayBuffer());
   const r: Resp = { status: res.status, location: res.headers.get("location"), type: type.split(";")[0]!.trim() };
@@ -323,9 +334,16 @@ async function main() {
 
   const port = await freePort();
   runStartKst = kstNow();
+  /*
+   * 운영 프로필 그대로 띄운다 — 토큰이 없으면 서버가 기동을 거절하므로 일렉트론처럼 매번 새로 만들어 넣는다.
+   * dev·test 프로필 시나리오는 거꾸로 토큰이 있으면 거절된다. 밖의 환경변수가 섞이지 않게 둘 다 지우고 시작
+   */
+  const { STARLOG_API_TOKEN: _t, STARLOG_PROFILE: _p, ...serverEnv } = process.env;
+  const devProfile = ["dev", "test"].includes(scenario.env?.STARLOG_PROFILE ?? "");
+  const token = devProfile ? null : crypto.randomBytes(32).toString("hex");
   const log: string[] = [];
   const server = spawn(path.join(ROOT, "node_modules/.bin/tsx"), [path.join(ROOT, "src/main.ts")],
-    { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, STARLOG_DB_DIR: dbDir, STARLOG_PORT: String(port), STARLOG_DATA_ROOT: dataDir, ...(scenario.env ?? {}) } });
+    { stdio: ["ignore", "pipe", "pipe"], env: { ...serverEnv, STARLOG_DB_DIR: dbDir, STARLOG_PORT: String(port), STARLOG_DATA_ROOT: dataDir, ...(scenario.env ?? {}), ...(token ? { STARLOG_API_TOKEN: token } : {}) } });
   try {
     await waitFor(server, log, /STARLOG_READY/, 30000, "서버");
   } catch (e) {
@@ -339,7 +357,7 @@ async function main() {
   const recorded: GoldenStep[] = [];
   for (const [i, step] of scenario.steps.entries()) {
     if (only && !step.name.includes(only)) continue;
-    const got = await send(base_, step, vars);
+    const got = await send(base_, step, vars, token);
     recorded.push({ name: step.name, status: got.status, location: got.location,
       ...(got.json !== undefined ? { json: JSON.parse(JSON.stringify(got.json, (_k, v) => normScalar(v))) } : {}),
       ...(got.hash !== undefined ? { hash: got.hash } : {}), ...(got.text !== undefined ? { text: got.text } : {}) });

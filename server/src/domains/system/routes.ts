@@ -11,7 +11,7 @@ import { InvalidInput } from "../../common/errors";
 import { fileStorage } from "../../common/storage";
 import { allSettings, GUARD_MONTHLY_CHARS, grouped, igdbCredentials, parseJavaLong, putSettings, SETTING, systemStatus, translateApiKey, translationUsage } from "./service";
 import { testIgdb, testTranslate } from "./testers";
-import { javaStrip } from "../../common/text";
+import { isJavaBlank, javaStrip } from "../../common/text";
 
 const optStr = zText.nullish().transform((v) => v ?? null);
 
@@ -22,6 +22,20 @@ const DailyLimitRequest = z.object({ dailyChars: optStr });
 
 /** 앞뒤 공백 제거. null은 앞에서 검증으로 걸러진다 */
 const strip = (v: string | null): string => javaStrip(v!);
+
+const MASK = "••••";
+
+/** 짧은 값은 끝 4자리만으로도 거의 다 드러나서 통째로 가린다. 빈 값은 빈 값 그대로 — "없음"과 "가림"이 구분돼야 한다 */
+export function maskSecret(v: string | null): string | null {
+  if (v === null || isJavaBlank(v)) return v;
+  const t = javaStrip(v);
+  return t.length > 8 ? MASK + t.slice(-4) : MASK;
+}
+
+/** 가린 값을 손대지 않고 되돌려 보냈으면 저장된 원문을 쓴다 — 가린 글자가 키로 저장되면 안 된다 */
+function keepIfMasked(given: string, current: string | null): string {
+  return current !== null && !isJavaBlank(current) && javaStrip(given) === maskSecret(current) ? current : given;
+}
 
 export const routes = new Hono();
 
@@ -35,17 +49,33 @@ routes.get("/api/system/storage/check", async (c) => {
   return c.json({ ok: failure === null, message: failure ?? "버킷에 접근했습니다" });
 });
 
+/**
+ * 비밀 값은 **가려서** 준다 (`••••` + 끝 4자리). 이 응답은 사용량 탭처럼 "키가 있나"만 보는 데서도 읽혀서,
+ * 원문이 실릴 이유가 없다 (보안 점검 2026-10-25). 원문은 눈 버튼이 `POST …/reveal`로 따로 받는다
+ */
 routes.get("/api/system/settings", async (c) => {
   const igdb = await igdbCredentials();
   const stored = (await allSettings()).has(SETTING.IGDB_CLIENT_ID);
   const used = await translationUsage();
+  const translateKey = await translateApiKey();
   return c.json({
     igdbClientId: igdb.clientId,
-    igdbClientSecret: igdb.clientSecret,   // 시크릿을 그대로 준다 — 혼자 쓰는 앱이고, 진짜 문제는 오타 확인이다
+    igdbClientSecret: maskSecret(igdb.clientSecret),
+    hasIgdbClientSecret: !isJavaBlank(igdb.clientSecret),
     fromBootConfig: !stored,
-    translateApiKey: await translateApiKey(),
+    translateApiKey: maskSecret(translateKey),
+    hasTranslateApiKey: !isJavaBlank(translateKey),
     translation: used,
   });
+});
+
+/**
+ * 원문 — 키 칸의 초기값과 눈 버튼용. **오타 확인이 진짜 문제**라 사용자는 여전히 보고 고칠 수 있어야 한다 (결정 63).
+ * POST인 이유: GET은 `t=` 쿼리 토큰으로도 열리는 자리라(미디어용) 주소 한 줄로 비밀이 읽히지 않게
+ */
+routes.post("/api/system/settings/reveal", async (c) => {
+  const igdb = await igdbCredentials();
+  return c.json({ igdbClientId: igdb.clientId, igdbClientSecret: igdb.clientSecret, translateApiKey: await translateApiKey() });
 });
 
 /**
@@ -58,7 +88,8 @@ routes.put("/api/system/settings/igdb", async (c) => {
     .notNull("clientId", r.clientId, DEFAULT_MSG.notNull)
     .notNull("clientSecret", r.clientSecret, DEFAULT_MSG.notNull)
     .throwIfAny();
-  await putSettings({ [SETTING.IGDB_CLIENT_ID]: strip(r.clientId), [SETTING.IGDB_CLIENT_SECRET]: strip(r.clientSecret) });
+  const secret = keepIfMasked(strip(r.clientSecret), (await igdbCredentials()).clientSecret);
+  await putSettings({ [SETTING.IGDB_CLIENT_ID]: strip(r.clientId), [SETTING.IGDB_CLIENT_SECRET]: secret });
   return c.body(null, 200);
 });
 
@@ -83,17 +114,18 @@ routes.put("/api/system/settings/translate/daily-limit", async (c) => {
 routes.put("/api/system/settings/translate", async (c) => {
   const r = await readBody(c, TranslateKeyRequest);
   violations().notNull("apiKey", r.apiKey, DEFAULT_MSG.notNull).throwIfAny();
-  await putSettings({ [SETTING.TRANSLATE_API_KEY]: strip(r.apiKey) });
+  await putSettings({ [SETTING.TRANSLATE_API_KEY]: keepIfMasked(strip(r.apiKey), await translateApiKey()) });
   return c.body(null, 200);
 });
 
 routes.post("/api/system/settings/translate/test", async (c) => {
   const r = await readBody(c, TranslateKeyRequest);
-  return c.json(await testTranslate(r.apiKey));
+  return c.json(await testTranslate(r.apiKey === null ? null : keepIfMasked(r.apiKey, await translateApiKey())));
 });
 
 routes.post("/api/system/settings/igdb/test", async (c) => {
   const r = await readBody(c, IgdbRequest);
-  return c.json(await testIgdb(r.clientId, r.clientSecret));
+  const secret = r.clientSecret === null ? null : keepIfMasked(r.clientSecret, (await igdbCredentials()).clientSecret);
+  return c.json(await testIgdb(r.clientId, secret));
 });
 

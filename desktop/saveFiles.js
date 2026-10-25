@@ -14,6 +14,10 @@ const tarball = require("./tarball");
 const MARKER = "PG_VERSION";
 
 function dirOf(dirs, name) {
+  // 이름은 위(main.js)에서 걸러 오지만 여기가 `rm -r`의 마지막 문이다 — `..`나 구분자가 낀 이름이 saves/ 밖을 가리키지 않게 한 번 더
+  if (typeof name !== "string" || name === "" || name.startsWith(".") || /[\\/\0]/.test(name)) {
+    throw new Error(`잘못된 세이브파일 이름입니다: ${String(name).slice(0, 60)}`);
+  }
   return path.join(dirs.saves, name);
 }
 

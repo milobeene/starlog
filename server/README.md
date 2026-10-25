@@ -17,13 +17,30 @@ npm run bundle         # → ../desktop/server/main.mjs
 마이그레이션(`migrations/V*.sql`, `flyway_schema_history` 이어 쓰기) → 프로필(빈 DB면 한 행 + 기본 선택지) → 미디어 폴더 →
 기동 정리(30일 지난 API 기록 · 플레이타임 합계 다시 맞춤) → 리슨 → `STARLOG_READY port=<n>`. 종료는 SIGTERM 또는 부모의 `{type: "shutdown"}` 메시지 — PGlite를 닫고 잠금을 푼다.
 
-**CORS (`src/http/cors.ts`)** — 창은 평생 `app://starlog`이고 화면 → API는 교차 출처다. `app://starlog`만 열고
-다른 출처는 403. dev·test 프로필에서는 끈다(프론트 개발 서버 프록시). ⚠️ 빼면 앱이 **배경만 남은 검은 화면**이 된다.
+**문지기 (`src/http/guard.ts`·`cors.ts`)** — 로컬 포트는 같은 맥의 아무 탭·프로세스나 두드릴 수 있다 (보안 점검 2026-10-25).
+순서: 보안 머리글(`nosniff`·`no-referrer`) → **Host**(`127.0.0.1:<포트>`·`localhost:<포트>`만, 정적 화면까지 — DNS 리바인딩) →
+**CORS**(고정 목록: `app://starlog`·`http://127.0.0.1:<포트>`, dev면 `http://localhost:3000`·`http://127.0.0.1:3000`. 남은 403 —
+요청의 Host로 "같은 출처"를 끌어내지 않는다) → **토큰** → **`Sec-Fetch-Site: cross-site`**(토큰이 맞으면 통과 — 창 `app://`→127.0.0.1은 늘 cross-site다) →
+**본문 형식**(쓰기 요청은 `application/json`만, 멀티파트는 업로드 두 자리만, 아니면 415) → **본문 크기**(업로드 260MB · `/api/me/import|replace` 50MB · 나머지 5MB).
+⚠️ CORS를 빼면 앱이 **배경만 남은 검은 화면**이 된다.
+
+| | 운영 (일렉트론) | dev·test (`npm run dev`·골든 일부) |
+|---|---|---|
+| `STARLOG_API_TOKEN` | **필수** — 없으면 `STARLOG_DIAGNOSTIC: API_TOKEN_MISSING` | **있으면 안 됨** — `DEV_PROFILE_WITH_TOKEN` |
+| 토큰 | `X-Starlog-Token` 머리글, GET·HEAD만 `?t=`(`<img>`·`<video>`용). 아니면 401 `UNAUTHORIZED` | 없음 |
+| 허용 출처 | `app://starlog`, 자기 자신 | + 개발 화면 :3000 |
+| cross-site | 토큰이 맞으면 통과 | 403 `CROSS_SITE` |
+
+골든 장치는 운영 프로필 시나리오마다 토큰을 새로 만들어 넣는다. 단계에 `"auth": "none" | "wrong" | "query"`로 바꿔 볼 수 있다.
+시크릿(IGDB·번역 키)은 `GET /api/system/settings`에서 **가려서**(`••••` + 끝 4자리) 나가고, 원문은 `POST /api/system/settings/reveal`.
+가린 값을 그대로 저장·시험하면 저장된 원문을 쓴다.
 
 설정은 전부 환경변수 (`src/config.ts`): `STARLOG_DB_DIR`(로컬) 또는 `STARLOG_DB_URL`·`_USER`·`_PASSWORD`·`_SCHEMA`(클라우드),
-`STARLOG_PORT`, `STARLOG_DATA_ROOT`, `STARLOG_STATIC_DIR`, `STARLOG_PROFILE`(dev·test면 CORS를 끄고 시험 장치를 연다),
+`STARLOG_PORT`, `STARLOG_DATA_ROOT`, `STARLOG_STATIC_DIR`, `STARLOG_API_TOKEN`(운영 필수), `STARLOG_PROFILE`(dev·test면 토큰 없이 돌고 시험 장치를 연다),
 `APP_IGDB_*`, `APP_STORAGE_*`, `STARLOG_MEDIA_USE_STORAGE_*`, `TRANSLATE_API_KEY`,
 `STARLOG_THUMBNAILER=copy`(dev·test 전용 — 일렉트론 없이 썸네일 흐름을 시험할 때 원본을 복사).
+
+클라우드 DB는 **기본이 TLS + 인증서 검증**이다 (`db/client.ts` `connectionFields`) — 평문은 주소에 `sslmode=disable`을 적었을 때만.
 
 **스크린샷 썸네일 (`src/common/storage/thumbs.ts`)** — `<게임 폴더>/.thumbs/<원본>.jpg`. 만드는 건 일렉트론 메인이다
 (`parentPort`로 `thumbnail` 요청 → `thumbnail:result`, 짝은 `desktop/media.js`). 일렉트론이 없으면 `thumbUrl`이 null.

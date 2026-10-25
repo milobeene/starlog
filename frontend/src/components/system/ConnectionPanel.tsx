@@ -33,10 +33,14 @@ function LocalConnectionSettings() {
   const [initial, setInitial] = useState<ConnectionProfile | null>(null);
 
   useEffect(() => {
-    /* 지금 세이브의 IGDB·번역 키를 백엔드에서 받아 폼의 초기값으로 쓴다 */
+    /*
+     * 지금 세이브의 IGDB·번역 키를 백엔드에서 받아 폼의 초기값으로 쓴다.
+     * `GET /api/system/settings`는 비밀을 가려서 준다(보안 점검 2026-10-25) — 폼은 눈 버튼으로
+     * 오타를 확인하는 자리라 원문이 필요해서 `reveal`로 따로 받는다 (결정 63)
+     */
     api
-      .get<{ igdbClientId: string; igdbClientSecret: string; translateApiKey: string }>(
-        "/api/system/settings",
+      .post<{ igdbClientId: string; igdbClientSecret: string | null; translateApiKey: string | null }>(
+        "/api/system/settings/reveal",
       )
       .then((found) =>
         setInitial({

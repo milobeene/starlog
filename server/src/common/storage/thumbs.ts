@@ -34,9 +34,15 @@ export function pointsIntoThumbs(fileName: string): boolean {
 /** 원본 수정시각(ms, 정수). 썸네일 쪽에 심고 비교하는 값 */
 export const mtimeMsOf = (st: fs.BigIntStats) => st.mtimeNs / 1_000_000n;
 
+/** `.thumbs`가 진짜 폴더인가 — 링크면 캐시 쓰기·지우기가 폴더 밖으로 샌다 (사람이 탐색기로 만지는 곳) */
+function thumbDirOk(dir: string): boolean {
+  try { return fs.lstatSync(dir).isDirectory(); } catch { return false; }
+}
+
 export function isFresh(thumb: string, sourceMtimeMs: bigint): boolean {
   try {
-    const st = fs.statSync(thumb, { bigint: true });
+    if (!thumbDirOk(path.dirname(thumb))) return false;
+    const st = fs.lstatSync(thumb, { bigint: true });   // 링크는 따라가지 않는다 — 서빙 경로로 쓰이므로
     // 1ms까지 봐준다 — 시각을 초 단위 부동소수로 심는 길(`utimes`)에서 끝자리가 하나 밀릴 수 있다
     const diff = mtimeMsOf(st) - sourceMtimeMs;
     return st.isFile() && st.size > 0n && diff >= -1n && diff <= 1n;
@@ -52,12 +58,14 @@ export function isFresh(thumb: string, sourceMtimeMs: bigint): boolean {
  */
 export function dropThumb(folder: string, fileName: string): void {
   if (/[\\/]/.test(fileName) || fileName === "." || fileName === "..") return;
+  if (!thumbDirOk(path.join(folder, THUMB_DIR))) return;
   try { fs.rmSync(thumbPathOf(folder, fileName), { force: true }); } catch { /* 캐시라 남아도 다음에 다시 만든다 */ }
 }
 
 /** 원본이 사라진 썸네일 (탐색기로 지운 것). 목록을 읽는 김에 치운다 */
 export function pruneOrphans(folder: string, names: Set<string>): void {
   const dir = path.join(folder, THUMB_DIR);
+  if (!thumbDirOk(dir)) return;
   let entries: string[];
   try { entries = fs.readdirSync(dir); } catch { return; }
   for (const n of entries) {
@@ -98,6 +106,8 @@ const viaCopy: Maker = async (source, kind) => {
   if (kind !== "image") return false;
   const target = thumbPathOf(path.dirname(source), path.basename(source));
   const st = fs.statSync(source);
+  // 이미 있는 `.thumbs`가 링크면 쓰지 않는다 (없으면 만든다)
+  if (fs.lstatSync(path.dirname(target), { throwIfNoEntry: false }) && !thumbDirOk(path.dirname(target))) return false;
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.copyFileSync(source, target + ".tmp");
   fs.utimesSync(target + ".tmp", st.atime, st.mtime);

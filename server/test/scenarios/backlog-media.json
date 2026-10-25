@@ -219,6 +219,22 @@
    }
   },
   {
+   "name": "커버 확정 — 경로 우회 (..로 다른 항목의 키를 가리킴)",
+   "method": "PUT",
+   "path": "/api/backlog/81/cover",
+   "body": {
+    "storageKey": "covers/entry-81/../entry-82/0f8e9a1c-3b4d-4e5f-8a6b-7c8d9e0f1a2b.png"
+   }
+  },
+  {
+   "name": "커버 확정 — 모양이 uuid가 아님",
+   "method": "PUT",
+   "path": "/api/backlog/81/cover",
+   "body": {
+    "storageKey": "covers/entry-81/x.png"
+   }
+  },
+  {
    "name": "커버 확정 — V14 전 경로 모양 (covers/<회원>/<항목>/)",
    "method": "PUT",
    "path": "/api/backlog/81/cover",
@@ -231,7 +247,7 @@
    "method": "PUT",
    "path": "/api/backlog/81/cover",
    "body": {
-    "storageKey": "  covers/entry-81/x.png "
+    "storageKey": "  covers/entry-81/0f8e9a1c-3b4d-4e5f-8a6b-7c8d9e0f1a2b.png "
    }
   },
   {
@@ -239,7 +255,7 @@
    "method": "PUT",
    "path": "/api/backlog/999999/cover",
    "body": {
-    "storageKey": "covers/entry-999999/x.png"
+    "storageKey": "covers/entry-999999/0f8e9a1c-3b4d-4e5f-8a6b-7c8d9e0f1a2b.png"
    }
   },
   {
@@ -758,7 +774,7 @@
   },
   {
    "name": "스크린샷 — 폴더 경로 (만든다)",
-   "method": "GET",
+   "method": "POST",
    "path": "/api/backlog/82/screenshots/folder",
    "ignore": [
     "path"
@@ -767,7 +783,7 @@
   },
   {
    "name": "스크린샷 — 폴더 경로 (이미 있음)",
-   "method": "GET",
+   "method": "POST",
    "path": "/api/backlog/81/screenshots/folder",
    "ignore": [
     "path"
@@ -776,7 +792,7 @@
   },
   {
    "name": "스크린샷 — 폴더 경로 없는 항목",
-   "method": "GET",
+   "method": "POST",
    "path": "/api/backlog/999999/screenshots/folder"
   },
   {

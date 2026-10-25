@@ -13,10 +13,11 @@ import { rows } from "../../db/raw";
 import { coverImage, game } from "../../db/schema";
 import { FileIo, InvalidInput, NotFound } from "../../common/errors";
 import { nowKst } from "../../common/clock";
-import { normalize, slug } from "../../common/text";
+import { normalize } from "../../common/text";
 import {
-  STORAGE_LIMITS, coverTarget, coversDir, fileStorage, localDelete, localExists, localList, localRead,
-  localResolve, localSave, localSaveAs, mediaFolder, type CoverLocation,
+  STORAGE_LIMITS, coverTarget, coversDir, fileStorage, isExternalCoverKey, isLocalCoverName, isNewCoverKeyOf, isPlainFileName,
+  isRealDirectory, localDelete, localExists, localList, localRead, localResolve, localSave, localSaveAs, mediaFolder,
+  type CoverLocation,
 } from "../../common/storage";
 import {
   canMakeThumbs, dropThumb, ensureThumb, isFresh, knownFailure, mtimeMsOf, pointsIntoThumbs, pruneOrphans, thumbPathOf, warmThumb,
@@ -159,6 +160,9 @@ async function attach(entryId: number, storageKey: string, contentType: string,
 
 /** 옛 파일 지우기 — **DB 커밋 뒤에.** 반대로 하면 DB엔 있는데 파일이 없는 최악이 나온다. 위치를 보고 갈라 지운다 */
 export async function removeFile(target: Replaced) {
+  // DB에 든 키라도 모양이 틀리면 건드리지 않는다 — `..`가 낀 키로 남의 객체·폴더 밖 파일을 지우는 걸 막는다. 남는 건 고아 파일뿐
+  const valid = target.location === "LOCAL" ? isLocalCoverName(target.storageKey) : isExternalCoverKey(target.storageKey);
+  if (!valid) { console.warn(`모양이 틀린 커버 키라 파일을 지우지 않는다. location=${target.location}`); return; }
   if (target.location === "LOCAL") { localDelete(coversDir(), target.storageKey); return; }
   await fileStorage().delete(target.storageKey);
   await recordApiCall("STORAGE", "delete", true);
@@ -169,8 +173,8 @@ export async function confirmExternalCover(entryId: number, rawKey: string | nul
   await db().transaction((tx) => findAliveEntry(tx, entryId));
   const storageKey = normalize(rawKey);
   if (storageKey === null) throw new InvalidInput("storageKey는 필수입니다");
-  // 다른 항목의 key를 이 항목 커버로 붙이는 것을 막는다
-  if (!storageKey.startsWith(keyPrefix(entryId))) throw new InvalidInput("이 항목의 업로드 경로가 아닙니다");
+  // 다른 항목의 key를 이 항목 커버로 붙이는 것을 막는다. `startsWith`는 `covers/entry-1/../entry-5/x.png`를 통과시켜서 모양 전체를 본다
+  if (!isNewCoverKeyOf(entryId, storageKey)) throw new InvalidInput("이 항목의 업로드 경로가 아닙니다");
 
   const stored = await fileStorage().head(storageKey);    // 미설정이면 여기서 502 — 기록 전에 던진다
   await recordApiCall("STORAGE", "head", stored !== null);
@@ -230,7 +234,7 @@ export async function deleteCover(entryId: number) {
 async function folderOf(d: Db, entryId: number, create: boolean, persist: boolean): Promise<string | null> {
   const entry = await findAliveEntry404(d, entryId);
   const [g] = await d.select({ id: game.id, name: game.name, mediaFolder: game.mediaFolder }).from(game).where(eq(game.id, entry.gameId));
-  if (g!.mediaFolder !== null) return mediaFolder(g!.mediaFolder);
+  if (g!.mediaFolder !== null) return vetted(mediaFolder(g!.mediaFolder), create);
 
   const candidate = await uniqueMediaSlug(d, g!);
   const folder = mediaFolder(candidate);
@@ -239,12 +243,18 @@ async function folderOf(d: Db, entryId: number, create: boolean, persist: boolea
     return folder;
   }
   if (!create) return null;
-  return mediaFolder(persist ? await assignMediaFolder(d, g!, candidate) : candidate);
+  return vetted(mediaFolder(persist ? await assignMediaFolder(d, g!, candidate) : candidate), create);
 }
 
-function isDirectory(p: string) {
-  try { return fs.statSync(p).isDirectory(); } catch { return false; }
+/** 같은 이름의 심볼릭 링크·파일이 폴더 자리에 있으면 따라가지 않는다 — 읽기는 "없음", 만들기는 오류 */
+function vetted(folder: string, create: boolean): string | null {
+  const st = fs.lstatSync(folder, { throwIfNoEntry: false });
+  if (st === undefined || st.isDirectory()) return folder;
+  if (create) throw new FileIo(new Error(`스크린샷 폴더 자리에 폴더가 아닌 것이 있습니다: ${path.basename(folder)}`));
+  return null;
 }
+
+const isDirectory = isRealDirectory;
 
 /**
  * 경로 조각 인코딩 — pchar(비예약 문자·sub-delims·`:`·`@`)만 그대로 둔다 (`encodeURIComponent`보다 덜 인코딩).
@@ -297,9 +307,11 @@ function describe(entryId: number, folder: string, name: string, st: fs.BigIntSt
 export async function listScreenshots(entryId: number) {
   const folder = await db().transaction((tx) => folderOf(tx, entryId, false, false));
   if (folder === null) return [];
-  const names = localList(folder);
-  pruneOrphans(folder, new Set(names));
-  return names.map((name) => describe(entryId, folder, name));
+  const all = localList(folder);
+  // 목록 읽기는 썸네일 폴더 청소를 겸한다 — 읽는 요청이지만 DB가 아니라 캐시만 만진다 (유지)
+  pruneOrphans(folder, new Set(all));
+  // 서빙할 수 없는 이름(점 파일·`.DS_Store`·미디어 아닌 것)은 목록에도 내지 않는다 — 눌러도 열리지 않는 항목이 된다
+  return all.filter(isServableName).map((name) => describe(entryId, folder, name));
 }
 
 /** `001.png`, `002.jpg` … 가장 큰 번호 다음. 개수 + 1이면 중간을 지웠을 때 덮어쓴다 */
@@ -350,6 +362,11 @@ export async function saveScreenshot(entryId: number, fileName: string | null,
   return saved.item;
 }
 
+/** 스크린샷으로 읽히는 이름: 조각 하나, 점으로 시작하지 않음, 이미지·영상 확장자 */
+function isServableName(name: string): boolean {
+  return isPlainFileName(name) && !name.startsWith(".") && mediaKindOf(name) !== null;
+}
+
 /** 원본 경로 — 바이트가 아니라 경로를 준다 (영상 200MB, Range 재생) */
 export async function resolveScreenshot(entryId: number, fileName: string): Promise<string> {
   return (await locate(entryId, fileName)).file;
@@ -358,7 +375,7 @@ export async function resolveScreenshot(entryId: number, fileName: string): Prom
 async function locate(entryId: number, fileName: string) {
   const folder = await db().transaction((tx) => folderOf(tx, entryId, false, false));
   // 썸네일 폴더 안은 스크린샷이 아니다 — 없는 것과 같게
-  if (folder === null || pointsIntoThumbs(fileName) || !localExists(folder, fileName)) {
+  if (folder === null || pointsIntoThumbs(fileName) || !localExists(folder, fileName) || !isServableName(fileName)) {
     throw new InvalidInput(`스크린샷이 없습니다: ${fileName}`);
   }
   return { folder, file: localResolve(folder, fileName) };
@@ -388,6 +405,7 @@ export async function deleteScreenshots(entryId: number, fileNames: (string | nu
     let deleted = 0;
     for (const name of fileNames) {
       if (pointsIntoThumbs(name!)) continue;   // 썸네일 폴더는 이름으로 못 지운다 (지운 개수에도 안 든다)
+      if (!isPlainFileName(name!)) continue;    // 하위 경로(`a/b.png`)로 파고들지 못한다
       if (localDelete(folder, name!)) deleted++;
       // 원본이 이미 없었어도 (탐색기로 지움) 썸네일은 치운다
       dropThumb(folder, name!);
@@ -436,7 +454,7 @@ async function entryFolders() {
   const out: { entry: Owned; folder: string }[] = [];
   for (const entry of owned) {
     try {
-      const slugName = entry.mediaFolder ?? mediaSlugGiven({ id: entry.gameId, name: entry.name }, ownerOf.get(slug(entry.name)));
+      const slugName = entry.mediaFolder ?? mediaSlugGiven({ id: entry.gameId, name: entry.name }, (f) => ownerOf.get(f));
       const folder = mediaFolder(slugName);
       if (isDirectory(folder)) out.push({ entry, folder });
     } catch {

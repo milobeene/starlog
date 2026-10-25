@@ -22,10 +22,10 @@ import {
 import { Conflict, InvalidInput } from "../../common/errors";
 import { nowKst } from "../../common/clock";
 import { bigDecimalText, compareDecimal, money, setScale, type Money } from "../../common/money";
-import { normalize, normalizeAll, require, sortKey, subjectParticle } from "../../common/text";
+import { isSlugShaped, normalize, normalizeAll, require, sortKey, subjectParticle } from "../../common/text";
 import { ldtToDb } from "../../common/json";
-import { coversDir, localExists } from "../../common/storage";
-import { findIgdbGame, searchGamesByName, type GameRow } from "../game/service";
+import { STORAGE_LIMITS, coversDir, isExternalCoverKey, isLocalCoverName, localExists } from "../../common/storage";
+import { findGameByMediaFolder, findIgdbGame, searchGamesByName, type GameRow } from "../game/service";
 import type { PlatformAccountRow, PlatformRow } from "../platform/service";
 import { ACQUISITION_METHODS, PLAYTHROUGH_STATUSES, deriveState } from "../backlog/shared";
 import { belongsTo } from "../backlog/refs";
@@ -127,6 +127,21 @@ async function findExisting(d: Db, item: DumpGame): Promise<GameRow | undefined>
 }
 
 /**
+ * 가져온 폴더 이름은 **그대로 믿지 않는다** — 파일 하나로 `..`·`a/b`·`con`이 폴더 이름이 되면 데이터 루트 밖을 가리킨다.
+ * `slug()`가 낼 수 있는 모양이고 다른 게임이 안 쓰는 이름만 되살리고, 아니면 null로 둔다
+ * (null이면 처음 쓸 때 서버가 이름으로 새로 정한다)
+ */
+async function trustedMediaFolder(d: Db, raw: string | null): Promise<string | null> {
+  const v = normalize(raw);
+  if (v === null) return null;
+  if (!isSlugShaped(v) || (await findGameByMediaFolder(d, v)) !== undefined) {
+    console.log("가져온 스크린샷 폴더 이름을 버린다 (모양이 틀리거나 이미 쓰는 이름)");
+    return null;
+  }
+  return v;
+}
+
+/**
  * 둘로 나눠 채운다 — IGDB 동기화는 일부러 정가를 안 건드리고(§6.2), 복원은 정가까지 되살려야 해서
  * INSERT 뒤에 정가를 한 번 더 덮는다. 결과는 "덤프의 값 전부"다
  */
@@ -134,12 +149,13 @@ async function createGame(d: Db, item: DumpGame): Promise<GameRow> {
   // IGDB 게임은 이름을 정규화하지 않는다 (IGDB 원문 그대로). 수동 등록만 정규화·필수 검사를 탄다
   const name = item.externalId !== null ? item.name : require(item.name, "게임 이름은 비울 수 없습니다");
   const now = nowKst();
+  const mediaFolder = await trustedMediaFolder(d, item.mediaFolder);
   const [row] = await d.insert(game).values({
     source: item.externalId !== null ? "IGDB" : "MANUAL",
     externalId: item.externalId,
     name: name as string,
     // 스크린샷 폴더 이름을 되살린다 — 번호가 붙었던 폴더는 이름에서 다시 못 만든다
-    mediaFolder: item.mediaFolder,
+    mediaFolder,
     releasedOn: item.releasedOn,
     coverImageId: item.coverImageId,
     bannerImageId: item.bannerImageId,
@@ -517,15 +533,31 @@ async function importPlayRecords(d: Db, entryId: number, records: (DumpPlayRecor
 async function attachCover(d: Db, entryId: number, cover: DumpCover, now: string) {
   // location은 6단계에 생겼다. 그 전에 뽑은 파일에는 없어서 EXTERNAL로 읽는다
   const location = cover.location === null ? "EXTERNAL" : valueOf(["LOCAL", "EXTERNAL"] as const, cover.location, "CoverLocation");
-  if (location === "LOCAL" && !localExists(coversDir(), cover.storageKey as string)) {
-    console.log(`로컬 커버 실물이 없어 건너뛴다. entry=${entryId} file=${cover.storageKey}`);
+  const key = cover.storageKey as string;
+  // 키 모양이 틀리면 건너뛴다 — 가져온 키는 나중에 스토리지 DELETE·HEAD, 로컬 삭제에 그대로 쓰인다.
+  // 파일 하나가 `covers/entry-1/../entry-5/x.png`로 남의 커버를 지우게 만들 수 있다. 가져오기 전체를 막진 않는다 (마스터 커버로 폴백)
+  const shapeOk = location === "LOCAL" ? isLocalCoverName(key) : isExternalCoverKey(key);
+  if (!shapeOk) {
+    console.log(`커버 키 모양이 틀려 건너뛴다. entry=${entryId}`);
+    return;
+  }
+  if (location === "LOCAL" && !localExists(coversDir(), key)) {
+    console.log(`로컬 커버 실물이 없어 건너뛴다. entry=${entryId} file=${key}`);
+    return;
+  }
+  // 타입은 파일이 말하는 값이 아니라 키의 확장자에서 정한다 (업로드 확정 때와 같다). 크기도 업로드 한도 안이어야 한다
+  const contentType = COVER_TYPES[key.slice(key.lastIndexOf(".") + 1)]!;
+  const sizeBytes = cover.sizeBytes;
+  if (!Number.isSafeInteger(sizeBytes) || sizeBytes < 0 || sizeBytes > STORAGE_LIMITS.maxUploadBytes) {
+    console.log(`커버 크기가 범위 밖이라 건너뛴다. entry=${entryId}`);
     return;
   }
   await d.insert(coverImage).values({
-    backlogEntryId: entryId, storageKey: cover.storageKey as string, contentType: cover.contentType as string,
-    sizeBytes: cover.sizeBytes, location, createdAt: now, updatedAt: now,
+    backlogEntryId: entryId, storageKey: key, contentType, sizeBytes, location, createdAt: now, updatedAt: now,
   });
 }
+
+const COVER_TYPES: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
 
 // ───────────── 덮어쓰기 ─────────────
 

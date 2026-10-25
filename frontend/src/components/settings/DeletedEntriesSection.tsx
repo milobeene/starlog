@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import Markdown from "@/components/ui/Markdown";
 import SettingsSection from "./SettingsSection";
 import Modal from "@/components/ui/Modal";
 import Pagination from "@/components/ui/Pagination";
@@ -240,7 +239,7 @@ function PreviewDialog({
           {detail.data.memo && (
             <div className="max-h-40 overflow-y-auto rounded-lg border border-white/10 bg-white/5 px-4 py-3">
               <div className="markdown text-xs leading-relaxed font-light text-white/70">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{detail.data.memo}</ReactMarkdown>
+                <Markdown>{detail.data.memo}</Markdown>
               </div>
             </div>
           )}

@@ -1,7 +1,6 @@
 "use client";
 
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import Markdown from "@/components/ui/Markdown";
 import { Collapsible } from "@/components/settings/SettingsSection";
 import SectionIcon from "@/components/ui/SectionIcon";
 import { Button } from "@/components/ui/Field";
@@ -46,7 +45,7 @@ export default function NotesSection({
             스타일을 요소별로 직접 주는 이유 — 리셋이 h/ul 기본값을 다 지웠다
           */}
           <div className="markdown text-sm leading-relaxed font-light text-white/80">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{memo}</ReactMarkdown>
+            <Markdown>{memo}</Markdown>
           </div>
         </div>
         </Collapsible>

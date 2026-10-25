@@ -12,7 +12,20 @@ import {
   restoreDraft,
   type SectionKey,
 } from "@/lib/connectionDraft";
-import { diagnosticOf, getBridge, type ConnectionProfile } from "@/lib/desktop";
+import { diagnosticOf, getBridge, type ConnectionProfile, type SecretFieldPath } from "@/lib/desktop";
+
+function getAt(profile: ConnectionProfile | undefined, path: SecretFieldPath): string {
+  const [group, key] = path.split(".");
+  const section = (profile as unknown as Record<string, Record<string, unknown> | undefined> | undefined)?.[group];
+  const value = section?.[key];
+  return typeof value === "string" ? value : "";
+}
+
+function setAt(profile: ConnectionProfile, path: SecretFieldPath, value: string): ConnectionProfile {
+  const [group, key] = path.split(".");
+  const record = profile as unknown as Record<string, Record<string, unknown> | undefined>;
+  return { ...profile, [group]: { ...(record[group] ?? {}), [key]: value } } as ConnectionProfile;
+}
 
 /**
  * 테스트를 시작한 자리.
@@ -121,6 +134,35 @@ export function useConnectionForm({
   }, [form]);
 
   const storageReady = STORAGE_FIELDS.every((k) => form.storage?.[k]?.trim());
+
+  /*
+   * ## 비밀 칸은 가린 채로 온다 (보안 점검 2026-10-25)
+   *
+   * 목록이 주는 값은 `••••abcd`다. **안 고쳤으면(처음 받은 가린 값 그대로면)** 일렉트론이 저장·테스트 때
+   * 진짜 값으로 바꿔 쓴다. 눈 버튼을 누르면 그 칸 하나만 받아와 폼에 채운다 — 그 뒤로는 예전과 같다
+   */
+  const storedName = initial?.name ?? "";
+  const isMasked = (path: SecretFieldPath) =>
+    Boolean(initial?.hasSecret?.[path]) && getAt(form, path) === getAt(initial, path);
+  const fetchSecret = async (path: SecretFieldPath) => {
+    const reveal = getBridge()?.connections.reveal;
+    if (!reveal || !storedName) return null;
+    return reveal(storedName, path);
+  };
+  /** 눈 버튼. 값만 진짜로 바꾼다 — 같은 값이라 테스트 통과 여부는 그대로 둔다 */
+  const revealSecret = async (path: SecretFieldPath) => {
+    if (!isMasked(path)) return;
+    const real = await fetchSecret(path);
+    if (real !== null) setForm((f) => setAt(f, path, real));
+  };
+  const secretProps = (path: SecretFieldPath) => ({
+    masked: isMasked(path),
+    onReveal: () => revealSecret(path),
+  });
+  /** 서버에 직접 넘길 값 (앱 안의 IGDB·번역 확인) — 가린 값이면 진짜 값을 받아 쓴다 */
+  const plainValue = async (path: SecretFieldPath) =>
+    isMasked(path) ? ((await fetchSecret(path)) ?? "") : getAt(form, path);
+  const previous = storedName ? { previousName: storedName } : {};
   const canTest = gaps.length === 0;
   const canSave = canTest && passed;
 
@@ -162,7 +204,7 @@ export function useConnectionForm({
        * IGDB·번역은 아래 각자 버튼이 맡는다 — 그 둘은 지금 백엔드에 값을 넘겨 바로
        * 시험할 수 있어서 시험용 백엔드를 띄울 필요가 없다
        */
-      const found = await getBridge()!.connections.test(form, { scope: "all" });
+      const found = await getBridge()!.connections.test(form, { scope: "all", ...previous });
       setPassed(found.ok);
       const origin = draftOrigin();
       updateTask("connection-test", {
@@ -178,7 +220,10 @@ export function useConnectionForm({
                 label: "저장",
                 primary: true,
                 run: async () => {
-                  await getBridge()!.connections.save(form);
+                  await getBridge()!.connections.save(form, previous);
+                  if (storedName && storedName !== form.name) {
+                    await getBridge()!.connections.remove(storedName);
+                  }
                   clearDraft();
                   closeTask("connection-test");
                   onSaved(form);
@@ -223,7 +268,11 @@ export function useConnectionForm({
       setShowGaps(true);
       return;
     }
-    await getBridge()!.connections.save(form);
+    await getBridge()!.connections.save(form, previous);
+    /* 이름이 곧 키라 이름을 고쳤으면 옛 항목이 남는다. 새 것을 먼저 저장해야 가린 값을 옛 쪽에서 풀 수 있다 */
+    if (storedName && storedName !== form.name) {
+      await getBridge()!.connections.remove(storedName);
+    }
     clearDraft();
     closeTask("connection-test");
     onSaved(form);
@@ -319,7 +368,7 @@ export function useConnectionForm({
   ): Promise<{ ok: boolean; message: string }> => {
     try {
       if (key === "db" || key === "storage") {
-        const found = await getBridge()!.connections.test(form, { scope: key });
+        const found = await getBridge()!.connections.test(form, { scope: key, ...previous });
         if (key === "db") {
           return {
             ok: Boolean(found.database?.ok),
@@ -336,8 +385,8 @@ export function useConnectionForm({
         ? "/api/system/settings/igdb/test"
         : "/api/system/settings/translate/test";
       const body = key === "igdb"
-        ? { clientId: form.igdb?.clientId ?? "", clientSecret: form.igdb?.clientSecret ?? "" }
-        : { apiKey: form.translate?.apiKey ?? "" };
+        ? { clientId: form.igdb?.clientId ?? "", clientSecret: await plainValue("igdb.clientSecret") }
+        : { apiKey: await plainValue("translate.apiKey") };
       const found = await api.post<{ ok: boolean; message: string }>(path, body);
       return { ok: found.ok, message: found.message };
     } catch (caught) {
@@ -384,12 +433,14 @@ export function useConnectionForm({
       /* 무엇을 올릴지(체크박스)는 스토리지 칸과 한 몸이다 — 따로 저장하면 짝이 안 맞는다 */
       if (key === "storage") next.mediaTargets = form.mediaTargets;
 
-      /* 이름을 바꿨으면 옛 항목이 남는다 — 이름이 곧 키라서 지워줘야 둘이 안 생긴다 */
+      /*
+       * 이름을 바꿨으면 옛 항목이 남는다 — 이름이 곧 키라서 지워줘야 둘이 안 생긴다.
+       * ⚠️ **저장이 먼저다.** 가린 값은 옛 항목에서 풀리므로, 먼저 지우면 비밀번호가 가린 모양 그대로 저장된다
+       */
+      await getBridge()!.connections.save(next, { previousName: stored?.name ?? storedName });
       if (stored && stored.name !== form.name) {
         await getBridge()!.connections.remove(stored.name);
       }
-
-      await getBridge()!.connections.save(next);
       releaseSection(key);
       if (taskId) closeTask(taskId);
       setPartResult((r) => ({ ...r, [key]: { ok: true, message: "저장했습니다" } }));
@@ -424,5 +475,6 @@ export function useConnectionForm({
     save,
     testSection,
     saveSection,
+    secretProps,
   };
 }

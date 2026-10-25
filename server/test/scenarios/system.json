@@ -131,6 +131,72 @@
    "path": "/api/system/settings"
   },
   {
+   "name": "설정 원문 — 눈 버튼 (가리지 않은 값)",
+   "method": "POST",
+   "path": "/api/system/settings/reveal"
+  },
+  {
+   "name": "IGDB 키 저장 — 가린 값을 그대로 돌려보냄 (원문 유지)",
+   "method": "PUT",
+   "path": "/api/system/settings/igdb",
+   "body": {
+    "clientId": "abc",
+    "clientSecret": "••••"
+   }
+  },
+  {
+   "name": "설정 원문 — 가린 값으로 덮이지 않았다",
+   "method": "POST",
+   "path": "/api/system/settings/reveal"
+  },
+  {
+   "name": "IGDB 키 저장 — 긴 시크릿",
+   "method": "PUT",
+   "path": "/api/system/settings/igdb",
+   "body": {
+    "clientId": "abc",
+    "clientSecret": "secret-long-123456"
+   }
+  },
+  {
+   "name": "설정 — 긴 시크릿은 끝 4자리만",
+   "method": "GET",
+   "path": "/api/system/settings"
+  },
+  {
+   "name": "IGDB 연결 테스트 — 가린 값이면 저장된 원문으로 시험",
+   "method": "POST",
+   "path": "/api/system/settings/igdb/test",
+   "body": {
+    "clientId": "abc",
+    "clientSecret": "••••3456"
+   },
+   "note": "가짜 키라 Twitch가 거절한다 — 응답 모양만 본다"
+  },
+  {
+   "name": "IGDB 키 저장 — 가린 끝 4자리 그대로 (원문 유지)",
+   "method": "PUT",
+   "path": "/api/system/settings/igdb",
+   "body": {
+    "clientId": "abc",
+    "clientSecret": "••••3456"
+   }
+  },
+  {
+   "name": "설정 원문 — 긴 시크릿 그대로",
+   "method": "POST",
+   "path": "/api/system/settings/reveal"
+  },
+  {
+   "name": "IGDB 키 저장 — 원래 값으로 되돌림",
+   "method": "PUT",
+   "path": "/api/system/settings/igdb",
+   "body": {
+    "clientId": " abc ",
+    "clientSecret": " def "
+   }
+  },
+  {
    "name": "IGDB 키 저장 — 시크릿 없음 (400, 아무것도 저장 안 함 — 고친 버그 7)",
    "method": "PUT",
    "path": "/api/system/settings/igdb",
@@ -272,6 +338,84 @@
   },
   {
    "name": "현황 — 끝",
+   "method": "GET",
+   "path": "/api/system"
+  },
+  {
+   "name": "토큰 — 없음 (401)",
+   "method": "GET",
+   "path": "/api/system",
+   "auth": "none"
+  },
+  {
+   "name": "토큰 — 틀림 (401)",
+   "method": "GET",
+   "path": "/api/system",
+   "auth": "wrong"
+  },
+  {
+   "name": "토큰 — 쿼리 t= (GET은 받는다, 미디어용)",
+   "method": "GET",
+   "path": "/api/system",
+   "auth": "query"
+  },
+  {
+   "name": "토큰 — 쿼리 t=는 POST에 안 먹는다 (401)",
+   "method": "POST",
+   "path": "/api/system/settings/reveal",
+   "auth": "query"
+  },
+  {
+   "name": "토큰 — 없으면 원문도 없다 (401)",
+   "method": "POST",
+   "path": "/api/system/settings/reveal",
+   "auth": "none"
+  },
+  {
+   "name": "출처 — 남의 출처 (403)",
+   "method": "GET",
+   "path": "/api/system",
+   "headers": {
+    "Origin": "http://evil.example"
+   }
+  },
+  {
+   "name": "출처 — 남의 출처 사전 요청 (403)",
+   "method": "PATCH",
+   "path": "/api/system",
+   "headers": {
+    "Origin": "http://127.0.0.1:1"
+   }
+  },
+  {
+   "name": "본문 — text/plain PUT (415, 단순 요청 CSRF)",
+   "method": "PUT",
+   "path": "/api/system/settings/translate/daily-limit",
+   "rawBody": "{\"dailyChars\":\"1\"}",
+   "headers": {
+    "Content-Type": "text/plain"
+   }
+  },
+  {
+   "name": "본문 — 폼 POST (415)",
+   "method": "POST",
+   "path": "/api/system/settings/igdb/test",
+   "rawBody": "clientId=a&clientSecret=b",
+   "headers": {
+    "Content-Type": "application/x-www-form-urlencoded"
+   }
+  },
+  {
+   "name": "본문 — 형식 없는 본문 (415)",
+   "method": "PUT",
+   "path": "/api/system/settings/translate/daily-limit",
+   "rawBody": "{\"dailyChars\":\"1\"}",
+   "headers": {
+    "Content-Type": ""
+   }
+  },
+  {
+   "name": "현황 — 거절된 쓰기는 아무것도 안 바꿨다",
    "method": "GET",
    "path": "/api/system"
   }

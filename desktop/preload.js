@@ -13,12 +13,38 @@
  * 기준은 "재시작이 필요한가"다 — DB·스토리지는 부팅 때 조립되므로 이쪽,
  * IGDB 키는 런타임에 바꿔도 되므로 앱 안(스프링 API).
  *
- * ⚠️ **DB 비번을 그대로 주고받는다.** 혼자 쓰는 앱이라 숨기는 값이 아니라
- * **오타를 확인해야 하는 값**이다 (결정 63). 화면에서 눈 버튼으로 보여준다.
+ * ⚠️ **자격증명은 가린 채로 온다** (보안 점검 2026-10-25). 오타를 확인해야 하는 값이라(결정 63)
+ * 눈 버튼은 그대로 있다 — 누를 때 `connections.reveal`로 그 칸 하나만 받아온다.
+ *
+ * ## 우리 문서에만 다리를 놓는다
+ *
+ * 메인이 창의 이동을 막지만 두 번째 울타리로, 지금 문서가 `app://starlog`나 `http://127.0.0.1:<지금 서버>`가
+ * 아니면 `window.starlog`를 아예 만들지 않는다. 메인도 IPC마다 발신자를 다시 본다
  */
 const { contextBridge, ipcRenderer } = require("electron");
 
-contextBridge.exposeInMainWorld("starlog", {
+/*
+ * 파일을 창 아무 데나 떨어뜨리면 크로미움이 그 파일로 **문서를 이동**한다. 끌어놓기 칸(`DropZone`)이
+ * 처리하지 않은 것만 막는다 — 버블 단계라 칸이 먼저 받는다
+ */
+window.addEventListener("dragover", (event) => {
+  if (event.defaultPrevented) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "none";
+});
+window.addEventListener("drop", (event) => {
+  if (!event.defaultPrevented) event.preventDefault();
+});
+
+function trustedOrigin() {
+  const origin = location.origin;
+  if (origin === "app://starlog") return true;
+  const m = /^http:\/\/127\.0\.0\.1:(\d+)$/.exec(origin);
+  // 포트까지 맞아야 한다 — 127.0.0.1의 다른 포트는 남의 프로그램일 수 있다
+  return Boolean(m) && Number(m[1]) === ipcRenderer.sendSync("session:port");
+}
+
+if (trustedOrigin()) contextBridge.exposeInMainWorld("starlog", {
   settings: {
     get: () => ipcRenderer.invoke("settings:get"),
     setDataRoot: (dir) => ipcRenderer.invoke("settings:setDataRoot", dir),
@@ -78,6 +104,11 @@ contextBridge.exposeInMainWorld("starlog", {
     current: () => ipcRenderer.invoke("session:current"),
     /** 살아 있는 백엔드로 되돌아간다. `{ port }`를 주면 화면이 알아서 들어간다 */
     resume: () => ipcRenderer.invoke("session:resume"),
+    /**
+     * 지금 서버의 API 토큰 (**동기**). 서버를 띄울 때마다 바뀐다 — `backendPort()`와 같이 갈아끼운다.
+     * `lib/api.ts`가 `X-Starlog-Token`에 싣는다
+     */
+    token: () => ipcRenderer.sendSync("session:token"),
   },
 
   /**
@@ -102,10 +133,13 @@ contextBridge.exposeInMainWorld("starlog", {
 
   connections: {
     list: () => ipcRenderer.invoke("connections:list"),
-    save: (profile) => ipcRenderer.invoke("connections:save", profile),
+    /** 가린 값(`••••abcd`)을 그대로 두면 저장된 진짜 값이 유지된다. 이름을 고쳤으면 `{ previousName }` */
+    save: (profile, options) => ipcRenderer.invoke("connections:save", profile, options),
     remove: (name) => ipcRenderer.invoke("connections:remove", name),
+    /** 눈 버튼 — 칸 하나(`"db.password"` 등)의 진짜 값 */
+    reveal: (name, field) => ipcRenderer.invoke("connections:reveal", name, field),
     /**
-     * @param options `{ scope: "all" | "database" }`. 입구는 전부, 앱 안은 DB·스토리지만 —
+     * @param options `{ scope, previousName }`. 입구는 전부, 앱 안은 DB·스토리지만 —
      *                IGDB·번역은 앱 안에서 각자 버튼으로 따로 시험한다
      */
     test: (profile, options) => ipcRenderer.invoke("connections:test", profile, options),

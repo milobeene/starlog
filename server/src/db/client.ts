@@ -110,7 +110,9 @@ export async function openDb(target: DbTarget): Promise<OpenDb> {
  * 따로 준 `user`·`password`를 **덮어쓴다.** Neon 주소엔 비밀번호가 없어서(연결 설정에 따로 저장)
  * 비밀번호가 통째로 빠지고 `SASL: client password must be a string`으로 죽었다 (2026-10-24 실기에서).
  *
- * SSL: 주소의 `sslmode`가 disable이 아니면 인증서까지 검증한다 (Neon은 정식 인증서다)
+ * SSL: **기본이 TLS + 인증서 검증**이다 (Neon은 정식 인증서다). 평문은 `sslmode=disable`을 적었을 때만.
+ * 예전엔 `sslmode`가 없으면 평문이었다 — 주소에서 한 조각 빠뜨린 것만으로 비밀번호가 평문으로 나갔다 (보안 점검 2026-10-25).
+ * `require`·`prefer`·`allow`도 검증한다 — libpq의 "암호화만, 검증은 안 함"을 따라 할 이유가 없다
  */
 export function connectionFields(url: string) {
   const u = new URL(url.replace(/^postgres(ql)?:/, "http:"));
@@ -119,7 +121,7 @@ export function connectionFields(url: string) {
     host: decodeURIComponent(u.hostname),
     port: u.port ? Number(u.port) : 5432,
     database: decodeURIComponent(u.pathname.replace(/^\//, "")) || undefined,
-    ssl: sslmode === null || sslmode === "disable" ? undefined : { rejectUnauthorized: true },
+    ssl: sslmode === "disable" ? undefined : { rejectUnauthorized: true },
   };
 }
 

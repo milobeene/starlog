@@ -33,7 +33,7 @@ const WEB_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
  */
 let cached: string | null = null;
 
-type Bridge = { backendPort?: () => number | null };
+type Bridge = { backendPort?: () => number | null; session?: { token?: () => string | null } };
 
 function bridge(): Bridge | undefined {
   if (typeof window === "undefined") return undefined;
@@ -49,6 +49,23 @@ function bridge(): Bridge | undefined {
  */
 export function setBackendPort(port: number | null | undefined) {
   cached = port ? `http://127.0.0.1:${port}` : null;
+  // 토큰은 서버를 띄울 때마다 새로 만든다 — 포트가 바뀌면 토큰도 바뀐 것이다
+  cachedToken = null;
+}
+
+/**
+ * API 토큰 (보안 점검 2026-10-25). 일렉트론이 서버를 띄울 때마다 새로 만들고 다리로 알려준다.
+ * 다리가 없으면(개발 서버) 없다 — dev 서버는 토큰 없이 돈다.
+ * 포트처럼 들고 있는다 (동기 IPC 왕복을 이미지마다 하지 않으려고). 단 **없음은 들고 있지 않는다** —
+ * 입구 화면에서 서버가 뜨기 전에 한 번 물어 null이 굳으면 그 뒤로 전부 401이다
+ */
+let cachedToken: string | null = null;
+
+export function apiToken(): string | null {
+  if (cachedToken !== null) return cachedToken;
+  const found = bridge()?.session?.token?.();
+  if (typeof found === "string" && found) cachedToken = found;
+  return cachedToken;
 }
 
 function origin(): string {
@@ -65,17 +82,28 @@ function origin(): string {
 }
 
 /**
- * 백엔드가 내려준 경로를 실제로 열 수 있는 주소로 바꾼다.
+ * API 호출 주소 — `lib/api.ts`만 쓴다. 토큰은 머리글로 싣으므로 주소엔 안 붙인다
+ */
+export function apiUrl(path: string): string {
+  return isAbsolute(path) ? path : origin() + path;
+}
+
+const isAbsolute = (path: string) => /^[a-z][a-z0-9+.-]*:/i.test(path) || path.startsWith("//");
+
+/**
+ * 백엔드가 내려준 경로를 실제로 열 수 있는 주소로 바꾼다 — **`<img>`·`<video>`의 src는 전부 여기를 지난다.**
  *
  * ⚠️ **이미 절대 주소인 것은 그대로 둔다.** 커버는 두 갈래로 온다 —
  * 로컬 저장이면 `/api/backlog/…`(상대), 스토리지면 버킷의 공개 URL(절대)이다.
- * 앞에 무턱대고 붙이면 스토리지 커버가 통째로 깨진다
+ * 앞에 무턱대고 붙이면 스토리지 커버가 통째로 깨진다. 토큰도 **우리 API에만** 붙인다 — 버킷에 흘리면 안 된다
+ *
+ * 우리 API면 `t=<토큰>`을 붙인다. 태그는 머리글을 못 싣고, 서버는 GET에서만 이걸 받는다
  */
 export function backendUrl(path: string): string {
-  if (/^[a-z][a-z0-9+.-]*:/i.test(path) || path.startsWith("//")) {
-    return path;
-  }
-  return origin() + path;
+  if (isAbsolute(path)) return path;
+  const token = path.startsWith("/api/") ? apiToken() : null;
+  const withToken = token ? `${path}${path.includes("?") ? "&" : "?"}t=${encodeURIComponent(token)}` : path;
+  return origin() + withToken;
 }
 
 /**

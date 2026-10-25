@@ -239,9 +239,10 @@ export async function toKorean(apiKey: string, texts: string[]): Promise<string[
   body.append("format", "text");
   let found: { data?: { translations?: { translatedText?: string | null }[] | null } | null } | null;
   try {
-    const res = await fetch(`${TRANSLATE_URL}?key=${encodeURIComponent(apiKey)}`, {
+    // 키는 주소가 아니라 머리글로 — 주소는 오류 객체·프록시 로그에 남는다 (구글 API 공통 `X-Goog-Api-Key`)
+    const res = await fetch(TRANSLATE_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8", Accept: "application/json" },
+      headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8", Accept: "application/json", "X-Goog-Api-Key": apiKey },
       body,
     });
     if (res.status >= 400 && res.status < 500) throw new Http4xx(res.status);

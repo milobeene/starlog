@@ -73,14 +73,27 @@ export async function findGameByMediaFolder(d: Db, folder: string): Promise<Game
  */
 export async function uniqueMediaSlug(d: Db, g: Pick<GameRow, "id" | "name">): Promise<string> {
   const base = slug(g.name);
-  return mediaSlugGiven(g, (await findGameByMediaFolder(d, base))?.id);
+  // 번호 붙은 이름도 남이 쓰고 있을 수 있다 (게임 이름이 `foo-12`인 경우) — 비어 있을 때까지 올려 본다
+  for (let n = 0; ; n++) {
+    const candidate = mediaSlugCandidate(base, g.id, n);
+    const owner = (await findGameByMediaFolder(d, candidate))?.id;
+    if (owner === undefined || owner === g.id) return candidate;
+  }
 }
 
-/** 같은 규칙, 조회 없이 — 여러 게임을 한 번에 볼 때 (`folder` 칸 주인을 미리 모아 둔 쪽) */
-export function mediaSlugGiven(g: Pick<GameRow, "id" | "name">, baseOwnerId: number | undefined): string {
+/** 같은 규칙, 조회 없이 — 여러 게임을 한 번에 볼 때 (`ownerOf`는 폴더 이름 → 칸 주인을 미리 모아 둔 쪽) */
+export function mediaSlugGiven(g: Pick<GameRow, "id" | "name">, ownerOf: (folder: string) => number | undefined): string {
   const base = slug(g.name);
-  return baseOwnerId !== undefined && baseOwnerId !== g.id ? `${base}-${g.id}` : base;
+  for (let n = 0; ; n++) {
+    const candidate = mediaSlugCandidate(base, g.id, n);
+    const owner = ownerOf(candidate);
+    if (owner === undefined || owner === g.id) return candidate;
+  }
 }
+
+/** 0 = 깨끗한 이름, 1 = `이름-번호`(처음 정한 규칙 그대로), 2부터는 그것마저 겹칠 때 */
+const mediaSlugCandidate = (base: string, id: number, n: number) =>
+  n === 0 ? base : n === 1 ? `${base}-${id}` : `${base}-${id}-${n}`;
 
 /**
  * 폴더를 정한다. **한 번 정하면 안 바꾼다** — 이미 있으면 그 값을 돌려준다.

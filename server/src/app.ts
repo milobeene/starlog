@@ -6,10 +6,10 @@
  * **고정 경로를 먼저 등록한다.** 스프링은 더 구체적인 쪽을 고르지만 Hono는 등록 순서다.
  */
 import { Hono, type Context } from "hono";
-import { bodyLimit } from "hono/body-limit";
 import { HTTPException } from "hono/http-exception";
 import { AppError, ConstraintViolation, FileTooLarge, isIntegrityViolation } from "./common/errors";
 import { desktopCors } from "./http/cors";
+import { contentTypeGuard, crossSiteGuard, hostGuard, securityHeaders, sizeGuard, tokenGuard } from "./http/guard";
 import { serveStatic } from "./http/static";
 import { routes as tag } from "./domains/tag/routes";
 import { routes as subscription } from "./domains/subscription/routes";
@@ -19,9 +19,6 @@ import { routes as stats } from "./domains/stats/routes";
 import { routes as system } from "./domains/system/routes";
 import { routes as backlog } from "./domains/backlog/routes";
 import { routes as member } from "./domains/member/routes";
-
-/** 요청 본문 상한 (260MB) — 스크린샷·영상 업로드. 기존 `max-request-size`와 같은 값 */
-const MAX_REQUEST_BYTES = 260 * 1024 * 1024;
 
 /** 스프링 기본 오류 본문(timestamp·status·error·path) — 우리 핸들러가 못 잡은 예외(진짜 버그)일 때 */
 function springError(c: Context, status: 404 | 500, error: string) {
@@ -48,9 +45,17 @@ export function createApp(opts: { staticDir: string | null }) {
     return springError(c, 500, "Internal Server Error");
   });
 
-  // CORS가 맨 앞 — 남의 출처면 본문을 보지 않고 거절한다
+  /*
+   * 문지기 (`http/guard.ts`) — Host가 맨 앞(정적 화면까지), 그다음 CORS, 그다음 토큰.
+   * 남이면 본문을 보지 않고 거절한다. 본문 크기는 자리마다 다르다 (업로드 260MB · 기록 통째 50MB · 나머지 5MB)
+   */
+  app.use("*", securityHeaders);
+  app.use("*", hostGuard);
   app.use("/api/*", desktopCors);
-  app.use("/api/*", bodyLimit({ maxSize: MAX_REQUEST_BYTES, onError: () => { throw new FileTooLarge(); } }));
+  app.use("/api/*", tokenGuard);
+  app.use("/api/*", crossSiteGuard);
+  app.use("/api/*", contentTypeGuard);
+  app.use("/api/*", sizeGuard);
 
   for (const r of [tag, subscription, platform, game, stats, system, backlog, member]) app.route("/", r);
 

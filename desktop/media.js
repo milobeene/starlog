@@ -109,9 +109,18 @@ async function makeThumbnail(request, mediaRoot) {
   const target = path.join(path.dirname(source), THUMB_DIR, `${path.basename(source)}.jpg`);
   const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
   const st = fs.statSync(source);
-  fs.mkdirSync(path.dirname(target), { recursive: true });
+  /*
+   * ⚠️ `.thumbs`가 **진짜 폴더**인지 lstat으로 본다 (보안 점검 2026-10-25). 누가 거기에 밖을 가리키는
+   * 심볼릭 링크를 심어 두면 mkdir·쓰기가 링크를 따라가 데이터 루트 밖에 파일을 만든다
+   */
+  const thumbs = path.dirname(target);
+  let info = null;
+  try { info = fs.lstatSync(thumbs); } catch (e) { if (e.code !== "ENOENT") throw e; }
+  if (info && !info.isDirectory()) return false;
+  if (!info) fs.mkdirSync(thumbs);
   try {
-    fs.writeFileSync(tmp, small.toJPEG(JPEG_QUALITY));
+    // wx — 같은 이름으로 심어 둔 링크가 있으면 따라가지 않고 실패한다
+    fs.writeFileSync(tmp, small.toJPEG(JPEG_QUALITY), { flag: "wx" });
     fs.utimesSync(tmp, st.atime, st.mtime);   // 신선도 표시 — 서버가 원본 시각과 맞춰 본다
     fs.renameSync(tmp, target);
   } catch (e) {

@@ -66,8 +66,12 @@ describe("12 — externalId는 IGDB가 쓰는 모양으로 찾는다", () => {
 describe("13 — IGDB 토큰은 자격증명별", () => {
   it("키를 바꾸면 옛 토큰을 버리고 새로 받는다", async () => {
     const issuedFor: string[] = [];
-    vi.stubGlobal("fetch", async (url: string) => {
-      const id = new URL(url).searchParams.get("client_id")!;
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+      // 시크릿은 쿼리가 아니라 폼 본문으로 나간다 (URL이 에러·로그에 남아도 안 샌다)
+      expect(url).toBe("https://id.twitch.tv/oauth2/token");
+      const form = new URLSearchParams(init.body as string);
+      expect(form.get("client_secret")).toBe(creds.clientSecret);
+      const id = form.get("client_id")!;
       issuedFor.push(id);
       return new Response(JSON.stringify({ access_token: `tok-${id}`, expires_in: 5_000_000 }), { status: 200 });
     });
@@ -107,15 +111,15 @@ describe("9 — 스토리지 연결 실패도 502", () => {
   const s3 = () => new __test.S3Storage({ endpoint: "http://127.0.0.1:9", bucket: "b", accessKey: "a", secretKey: "s", publicBaseUrl: null });
   it("head", async () => {
     vi.stubGlobal("fetch", async () => { throw new TypeError("fetch failed"); });
-    await expect(s3().head("k")).rejects.toBeInstanceOf(ExternalApi);
+    await expect(s3().head("covers/entry-1/0f8e9a1c-3b4d-4e5f-8a6b-7c8d9e0f1a2b.png")).rejects.toBeInstanceOf(ExternalApi);
   });
   it("readHead", async () => {
     vi.stubGlobal("fetch", async () => { throw new TypeError("fetch failed"); });
-    await expect(s3().readHead("k", 12)).rejects.toBeInstanceOf(ExternalApi);
+    await expect(s3().readHead("covers/entry-1/0f8e9a1c-3b4d-4e5f-8a6b-7c8d9e0f1a2b.png", 12)).rejects.toBeInstanceOf(ExternalApi);
   });
   it("HEAD 404는 여전히 '없음'", async () => {
     vi.stubGlobal("fetch", async () => new Response(null, { status: 404 }));
-    expect(await s3().head("k")).toBeNull();
+    expect(await s3().head("covers/entry-1/0f8e9a1c-3b4d-4e5f-8a6b-7c8d9e0f1a2b.png")).toBeNull();
   });
 });
 

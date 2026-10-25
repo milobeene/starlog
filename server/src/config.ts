@@ -20,10 +20,11 @@ export interface Config {
   /** dev·test 프로필 — 일렉트론 없이 시험하는 장치(썸네일 복사 등)를 연다 */
   devProfile: boolean;
   /**
-   * 데스크탑 CORS를 거는가 — dev·test가 아니면 건다.
-   * 개발 중엔 프론트 개발 서버가 프록시로 붙어서 출처가 `localhost:3000`이다 — 걸면 막힌다
+   * API 토큰 — 일렉트론이 서버를 띄울 때마다 새로 만들어 넣는다. 있으면 `/api/*`가 전부 이걸 요구한다.
+   * 로컬 포트는 같은 맥의 아무 프로세스·브라우저 탭이나 두드릴 수 있어서, "누가 부르는가"를 가를 게 이것뿐이다.
+   * dev·test 프로필(골든·`npm run dev`)만 없이 돈다 — 운영 프로필은 없으면 기동을 거절한다 (`main.ts`)
    */
-  desktopCors: boolean;
+  apiToken: string | null;
   /** 부팅 기본값. 앱 안(`app_setting`)에서 넣은 값이 있으면 그게 이긴다 */
   igdb: { clientId: string | null; clientSecret: string | null };
   storage: {
@@ -54,7 +55,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     dataRoot: blank(env.STARLOG_DATA_ROOT),
     staticDir: blank(env.STARLOG_STATIC_DIR),
     devProfile: ["dev", "test"].includes(env.STARLOG_PROFILE ?? ""),
-    desktopCors: !["dev", "test"].includes(env.STARLOG_PROFILE ?? ""),
+    apiToken: blank(env.STARLOG_API_TOKEN),
     igdb: { clientId: blank(env.APP_IGDB_CLIENT_ID), clientSecret: blank(env.APP_IGDB_CLIENT_SECRET) },
     storage: {
       endpoint: blank(env.APP_STORAGE_ENDPOINT),
@@ -69,6 +70,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     },
     translateApiKey: blank(env.TRANSLATE_API_KEY),
   };
+}
+
+/**
+ * 운영 프로필은 토큰 없이 안 뜬다 — 없으면 같은 맥의 아무 프로세스·탭이 API를 그대로 부른다.
+ * 거꾸로 토큰이 있는데 dev·test면 거절한다: 일렉트론은 늘 토큰을 넣으므로 그 조합은
+ * 누가 환경변수로 시험 장치(썸네일 복사·개발 출처 CORS)를 앱에 끼워 넣으려는 것이다
+ */
+export function unsafeStartup(c: Config): "API_TOKEN_MISSING" | "DEV_PROFILE_WITH_TOKEN" | null {
+  if (c.devProfile && c.apiToken !== null) return "DEV_PROFILE_WITH_TOKEN";
+  if (!c.devProfile && c.apiToken === null) return "API_TOKEN_MISSING";
+  return null;
 }
 
 let current: Config | null = null;

@@ -110,7 +110,7 @@ export default function ScreenshotSection({ entryId, gameName }: { entryId: numb
   };
 
   const openFolder = async () => {
-    const { path } = await api.get<{ path: string }>(
+    const { path } = await api.post<{ path: string }>(
       `/api/backlog/${entryId}/screenshots/folder`,
     );
     getBridge()?.openPath(path);

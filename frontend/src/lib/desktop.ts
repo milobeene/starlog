@@ -49,8 +49,23 @@ export interface MediaTargets {
   screenshots: boolean;
 }
 
+/** 비밀 칸. `connections.list()`는 이 칸들을 가려서(`••••abcd`) 준다 */
+export type SecretFieldPath =
+  | "db.password"
+  | "storage.accessKey"
+  | "storage.secretKey"
+  | "igdb.clientSecret"
+  | "translate.apiKey";
+
 export interface ConnectionProfile {
   name: string;
+  /**
+   * 저장된 진짜 값이 있는 비밀 칸 (목록에서 온 것만). 그 칸의 값은 **가린 모양**이다 —
+   * 그대로 저장·테스트하면 일렉트론이 진짜 값으로 바꿔 쓰고, 눈 버튼은 `connections.reveal`로 받아온다
+   */
+  hasSecret?: Partial<Record<SecretFieldPath, boolean>>;
+  /** 키체인에서 못 푼 연결. 비밀 칸을 다시 입력해야 한다 */
+  locked?: boolean;
   db: DbConfig;
   storage?: StorageConfig;
   igdb?: { clientId?: string; clientSecret?: string };
@@ -187,9 +202,13 @@ export interface StarlogBridge {
     remove(name: string): Promise<boolean>;
   };
   connections: {
+    /** 비밀 칸은 가려서 온다 (`hasSecret`) */
     list(): Promise<ConnectionProfile[]>;
-    save(profile: ConnectionProfile): Promise<ConnectionProfile[]>;
+    /** 가린 값을 안 고쳤으면 저장된 진짜 값이 남는다. 이름을 고쳤으면 `previousName`에 옛 이름 */
+    save(profile: ConnectionProfile, options?: { previousName?: string }): Promise<ConnectionProfile[]>;
     remove(name: string): Promise<ConnectionProfile[]>;
+    /** 눈 버튼 — 저장된 연결 `name`의 칸 하나. 옛 preload에는 없다 */
+    reveal?(name: string, field: SecretFieldPath): Promise<string>;
     /**
      * 연결 테스트. **부분별로 답한다** — "연결 실패" 한 줄이면 DB가 문제인지
      * 키가 문제인지 알 수가 없다. 안 채운 항목은 `null`(=시험하지 않음)
@@ -201,7 +220,7 @@ export interface StarlogBridge {
        * ⚠️ `"storage"`는 **메모리 DB로** 시험용을 띄운다 — 사용자의 DB가 틀려도
        * 스토리지만 따로 볼 수 있어야 섹션별 테스트가 뜻을 갖는다
        */
-      options?: { scope?: "all" | "db" | "storage" },
+      options?: { scope?: "all" | "db" | "storage"; previousName?: string },
     ): Promise<ConnectionTestResult>;
   };
   backups: {
@@ -219,6 +238,11 @@ export interface StarlogBridge {
      * **창을 옮기지 않는다** — 포트만 준다. 옮기는 건 화면 라우터의 일이다
      */
     resume(): Promise<{ port: number } | null>;
+    /**
+     * 지금 서버의 API 토큰 (**동기**). 서버를 띄울 때마다 바뀐다. 옛 preload에는 없다.
+     * `lib/api.ts`가 `X-Starlog-Token`에, 미디어 주소에는 `t=`로 싣는다
+     */
+    token?(): string | null;
   };
   /** 클라우드 → 로컬 세이브파일. ⚠️ 커버 실물은 안 따라온다 */
   cloudToSaveFile(saveName: string): Promise<{ saveName: string }>;
@@ -314,6 +338,21 @@ export const DIAGNOSTIC_MESSAGE: Record<string, { title: string; hint: string }>
   DB_CORRUPTED: {
     title: "세이브파일이 손상됐습니다",
     hint: "파일 일부가 잘렸습니다. 백업에서 되돌리면 그 시점의 기록을 그대로 살릴 수 있습니다.",
+  },
+  /* 키체인 항목이 사라졌거나 다른 컴퓨터에서 옮겨 온 connections.json — 지우지 않고 다시 입력을 받는다 */
+  CREDENTIALS_LOCKED: {
+    title: "저장된 비밀번호를 열지 못했습니다",
+    hint: "이 연결의 비밀번호와 키를 다시 입력해 저장해 주세요. 다른 값은 그대로 남아 있습니다.",
+  },
+  /* 일렉트론이 서버에 실행 토큰을 안 넘겼다 — 정상 설치라면 생길 수 없다 */
+  API_TOKEN_MISSING: {
+    title: "앱 서버를 안전하게 띄우지 못했습니다",
+    hint: "앱을 완전히 종료한 뒤 다시 열어 주세요. 반복되면 앱을 다시 설치해 주세요.",
+  },
+  /* 환경변수로 개발 모드가 켜진 채 앱을 띄웠다 — 개발 모드는 인증을 끄므로 거절한다 */
+  DEV_PROFILE_WITH_TOKEN: {
+    title: "개발용 설정이 켜져 있어 열 수 없습니다",
+    hint: "STARLOG_PROFILE 환경변수를 지운 뒤 앱을 다시 열어 주세요.",
   },
   BACKEND_DIED: {
     title: "앱 서버가 예기치 않게 종료됐습니다",

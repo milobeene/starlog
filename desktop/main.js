@@ -16,7 +16,9 @@
  * **서버는 매번 "이미 정해진 DB"만 본다 → 서버 코드는 모드를 모른다.**
  * → docs/v1.0-architecture.md §2
  */
-const { app, BrowserWindow, Menu, dialog, ipcMain, protocol, shell, utilityProcess } = require("electron");
+const { app, BrowserWindow, Menu, dialog, ipcMain, protocol, session: electronSession, shell, utilityProcess } = require("electron");
+const crypto = require("crypto");
+const os = require("os");
 const path = require("path");
 const fs = require("fs");
 const net = require("net");
@@ -148,10 +150,22 @@ function freePort() {
   });
 }
 
+/**
+ * 서버마다 새로 뽑는 API 토큰 — `포트 → 토큰`. 서버는 이게 없는 `/api` 요청을 거절한다 (보안 점검 2026-10-25).
+ * 같은 컴퓨터의 다른 프로그램(브라우저 탭 포함)이 127.0.0.1 포트를 찔러 내 기록을 읽지 못하게 하는 장치다.
+ * 메인이 직접 부르는 요청(경로 묻기·내보내기·연결 테스트)도 전부 이걸 단다
+ */
+const tokens = new Map();
+
+function authHeaders(port) {
+  const token = tokens.get(port);
+  return token ? { "X-Starlog-Token": token } : {};
+}
+
 /** 우리 백엔드에 JSON을 묻는다. 작은 요청뿐이라 스트리밍은 필요 없다 */
 function getJson(port, urlPath) {
   return new Promise((resolve, reject) => {
-    http.get({ host: "127.0.0.1", port, path: urlPath }, (res) => {
+    http.get({ host: "127.0.0.1", port, path: urlPath, headers: authHeaders(port) }, (res) => {
       /*
        * ⚠️ **`setEncoding`이 없으면 한글이 깨진다.**
        *
@@ -176,7 +190,7 @@ function postJson(port, urlPath, payload) {
     const body = Buffer.from(JSON.stringify(payload), "utf8");
     const req = http.request({
       host: "127.0.0.1", port, path: urlPath, method: "POST",
-      headers: { "Content-Type": "application/json", "Content-Length": body.length },
+      headers: { "Content-Type": "application/json", "Content-Length": body.length, ...authHeaders(port) },
     }, (res) => {
       // getJson과 같은 이유로 여기도 필요하다 — 한글 응답이 청크 경계에서 쪼개진다
       res.setEncoding("utf8");
@@ -243,7 +257,7 @@ function waitForBackend(port, timeoutMs = 90_000, isAlive = () => backend !== nu
   return new Promise((resolve, reject) => {
     const tick = () => {
       if (!isAlive()) return reject(new Error("BACKEND_DIED"));
-      const req = http.get({ host: "127.0.0.1", port, path: "/api/me", timeout: 2000 }, (res) => {
+      const req = http.get({ host: "127.0.0.1", port, path: "/api/me", timeout: 2000, headers: authHeaders(port) }, (res) => {
         res.resume();
         resolve();
       });
@@ -297,31 +311,93 @@ function rotateLog() {
   } catch { /* 없으면 밀 것도 없다 */ }
 }
 
+/**
+ * 로그는 **스트림 하나**를 모든 서버(본·시험용)가 함께 쓴다 — 크기를 세어 돌리는 중에도 민다.
+ * 기동 때만 밀면 오래 켜 둔 세션 하나가 수백 MB를 쌓는다.
+ * 0600 — 서버 로그에는 경로·게임 이름·오류 원문이 들어간다
+ */
+let logStream = null;
+let logBytes = 0;
+
+function logWrite(chunk) {
+  if (!logStream) {
+    fs.mkdirSync(path.dirname(paths.LOG_FILE), { recursive: true });
+    rotateLog();
+    logStream = fs.createWriteStream(paths.LOG_FILE, { flags: "a", mode: 0o600 });
+    logStream.on("error", () => { /* 로그를 못 쓴다고 앱을 죽이지 않는다 */ });
+    // 0644로 만들어져 있던 옛 파일까지 맞춘다
+    try { fs.chmodSync(paths.LOG_FILE, 0o600); } catch { /* 윈도우는 의미가 없다 */ }
+    try { logBytes = fs.statSync(paths.LOG_FILE).size; } catch { logBytes = 0; }
+  }
+  logStream.write(chunk);
+  logBytes += Buffer.byteLength(chunk);
+  if (logBytes > LOG_MAX_BYTES) {
+    const full = logStream;
+    logStream = null;
+    full.end();
+    /*
+     * 닫히기를 안 기다리고 바로 민다 — 유닉스는 열린 파일도 이름을 바꿀 수 있고 남은 쓰기는 옮긴 쪽으로 간다.
+     * 윈도우는 rename이 실패하므로 다음 열 때 `rotateLog`가 다시 해본다
+     */
+    try {
+      fs.rmSync(`${paths.LOG_FILE}.1`, { force: true });
+      fs.renameSync(paths.LOG_FILE, `${paths.LOG_FILE}.1`);
+    } catch { /* 다음에 */ }
+  }
+}
+
+/**
+ * 서버에 넘길 환경변수 — **허용 목록**에서만 고른다 (보안 점검 2026-10-25).
+ *
+ * 예전엔 `...process.env`였다. 사용자 셸에 `STARLOG_PROFILE=dev`가 남아 있으면 배포판 서버가
+ * 개발 모드(인증 장치 `X-Member-Id`, CORS 꺼짐)로 떴다. 서버가 실제로 필요로 하는 건
+ * 경로·임시 폴더·로캘·프록시 정도다
+ */
+const ENV_PASSTHROUGH = [
+  "PATH", "HOME", "TMPDIR", "TMP", "TEMP", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CTYPE", "TZ",
+  "XDG_RUNTIME_DIR",
+  // 윈도우 — 없으면 Node가 임시 폴더·홈·시스템 DLL을 못 찾는다
+  "SystemRoot", "SYSTEMROOT", "windir", "ComSpec", "PATHEXT", "APPDATA", "LOCALAPPDATA", "USERPROFILE",
+  "HOMEDRIVE", "HOMEPATH", "USERNAME", "ProgramData", "ProgramFiles", "ProgramFiles(x86)", "CommonProgramFiles",
+  "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE", "OS",
+  // 회사망 — 프록시·사설 인증서 없이는 Neon·R2·IGDB에 못 붙는다
+  "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy",
+  "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR",
+];
+/** 사용자 환경에서 절대 넘기면 안 되는 것 — 허용 목록에 실수로 들어가도 여기서 한 번 더 지운다 */
+const ENV_FORBIDDEN = ["STARLOG_PROFILE", "STARLOG_THUMBNAILER", "STARLOG_API_TOKEN", "NODE_OPTIONS", "ELECTRON_RUN_AS_NODE"];
+
 function spawnServer(port, config) {
-  rotateLog();
-  const out = fs.createWriteStream(paths.LOG_FILE, { flags: "a" });
-  out.write(`\n===== ${new Date().toISOString()} port=${port} mode=${config.mode} =====\n`);
+  logWrite(`\n===== ${new Date().toISOString()} port=${port} mode=${config.mode} =====\n`);
 
   if (!fs.existsSync(SERVER)) {
-    out.end(`STARLOG_DIAGNOSTIC: SERVER_MISSING (${SERVER})\n`);
+    logWrite(`STARLOG_DIAGNOSTIC: SERVER_MISSING (${SERVER})\n`);
     return { proc: null, exited: Promise.resolve({ code: -1, diagnostic: "SERVER_MISSING" }) };
   }
 
-  const env = {
-    ...process.env,
+  const env = {};
+  for (const key of ENV_PASSTHROUGH) {
+    if (process.env[key] !== undefined) env[key] = process.env[key];
+  }
+  Object.assign(env, {
     STARLOG_PORT: String(port),
     STARLOG_HOST: "127.0.0.1",
     STARLOG_STATIC_DIR: WEB_FOR_SERVER,
-  };
+  });
   for (const [key, value] of Object.entries(config.env ?? {})) {
     if (value) env[key] = value;
   }
+  for (const key of ENV_FORBIDDEN) delete env[key];
+  const token = crypto.randomBytes(32).toString("base64url");
+  env.STARLOG_API_TOKEN = token;
+  tokens.set(port, token);
 
   let child;
   try {
     child = utilityProcess.fork(SERVER, [], { env, stdio: "pipe", serviceName: "STARLOG 서버" });
   } catch (e) {
-    out.end(`STARLOG_DIAGNOSTIC: BACKEND_DIED (${e.message})\n`);
+    tokens.delete(port);
+    logWrite(`STARLOG_DIAGNOSTIC: BACKEND_DIED (${e.message})\n`);
     return { proc: null, exited: Promise.resolve({ code: -1, diagnostic: "BACKEND_DIED" }) };
   }
 
@@ -339,14 +415,14 @@ function spawnServer(port, config) {
   child.stdout?.on("data", (chunk) => {
     const found = chunk.toString().match(/STARLOG_DIAGNOSTIC:\s*([A-Z_]+)/);
     if (found) diagnostic = found[1];
+    logWrite(chunk);
   });
-  child.stdout?.pipe(out, { end: false });
-  child.stderr?.pipe(out, { end: false });
+  child.stderr?.on("data", (chunk) => logWrite(chunk));
 
   const exited = new Promise((resolve) => {
     child.once("exit", (code) => {
-      // 로그 스트림을 닫는다 — 안 닫으면 기동·연결테스트마다 fd가 하나씩 샌다
-      out.end();
+      // 같은 포트를 다음 서버가 받을 수 있다 — 내 토큰일 때만 지운다
+      if (tokens.get(port) === token) tokens.delete(port);
       resolve({ code, diagnostic });
     });
   });
@@ -519,6 +595,97 @@ function loadEntry() {
   if (win && !win.isDestroyed()) win.webContents.send("go-entry");
 }
 
+// ───────────────────────── 창 잠금 (보안 점검 2026-10-25) ─────────────────────────
+
+/**
+ * 창이 머물 수 있는 곳 — 우리 문서(`app://starlog`)와 **지금 서버**(`http://127.0.0.1:<포트>`)뿐.
+ *
+ * 창에는 preload 다리(`window.starlog`)가 붙는다. 메모의 링크 하나로 창이 남의 페이지로 넘어가면
+ * 그 페이지가 다리로 연결 설정·세이브파일을 만질 수 있었다 (실제로 재현했다). 포트까지 보는 이유 —
+ * 127.0.0.1의 다른 포트는 남의 프로그램일 수 있다
+ */
+function isAppUrl(raw) {
+  try {
+    const url = new URL(raw);
+    if (url.protocol === "app:") return url.host === "starlog";
+    return url.protocol === "http:" && url.hostname === "127.0.0.1"
+      && backendPort !== null && url.port === String(backendPort);
+  } catch {
+    return false;
+  }
+}
+
+/** 기본 브라우저로 넘겨도 되는 주소. `file:`·`smb:`·앱 스킴은 OS가 실행 파일을 띄울 수 있다 */
+function externalUrl(raw) {
+  try {
+    const url = new URL(raw);
+    return ["https:", "http:", "mailto:"].includes(url.protocol) ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function lockNavigation(contents) {
+  /*
+   * 링크 클릭·`location =`·파일 끌어놓기(→ file://)가 전부 여기로 온다.
+   * 밖으로 가려던 http(s)는 기본 브라우저로 보내준다 — 막기만 하면 링크가 "안 눌리는" 걸로 보인다
+   */
+  contents.on("will-frame-navigate", (event) => {
+    if (isAppUrl(event.url) || (!event.isMainFrame && event.url === "about:blank")) return;
+    event.preventDefault();
+    const external = externalUrl(event.url);
+    if (external && event.isMainFrame) shell.openExternal(external);
+  });
+  /*
+   * 하위 프레임·리다이렉트도 같은 규칙. 이 앱은 iframe을 안 쓴다 — about:blank만 둔다.
+   * `will-navigate`는 위가 먼저 막으면 오지 않지만, 순서가 바뀌는 판을 대비해 막기만 한 번 더
+   */
+  contents.on("will-navigate", (event) => {
+    if (!isAppUrl(event.url)) event.preventDefault();
+  });
+  contents.on("will-redirect", (event) => {
+    if (!isAppUrl(event.url)) event.preventDefault();
+  });
+  contents.on("will-attach-webview", (event) => event.preventDefault());
+  /*
+   * 새 창은 절대 안 연다. `target=_blank` 링크는 여기서 기본 브라우저로 —
+   * ⚠️ 주소를 거르지 않고 `openExternal`에 넘기면 `smb://`·`file://`가 OS 핸들러로 실행된다
+   */
+  contents.setWindowOpenHandler(({ url }) => {
+    const external = externalUrl(url);
+    if (external) shell.openExternal(external);
+    return { action: "deny" };
+  });
+}
+
+/**
+ * 이 앱이 쓰는 권한만 연다. 나머지(카메라·마이크·위치·알림·클립보드 읽기 …)는 묻지도 않고 거절한다.
+ * - fullscreen: 영상 플레이어의 전체 화면 버튼
+ * - clipboard-sanitized-write: 글자 복사 (그림·파일 복사는 메인이 한다)
+ * - local-network-access·loopback-network·local-network: `app://` 문서가 127.0.0.1 서버를 부른다 —
+ *   크로미움의 "로컬 네트워크 접근" 확인이 이걸로 묻는다
+ */
+const ALLOWED_PERMISSIONS = new Set([
+  "fullscreen", "clipboard-sanitized-write", "local-network-access", "loopback-network", "local-network",
+]);
+
+function lockPermissions() {
+  const ses = electronSession.defaultSession;
+  ses.setPermissionRequestHandler((contents, permission, callback, details) => {
+    const from = details?.requestingUrl ?? contents?.getURL?.() ?? "";
+    callback(ALLOWED_PERMISSIONS.has(permission) && win !== null && contents === win.webContents && isAppUrl(from));
+  });
+  ses.setPermissionCheckHandler((contents, permission, requestingOrigin) =>
+    ALLOWED_PERMISSIONS.has(permission) && isAppUrl(requestingOrigin));
+  ses.setDevicePermissionHandler(() => false);
+}
+
+/** 우리 창이 아닌 웹 콘텐츠(혹시 생기면)는 어디로도 못 가고 아무것도 못 연다 */
+app.on("web-contents-created", (_event, contents) => {
+  contents.setWindowOpenHandler(() => ({ action: "deny" }));
+  contents.on("will-attach-webview", (event) => event.preventDefault());
+});
+
 function createWindow() {
   const { window: saved } = store.getSettings();
   win = new BrowserWindow({
@@ -546,13 +713,8 @@ function createWindow() {
   win.once("ready-to-show", () => win.show());
   if (saved.maximized) win.maximize();
 
-  // 외부 링크는 앱 안이 아니라 기본 브라우저로 (IGDB 출처 표기 등)
   bindDevShortcuts(win.webContents);
-
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
-    return { action: "deny" };
-  });
+  lockNavigation(win.webContents);
 
   // 창 크기를 기억한다 (결정 44). 최대화 상태면 크기가 아니라 그 사실을 저장한다
   win.on("close", () => {
@@ -618,18 +780,129 @@ function dataDirs() {
   return paths.ensureDataRoot(store.getSettings().dataRoot);
 }
 
+/** 마지막으로 [폴더 고르기]에서 고른 경로. 데이터 루트로 받아주는 유일한 새 값이다 */
+let pickedFolder = null;
+
+/**
+ * 데이터 루트로 쓰면 안 되는 곳. 데이터 루트는 `openPath`·백업·세이브의 울타리라,
+ * 홈이나 시스템 폴더가 되면 울타리가 사라진다
+ */
+function unsafeDataRoot(resolved) {
+  const home = path.resolve(os.homedir());
+  const appData = path.resolve(paths.APP_DATA);
+  const inside = (child, parent) => child === parent || child.startsWith(parent + path.sep);
+  if (resolved === path.parse(resolved).root) return "드라이브 맨 위는 쓸 수 없습니다";
+  if (inside(home, resolved)) return "홈 폴더 자체(또는 그 위)는 쓸 수 없습니다 — 안에 폴더를 하나 만들어 골라 주세요";
+  if (inside(appData, resolved)) return "앱 폴더 자체(또는 그 위)는 쓸 수 없습니다";
+  const system = process.platform === "win32"
+    ? [process.env.SystemRoot, process.env.ProgramFiles, process.env["ProgramFiles(x86)"], process.env.ProgramData]
+    : ["/System", "/Library", "/Applications", "/usr", "/bin", "/sbin", "/etc", "/dev", "/cores",
+        "/private/etc", "/private/var/db", path.join(home, "Library")];
+  for (const dir of system.filter(Boolean).map((d) => path.resolve(d))) {
+    // 기본 데이터 루트(앱데이터 안)는 ~/Library 아래라 거기만 빼준다
+    if (inside(resolved, dir) && !inside(resolved, appData)) return "시스템 폴더에는 둘 수 없습니다";
+  }
+  if (process.platform !== "win32" && ["/private", "/var", "/tmp", "/Volumes", "/Users", "/home"].includes(resolved)) {
+    return "시스템 폴더에는 둘 수 없습니다";
+  }
+  return null;
+}
+
+function inspectDataRoot(dir) {
+  const target = String(dir ?? "").trim();
+  if (!target) {
+    return { ok: false, reason: "경로를 입력해 주세요" };
+  }
+  if (!path.isAbsolute(target)) {
+    return { ok: false, reason: "전체 경로를 입력해 주세요 (/ 로 시작)" };
+  }
+
+  const resolved = path.resolve(target);
+  const unsafe = unsafeDataRoot(resolved);
+  if (unsafe) return { ok: false, reason: unsafe };
+  const parent = path.dirname(resolved);
+  if (!fs.existsSync(parent)) {
+    return { ok: false, reason: "상위 폴더가 없습니다: " + parent };
+  }
+  try {
+    fs.accessSync(parent, fs.constants.W_OK);
+  } catch {
+    return { ok: false, reason: "이 위치에 쓸 권한이 없습니다" };
+  }
+
+  const exists = fs.existsSync(resolved);
+  if (exists && !fs.statSync(resolved).isDirectory()) {
+    return { ok: false, reason: "폴더가 아니라 파일입니다" };
+  }
+  const dirs = ["saves", "backups", "covers", "media"];
+  const ready = exists && dirs.every((d) => fs.existsSync(path.join(resolved, d)));
+  const saveCount = ready
+    ? saveFiles.list(paths.subPaths(resolved)).length
+    : 0;
+
+  return { ok: true, path: resolved, exists, ready, saveCount };
+}
+
+/** 맥의 앱·설치 묶음은 폴더처럼 생겼지만 `openPath`가 **실행한다** */
+function isBundle(dir) {
+  if (/\.(app|bundle|framework|plugin|kext|pkg|mpkg|prefPane|saver|appex|xpc|workflow|action|qlgenerator|mdimporter)$/i.test(dir)) {
+    return true;
+  }
+  return process.platform === "darwin" && fs.existsSync(path.join(dir, "Contents", "Info.plist"));
+}
+
+/** 백업 파일 이름 — 경로 조각 없이 `.tar.gz`만 */
+function assertBackupName(fileName) {
+  if (typeof fileName !== "string" || fileName !== path.basename(fileName) || fileName.includes("\0")
+    || fileName.includes("/") || fileName.includes("\\") || !/^[^.].*\.tar\.gz$/.test(fileName)) {
+    throw new Error("잘못된 백업 파일입니다");
+  }
+  return fileName;
+}
+
 /**
  * 파일을 꺼내 가는 IPC는 **우리 창의 최상위 문서(`app://starlog`)에서 온 것만** 받는다.
  * 창이 외부 페이지를 띄울 일은 없지만(외부 링크는 브라우저로 보낸다), 혹시 떠도 내 파일을 못 꺼내게
  */
-function assertFromApp(event) {
-  let ok = false;
+function isTrustedSender(event) {
   try {
-    const url = new URL(event.senderFrame?.url ?? "");
-    ok = url.protocol === "app:" && url.host === "starlog"
-      && event.senderFrame === event.sender.mainFrame && win !== null && event.sender === win.webContents;
-  } catch { /* 주소를 못 읽으면 거절 */ }
-  if (!ok) throw new Error("허용되지 않은 요청입니다");
+    return win !== null && !win.isDestroyed() && event.sender === win.webContents
+      && event.senderFrame === event.sender.mainFrame && isAppUrl(event.senderFrame?.url ?? "");
+  } catch {
+    return false;
+  }
+}
+
+function assertFromApp(event) {
+  if (!isTrustedSender(event)) throw new Error("허용되지 않은 요청입니다");
+}
+
+/**
+ * IPC는 **전부** 발신자를 본다 (보안 점검 2026-10-25). 예전엔 파일을 꺼내는 둘만 봤고,
+ * 나머지(연결 설정 읽기·세이브 지우기·데이터 루트 바꾸기)는 어느 문서에서든 불렸다
+ */
+function handle(channel, fn) {
+  ipcMain.handle(channel, (event, ...args) => {
+    assertFromApp(event);
+    return fn(event, ...args);
+  });
+}
+
+/** 동기 IPC — 거절해도 `returnValue`는 채운다. 안 채우면 렌더러가 영영 멈춘다 */
+function onSync(channel, fn) {
+  ipcMain.on(channel, (event, ...args) => {
+    if (!isTrustedSender(event)) {
+      event.returnValue = null;
+      return;
+    }
+    event.returnValue = fn(event, ...args);
+  });
+}
+
+function onAsync(channel, fn) {
+  ipcMain.on(channel, (event, ...args) => {
+    if (isTrustedSender(event)) fn(event, ...args);
+  });
 }
 
 function registerIpc() {
@@ -640,11 +913,15 @@ function registerIpc() {
    * **첫 요청 몇 개가 주소 없이 나간다.** 새로고침으로 앱 안의 화면이 곧바로 뜨는 경우가
    * 정확히 그렇다. 값 하나 읽는 것뿐이라 동기로 두는 값이 싸다
    */
-  ipcMain.on("session:port", (event) => {
-    event.returnValue = backendPort;
-  });
+  onSync("session:port", () => backendPort);
 
-  ipcMain.handle("settings:get", () => {
+  /**
+   * 지금 서버의 API 토큰 (**동기**, 포트와 같은 이유). 화면은 이걸 `X-Starlog-Token`에 싣고,
+   * `<img>`·`<video>`처럼 머리말을 못 다는 주소에는 `t=`로 붙인다 (`lib/apiBase.ts`)
+   */
+  onSync("session:token", () => (backendPort ? tokens.get(backendPort) ?? null : null));
+
+  handle("settings:get", () => {
     const settings = store.getSettings();
     return { ...settings, dirs: paths.ensureDataRoot(settings.dataRoot) };
   });
@@ -655,20 +932,33 @@ function registerIpc() {
    * 본 앱 포트가 매번 달라 렌더러의 localStorage는 실행 사이에 이어지지 않는다 → settings.json이 유일한 길.
    * 값은 모양만 믿는다: #rrggbb 다섯 개. 프리셋은 서버 프로필로 옮겼다(V14) — 입구가 쓸 일이 없다
    */
-  ipcMain.on("background:get", (event) => {
+  onSync("background:get", () => {
     const s = store.getSettings();
-    event.returnValue = { colors: s.backgroundColors ?? null };
+    return { colors: s.backgroundColors ?? null };
   });
 
-  ipcMain.on("background:set", (_e, patch) => {
+  onAsync("background:set", (_e, patch) => {
     const isHex = (c) => typeof c === "string" && /^#[0-9a-fA-F]{6}$/.test(c);
     const isFive = (v) => Array.isArray(v) && v.length === 5 && v.every(isHex);
     if (patch && (patch.colors === null || isFive(patch.colors))) store.patchSettings({ backgroundColors: patch.colors });
   });
 
-  ipcMain.handle("settings:setDataRoot", (_e, dir) => {
-    paths.ensureDataRoot(dir);
-    return store.patchSettings({ dataRoot: dir });
+  /**
+   * ⚠️ **방금 [폴더 고르기]로 고른 경로만 받는다** (보안 점검 2026-10-25). 화면이 아무 문자열이나
+   * 넘길 수 있으면 데이터 루트를 홈 폴더로 돌려 아래 `openPath`의 울타리가 통째로 넓어진다.
+   * 지금 경로를 다시 저장하는 건 그대로 둔다
+   */
+  handle("settings:setDataRoot", (_e, dir) => {
+    const resolved = path.resolve(String(dir ?? ""));
+    const current = path.resolve(store.getSettings().dataRoot);
+    if (resolved !== current && resolved !== pickedFolder) {
+      throw new Error("[폴더 고르기]로 고른 폴더만 쓸 수 있습니다");
+    }
+    const check = inspectDataRoot(resolved);
+    if (!check.ok) throw new Error(check.reason);
+    paths.ensureDataRoot(resolved);
+    pickedFolder = null;
+    return store.patchSettings({ dataRoot: resolved });
   });
 
   /**
@@ -677,71 +967,55 @@ function registerIpc() {
    * **경로가 이상한 걸 저장한 뒤에 알게 하면 안 된다** — 세이브파일이 엉뚱한 데로 가고
    * 그제서야 "왜 목록이 비었지"가 된다. 만들 수 있는지, 이미 우리 구조가 있는지 미리 답한다
    */
-  ipcMain.handle("settings:inspectDataRoot", (_e, dir) => {
-    const target = String(dir ?? "").trim();
-    if (!target) {
-      return { ok: false, reason: "경로를 입력해 주세요" };
-    }
-    if (!path.isAbsolute(target)) {
-      return { ok: false, reason: "전체 경로를 입력해 주세요 (/ 로 시작)" };
-    }
+  handle("settings:inspectDataRoot", (_e, dir) => inspectDataRoot(dir));
 
-    const resolved = path.resolve(target);
-    const parent = path.dirname(resolved);
-    if (!fs.existsSync(parent)) {
-      return { ok: false, reason: "상위 폴더가 없습니다: " + parent };
-    }
-    try {
-      fs.accessSync(parent, fs.constants.W_OK);
-    } catch {
-      return { ok: false, reason: "이 위치에 쓸 권한이 없습니다" };
-    }
-
-    const exists = fs.existsSync(resolved);
-    const dirs = ["saves", "backups", "covers", "media"];
-    const ready = exists && dirs.every((d) => fs.existsSync(path.join(resolved, d)));
-    const saveCount = ready
-      ? saveFiles.list(paths.subPaths(resolved)).length
-      : 0;
-
-    return { ok: true, path: resolved, exists, ready, saveCount };
-  });
-
-  ipcMain.handle("dialog:pickFolder", async () => {
+  handle("dialog:pickFolder", async () => {
     const result = await dialog.showOpenDialog(win, { properties: ["openDirectory", "createDirectory"] });
-    return result.canceled ? null : result.filePaths[0];
+    if (result.canceled || !result.filePaths[0]) return null;
+    // 데이터 루트로 받아줄 수 있는 건 이 값 하나뿐이다
+    pickedFolder = path.resolve(result.filePaths[0]);
+    return pickedFolder;
   });
 
-  ipcMain.handle("shell:openFolder", (_e, which) => {
+  handle("shell:openFolder", (_e, which) => {
     // 자격증명이 있는 앱 폴더. **데이터 루트와 다른 곳**이라는 걸 눈으로 보게 한다 (§7)
     if (which === "appData") {
       shell.openPath(paths.APP_DATA);
       return;
     }
     const dirs = dataDirs();
-    shell.openPath(dirs[which] ?? dirs.root);
+    if (!Object.prototype.hasOwnProperty.call(dirs, which)) throw new Error("알 수 없는 폴더입니다");
+    shell.openPath(dirs[which]);
   });
 
   /**
    * 절대 경로를 탐색기로 연다 (스크린샷 폴더).
    *
    * 백엔드가 경로를 알려주고 여는 것은 네이티브가 한다 — 브라우저는 로컬 경로를 못 연다.
-   * ⚠️ **데이터 루트 안인지 확인한다.** 경로가 화면을 거쳐 오므로,
-   * 확인 없이 열면 `openPath("/etc")` 같은 요청도 그대로 통한다
+   * ⚠️ **데이터 루트 안의 폴더만.** `openPath`는 파일이면 **실행한다**(맥 `.app`·`.command`, 윈도우 `.exe`·`.lnk`).
+   * 실제 경로(심볼릭 링크를 푼 것)로 보고, 맥의 앱 묶음(`.app`도 폴더다)은 거절한다
    */
-  ipcMain.handle("shell:openPath", (_e, target) => {
+  handle("shell:openPath", (_e, target) => {
     const dirs = dataDirs();
-    const root = path.resolve(dirs.root);
-    const resolved = path.resolve(target);
+    let root;
+    let real;
+    try {
+      root = fs.realpathSync(path.resolve(dirs.root));
+      real = fs.realpathSync(path.resolve(String(target ?? "")));
+    } catch {
+      throw new Error("폴더를 찾을 수 없습니다");
+    }
     /*
      * ⚠️ **구분자까지 봐야 한다.** `startsWith(root)`만 쓰면 데이터 루트가 `~/starlog`일 때
-     * **형제 폴더인 `~/starlog-비밀`도 통과한다** — 이름이 접두사로 겹칠 뿐 남의 폴더다.
-     * 바로 위 `resolveWebFile`은 처음부터 `WEB + path.sep`으로 제대로 하고 있었다
+     * **형제 폴더인 `~/starlog-비밀`도 통과한다**
      */
-    if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+    if (real !== root && !real.startsWith(root + path.sep)) {
       throw new Error("데이터 폴더 밖은 열 수 없습니다");
     }
-    shell.openPath(resolved);
+    if (!fs.statSync(real).isDirectory() || isBundle(real)) {
+      throw new Error("폴더만 열 수 있습니다");
+    }
+    shell.openPath(real);
   });
 
   // ── 스크린샷 관리자: 클립보드 · 내보내기 (P6 S2) ──
@@ -775,7 +1049,7 @@ function registerIpc() {
    * `target`은 `{entryId, fileName}` 하나 또는 그 배열이다 (최대 `MAX_COPY`). **하나라도 못 풀면 아무것도 안 복사한다** —
    * 일부만 붙은 채로 성공처럼 보이면 사람이 모른다
    */
-  ipcMain.handle("media:copy", async (event, target) => {
+  handle("media:copy", async (event, target) => {
     assertFromApp(event);
     const refs = Array.isArray(target) ? target : [target];
     if (refs.length > media.MAX_COPY) throw new Error("한 번에 복사할 수 있는 개수를 넘었습니다");
@@ -787,7 +1061,7 @@ function registerIpc() {
   });
 
   /** 저장할 폴더는 **매번** 고른다 (사용자 결정) — 마지막 폴더를 기억해 조용히 쏟아붓지 않는다 */
-  ipcMain.handle("media:saveTo", async (event, refs) => {
+  handle("media:saveTo", async (event, refs) => {
     assertFromApp(event);
     const resolved = await resolveMediaRefs(refs);
     const picked = await dialog.showOpenDialog(win, {
@@ -802,14 +1076,14 @@ function registerIpc() {
     return { canceled: false, folder, saved, failed };
   });
 
-  ipcMain.handle("saves:list", () => saveFiles.list(dataDirs()));
+  handle("saves:list", () => saveFiles.list(dataDirs()));
 
   /*
    * 폴더를 미리 만들지 않는다 — 서버(PGlite)가 첫 기동에 만든다.
    * 여기서 빈 폴더를 만들면 서버가 "남의 DB"인지 "새 DB"인지 헷갈린다.
    * 그래서 이 핸들러가 하는 일은 **이름 검사와 중복 확인**뿐이다
    */
-  ipcMain.handle("saves:create", (_e, name) => {
+  handle("saves:create", (_e, name) => {
     const clean = assertSaveName(name);
     const { saves } = dataDirs();
     if (saveFiles.taken({ saves }, clean)) {
@@ -832,7 +1106,7 @@ function registerIpc() {
    * 이름은 아니다. 그리고 **탐색기에서 손으로 바꾸면 규칙을 어겨 열 수 없는 파일이 된다** —
    * 앱 안에 길을 내주는 게 그 사고를 막는 방법이기도 하다
    */
-  ipcMain.handle("saves:rename", async (_e, from, to) => {
+  handle("saves:rename", async (_e, from, to) => {
     const oldName = assertSaveName(from);
     const newName = assertSaveName(to);
     if (oldName === newName) return newName;
@@ -878,7 +1152,7 @@ function registerIpc() {
     return newName;
   });
 
-  ipcMain.handle("saves:remove", async (_e, name) => {
+  handle("saves:remove", async (_e, name) => {
     const clean = assertSaveName(name);
     // 열고 있는 파일은 못 지운다 — 윈도우는 아예 거부하고, 맥은 지워지되 서버가 유령을 붙든다
     if (session?.mode === "local" && session.target === clean) {
@@ -905,7 +1179,7 @@ function registerIpc() {
 
   // ── 백업 (9단계). 전부 일렉트론이 한다 — 백엔드는 백업 폴더에 손을 안 댄다
 
-  ipcMain.handle("backups:usage", (_e, saveName) =>
+  handle("backups:usage", (_e, saveName) =>
     backup.usage(dataDirs(), assertSaveName(saveName)));
 
   /**
@@ -918,7 +1192,7 @@ function registerIpc() {
    * 안내를 따로 띄우지 않는다 (사용자 결정). 대신 이 뒤로 [최근 접속]이
    * "즉시"에서 "기동"으로 조용히 바뀐다 — 알아채도 이상하지 않은 변화다
    */
-  ipcMain.handle("backups:create", async (_e, saveName) => {
+  handle("backups:create", async (_e, saveName) => {
     const clean = assertSaveName(saveName);
     if (session?.mode === "local" && session.target === clean) {
       await stopBackend();
@@ -927,17 +1201,24 @@ function registerIpc() {
   });
 
   /** 되돌리기 — 새 세이브파일이 하나 생긴다. 원본은 그대로 남는다 */
-  ipcMain.handle("backups:restore", (_e, saveName, fileName) =>
-    backup.restore(dataDirs(), assertSaveName(saveName), fileName));
+  handle("backups:restore", (_e, saveName, fileName) =>
+    backup.restore(dataDirs(), assertSaveName(saveName), assertBackupName(fileName)));
 
-  ipcMain.handle("backups:remove", (_e, saveName, fileName) => {
-    backup.remove(dataDirs(), assertSaveName(saveName), fileName);
+  handle("backups:remove", (_e, saveName, fileName) => {
+    backup.remove(dataDirs(), assertSaveName(saveName), assertBackupName(fileName));
     return true;
   });
 
-  ipcMain.handle("connections:list", () => store.getConnections());
-  ipcMain.handle("connections:save", (_e, profile) => store.saveConnection(profile));
-  ipcMain.handle("connections:remove", (_e, name) => store.removeConnection(name));
+  /*
+   * ⚠️ **화면에는 가린 값만 준다** (보안 점검 2026-10-25). 비밀 칸은 `••••끝네자`와 `hasSecret`.
+   * 가린 값 그대로 저장·테스트하면 메인이 저장된 진짜 값으로 바꿔 쓴다 (`settings.js` `unmask`).
+   * `previousName` — 이름을 고치는 중이면 진짜 값은 옛 이름 쪽에 있다
+   */
+  handle("connections:list", () => store.listMasked());
+  handle("connections:save", (_e, profile, options) => store.saveConnection(profile, options?.previousName));
+  handle("connections:remove", (_e, name) => store.removeConnection(String(name ?? "")));
+  /** 눈 버튼. 칸 하나만 진짜 값으로 */
+  handle("connections:reveal", (_e, name, field) => store.revealSecret(String(name ?? ""), String(field ?? "")));
 
   /**
    * 연결 테스트 = 백엔드를 진단만 시키고 죽인다.
@@ -971,8 +1252,9 @@ function registerIpc() {
    * 갖는다. **DB와 스토리지는 그럴 수가 없다** — 부팅 때 조립되는 값이라 지금 백엔드로는
    * 못 시험하고 시험용을 하나 띄워야 한다. 그래서 그 둘만 여기 남는다
    */
-  ipcMain.handle("connections:test", async (_e, profile, options) => {
-    const scope = options?.scope ?? "all";
+  handle("connections:test", async (_e, input, options) => {
+    const scope = ["all", "db", "database", "storage"].includes(options?.scope) ? options.scope : "all";
+    const profile = await store.resolveProfile(input, options?.previousName);
     /*
      * ## 스토리지만 볼 때는 **메모리 DB로 띄운다** (2026-08-28)
      *
@@ -1078,10 +1360,21 @@ function registerIpc() {
     };
   });
 
-  ipcMain.handle("launch", async (_e, request) => {
+  handle("launch", async (_e, request) => {
+    if (request?.mode !== "local" && request?.mode !== "cloud") throw new Error("잘못된 모드입니다");
+    const profile = request.mode === "cloud" ? await findProfile(request.target) : null;
+    /*
+     * 키체인에서 못 푼 연결 — 빈 비밀번호로 띄우면 "비밀번호가 틀렸다"로 보여 원인이 가려진다.
+     * 다시 입력하라고 분명히 말한다
+     */
+    if (profile?.locked) {
+      launching = { mode: request.mode, target: request.target };
+      progress({ phase: "error", code: "CREDENTIALS_LOCKED" });
+      return { ok: false, code: "CREDENTIALS_LOCKED" };
+    }
     const config = request.mode === "local"
       ? localConfig(assertSaveName(request.target))
-      : cloudConfig(findProfile(request.target));
+      : cloudConfig(profile);
 
     /*
      * ⚠️ **먼저 옛 백엔드를 죽이고 기다린다.**
@@ -1166,7 +1459,7 @@ function registerIpc() {
    * 가져오기가 "파일 없으면 건너뛴다"로 처리하므로 마스터 커버로 폴백된다 —
    * 화면이 그걸 미리 말해준다
    */
-  ipcMain.handle("cloud:toSaveFile", async (_e, saveName) => {
+  handle("cloud:toSaveFile", async (_e, saveName) => {
     if (session?.mode !== "cloud" || !backendPort) {
       throw new Error("클라우드 모드로 접속 중일 때만 뽑을 수 있습니다");
     }
@@ -1208,7 +1501,7 @@ function registerIpc() {
    * 읽어올 세이브파일은 **시험용처럼 격리해서** 잠깐 띄운다. 뽑기에서 창이 죽은 포트를
    * 보게 됐던 실수를 여기서 되풀이하지 않는다
    */
-  ipcMain.handle("saveFile:toCloud", async (_e, saveName) => {
+  handle("saveFile:toCloud", async (_e, saveName) => {
     if (session?.mode !== "cloud" || !backendPort) {
       throw new Error("데이터베이스로 접속 중일 때만 올릴 수 있습니다");
     }
@@ -1252,13 +1545,13 @@ function registerIpc() {
     return { ...result, safetySaveName: safety };
   });
 
-  ipcMain.handle("backToEntry", () => {
+  handle("backToEntry", () => {
     loadEntry();
     return true;
   });
 
   /** 입구 화면이 [최근 접속] 버튼을 그릴지, 그게 즉시인지 기동인지 정하는 데 쓴다 */
-  ipcMain.handle("session:current", () => {
+  handle("session:current", () => {
     const settings = store.getSettings();
     if (session && backendPort) {
       return { ...session, alive: true };
@@ -1271,7 +1564,7 @@ function registerIpc() {
   });
 
   /** 살아 있는 백엔드로 되돌아간다. 창만 옮기면 끝이라 기다릴 게 없다 */
-  ipcMain.handle("session:resume", () => {
+  handle("session:resume", () => {
     if (!session || !backendPort) {
       return null;
     }
@@ -1280,8 +1573,8 @@ function registerIpc() {
   });
 }
 
-function findProfile(name) {
-  const found = store.getConnections().find((p) => p.name === name);
+async function findProfile(name) {
+  const found = (await store.getConnections()).find((p) => p.name === name);
   if (!found) throw new Error(`연결 설정을 찾을 수 없습니다: ${name}`);
   return found;
 }
@@ -1414,6 +1707,7 @@ app.whenReady().then(() => {
    */
   paths.migrateLegacyAppData();
   protocol.handle("app", serveWeb);
+  lockPermissions();
   registerIpc();
   createWindow();
 });

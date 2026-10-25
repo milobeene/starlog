@@ -415,12 +415,17 @@ export interface MonthlyCompletions {
   years: { year: number; count: number }[];
 }
 
-/** GET /api/system/settings — 앱 설정(키). 사용량 탭이 "키가 있나"를 이걸로 본다 */
+/**
+ * GET /api/system/settings — 앱 설정(키). 사용량 탭이 "키가 있나"를 이걸로 본다.
+ * 비밀은 **가려서** 온다(`••••` + 끝 4자리). 원문은 `POST /api/system/settings/reveal`
+ */
 export interface AppSettings {
   igdbClientId: string;
-  igdbClientSecret: string;
+  igdbClientSecret: string | null;
+  hasIgdbClientSecret: boolean;
   fromBootConfig: boolean;
-  translateApiKey: string;
+  translateApiKey: string | null;
+  hasTranslateApiKey: boolean;
 }
 
 export interface PageResponse<T> {

@@ -120,9 +120,14 @@ export default function DataRootDialog({
             위치
           </div>
           <div className="flex gap-2">
+            {/*
+              직접 치지 않고 **고르기만** 한다 (보안 점검 2026-10-25) — 일렉트론이 방금 고른 폴더만
+              데이터 루트로 받는다. 화면이 넘긴 아무 경로나 받으면 데이터 폴더의 울타리가 무너진다
+            */}
             <input
               value={draft}
-              onChange={(e) => setDraft(e.target.value)}
+              readOnly
+              onClick={pick}
               spellCheck={false}
               className={`${FIELD_INPUT} font-mono text-[11px]`}
             />

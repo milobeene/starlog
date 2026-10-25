@@ -77,6 +77,7 @@ export default function ConnectionDialog({
     save,
     testSection,
     saveSection,
+    secretProps,
   } = useConnectionForm({ initial, mode, onSaved });
 
   const footer = (part: SectionKey, ready: boolean) => (
@@ -128,6 +129,12 @@ export default function ConnectionDialog({
         이름·DB·스토리지는 **클라우드에만 있다** (v1.2). 로컬 세이브파일에는
         연결 설정이라는 게 없고, 이름은 입구의 세이브 이름이 대신한다
       */}
+      {initial?.locked && (
+        <p className="rounded-md border border-amber-400/20 bg-amber-400/[0.06] px-3 py-2.5 text-[11px] leading-relaxed text-amber-200/80">
+          저장된 비밀번호와 키를 이 컴퓨터의 키체인에서 열지 못했습니다. 비밀 칸을 다시 입력해
+          저장해 주세요 — 나머지 값은 그대로 있습니다.
+        </p>
+      )}
       {mode === "cloud" && (
         <>
           <Labeled label="이름" hint="목록에서 이 연결을 부를 이름입니다" bad={bad("name")}>
@@ -141,6 +148,7 @@ export default function ConnectionDialog({
 
           <DatabaseSection
             form={form}
+            secret={secretProps}
             setDb={setDb}
             bad={bad}
             disabled={busy.db !== undefined}
@@ -153,6 +161,7 @@ export default function ConnectionDialog({
           */}
           <StorageSection
             form={form}
+            secret={secretProps}
             setStorage={setStorage}
             setTargets={setTargets}
             storageReady={storageReady}
@@ -166,6 +175,7 @@ export default function ConnectionDialog({
 
       <IgdbSection
         form={form}
+        secret={secretProps}
         setIgdb={setIgdb}
         bad={bad}
         disabled={busy.igdb !== undefined}
@@ -177,6 +187,7 @@ export default function ConnectionDialog({
 
       <TranslateSection
         form={form}
+        secret={secretProps}
         onChange={(v) => patch({ translate: { apiKey: v } })}
         disabled={busy.translate !== undefined}
         footer={footer("translate", Boolean(form.translate?.apiKey?.trim()))}
