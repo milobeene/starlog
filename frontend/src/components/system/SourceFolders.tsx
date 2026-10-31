@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent, type Modifier } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -193,6 +193,21 @@ export default function SourceFolders() {
   );
 }
 
+/** 끌기 여유 — 묶음 끝을 이만큼만 넘어갈 수 있다. 딱 막히면 끝에 놓는 느낌이 안 나고, 많이 넘어가면 옆 묶음으로 가는 것처럼 보인다 */
+const OVERSHOOT = 12;
+
+/**
+ * 세로로만, 자기 묶음(부모 목록) 안에서만 — 위아래로 OVERSHOOT만큼 살짝 넘어간다.
+ * `@dnd-kit/modifiers`를 들이지 않으려고 같은 일을 직접 한다 (containerNodeRect = 끄는 줄의 부모)
+ */
+const keepInGroup: Modifier = ({ transform, draggingNodeRect, containerNodeRect }) => {
+  const t = { ...transform, x: 0 };
+  if (!draggingNodeRect || !containerNodeRect) return t;
+  const minY = containerNodeRect.top - draggingNodeRect.top - OVERSHOOT;
+  const maxY = containerNodeRect.bottom - draggingNodeRect.bottom + OVERSHOOT;
+  return { ...t, y: Math.min(Math.max(t.y, minY), maxY) };
+};
+
 /**
  * 한 묶음 안에서만 끌어 바꾸는 세로 목록. 일반 폴더와 스팀을 **서로 다른 DndContext**로 둬서
  * 스팀이 일반 폴더 위로 올라갈 길 자체를 없앴다 (메인도 저장할 때 한 번 더 뒤로 보낸다)
@@ -222,7 +237,7 @@ function SortableGroup({
     onReorder(arrayMove(items, from, to));
   };
   return (
-    <DndContext id={label} sensors={sensors} collisionDetection={closestCenter} onDragEnd={end}>
+    <DndContext id={label} sensors={sensors} collisionDetection={closestCenter} modifiers={[keepInGroup]} onDragEnd={end}>
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
         <ul className="flex flex-col gap-2" data-source-group={label}>
           {items.map((s) => (
