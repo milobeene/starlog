@@ -17,6 +17,14 @@
  * 붙인 경로는 **lstat으로 링크가 아닌 진짜 폴더·파일**이어야 하고, `realpath`가 `<데이터 루트>/media/<폴더>/<파일>` 한 칸 아래여야 한다
  * (`media.mediaFileInside` — 윈도우는 대소문자 무시). 확장자는 사진·영상 일곱 가지만, Content-Type도 확장자로 정한다.
  * 썸네일은 그 원본의 `.thumbs/<이름>.jpg`만 — `.thumbs`가 링크면 안 내준다. GET·HEAD만
+ *
+ * ## 등록한 외부 폴더 (2.2)
+ *
+ *   starlog-media://src/<sourceId>/<조각…>/<파일>        원본
+ *   starlog-media://srcthumb/<sourceId>/<조각…>/<파일>   썸네일 — 앱 캐시(`extMedia.js`)에서, 사용자 폴더에는 아무것도 안 쓴다
+ *
+ * 검사는 `sources.resolveFile`이 한다 — 등록된 폴더, 조각마다 평범한 이름, 길 위의 모든 조각이 링크가 아닌 진짜 폴더·파일,
+ * 실제 경로가 등록 폴더 아래. 세션이 없어도 된다 (등록은 이 PC의 설정이다)
  */
 const fs = require("fs");
 const fsp = fs.promises;
@@ -25,6 +33,7 @@ const { Readable } = require("stream");
 const media = require("./media");
 const thumbs = require("./thumbs");
 const timing = require("./mediaTiming");
+const extMedia = require("./extMedia");
 
 const SCHEME = "starlog-media";
 /** registerSchemesAsPrivileged에 넣을 것. stream은 영상 Range 재생에 필요하다. fetch·CORS는 안 연다 — `<img>`·`<video>`만 쓴다 */
@@ -125,6 +134,16 @@ async function serveFile(request, file, contentType) {
   return new Response(Readable.toWeb(fs.createReadStream(file)), { status: 200, headers });
 }
 
+async function serveExternal(request, { kind, file }) {
+  try {
+    if (kind === "shot") return await serveFile(request, file.real, media.contentTypeOf(file.real));
+    const thumb = await thumbs.ensureExternal(file.real, extMedia.target(file.source.id, file.rel), "high");
+    return thumb ? await serveFile(request, thumb, "image/jpeg") : notFound();
+  } catch {
+    return notFound();
+  }
+}
+
 /**
  * @param getRoot   지금 세션의 `<데이터 루트>/media` (없으면 null)
  * @param onRequest 폴더 이름 — 배경 일이 "지금 화면이 보는 폴더"를 알고, 화면이 바쁠 때 물러나게
@@ -133,6 +152,8 @@ function handler(getRoot, onRequest = () => {}) {
   return async (request) => {
     if (request.method !== "GET" && request.method !== "HEAD") return new Response(null, { status: 405 });
     const t0 = performance.now();
+    const external = extMedia.resolveUrl(request.url);
+    if (external !== undefined) return external ? await serveExternal(request, external) : notFound();
     const target = resolve(request.url, getRoot());
     if (!target) return notFound();
     onRequest(target.folder, target.kind);

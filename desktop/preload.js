@@ -237,6 +237,34 @@ if (trustedOrigin()) contextBridge.exposeInMainWorld("starlog", {
   },
 
   /**
+   * 외부 스크린샷 폴더 (스팀·ShareX …) — 이 PC에 등록해 두고 보다가 STARLOG로 옮긴다. **경로는 화면이 못 정한다**:
+   * `add`는 일렉트론이 네이티브 폴더 창을 띄운다. 파일은 `(sourceId, 상대 경로)`로만 가리킨다
+   */
+  sources: {
+    list: () => ipcRenderer.invoke("sources:list"),
+    /** `{kind: "steam"|"folder", name}` → `{canceled: true}` | `{canceled: false, source}` */
+    add: (req) => ipcRenderer.invoke("sources:add", req),
+    rename: (id, name) => ipcRenderer.invoke("sources:rename", id, name),
+    remove: (id) => ipcRenderer.invoke("sources:remove", id),
+    /** 한 폴더를 훑는다 — 묶음(스팀은 게임, 폴더는 하위 폴더)과 파일 목록 */
+    scan: (id) => ipcRenderer.invoke("sources:scan", id),
+    /** `{appid: entryId}` — 이 PC에서 마지막으로 그 appid를 옮긴 게임 */
+    memory: () => ipcRenderer.invoke("sources:memory"),
+    watch: () => ipcRenderer.invoke("sources:watch"),
+    unwatch: () => ipcRenderer.invoke("sources:unwatch"),
+    onChanged: (callback) => {
+      const handler = (_event, payload) => callback(payload);
+      ipcRenderer.on("sources:changed", handler);
+      return () => ipcRenderer.removeListener("sources:changed", handler);
+    },
+    /**
+     * 옮기기 — 복사·검증·확정이 다 끝난 뒤에만 원본이 휴지통으로 간다. 진행은 `media.onIngest`(`mode: "move"`)
+     * @param req `{sourceId, groupKey, rels: string[], entryId}`
+     */
+    move: (req) => ipcRenderer.invoke("inbox:move", req),
+  },
+
+  /**
    * 백엔드를 띄운다. 성공하면 `{ ok, port }` — 창은 안 옮기고 화면이 그 포트로 스스로 들어간다.
    * `{ resume: true }`면 [최근 접속]이다 — 없어진 세이브·연결은 새로 만들지 않고 거절한다
    */

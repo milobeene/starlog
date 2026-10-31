@@ -29,7 +29,60 @@ export type IngestJob = {
   committed: string[];
   failures: { source: string; reason: string }[];
   message: string | null;
+  /** 옮기기(원본을 휴지통으로)인지. 옛 메인에는 없다 */
+  mode?: "add" | "move";
+  /** 휴지통으로 간 원본 수 · 확정 뒤 휴지통으로 못 보낸 원본(사진은 이미 STARLOG 안이다) */
+  trashed?: number;
+  trashFailures?: { source: string; reason: string }[];
 };
+
+/* ── 외부 스크린샷 폴더 (스팀·ShareX …) ── */
+
+export type SourceKind = "steam" | "folder";
+
+export interface ExternalSource {
+  id: string;
+  kind: SourceKind;
+  name: string;
+  /** 사용자가 고른 폴더. 화면에 보여주기만 한다 — 화면이 경로로 뭔가를 시키지는 못한다 */
+  path: string;
+  /** 폴더가 지금 열리는가 (뽑아 둔 외장 디스크가 빠졌을 때 false) */
+  ok: boolean;
+  reason: string | null;
+}
+
+export interface InboxItem {
+  /** 등록 폴더 기준 상대 경로(`/`). 파일을 가리키는 유일한 이름이다 */
+  rel: string;
+  name: string;
+  kind: "IMAGE" | "VIDEO";
+  contentType: string;
+  sizeBytes: number;
+  takenAtMs: number;
+  /** `starlog-media://src/…` · `srcthumb/…` */
+  url: string;
+  thumbUrl: string;
+  placeholder: string | null;
+  width: number | null;
+  height: number | null;
+}
+
+export interface InboxGroup {
+  /** 스팀은 appid, 폴더는 상대 하위 폴더(빈 문자열 = 바로 아래) */
+  key: string;
+  title: string;
+  sub: string | null;
+  count: number;
+  items: InboxItem[];
+}
+
+export interface InboxScan {
+  sourceId: string;
+  kind: SourceKind;
+  /** 파일이 너무 많아 훑기가 중간에 멈췄다 — 목록이 전부가 아니다 */
+  truncated?: boolean;
+  groups: InboxGroup[];
+}
 
 export interface SaveFile {
   name: string;
@@ -259,6 +312,22 @@ export interface StarlogBridge {
     /** 속도 기록이 켜져 있나 (동기) · 기록 한 줄 — `STARLOG_MEDIA_TIMING=1`일 때만 남는다 */
     timingOn?(): boolean;
     timing?(event: string, data: Record<string, number | string | boolean>): void;
+  };
+  /** 외부 스크린샷 폴더. 옛 preload에는 없다 → `?.` */
+  sources?: {
+    list(): Promise<ExternalSource[]>;
+    /** 폴더는 일렉트론이 네이티브 창으로 고른다. 취소하면 `canceled: true` */
+    add(req: { kind: SourceKind; name: string }): Promise<{ canceled: true } | { canceled: false; source: ExternalSource }>;
+    rename(id: string, name: string): Promise<void>;
+    remove(id: string): Promise<boolean>;
+    scan(id: string): Promise<InboxScan>;
+    /** `{appid: entryId}` — 이 PC에서 마지막으로 그 appid를 옮긴 게임 */
+    memory(): Promise<Record<string, number>>;
+    watch(): Promise<void>;
+    unwatch(): Promise<void>;
+    onChanged(callback: (c: { sourceId: string }) => void): () => void;
+    /** 복사·검증·확정이 다 끝난 뒤에만 원본을 휴지통으로. 진행은 `media.onIngest`(`mode: "move"`) */
+    move(req: { sourceId: string; groupKey: string; rels: string[]; entryId: number }): Promise<{ batchId: string }>;
   };
   pickFolder(): Promise<string | null>;
   openFolder(which: string): Promise<void>;

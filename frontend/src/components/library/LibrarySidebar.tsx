@@ -408,6 +408,17 @@ export default function LibrarySidebar() {
             <circle cx="12" cy="12.5" r="3.5" strokeWidth="1.75" />
           </svg>
         </button>
+        {/* 스팀·ShareX 같은 외부 폴더의 사진 인박스 (2.2) */}
+        <Link
+          href="/screenshots-inbox"
+          aria-label="스크린샷 인박스"
+          title="스크린샷 인박스"
+          className="flex shrink-0 items-center justify-center rounded-md border border-white/15 px-3.5 transition-all hover:bg-white hover:text-black"
+        >
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.75" d="M4 13l2.2-6.2A2 2 0 018.1 5.5h7.8a2 2 0 011.9 1.3L20 13m-16 0v5a1.5 1.5 0 001.5 1.5h13A1.5 1.5 0 0020 18v-5m-16 0h4.5l1 2h5l1-2H20" />
+          </svg>
+        </Link>
       </div>
     </aside>
 

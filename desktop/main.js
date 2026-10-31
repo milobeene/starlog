@@ -35,6 +35,8 @@ const thumbPool = require("./thumbPool");
 const mediaProtocol = require("./mediaProtocol");
 const mediaWork = require("./mediaWork");
 const ingest = require("./ingest");
+const sources = require("./sources");
+const extMedia = require("./extMedia");
 const mediaTiming = require("./mediaTiming");
 const mediaGate = require("./mediaGate");
 const csp = require("./csp");
@@ -1156,6 +1158,8 @@ function registerIpc() {
     send: (channel, payload) => { if (win && !win.isDestroyed()) win.webContents.send(channel, payload); },
     // 새 파일의 썸네일·색인 — 감시가 곧 알려 주지만 기다리지 않고 바로 훑는다
     onCommitted: (folder) => mediaWork.rescan(folder),
+    // 옮기기의 원본 — 영구 삭제가 아니라 OS 휴지통 (윈도우는 휴지통)
+    trash: (file) => shell.trashItem(file),
   });
 
   /**
@@ -1352,6 +1356,86 @@ function registerIpc() {
     return ingest.driveInfo(path.join(root, "media"), store.getDriveLabel(root));
   });
   handle("media:setDriveLabel", (_e, label) => { store.setDriveLabel(currentDataRoot(), label); });
+
+  // ── 외부 스크린샷 폴더 (sources.js · extMedia.js) — 보기와 STARLOG로 옮기기 ──
+  /** 돌거나 줄 선 옮기기가 쥔 실제 원본 경로 */
+  const movingSources = new Set();
+  handle("sources:list", () => sources.list());
+  /** 폴더는 **여기서** 네이티브 창으로 고른다 — 화면은 경로를 못 정한다. 이름·종류만 받는다 */
+  handle("sources:add", async (_e, req) => {
+    const kind = req?.kind, name = req?.name;
+    if (!["steam", "folder"].includes(kind)) throw new Error("종류가 올바르지 않습니다");
+    const picked = await dialog.showOpenDialog(win, {
+      title: kind === "steam" ? "스팀 폴더 (설치 폴더 · userdata · 760/remote)" : "스크린샷이 있는 폴더",
+      buttonLabel: "이 폴더 등록",
+      properties: ["openDirectory"],
+    });
+    if (picked.canceled || !picked.filePaths[0]) return { canceled: true };
+    return { canceled: false, source: sources.add({ kind, name, dir: picked.filePaths[0] }) };
+  });
+  handle("sources:rename", (_e, id, name) => { sources.rename(id, name); });
+  handle("sources:remove", (_e, id) => {
+    const removed = sources.remove(id);
+    if (removed) extMedia.dropCache(id);
+    return removed;
+  });
+  handle("sources:memory", () => sources.rememberedGames());
+  handle("sources:scan", async (_e, id) => {
+    const { src, groups, truncated } = await sources.scan(id);
+    const all = [];
+    const out = groups.map((g) => ({
+      key: g.key, title: g.title, sub: g.sub, count: g.items.length,
+      items: g.items.map((it) => {
+        all.push(it.rel);
+        return {
+          rel: it.rel, name: it.name, kind: it.kind, contentType: media.contentTypeOf(it.name), sizeBytes: it.size, takenAtMs: it.mtimeMs,
+          ...extMedia.urlsOf(src.id, it.rel, it.mtimeMs),
+          ...(extMedia.infoOf(src.id, it.rel, it.size, it.mtimeMs) ?? { placeholder: null, width: null, height: null }),
+        };
+      }),
+    }));
+    // 옮겨서 사라진 파일의 캐시. 훑기가 잘렸으면 목록이 전부가 아니라 멀쩡한 캐시까지 지우게 되므로 건너뛴다
+    if (!truncated) extMedia.prune(src.id, all);
+    return { sourceId: src.id, kind: src.kind, truncated, groups: out };
+  });
+  /** 인박스 화면이 열려 있는 동안만 폴더를 본다 */
+  handle("sources:watch", (e) => {
+    extMedia.watch((c) => { if (!e.sender.isDestroyed()) e.sender.send("sources:changed", c); });
+  });
+  handle("sources:unwatch", () => { extMedia.unwatch(); });
+  /**
+   * 고른 사진을 STARLOG 게임으로 **옮긴다** — 복사·검증·확정이 다 끝난 뒤에만 원본이 휴지통으로 간다 (`ingest.js`).
+   * 경로는 화면이 못 보낸다: `(sourceId, 상대 경로)`를 `sources.resolveFile`이 다시 검사해 실제 경로로 바꾼다
+   */
+  handle("inbox:move", async (_e, req) => {
+    const entryId = req?.entryId;
+    if (!Number.isSafeInteger(entryId) || entryId <= 0) throw new Error("잘못된 항목입니다");
+    if (!Array.isArray(req.rels) || req.rels.length === 0 || req.rels.length > 5000) throw new Error("옮길 파일이 없거나 너무 많습니다");
+    const files = [];
+    for (const rel of req.rels) {
+      const segs = sources.segmentsOf(rel);
+      const file = segs && sources.resolveFile(req.sourceId, segs);
+      if (!file) throw new Error("옮길 수 없는 파일이 있습니다 (목록을 다시 읽어 주세요)");
+      files.push(file);
+    }
+    // 같은 원본을 두 묶음이 동시에 옮기면 한쪽이 휴지통에 보낸 파일을 다른 쪽이 읽다 실패한다
+    const keys = files.map((f) => (process.platform === "win32" ? f.real.toLowerCase() : f.real));
+    if (keys.some((k) => movingSources.has(k))) throw new Error("이미 옮기는 중인 파일이 있습니다. 끝난 뒤에 다시 해 주세요");
+    keys.forEach((k) => movingSources.add(k));
+    const release = () => keys.forEach((k) => movingSources.delete(k));
+    const src = files[0].source;
+    const appid = src.kind === "steam" && typeof req.groupKey === "string" && /^\d{1,12}$/.test(req.groupKey) ? req.groupKey : null;
+    try {
+      return await ingest.start({ entryId, sources: files.map((f) => f.real) }, {
+        afterCommit: "trash",
+        // 옮겨졌으면 그 appid를 이 게임으로 기억한다 (다음에 맨 위에 올려 줄 뿐, 저절로 고르지는 않는다)
+        onFinished: (job) => {
+          release();
+          if (appid && job.phase === "done" && job.committed.length > 0) sources.rememberGame(appid, entryId);
+        },
+      });
+    } catch (e) { release(); throw e; }
+  });
 
   handle("saves:list", () => saveFiles.list(dataDirs()));
 
@@ -2229,7 +2313,7 @@ app.on("before-quit", (event) => {
    * 반쪽 세이브가 남았다. 내린 뒤의 반쪽 폴더는 `.partial` 표시가 있어 다음 기동이 치운다
    */
   Promise.allSettled([stopBackend(), ...[...probes].map((p) => p.stop())])
-    .finally(() => { thumbPool.close(); mediaTiming.flush(); app.quit(); });
+    .finally(() => { thumbPool.close(); extMedia.unwatch(); extMedia.flushAll(); mediaTiming.flush(); app.quit(); });
 });
 
 /**

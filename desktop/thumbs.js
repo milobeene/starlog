@@ -226,7 +226,7 @@ let made = 0;
  * 한 장 만든다 (줄 안에서). `source`는 `mediaFileInside`를 지난 실제 경로여야 한다.
  * 결과는 색인에도 적는다 — 실패도 (`t: 0`) — 다음 기동에서도 깨진 파일을 다시 두드리지 않게
  */
-async function produce(source, priority) {
+async function produce(source, priority, ext = null) {
   const st = await fsp.stat(source, { bigint: true });
   const kind = media.kindOf(source);
   const t0 = performance.now();
@@ -253,12 +253,15 @@ async function produce(source, priority) {
   const base = { m: st.mtimeNs.toString(), s: Number(st.size) };
   if (!out?.jpeg) {
     // 풀 수 없는 파일 — 이 판은 다시 안 두드린다
-    index.put(folder, name, { ...base, w: info?.width ?? null, h: info?.height ?? null, p: null, t: 0 });
+    const failed = { ...base, w: info?.width ?? null, h: info?.height ?? null, p: null, t: 0 };
+    if (ext) ext.put(failed); else index.put(folder, name, failed);
     return { ok: false };
   }
   // 못 쓴 건 파일 탓이 아니다 (`.thumbs`가 링크 등) — "못 만듦"으로 적지 않는다
-  if (!(await writeThumb(source, out.jpeg, st))) return { ok: false };
-  index.put(folder, name, { ...base, w: out.w ?? null, h: out.h ?? null, p: out.lq ?? null, t: 1 });
+  // `ext`는 등록한 외부 폴더의 파일 — 썸네일을 사용자 폴더가 아니라 앱 캐시에 쓴다 (`extMedia.js`)
+  if (!(ext ? await ext.write(out.jpeg, st) : await writeThumb(source, out.jpeg, st))) return { ok: false };
+  const made1 = { ...base, w: out.w ?? null, h: out.h ?? null, p: out.lq ?? null, t: 1 };
+  if (ext) ext.put(made1); else index.put(folder, name, made1);
   made++;
   timing.mark("thumb", { ms: Math.round(performance.now() - t0), priority, kind });
   return { ok: true };
@@ -295,8 +298,8 @@ const inflight = new Map();
  * 같은 원본을 동시에 여러 번 부르면 한 번만 만든다 (그리드 + 업로드 직후 + 배경이 겹칠 때).
  * 배경 줄에서 기다리던 것을 화면이 부르면 앞줄로 옮긴다
  */
-function generate(source, { priority = "high", lqipOnly = false } = {}) {
-  const key = `${source}\0${lqipOnly ? "l" : "t"}`;
+function generate(source, { priority = "high", lqipOnly = false, ext = null } = {}) {
+  const key = `${source}\0${lqipOnly ? "l" : "t"}\0${ext?.key ?? ""}`;
   const running = inflight.get(key);
   if (running) {
     if (priority !== "low") promote(running);
@@ -305,7 +308,7 @@ function generate(source, { priority = "high", lqipOnly = false } = {}) {
   // 순위는 돌기 시작할 때 다시 읽는다 — 기다리는 사이 화면이 불러 앞줄로 옮겨졌을 수 있다
   const item = schedule(priority, (it) => {
     const now = it.low ? "low" : "high";
-    return lqipOnly ? produceLqip(source, now) : produce(source, now);
+    return lqipOnly ? produceLqip(source, now) : produce(source, now, ext);
   });
   item.promise = item.promise
     .catch((e) => { console.warn("썸네일 실패", source, e?.message ?? e); return { ok: false }; })
@@ -328,6 +331,17 @@ async function ensure(source, priority = "high") {
   return isFresh(source, fs.statSync(source, { bigint: true })) ? media.thumbPathOf(source) : null;
 }
 
+/** 외부 폴더 파일의 썸네일 — `ext`(`extMedia.target`)의 캐시에. 신선하면 그 경로, 못 만들면 null */
+async function ensureExternal(source, ext, priority = "high") {
+  const st = fs.statSync(source, { bigint: true });
+  if (ext.fresh(st)) return ext.file;
+  const known = ext.get();
+  if (known && known.t === 0 && known.m === st.mtimeNs.toString() && known.s === Number(st.size)) return null;
+  const r = await generate(source, { priority, ext });
+  if (!r.ok) return null;
+  return ext.fresh(fs.statSync(source, { bigint: true })) ? ext.file : null;
+}
+
 /** 예전 모양 그대로 — `{source, max}`를 받아 성공 여부 (E2E·서버 메시지) */
 async function makeThumbnail(request, mediaRoot) {
   const source = media.mediaFileInside(mediaRoot, request?.source);
@@ -345,6 +359,6 @@ function handleServerMessage(message, mediaRoot, reply) {
 }
 
 module.exports = {
-  BOX, isFresh, generate, ensure, makeThumbnail, handleServerMessage, cancelLow,
+  BOX, isFresh, generate, ensure, ensureExternal, makeThumbnail, handleServerMessage, cancelLow,
   stats: () => ({ made, active, queuedHigh: queues.high.length, queuedLow: queues.low.length }),
 };

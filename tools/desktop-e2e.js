@@ -53,8 +53,21 @@ realElectron.app.commandLine.appendSwitch("use-mock-keychain");
 if (process.platform === "linux") realElectron.app.commandLine.appendSwitch("password-store", "basic");
 /** 메인이 OS에 넘기려던 것(기본 브라우저·탐색기) — 실제로 열지 않고 적어만 둔다 */
 const shellCalls = [];
+/** 휴지통 흉내 — 진짜 휴지통에 안 넣고 임시 폴더로 옮긴다. `trashFail`에 든 경로는 휴지통이 거절한 것으로 */
+const FAKE_TRASH = path.join(TMP, "fake-trash");
+const trashFail = new Set();
+const trashedFiles = [];
 const fakeShell = new Proxy(realElectron.shell, {
   get: (t, k) => {
+    if (k === "trashItem") {
+      return async (p) => {
+        if (trashFail.has(p)) throw Object.assign(new Error("trash denied"), { code: "EPERM" });
+        fs.mkdirSync(FAKE_TRASH, { recursive: true });
+        const dest = path.join(FAKE_TRASH, `${trashedFiles.length}-${path.basename(p)}`);
+        fs.renameSync(p, dest);
+        trashedFiles.push([p, dest]);
+      };
+    }
     if (k === "openExternal") return async (u) => { shellCalls.push(["openExternal", u]); };
     if (k === "openPath") return async (p) => { shellCalls.push(["openPath", p]); return ""; };
     return t[k];
@@ -774,6 +787,377 @@ async function ingestSteps(save, entryId) {
   const tiles = await js(`document.querySelectorAll('img[src^="starlog-media://"], [data-testid=shot], button img').length`);
   check("화면 — 끝나면 목록을 다시 읽어 새 장이 들어온다", names8.length === namesBefore.length + 1, `${namesBefore.length} → ${names8.length}, 화면 img ${tiles}`);
   return port2;
+}
+
+// ── 외부 스크린샷 폴더 (sources.js · extMedia.js) — 보기 · 서빙 · 썸네일 캐시 · 옮기기 ──
+async function sourcesSteps(port, entryId) {
+  const sources = require(path.join(ROOT, "desktop/sources.js"));
+  const extMedia = require(path.join(ROOT, "desktop/extMedia.js"));
+  const { nativeImage, net, dialog } = realElectron;
+  const EXT = path.join(TMP, "ext");
+  const solid = (r, g, b) => nativeImage.createFromBitmap(Buffer.from(Array.from({ length: 32 * 18 }, () => [b, g, r, 255]).flat()), { width: 32, height: 18 });
+  const put = (file, color, sec) => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, file.endsWith(".jpg") ? solid(...color).toJPEG(80) : solid(...color).toPNG());
+    fs.utimesSync(file, new Date(sec * 1000), new Date(sec * 1000));
+  };
+  const read = (f) => fs.readFileSync(f);
+
+  // 가짜 스팀 — 사용자 id 둘, 라이브러리 둘, 스팀이 만든 thumbnails, 비스팀 바로가기(큰 appid), 이름 모르는 앱
+  const steam = path.join(EXT, "Steam"), lib2 = path.join(EXT, "SteamLib2");
+  const rem = (u) => path.join(steam, "userdata", u, "760", "remote");
+  const A = path.join(rem("1001"), "4242", "screenshots");
+  put(path.join(A, "a.png"), [200, 30, 30], 1_700_000_001);
+  put(path.join(A, "b.png"), [30, 200, 30], 1_700_000_002);
+  put(path.join(A, "thumbnails", "a.png"), [9, 9, 9], 1_700_000_001);
+  put(path.join(rem("1002"), "4242", "screenshots", "e.png"), [30, 30, 200], 1_700_000_003);
+  put(path.join(rem("1001"), "3000000000", "screenshots", "c.png"), [100, 100, 0], 1_700_000_004);
+  put(path.join(rem("1001"), "999", "screenshots", "d.jpg"), [0, 100, 100], 1_700_000_005);
+  put(path.join(rem("1001"), "77", "screenshots", "f.png"), [100, 0, 100], 1_700_000_006);
+  fs.mkdirSync(path.join(steam, "steamapps"), { recursive: true });
+  fs.mkdirSync(path.join(lib2, "steamapps"), { recursive: true });
+  const esc = (p) => p.replace(/\\/g, "\\\\");
+  fs.writeFileSync(path.join(steam, "steamapps", "libraryfolders.vdf"),
+    `"libraryfolders"\n{\n\t"0"\n\t{\n\t\t"path"\t\t"${esc(steam)}"\n\t}\n\t"1"\n\t{\n\t\t"path"\t\t"${esc(lib2)}"\n\t}\n}\n`);
+  fs.writeFileSync(path.join(steam, "steamapps", "appmanifest_4242.acf"), `"AppState"\n{\n\t"appid"\t\t"4242"\n\t"name"\t\t"E2E 스팀 게임"\n}\n`);
+  fs.writeFileSync(path.join(lib2, "steamapps", "appmanifest_999.acf"), `"AppState"\n{\n\t"appid"\t\t"999"\n\t"name"\t\t"둘째 라이브러리 게임"\n}\n`);
+
+  // 가짜 일반 폴더 — 하위 폴더, 깊이 4(통과)·5(제외), 점 폴더(제외), 밖을 가리키는 링크
+  const shots = path.join(EXT, "Shots"), outside = path.join(EXT, "outside");
+  put(path.join(shots, "x1.png"), [250, 250, 0], 1_700_000_100);
+  put(path.join(shots, "ShareX", "2026-10", "y1.png"), [0, 250, 250], 1_700_000_200);
+  put(path.join(shots, "ShareX", "2026-10", "y2.png"), [250, 0, 250], 1_700_000_201);
+  put(path.join(shots, "d1", "d2", "d3", "d4", "ok.png"), [1, 2, 3], 1_700_000_300);
+  put(path.join(shots, "d1", "d2", "d3", "d4", "d5", "too-deep.png"), [4, 5, 6], 1_700_000_301);
+  put(path.join(shots, ".hidden", "z.png"), [7, 8, 9], 1_700_000_302);
+  put(path.join(outside, "secret.png"), [255, 255, 255], 1_700_000_400);
+  let linked = true;
+  try {
+    fs.symlinkSync(path.join(outside, "secret.png"), path.join(shots, "evil.png"));
+    fs.symlinkSync(outside, path.join(shots, "linkdir"), "dir");
+  } catch { linked = false; }
+
+  // 1) 등록 — 네이티브 창은 가로채서 (조용히), 화면이 보낸 경로는 무시된다
+  const askedDialogs = [];
+  dialog.showOpenDialog = async (...a) => { askedDialogs.push(a.length); return { canceled: false, filePaths: [steam] }; };
+  const addRes = await js(`window.starlog.sources.add({ kind: "steam", name: "  내 스팀  ", dir: "/etc" })`);
+  check("폴더 등록 — 경로는 네이티브 창이 정한다 (화면이 보낸 dir은 무시), 이름은 다듬어 저장",
+    addRes.canceled === false && addRes.source.name === "내 스팀" && addRes.source.kind === "steam"
+    && askedDialogs.length === 1 && fs.realpathSync(addRes.source.path) === fs.realpathSync(steam), JSON.stringify(addRes));
+  const steamId = addRes.source.id;
+  const saved = JSON.parse(fs.readFileSync(path.join(TMP, "appData/starlog/settings.json"), "utf8"));
+  check("폴더 등록 — settings.json에 남는다 (DB가 아니라 이 PC)", saved.sourceFolders?.length === 1 && saved.sourceFolders[0].id === steamId);
+  const reject = async (fn) => { try { await fn(); return "통과"; } catch { return "거절"; } };
+  check("폴더 등록 — 같은 폴더 두 번·스팀이 아닌 폴더를 스팀으로·잘못된 종류·긴 이름·없는 경로는 거절",
+    (await reject(() => sources.add({ kind: "steam", name: "또", dir: steam }))) === "거절"
+    && (await reject(() => sources.add({ kind: "steam", name: "x", dir: shots }))) === "거절"
+    && (await reject(() => sources.add({ kind: "zip", name: "x", dir: shots }))) === "거절"
+    && (await reject(() => sources.add({ kind: "folder", name: "x".repeat(41), dir: shots }))) === "거절"
+    && (await reject(() => sources.add({ kind: "folder", name: "x", dir: path.join(EXT, "nope") }))) === "거절"
+    && (await reject(() => sources.add({ kind: "folder", name: "x", dir: "relative/dir" }))) === "거절");
+  const remoteCount = (d) => sources.steamRemotes(fs.realpathSync(d)).length;
+  check("스팀 폴더 인식 — 설치 폴더(사용자 둘) · userdata · userdata/<id> · 760/remote 어느 것이든",
+    remoteCount(steam) === 2 && remoteCount(path.join(steam, "userdata")) === 2 && remoteCount(path.join(steam, "userdata", "1001")) === 1 && remoteCount(rem("1001")) === 1,
+    [steam, path.join(steam, "userdata"), path.join(steam, "userdata", "1001"), rem("1001")].map(remoteCount).join(","));
+  dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [shots] });
+  const folderRes = await js(`window.starlog.sources.add({ kind: "folder", name: "ShareX 폴더" })`);
+  const folderId = folderRes.source.id;
+  dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] });
+  check("폴더 등록 — 취소하면 아무것도 안 바뀐다", (await js(`window.starlog.sources.add({ kind: "folder", name: "취소" })`)).canceled === true
+    && (await js("window.starlog.sources.list()")).length === 2);
+
+  // 2) 훑기 — 스팀: 사용자 id 합침 · thumbnails 제외 · 이름(여러 라이브러리) · 비스팀 · 모르는 앱
+  const sc = await js(`window.starlog.sources.scan(${JSON.stringify(steamId)})`);
+  const g = Object.fromEntries(sc.groups.map((x) => [x.key, x]));
+  check("스팀 — appid별로 묶고 사용자 id 둘을 합친다, thumbnails/는 뺀다 (4242 = a·b·e)",
+    sc.groups.length === 4 && g["4242"]?.items.map((i) => i.name).sort().join() === "a.png,b.png,e.png", sc.groups.map((x) => `${x.key}:${x.count}`).join(" "));
+  check("스팀 — 이름: appmanifest · 둘째 라이브러리(libraryfolders.vdf) · 비 스팀 게임 · 앱 <appid>",
+    g["4242"]?.title === "E2E 스팀 게임" && g["999"]?.title === "둘째 라이브러리 게임" && g["3000000000"]?.title === "비 스팀 게임 3000000000" && g["77"]?.title === "앱 77",
+    sc.groups.map((x) => x.title).join(" | "));
+  check("스팀 — 묶음은 최근 사진이 있는 것부터, 사진은 최신순", sc.groups[0].key === "77" && g["4242"].items[0].name === "e.png");
+  check("목록 항목 — starlog-media://src·srcthumb 주소, 상대 경로, 종류",
+    g["4242"].items.every((i) => i.url.startsWith(`starlog-media://src/${steamId}/`) && i.thumbUrl.startsWith(`starlog-media://srcthumb/${steamId}/`) && /^userdata\/\d+\/760\/remote\/4242\/screenshots\/[a-z]\.png$/.test(i.rel) && i.kind === "IMAGE"),
+    g["4242"].items[0].url);
+
+  // 3) 훑기 — 일반 폴더
+  const fs1 = await js(`window.starlog.sources.scan(${JSON.stringify(folderId)})`);
+  const fg = Object.fromEntries(fs1.groups.map((x) => [x.key, x.count]));
+  check("일반 폴더 — 하위 폴더별로 묶고, 깊이 4까지·점 폴더·링크는 제외",
+    JSON.stringify(fg) === JSON.stringify({ "d1/d2/d3/d4": 1, "ShareX/2026-10": 2, "": 1 }) || (fg["d1/d2/d3/d4"] === 1 && fg["ShareX/2026-10"] === 2 && fg[""] === 1 && Object.keys(fg).length === 3),
+    JSON.stringify(fg));
+
+  // 4) 프로토콜 — 원본·썸네일·Range, 썸네일은 앱 캐시에만
+  const get = async (u, init = {}) => {
+    try {
+      const r = await net.fetch(u, init);
+      return { status: r.status, type: r.headers.get("content-type"), range: r.headers.get("content-range"), body: Buffer.from(await r.arrayBuffer()) };
+    } catch (e) { return { status: -1, error: String(e?.message ?? e) }; }
+  };
+  const a4242 = g["4242"].items.find((i) => i.name === "a.png");
+  const shot = await get(a4242.url);
+  check("프로토콜(src) — 원본 (image/png, 파일 그대로)", shot.status === 200 && shot.type === "image/png" && shot.body.equals(read(path.join(A, "a.png"))), `${shot.status} ${shot.type}`);
+  const th = await get(a4242.thumbUrl);
+  const thSize = th.status === 200 ? nativeImage.createFromBuffer(th.body).getSize() : null;
+  check("프로토콜(srcthumb) — 썸네일 (image/jpeg)", th.status === 200 && th.type === "image/jpeg" && thSize.width > 0, `${th.status} ${th.type} ${JSON.stringify(thSize)}`);
+  const cacheDir = path.join(extMedia.cacheRoot(), steamId);
+  const cached = fs.existsSync(cacheDir) ? fs.readdirSync(cacheDir).filter((n) => n.endsWith(".jpg")) : [];
+  const dotThumbs = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => (d.name === ".thumbs" ? [path.join(dir, d.name)] : d.isDirectory() && !d.isSymbolicLink() ? dotThumbs(path.join(dir, d.name)) : []));
+  check("썸네일 캐시 — 앱 데이터 thumb-cache/<sourceId>/<sha1>.jpg, 수정시각 = 원본, 사용자 폴더에는 아무것도 안 쓴다",
+    cached.length === 1 && /^[0-9a-f]{40}\.jpg$/.test(cached[0]) && Math.abs(fs.statSync(path.join(cacheDir, cached[0])).mtimeMs - fs.statSync(path.join(A, "a.png")).mtimeMs) <= 1
+    && dotThumbs(steam).length === 0 && fs.readdirSync(A).sort().join() === "a.png,b.png,thumbnails", `${cached.join()} ${dotThumbs(steam).join()}`);
+  await Promise.all(g["4242"].items.map((i) => get(i.thumbUrl)));
+  await sleep(1200);   // 색인 쓰기(800ms 미룸)
+  const again = (await js(`window.starlog.sources.scan(${JSON.stringify(steamId)})`)).groups.find((x) => x.key === "4242").items.find((i) => i.name === "a.png");
+  check("썸네일 캐시 — 다음 목록에 자리표시·원본 크기가 실린다 (색인)", typeof again.placeholder === "string" && again.width === 32 && again.height === 18, JSON.stringify([again.placeholder?.slice(0, 8), again.width, again.height]));
+  const rng = await get(a4242.url, { headers: { Range: "bytes=0-9" } });
+  check("프로토콜(src) — Range 206", rng.status === 206 && rng.body.length === 10 && /^bytes 0-9\//.test(rng.range ?? ""), `${rng.status} ${rng.range}`);
+  const mk = (id, ...segs) => `starlog-media://src/${id}/${segs.map(encodeURIComponent).join("/")}`;
+  const remPath = ["userdata", "1001", "760", "remote"];
+  const bad = {
+    "등록 안 된 sourceId": mk("aaaaaaaaaaaa", ...remPath, "4242", "screenshots", "a.png"),
+    "형식이 틀린 sourceId": mk("../etc", "x.png"),
+    ".. 조각": `starlog-media://src/${steamId}/userdata/%2e%2e/%2e%2e/x.png`,
+    "인코딩된 구분자": `starlog-media://src/${steamId}/userdata%2F1001%2F760%2Fremote%2F4242%2Fscreenshots%2Fa.png`,
+    "스팀 thumbnails/ 안": mk(steamId, ...remPath, "4242", "screenshots", "thumbnails", "a.png"),
+    "스팀 모양이 아닌 곳(steamapps)": mk(steamId, "steamapps", "libraryfolders.vdf"),
+    "appid가 숫자가 아님": mk(steamId, ...remPath, "abc", "screenshots", "a.png"),
+    "모르는 확장자": mk(steamId, ...remPath, "4242", "screenshots", "a.txt"),
+    "윈도우 대체 데이터 스트림": mk(steamId, ...remPath, "4242", "screenshots", "a.png:x"),
+    "끝 점": mk(steamId, ...remPath, "4242", "screenshots", "a.png."),
+    "없는 파일": mk(steamId, ...remPath, "4242", "screenshots", "nope.png"),
+    "다른 호스트": `starlog-media://srcx/${steamId}/a.png`,
+    "깊이 5 폴더(일반)": mk(folderId, "d1", "d2", "d3", "d4", "d5", "too-deep.png"),
+    "점 폴더(일반)": mk(folderId, ".hidden", "z.png"),
+    "NUL": `starlog-media://src/${steamId}/a%00.png`,
+  };
+  if (linked) {
+    bad["링크 파일(밖을 가리킴)"] = mk(folderId, "evil.png");
+    bad["링크 폴더 안(밖을 가리킴)"] = mk(folderId, "linkdir", "secret.png");
+    bad["링크 파일의 썸네일"] = mk(folderId, "evil.png").replace("/src/", "/srcthumb/");
+  }
+  const badResults = {};
+  for (const [name, u] of Object.entries(bad)) badResults[name] = (await get(u)).status;
+  check("프로토콜(src) — 미등록·탈출·thumbnails·ADS·끝 점·링크·깊이 초과는 전부 404", Object.values(badResults).every((x) => x === 404 || x === -1), JSON.stringify(badResults));
+  const post = await fetch(a4242.url, { method: "POST", body: "x" }).then((r) => r.status, () => -1);
+  check("프로토콜(src) — GET·HEAD만", post === 405 || post === -1, String(post));
+  check("프로토콜(src) — 등록을 풀면(미등록) 404", await (async () => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [outside] });
+    const tmpAdd = (await js(`window.starlog.sources.add({ kind: "folder", name: "임시" })`)).source;
+    const ok = (await get(mk(tmpAdd.id, "secret.png"))).status === 200;
+    await js(`window.starlog.sources.remove(${JSON.stringify(tmpAdd.id)})`);
+    return ok && (await get(mk(tmpAdd.id, "secret.png"))).status === 404 && !fs.existsSync(path.join(extMedia.cacheRoot(), tmpAdd.id));
+  })());
+
+  // 5) 이름 바꾸기
+  await js(`window.starlog.sources.rename(${JSON.stringify(folderId)}, "ShareX")`);
+  check("이름 바꾸기 — 목록에 반영, 빈 이름·긴 이름은 거절",
+    (await js("window.starlog.sources.list()")).some((s) => s.id === folderId && s.name === "ShareX")
+    && (await js(`window.starlog.sources.rename(${JSON.stringify(folderId)}, "  ").then(() => "통과", () => "거절")`)) === "거절");
+
+  // 6) 옮기기 — 확정 뒤에만 원본이 휴지통으로, 순서대로, appid 기억
+  await js(`window.__ing2 = []; window.starlog.media.onIngest((j) => __ing2.push(j)); 0`);
+  const waitDone = async (batchId, ms = 60000) => {
+    const t0 = Date.now();
+    for (;;) {
+      const job = (await js("window.starlog.media.ingestStatus()")).find((j) => j.batchId === batchId);
+      if (job && !["copying", "verifying", "committing"].includes(job.phase)) return job;
+      if (Date.now() - t0 > ms) return job ?? null;
+      await sleep(50);
+    }
+  };
+  const names = async () => (await api(port, "GET", `/api/backlog/${entryId}/screenshots`)).json.map((i) => i.fileName);
+  const listBefore = await names();
+  const aBytes = read(path.join(A, "a.png")), bBytes = read(path.join(A, "b.png"));
+  const thumbOfA = path.join(A, "thumbnails", "a.png");
+  const relA = a4242.rel, relB = g["4242"].items.find((i) => i.name === "b.png").rel;
+  check("옮기기 전 — 기억이 비어 있다", Object.keys(await js("window.starlog.sources.memory()")).length === 0);
+  const mv = await js(`window.starlog.sources.move(${JSON.stringify({ sourceId: steamId, groupKey: "4242", rels: [relB, relA], entryId })})`);
+  const job = await waitDone(mv.batchId);
+  const listAfter = await names();
+  const added = listAfter.filter((n) => !listBefore.includes(n));
+  const folder = path.join(MEDIA_ROOT, fs.readdirSync(MEDIA_ROOT).filter((n) => !n.startsWith("."))[0]);
+  const committedBytes = job?.committed?.map((n) => read(path.join(folder, n)));
+  check("옮기기 — 확정되고 원본은 휴지통으로 (mode move, trashed 2), 사진은 시각 순서(a → b)로 번호가 붙는다",
+    job?.phase === "done" && job.mode === "move" && job.trashed === 2 && (job.trashFailures ?? []).length === 0 && added.length === 2
+    && committedBytes?.[0]?.equals(aBytes) && committedBytes?.[1]?.equals(bBytes), JSON.stringify(job));
+  check("옮기기 — 원본은 폴더에서 사라지고 휴지통에 있다 (영구 삭제 아님), 스팀의 thumbnails는 안 건드린다",
+    !fs.existsSync(path.join(A, "a.png")) && !fs.existsSync(path.join(A, "b.png")) && trashedFiles.length === 2
+    && trashedFiles.every(([, dest]) => fs.existsSync(dest)) && fs.existsSync(thumbOfA), JSON.stringify(trashedFiles.map((t) => path.basename(t[1]))));
+  const sc2 = await js(`window.starlog.sources.scan(${JSON.stringify(steamId)})`);
+  check("옮기기 — 다음 목록에서 옮긴 장이 빠진다 (4242 = e만)", sc2.groups.find((x) => x.key === "4242")?.items.map((i) => i.name).join() === "e.png");
+  check("옮기기 — 이 PC에 appid → 게임을 기억한다 (settings.json)", (await js("window.starlog.sources.memory()"))["4242"] === entryId
+    && JSON.parse(fs.readFileSync(path.join(TMP, "appData/starlog/settings.json"), "utf8")).steamGameMap?.["4242"] === entryId);
+  const states = await js("__ing2.filter((j) => j.batchId === " + JSON.stringify(mv.batchId) + ").map((j) => j.phase + ':' + (j.mode ?? ''))");
+  check("옮기기 — 진행 알림이 mode: move로 온다 (copying → … → done)", states.includes("copying:move") && states.at(-1) === "done:move", [...new Set(states)].join(" "));
+  await sleep(1500);
+  const toastText = await js("document.body.innerText");
+  check("옮기기 — 토스트 문구 '2장 옮김 (원본은 휴지통)'", /2장 옮김 \(원본은 휴지통\)/.test(toastText), toastText.split("\n").filter((l) => /옮/.test(l)).join(" | "));
+
+  // 7) 실패 — 아무것도 안 건드린다
+  put(path.join(shots, "g1.png"), [11, 22, 33], 1_700_000_500);
+  put(path.join(shots, "g2.png"), [44, 55, 66], 1_700_000_501);
+  const trashedBefore = trashedFiles.length, listBefore2 = await names();
+  if (process.platform !== "win32") {
+    fs.chmodSync(path.join(shots, "g2.png"), 0o000);   // 읽을 수 없는 원본 → 복사 중 실패
+    const bad1 = await js(`window.starlog.sources.move(${JSON.stringify({ sourceId: folderId, groupKey: "", rels: ["g1.png", "g2.png"], entryId })})`);
+    const j1 = await waitDone(bad1.batchId);
+    fs.chmodSync(path.join(shots, "g2.png"), 0o644);
+    check("옮기기 실패(복사 중) — 전부 되돌리고 원본은 하나도 안 건드린다 (rolledBack, 휴지통 0, 새 사진 0)",
+      j1?.phase === "rolledBack" && j1.trashed === 0 && trashedFiles.length === trashedBefore && fs.existsSync(path.join(shots, "g1.png")) && fs.existsSync(path.join(shots, "g2.png"))
+      && (await names()).length === listBefore2.length && !fs.existsSync(path.join(folder, ".incoming")), JSON.stringify(j1));
+  }
+  const bad2 = await js(`window.starlog.sources.move(${JSON.stringify({ sourceId: folderId, groupKey: "", rels: ["g1.png"], entryId: 999999 })})`);
+  const j2 = await waitDone(bad2.batchId);
+  check("옮기기 실패(없는 게임) — 아무것도 안 하고 원본이 그대로", ["failed", "rolledBack"].includes(j2?.phase) && trashedFiles.length === trashedBefore && fs.existsSync(path.join(shots, "g1.png")), JSON.stringify(j2));
+  const rejects = [];
+  for (const req of [
+    { sourceId: folderId, groupKey: "", rels: ["../outside/secret.png"], entryId },
+    { sourceId: folderId, groupKey: "", rels: ["g1.png", "nope.png"], entryId },
+    { sourceId: "aaaaaaaaaaaa", groupKey: "", rels: ["g1.png"], entryId },
+    { sourceId: folderId, groupKey: "", rels: [], entryId },
+    { sourceId: folderId, groupKey: "", rels: ["g1.png"], entryId: -1 },
+    { sourceId: folderId, groupKey: "", rels: [path.join(shots, "g1.png")], entryId },
+    ...(linked ? [{ sourceId: folderId, groupKey: "", rels: ["evil.png"], entryId }] : []),
+  ]) rejects.push(await js(`window.starlog.sources.move(${JSON.stringify(req)}).then(() => "통과", () => "거절")`));
+  check("옮기기 요청 검사 — 탈출·없는 파일 섞임·미등록·빈 목록·잘못된 게임·절대 경로·링크는 거절 (원본 그대로)",
+    rejects.every((x) => x === "거절") && fs.existsSync(path.join(shots, "g1.png")) && trashedFiles.length === trashedBefore, rejects.join());
+  // 화면이 일반 넣기 IPC에 afterCommit을 실어도 무시된다
+  const sneaky = await js(`window.starlog.media.ingest(${JSON.stringify({ entryId, sources: [path.join(shots, "g1.png")], afterCommit: "trash" })})`);
+  const j3 = await waitDone(sneaky.batchId);
+  check("일반 넣기에 afterCommit: 'trash'를 실어도 원본은 그대로 (옮기기 길로만)", j3?.phase === "done" && j3.mode === "add" && fs.existsSync(path.join(shots, "g1.png")) && trashedFiles.length === trashedBefore, JSON.stringify(j3));
+
+  // 8) 확정 뒤 휴지통 실패 — 사진은 안전, 그 원본만 남고 알린다
+  trashFail.add(fs.realpathSync(path.join(shots, "g2.png")));
+  const mv3 = await js(`window.starlog.sources.move(${JSON.stringify({ sourceId: folderId, groupKey: "", rels: ["g1.png", "g2.png"], entryId })})`);
+  const j4 = await waitDone(mv3.batchId);
+  trashFail.clear();
+  check("옮기기 — 확정 뒤 휴지통 실패는 그 원본만 남기고 알린다 (사진 2장은 안전, trashed 1, trashFailures 1)",
+    j4?.phase === "done" && j4.committed.length === 2 && j4.trashed === 1 && j4.trashFailures?.length === 1 && /g2\.png$/.test(j4.trashFailures[0].source)
+    && fs.existsSync(path.join(shots, "g2.png")) && !fs.existsSync(path.join(shots, "g1.png")), JSON.stringify(j4));
+  await sleep(800);
+  const toast2 = await js("document.body.innerText");
+  check("옮기기 — 휴지통 실패 토스트에 못 보낸 원본이 보인다", /g2\.png/.test(toast2) && /휴지통으로 못 보내/.test(toast2), toast2.split("\n").filter((l) => /g2|휴지통/.test(l)).join(" | "));
+
+  // 9) 감시 — 인박스가 열려 있는 동안 새 파일을 알린다
+  await js(`window.__srcChanged = []; window.__off = window.starlog.sources.onChanged((c) => __srcChanged.push(c)); window.starlog.sources.watch()`);
+  put(path.join(shots, "ShareX", "2026-10", "new.png"), [90, 90, 90], 1_700_000_600);
+  let sawChange = false;
+  for (let i = 0; i < 30 && !sawChange; i++) { await sleep(150); sawChange = (await js("__srcChanged.length")) > 0; }
+  const change = await js("__srcChanged[0]");
+  check("감시 — 등록 폴더에 새 파일이 생기면 sources:changed", sawChange && change.sourceId === folderId, JSON.stringify(change));
+  put(path.join(A, "thumbnails", "later.png"), [1, 1, 1], 1_700_000_601);
+  await js("__srcChanged.length = 0; 0");
+  await sleep(1200);
+  check("감시 — 스팀의 thumbnails/ 변화는 무시", (await js("__srcChanged.filter((c) => c.sourceId === " + JSON.stringify(steamId) + ").length")) === 0);
+  await js("window.starlog.sources.unwatch(); __off(); 0");
+
+  // 9-1) 스팀 감시 — 등록 루트 통째가 아니라 screenshots 폴더들만 (steamapps 등의 변화에 안 깬다)
+  await js(`window.__srcChanged = []; window.__off = window.starlog.sources.onChanged((c) => __srcChanged.push(c)); window.starlog.sources.watch()`);
+  const steamReal = fs.realpathSync(steam);
+  const dirsUnderSteam = () => extMedia.watchedDirs().filter((d) => d === steamReal || d.startsWith(steamReal + path.sep));
+  const okDirs = dirsUnderSteam();
+  check("스팀 감시 — 감시 폴더는 screenshots(와 remote 한 칸)뿐, 설치 폴더·steamapps·userdata는 안 본다",
+    okDirs.length >= 3 && okDirs.every((d) => /[\\/]760[\\/]remote$/.test(d) || /[\\/]screenshots$/.test(d))
+    && okDirs.some((d) => d.endsWith(path.join("4242", "screenshots"))) && !okDirs.some((d) => /thumbnails/.test(d)), okDirs.join(" | "));
+  fs.mkdirSync(path.join(steam, "steamapps", "downloading"), { recursive: true });
+  fs.writeFileSync(path.join(steam, "steamapps", "downloading", "chunk.bin"), "x");
+  await sleep(1200);
+  check("스팀 감시 — steamapps/downloading 변화는 알리지 않는다", (await js("__srcChanged.filter((c) => c.sourceId === " + JSON.stringify(steamId) + ").length")) === 0);
+  put(path.join(rem("1001"), "555", "screenshots", "n.png"), [5, 5, 5], 1_700_000_700);   // 새 게임의 첫 사진
+  let sawSteam = false;
+  for (let i = 0; i < 30 && !sawSteam; i++) { await sleep(150); sawSteam = (await js("__srcChanged.filter((c) => c.sourceId === " + JSON.stringify(steamId) + ").length")) > 0; }
+  check("스팀 감시 — 새 appid 폴더의 첫 사진은 알리고, 그 screenshots 폴더도 감시에 붙는다",
+    sawSteam && dirsUnderSteam().some((d) => d.endsWith(path.join("555", "screenshots"))), dirsUnderSteam().join(" | "));
+  await js("window.starlog.sources.unwatch(); __off(); 0");
+  fs.rmSync(path.join(rem("1001"), "555"), { recursive: true, force: true });
+
+  // 9-2) 옮기기 겹침 · 큰 폴더 잘림 · 낡은 임시 파일 · 윈도우식 대소문자 — 별도 폴더로
+  const EXTRA = path.join(EXT, "Extra");
+  for (const n of ["h1", "h2", "h3", "h4"]) put(path.join(EXTRA, `${n}.png`), [n.charCodeAt(1), 9, 9], 1_700_000_800);
+  dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [EXTRA] });
+  const extraId = (await js(`window.starlog.sources.add({ kind: "folder", name: "겹침 시험" })`)).source.id;
+  dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] });
+  const mvReq = (rels, e = entryId) => JSON.stringify({ sourceId: extraId, groupKey: "", rels, entryId: e });
+  const pair = await js(`Promise.allSettled([window.starlog.sources.move(${mvReq(["h1.png", "h2.png"])}), window.starlog.sources.move(${mvReq(["h2.png", "h3.png"])})])
+    .then((r) => r.map((x) => x.status === "fulfilled" ? { ok: true, batchId: x.value.batchId } : { ok: false, msg: String(x.reason?.message ?? x.reason) }))`);
+  check("옮기기 겹침 — 같은 원본을 동시에 또 옮기려 하면 뒤의 것은 이유와 함께 거절", pair[0].ok && !pair[1].ok && /이미 옮기는 중/.test(pair[1].msg), JSON.stringify(pair));
+  await waitDone(pair[0].batchId);
+  const h3 = await js(`window.starlog.sources.move(${mvReq(["h3.png"])}).then((r) => r.batchId, (e) => "거절:" + e.message)`);
+  check("옮기기 겹침 — 거절된 요청은 h3를 붙들지 않는다 (끝난 뒤 h3는 옮겨진다)", !String(h3).startsWith("거절") && (await waitDone(h3))?.phase === "done", String(h3));
+  const failFirst = await js(`window.starlog.sources.move(${mvReq(["h4.png"], 999999)}).then((r) => r.batchId)`);
+  await waitDone(failFirst);
+  const failAgain = await js(`window.starlog.sources.move(${mvReq(["h4.png"], 999999)}).then((r) => "통과", (e) => e.message)`);
+  check("옮기기 겹침 — 실패로 끝난 옮기기도 원본 잠금을 푼다", failAgain === "통과", String(failAgain));
+
+  // 잘림: 한도를 3으로 — 파일 2장씩 든 폴더 셋
+  for (const d of ["a", "b", "c"]) for (const n of [1, 2]) put(path.join(EXTRA, d, `${d}${n}.png`), [1, n, 3], 1_700_000_900);
+  const extraCache = path.join(extMedia.cacheRoot(), extraId);
+  fs.mkdirSync(extraCache, { recursive: true });
+  const ghost = path.join(extraCache, require("crypto").createHash("sha1").update("ghost.png").digest("hex") + ".jpg");
+  fs.writeFileSync(ghost, "jpg");
+  process.env.STARLOG_SOURCES_MAX_FILES = "3";
+  const cut = await js(`window.starlog.sources.scan(${JSON.stringify(extraId)})`);
+  delete process.env.STARLOG_SOURCES_MAX_FILES;
+  check("큰 폴더 — 한도에서 훑기가 멈추면 truncated: true, 일부만 담긴다", cut.truncated === true && cut.groups.reduce((n, g) => n + g.count, 0) < 7, JSON.stringify({ t: cut.truncated, c: cut.groups.map((g) => g.count) }));
+  check("큰 폴더 — 잘린 훑기는 썸네일 캐시를 치우지 않는다", fs.existsSync(ghost));
+  const full = await js(`window.starlog.sources.scan(${JSON.stringify(extraId)})`);
+  check("큰 폴더 — 끝까지 훑으면 truncated: false이고 목록에 없는 캐시를 치운다", full.truncated === false && !fs.existsSync(ghost) && full.groups.reduce((n, g) => n + g.count, 0) === 7);   // a·b·c 6장 + 안 옮겨진 h4
+
+  // 낡은 임시 파일
+  const oldTmp = path.join(extraCache, "x.1.2.tmp"), freshTmp = path.join(extraCache, "y.1.2.tmp");
+  fs.writeFileSync(oldTmp, "t"); fs.writeFileSync(freshTmp, "t");
+  const twoHoursAgo = new Date(Date.now() - 2 * 3600 * 1000);
+  fs.utimesSync(oldTmp, twoHoursAgo, twoHoursAgo);
+  extMedia.prune(extraId, full.groups.flatMap((g) => g.items.map((i) => i.rel)));
+  check("캐시 정리 — 1시간 넘은 .tmp는 치우고 방금 것은 둔다", !fs.existsSync(oldTmp) && fs.existsSync(freshTmp));
+
+  // 윈도우식 철자: 대소문자가 섞인 폴더도 같은 폴더로, 돌려주는 경로는 디스크 철자대로
+  const MIXED = path.join(EXT, "CI");
+  fs.mkdirSync(path.join(MIXED, "USERDATA", "7", "760", "REMOTE", "9", "screenshots"), { recursive: true });
+  const viaRoot = sources.steamRemotes(MIXED, true), viaRemote = sources.steamRemotes(path.join(MIXED, "USERDATA", "7", "760", "REMOTE"), true);
+  check("스팀 폴더 인식 — 대소문자 무시 모드(윈도우)에서 USERDATA/760/REMOTE를 찾고 디스크 철자대로 돌려준다",
+    viaRoot.length === 1 && viaRoot[0] === path.join(MIXED, "USERDATA", "7", "760", "REMOTE") && viaRemote.length === 1, JSON.stringify([viaRoot, viaRemote]));
+  await js(`window.starlog.sources.remove(${JSON.stringify(extraId)})`);
+
+  // 10) 화면 — 인박스, 게임 고르기(상태 순서 · 기억 고정), 시스템의 등록 구역
+  const gameB = await api(port, "POST", "/api/games", { name: "E2E 게임 B" });
+  const entryB = await api(port, "POST", "/api/backlog", { gameId: gameB.json?.id });
+  const gameC = await api(port, "POST", "/api/games", { name: "E2E 게임 C" });
+  const entryC = await api(port, "POST", "/api/backlog", { gameId: gameC.json?.id });
+  const play = await api(port, "POST", `/api/backlog/${entryC.json?.id}/playthroughs`, { startedOn: "2026-10-01", status: "PLAYING" });
+  const cardC = (await api(port, "GET", "/api/backlog/cards")).json.find((c) => c.entryId === entryC.json?.id);
+  await goto("app://starlog/screenshots-inbox");
+  let page = "";
+  for (let i = 0; i < 30 && !/E2E 스팀 게임/.test(page); i++) { await sleep(200); page = await js("document.body.innerText"); }
+  check("인박스 화면 — 폴더 탭과 묶음(게임 이름·개수)이 보인다", /내 스팀/.test(page) && /ShareX/.test(page) && /E2E 스팀 게임/.test(page) && /둘째 라이브러리 게임/.test(page) && /비 스팀 게임 3000000000/.test(page), page.split("\n").slice(0, 14).join(" | "));
+  await js(`document.querySelector('[data-group="4242"]').click()`);
+  await sleep(1200);
+  const tiles = await js(`document.querySelectorAll('[data-inbox] [data-count] button').length`);
+  const tileSrc = await js(`document.querySelector('[data-inbox] [data-count] img:not([data-lqip])')?.src ?? null`);
+  check("인박스 화면 — 4242 묶음의 칸이 그려지고 썸네일이 starlog-media://srcthumb로 뜬다", tiles === 1 && /^starlog-media:\/\/srcthumb\//.test(tileSrc ?? ""), `${tiles} ${tileSrc}`);
+  const drawn = await js(`(() => { const i = document.querySelector('[data-inbox] [data-count] img:not([data-lqip])'); return i && i.complete ? i.naturalWidth : 0; })()`);
+  check("인박스 화면 — app:// 창의 <img>가 외부 파일 썸네일을 그린다 (CSP)", drawn > 0, String(drawn));
+  await js(`[...document.querySelectorAll('main button')].find((b) => b.textContent.trim() === '선택').click()`);
+  await sleep(200);
+  await js(`document.querySelector('[data-inbox] [data-count] button').click()`);
+  await sleep(200);
+  await js(`document.querySelector('[data-move]').click()`);
+  await sleep(1500);
+  const order = await js(`[...document.querySelectorAll('[data-entry-id]')].map((b) => Number(b.dataset.entryId))`);
+  const pickerText = await js("document.body.innerText");
+  check("게임 고르기 — 기억한 게임이 맨 위(고정), 다음은 PLAYING, 그다음 나머지",
+    order[0] === entryId && order[1] === entryC.json?.id && order.includes(entryB.json?.id) && cardC?.status === "PLAYING" && /지난번에 이 게임으로 옮겼습니다/.test(pickerText),
+    `${order.join()} C=${cardC?.status} play=${play.status}`);
+  await js(`[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '취소' && b.closest('[role=dialog]'))?.click()`);
+  await sleep(300);
+  await goto("app://starlog/system?tab=usage");
+  let sys = "";
+  for (let i = 0; i < 25 && !/외부 스크린샷 폴더/.test(sys); i++) { await sleep(200); sys = await js("document.body.innerText"); }
+  check("시스템 — 외부 스크린샷 폴더 구역에 등록한 폴더와 인박스 링크", /외부 스크린샷 폴더/.test(sys) && /내 스팀/.test(sys) && /ShareX/.test(sys) && /인박스 열기/.test(sys));
+  // 해제 — 캐시도 지운다
+  await js(`window.starlog.sources.remove(${JSON.stringify(steamId)})`);
+  check("해제 — 등록과 썸네일 캐시가 지워지고 파일은 그대로", (await js("window.starlog.sources.list()")).every((s) => s.id !== steamId)
+    && !fs.existsSync(path.join(extMedia.cacheRoot(), steamId)) && fs.existsSync(path.join(rem("1002"), "4242", "screenshots", "e.png")));
 }
 
 // ── 보안 점검 회귀 (2026-10-25): 창 이동 잠금 · 새 창 · 권한 · 마크다운 · 데이터 루트 · openPath ──
@@ -1631,6 +2015,7 @@ realElectron.app.whenReady().then(async () => {
     await mediaSteps(port, entry.json?.id);
     port = await mediaBackgroundSteps(SAVE, entry.json?.id);
     port = await ingestSteps(SAVE, entry.json?.id);
+    await sourcesSteps(port, entry.json?.id);
     await coverDbSteps(port, entry.json?.id);
     await coverResizeSteps(port, entry.json?.id);
     // 스크린샷·영상이 생긴 뒤에 — 상세의 갤러리 썸네일·<video>까지 정책 안에서 뜨는지

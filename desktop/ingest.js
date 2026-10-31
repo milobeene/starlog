@@ -5,6 +5,14 @@
  * 이제 메인이 `<게임>/.incoming/<batchId>/`로 스트림 복사 → 크기·sha256 검증 → 서버 커밋(번호는 서버가 정한다).
  * **전부 아니면 전혀**: 어느 단계든 실패하면 묶음 폴더를 통째로 지우고 `rolledBack`. 원본은 건드리지 않는다.
  *
+ * ## 옮기기 (`afterCommit: "trash"`, 2.2)
+ *
+ * 등록한 외부 폴더(스팀 등)에서 **옮길** 때는 확정이 끝난 **다음에만** 원본을 OS 휴지통으로 보낸다 (`shell.trashItem` —
+ * 윈도우는 휴지통). 영구 삭제는 어디에도 없다. 복사·검증·확정 중 하나라도 실패하면 묶음이 통째로 되돌려지고 **원본은 하나도 안 건드린다**.
+ * 확정 뒤 휴지통이 몇 개 실패해도 사진은 이미 안전하다 — 그 원본은 남기고 `trashFailures`로 알린다.
+ * 복사한 뒤 원본이 바뀌었으면(크기·수정시각) 그 원본은 휴지통으로 안 보낸다: 복사본이 지금 원본이 아니다.
+ * 화면이 부르는 `media:ingest` IPC는 이 옵션을 못 건다 — 메인의 `inbox:move`가 `sources.resolveFile`로 검사한 경로만 넘긴다
+ *
  * 상태는 여기(메인)에 있다 — 화면이 상세를 떠났다 와도 `status()`로 다시 본다.
  * 같은 게임 폴더는 한 번에 한 묶음 (HDD에서 두 복사가 엉키지 않게, 번호 경합도 서버가 어차피 직렬로 처리한다)
  */
@@ -29,7 +37,7 @@ const jobs = new Map();
 /** 폴더 → 줄 끝 */
 const lanes = new Map();
 let resolveChain = Promise.resolve();
-let ctx = null;   // { getBackend, postJson, send, onCommitted }
+let ctx = null;   // { getBackend, postJson, send, onCommitted, trash }
 
 function init(c) { ctx = c; }
 
@@ -38,6 +46,8 @@ const snapshot = (j) => ({
   batchId: j.batchId, entryId: j.entryId, phase: j.phase, done: j.done, total: j.total,
   bytesDone: j.bytesDone, bytesTotal: j.bytesTotal, committed: [...j.committed],
   failures: j.failures.map((f) => ({ ...f })), message: j.message,
+  // 옮기기(원본을 휴지통으로)인지, 휴지통으로 간 수, 못 보낸 원본
+  mode: j.afterCommit === "trash" ? "move" : "add", trashed: j.trashed, trashFailures: j.trashFailures.map((f) => ({ ...f })),
 });
 
 function emit(job, force) {
@@ -109,9 +119,10 @@ function inspect(source) {
 
 /**
  * @param {{entryId:number, sources:string[], takenAt?:Record<string,number>}} req
+ * @param {{afterCommit?: "keep"|"trash", onFinished?: (job) => void}} [trusted] 메인 안에서만 건다 — IPC로 오는 req에는 없다
  * @returns {Promise<{batchId:string}>}
  */
-async function start(req) {
+async function start(req, trusted = {}) {
   const entryId = req?.entryId;
   if (!Number.isSafeInteger(entryId) || entryId <= 0) throw new Error("잘못된 항목입니다");
   if (!Array.isArray(req.sources) || req.sources.length === 0 || req.sources.length > MAX_SOURCES) {
@@ -122,6 +133,8 @@ async function start(req) {
   const job = {
     batchId, entryId, phase: "copying", done: 0, total: 0, bytesDone: 0, bytesTotal: 0,
     committed: [], failures: [], message: "준비 중", lastEmit: 0,
+    afterCommit: trusted.afterCommit === "trash" ? "trash" : "keep", onFinished: trusted.onFinished ?? null,
+    trashed: 0, trashFailures: [],
   };
 
   // 검사 — 틀린 게 하나라도 있으면 하나도 안 복사한다 (failed). 같은 파일이 두 번이면 한 번으로
@@ -148,6 +161,7 @@ async function start(req) {
     job.failures = bad;
     job.message = "넣을 수 없는 파일이 있어 아무것도 넣지 않았습니다";
     emit(job, true);
+    finished(job);
     return { batchId };
   }
   emit(job, true);
@@ -190,12 +204,41 @@ async function resolveFolder(entryId) {
 
 // ───────────── 한 묶음 ─────────────
 
+function finished(job) {
+  try { job.onFinished?.(snapshot(job)); } catch (e) { console.error("[ingest] 끝 알림 실패", e?.message ?? e); }
+}
+
 function fail(job, phase, failures, message) {
   job.phase = phase;
   job.failures = failures;
   job.message = message;
   job.bytesDone = Math.min(job.bytesDone, job.bytesTotal);
   emit(job, true);
+  finished(job);
+}
+
+/** 확정된 묶음의 원본을 하나씩 휴지통으로. 하나가 실패해도 나머지는 계속 — 사진은 이미 STARLOG 안에 있다 */
+async function trashSources(job, items) {
+  job.message = "원본을 휴지통으로 보내는 중";
+  job.done = 0;
+  job.total = items.length;
+  emit(job, true);
+  for (const it of items) {
+    try {
+      const now = await fsp.lstat(it.real);
+      if (!now.isFile() || now.size !== it.size || now.mtimeMs !== it.mtimeMs) {
+        job.trashFailures.push({ source: it.source, reason: "복사한 뒤 원본이 바뀌어 남겨 두었습니다" });
+      } else {
+        await ctx.trash(it.real);
+        job.trashed++;
+      }
+    } catch (e) {
+      job.trashFailures.push({ source: it.source, reason: e?.code === "ENOENT" ? "이미 없어졌습니다" : `휴지통으로 보내지 못했습니다 (${reasonOf(e)})` });
+    }
+    job.done++;
+    emit(job);
+  }
+  job.message = null;
 }
 
 /** 윈도우는 백신이 막 쓴 파일을 잠깐 쥐어 지우기가 EBUSY·EPERM으로 실패한다 — 몇 번 다시 */
@@ -266,12 +309,18 @@ async function run(job, items, folder) {
       throw new SourceError("", serverMessage(e));
     }
     job.committed = (result?.files ?? []).map((f) => f.fileName);
+    job.bytesDone = job.bytesTotal;
+    await removeBatch(folder, job.batchId);
+    // 확정 뒤부터는 되돌림이 없다 — 여기서부터 생기는 일은 `rolledBack`이 아니라 따로 알린다
+    if (job.afterCommit === "trash") {
+      try { await trashSources(job, items); } catch (e) { console.error("[ingest] 휴지통 단계 오류", e?.message ?? e); }
+    }
     job.phase = "done";
     job.done = job.total;
-    job.bytesDone = job.bytesTotal;
     emit(job, true);
-    await removeBatch(folder, job.batchId);
     try { ctx.onCommitted?.(folder); } catch { /* 알림일 뿐 */ }
+    finished(job);
+    return;
   } catch (e) {
     await removeBatch(folder, job.batchId);
     const failures = e instanceof SourceError && e.source ? [{ source: e.source, reason: e.reason }] : [];

@@ -107,23 +107,33 @@ function failureLines(job: IngestJob) {
 export function applyIngestJob(job: IngestJob) {
   setJob(job);
   const id = taskId(job);
+  const move = job.mode === "move";
   if (isIngestRunning(job)) {
     putTask({
       id,
       kind: "screenshot-ingest",
-      title: `스크린샷 넣는 중 ${job.done}/${job.total} (${fmt(job.bytesDone)}/${fmt(job.bytesTotal)})`,
-      progress: { done: job.done, total: job.total, label: PHASE_LABEL[job.phase] },
+      title: move
+        ? `옮기는 중 ${job.done}/${job.total}`
+        : `스크린샷 넣는 중 ${job.done}/${job.total} (${fmt(job.bytesDone)}/${fmt(job.bytesTotal)})`,
+      progress: { done: job.done, total: job.total, label: job.message ?? PHASE_LABEL[job.phase] },
     });
     return;
   }
   if (readSeen().has(job.batchId)) return;
   markSeen(job.batchId);
   if (job.phase === "done") {
+    const n = job.committed.length || job.total;
+    const stuck = job.trashFailures ?? [];
     putTask({
       id,
       kind: "screenshot-ingest",
-      title: `${job.committed.length || job.total}장 넣음`,
-      result: { ok: true },
+      title: move ? `${n}장 옮김 (원본은 휴지통)` : `${n}장 넣음`,
+      // 사진은 이미 안전하다 — 휴지통으로 못 보낸 원본만 알린다
+      result: {
+        ok: true,
+        lines: stuck.slice(0, MAX_FAIL_LINES).map((f) => ({ ok: false, label: baseName(f.source), detail: f.reason })),
+        message: stuck.length > 0 ? `원본 ${stuck.length}개는 휴지통으로 못 보내 남겨 두었습니다` : undefined,
+      },
     });
     return;
   }
@@ -137,7 +147,7 @@ export function applyIngestJob(job: IngestJob) {
     id,
     kind: "screenshot-ingest",
     // 롤백이면 폴더는 그대로다 — 그걸 먼저 말해야 불안하지 않다
-    title: "넣지 못했습니다 — 되돌렸습니다",
+    title: move ? "옮기지 못했습니다 — 원본은 그대로입니다" : "넣지 못했습니다 — 되돌렸습니다",
     result: { ok: false, lines: failureLines(job), message: notes.join(" · ") || undefined },
   });
 }
