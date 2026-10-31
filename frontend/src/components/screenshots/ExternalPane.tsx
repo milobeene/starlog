@@ -114,10 +114,10 @@ export default function ExternalPane({
   useShotShortcuts({
     enabled: viewing === null && !picking && !confirming,
     selectMode,
-    selectedCount: selected.size,
     itemCount: items.length,
     onToggleMode: () => setSelectMode(true),
-    onSelectAll: selectAll,
+    // A는 [전체 선택]/[전체 해제] 버튼과 같다 — 선택 모드가 아니면 켜면서 전부 고른다
+    onSelectAll: selectMode ? toggleAll : selectAll,
     onCancel: cancel,
   });
 

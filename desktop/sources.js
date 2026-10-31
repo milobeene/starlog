@@ -49,7 +49,13 @@ function raw() {
   cache = (Array.isArray(list) ? list : []).filter((r) =>
     r && typeof r === "object" && ID_RE.test(r.id) && KINDS.includes(r.kind) && typeof r.name === "string" && typeof r.path === "string")
     .map((r) => ({ id: r.id, kind: r.kind, name: r.name, path: r.path }));
+  cache = steamLast(cache);
   return cache;
+}
+
+/** 스팀은 늘 일반 폴더 뒤 — 각 묶음 안의 순서는 그대로(안정 분할). 손으로 고친 settings.json도 여기서 바로잡힌다 */
+function steamLast(list) {
+  return [...list.filter((r) => r.kind !== "steam"), ...list.filter((r) => r.kind === "steam")];
 }
 
 function save(list) {
@@ -127,6 +133,19 @@ function rename(id, name) {
   const current = raw();
   if (!current.some((r) => r.id === id)) throw new Error("등록된 폴더가 아닙니다");
   save(current.map((r) => (r.id === id ? { ...r, name: clean } : r)));
+}
+
+/**
+ * 화면이 끌어서 정한 순서(id 배열)를 저장한다. 등록된 id를 **빠짐없이 한 번씩** 담아야 한다 — 화면이 낡은 목록으로
+ * 보내 남의 등록을 지우거나 되살리는 일을 막는다. 스팀이 앞으로 와 있어도 `steamLast`가 뒤로 보낸다
+ */
+function reorder(ids) {
+  const current = raw();
+  if (!Array.isArray(ids) || ids.length !== current.length || new Set(ids).size !== ids.length
+    || !ids.every((id) => typeof id === "string" && current.some((r) => r.id === id))) {
+    throw new Error("순서가 올바르지 않습니다");
+  }
+  save(steamLast(ids.map((id) => current.find((r) => r.id === id))));
 }
 
 function remove(id) {
@@ -410,6 +429,6 @@ function segmentsOf(rel) {
 }
 
 module.exports = {
-  NAME_MAX, MAX_SOURCES, MAX_SEGMENTS, list, get, add, rename, remove, scan, resolveFile, folderPath, segmentsOf,
+  NAME_MAX, MAX_SOURCES, MAX_SEGMENTS, list, get, add, rename, reorder, remove, scan, resolveFile, folderPath, segmentsOf,
   rememberedGames, rememberGame, steamRemotes,
 };

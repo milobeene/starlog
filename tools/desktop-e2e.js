@@ -1174,10 +1174,10 @@ async function sourcesSteps(port, entryId) {
   await js(`document.querySelector('[data-pane=external] [data-check]').click()`);
   await sleep(300);
   const selCount = await js(`document.body.innerText.match(/(\\d+)개 선택/)?.[1] ?? null`);
-  await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }))`);
+  await js(`document.querySelector('[data-pane=external] [data-select-toggle]').click()`);   // Esc는 격자 단축키가 아니다
   await sleep(300);
   const afterEsc = await js(`document.body.innerText.match(/(\\d+)개 선택/)?.[1] ?? null`);
-  check("선택 — 체크를 누르면 선택 모드로 1개 선택, Esc는 선택을 푼다", selCount === "1" && afterEsc === null, `${selCount} → ${afterEsc}`);
+  check("선택 — 체크를 누르면 선택 모드로 1개 선택, [선택 취소]로 푼다", selCount === "1" && afterEsc === null, `${selCount} → ${afterEsc}`);
   await js(`document.querySelector('[data-pane=external] [data-check]').click()`);
   await sleep(200);
   await js(`document.querySelector('[data-move]').click()`);
@@ -1251,6 +1251,41 @@ async function sourcesSteps(port, entryId) {
   })()`);
   check("시스템 — 외부 스크린샷 폴더는 앱 설정 탭의 데이터 폴더 바로 아래, 종류·이름·[폴더 고르기]가 한 줄",
     /외부 스크린샷 폴더/.test(sys) && /내 스팀/.test(sys) && /ShareX/.test(sys) && /스크린샷 화면 열기/.test(sys) && layout.below && layout.oneLine, JSON.stringify(layout));
+  // 10-6) 순서 — 스팀은 늘 레일 맨 아래, 일반 폴더는 저장한 순서, 스팀은 일반 폴더 위로 못 올라간다
+  const ordDirs = ["OrdA", "OrdB"].map((n) => { const d = path.join(EXT, n); put(path.join(d, "o.png"), [9, 9, 9], 1_700_003_000); return d; });
+  const ordIds = [];
+  for (const [i, d] of ordDirs.entries()) {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [d] });
+    ordIds.push((await js(`window.starlog.sources.add({ kind: "folder", name: "순서 ${i}" })`)).source.id);   // 스팀 "뒤에" 등록 — 그래도 스팀이 마지막
+  }
+  dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] });
+  const railOrder = async () => {
+    await goto("app://starlog/screenshots?source=" + folderId);
+    await waitFor(`document.querySelector('[data-rail-source="${folderId}"]')`);
+    return js(`[...document.querySelectorAll('[data-rail-source]')].map((b) => b.dataset.railSource)`);
+  };
+  const kindOf = (id) => (id === steamId ? "steam" : "folder");
+  const r1 = await railOrder();
+  check("레일 — 스팀은 일반 폴더를 다 지난 맨 아래 (뒤에 등록한 폴더보다도)", r1.length >= 4 && r1.at(-1) === steamId && r1.slice(0, -1).every((id) => kindOf(id) === "folder"), r1.join());
+  const allIds = (await js("window.starlog.sources.list()")).map((x) => x.id);
+  const plainIds = allIds.filter((id) => id !== steamId);
+  const flipped = [...plainIds].reverse();
+  await js(`window.starlog.sources.reorder(${JSON.stringify([...flipped, steamId])})`);
+  const r2 = await railOrder();
+  check("순서 저장 — 일반 폴더를 뒤집어 저장하면 레일이 그 순서를 따르고 settings.json에도 남는다",
+    r2.join() === [...flipped, steamId].join() && JSON.parse(fs.readFileSync(path.join(TMP, "appData/starlog/settings.json"), "utf8")).sourceFolders?.map?.((x) => x.id).join() === r2.join(),
+    r2.join() + " / " + flipped.join());
+  await js(`window.starlog.sources.reorder(${JSON.stringify([steamId, ...plainIds])})`);   // 스팀을 맨 위로 보내 봐도
+  const r3 = await railOrder();
+  const badOrder = await js(`Promise.all([${JSON.stringify([steamId])}, ${JSON.stringify([...plainIds, "zzzz"])}, ${JSON.stringify([...plainIds, ...plainIds])}].map((ids) => window.starlog.sources.reorder(ids).then(() => "통과", () => "거절")))`);
+  check("순서 저장 — 스팀을 맨 위로 보내도 일반 폴더 아래로 돌아오고, 빠지거나 낯선·겹친 id는 거절",
+    r3.at(-1) === steamId && r3.slice(0, -1).join() === plainIds.join() && badOrder.every((x) => x === "거절"), r3.join() + " " + badOrder.join());
+  for (const id of ordIds) await js(`window.starlog.sources.remove(${JSON.stringify(id)})`);
+  await goto("app://starlog/system?tab=settings");
+  await waitFor(`document.querySelector('[data-source-handle]')`);
+  const sysGroups = await js(`(() => { const g = (n) => [...document.querySelectorAll('[data-source-group="' + n + '"] [data-source-row]')].map((r) => r.dataset.sourceRow); return { plain: g('source-plain'), steam: g('source-steam'), handles: document.querySelectorAll('[data-source-handle]').length }; })()`);
+  check("시스템 — 외부 스크린샷 폴더는 일반 폴더 묶음 아래 스팀 묶음으로 나뉘고 줄마다 끌기 손잡이가 있다",
+    sysGroups.steam.join() === steamId && sysGroups.plain.includes(folderId) && !sysGroups.plain.includes(steamId) && sysGroups.handles === sysGroups.plain.length + sysGroups.steam.length, JSON.stringify(sysGroups));
   await goto("app://starlog/system?tab=usage");
   await sleep(800);
   check("시스템 — 사용량 탭에는 더 이상 없다", !/외부 스크린샷 폴더/.test(await js("document.body.innerText")));
@@ -1269,9 +1304,9 @@ async function sourcesSteps(port, entryId) {
   await js(`document.querySelector('[data-pane=starlog] [data-check]').click()`);
   await sleep(250);
   const n1 = await js(`document.body.innerText.match(/(\\d+)개 선택/)?.[1] ?? null`);
-  await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }))`);
+  await js(`document.querySelector('[data-pane=starlog] [data-select-toggle]').click()`);   // Esc는 격자 단축키가 아니다 — [선택 취소]
   await sleep(250);
-  check("STARLOG 화면 — 체크로 선택 모드, Esc로 선택 해제", n1 === "1" && (await js(`document.body.innerText.match(/(\\d+)개 선택/)?.[1] ?? null`)) === null);
+  check("STARLOG 화면 — 체크로 선택 모드, [선택 취소]로 선택 해제", n1 === "1" && (await js(`document.body.innerText.match(/(\\d+)개 선택/)?.[1] ?? null`)) === null);
   // 크게 보기 — 해상도가 달라도 같은 크기로 (contain, 작은 그림은 키운다)
   const measure = async (name) => {
     await js(`document.querySelector('[aria-label="${name} 크게 보기"]').click()`);
@@ -1312,19 +1347,24 @@ async function sourcesSteps(port, entryId) {
   const countLeft = await js(`(() => { const c = document.querySelector('[data-pane=starlog] [data-selection-count]').getBoundingClientRect(), t = document.querySelector('[data-pane=starlog] [data-select-toggle]').getBoundingClientRect(); return c.right < t.left && c.left < t.left - 200; })()`);
   check("단축키 — S로 선택 모드, A로 전체 선택 (한글 입력 상태에서도), 'n개 선택'은 왼쪽 · [선택 취소]는 맨 오른쪽 같은 자리",
     modeOn && total === apiList.length && countLeft && rightBefore === rightAfter, JSON.stringify({ modeOn, total, of: apiList.length, countLeft, rightBefore, rightAfter }));
+  // A를 한 번 더 누르면 전체 해제 — [전체 선택]/[전체 해제] 버튼과 같다
+  await key("KeyA", "ㅁ"); await sleep(250);
+  const none = await js(`Number(document.body.innerText.match(/(\\d+)개 선택/)?.[1] ?? -1)`);
+  // Delete·Esc는 단축키가 아니다 (사용자 2026-10-31) — 눌러도 확인창도 안 뜨고 선택도 그대로
+  await key("KeyA", "ㅁ"); await sleep(250);
   await key("Delete", "Delete"); await sleep(400);
-  const confirmOpen = await js(`!![...document.querySelectorAll('[role=dialog]')].find((d) => /삭제/.test(d.textContent) && d.querySelector('button'))`);
-  await key("Escape", "Escape"); await sleep(400);   // 확인창 Esc — 선택은 그대로
-  const stillSel = await js(`!!document.querySelector('[data-pane=starlog] [data-selection-count]')`);
-  check("단축키 — Delete는 삭제 확인창을 연다 (확인 전엔 아무것도 안 지운다)", confirmOpen && stillSel && (await api(port, "GET", `/api/backlog/${entryId}/screenshots`)).json.length === apiList.length, JSON.stringify({ confirmOpen, stillSel }));
+  const noConfirm = !(await js(`!![...document.querySelectorAll('[role=dialog]')].find((d) => /삭제/.test(d.textContent))`));
   await key("Escape", "Escape"); await sleep(250);
+  const stillSel = await js(`!!document.querySelector('[data-pane=starlog] [data-selection-count]')`);
+  check("단축키 — A 다시 누르면 전체 해제, Delete·Esc는 단축키 아님", none === 0 && noConfirm && stillSel, JSON.stringify({ none, noConfirm, stillSel }));
+  await key("KeyS", "ㄴ"); await sleep(250);
   const exited = !(await js(`!!document.querySelector('[data-pane=starlog] [data-selection-count]')`));
   // 입력칸에 포커스가 있으면 무시한다
   await js(`document.querySelector('[data-rail] input')?.focus()`);
   await js(`document.querySelector('[data-rail] input')?.dispatchEvent(new KeyboardEvent('keydown', { key: 's', code: 'KeyS', bubbles: true }))`); await sleep(250);
   const ignored = (await btnText()) === "선택";
   await js(`document.activeElement?.blur()`);
-  check("단축키 — Esc로 선택 해제, 입력칸에서 누른 S는 무시", exited && ignored, JSON.stringify({ exited, ignored }));
+  check("단축키 — S 다시 누르면 선택 해제, 입력칸에서 누른 S는 무시", exited && ignored, JSON.stringify({ exited, ignored }));
   // 뷰어 — 화살표는 사진 밖 통로, 사진 위 클릭은 안 닫고 여백·배경 클릭은 닫는다
   await js(`document.querySelector('[aria-label="vz-a.png 크게 보기"]').click()`);
   await sleep(1200);
@@ -1441,6 +1481,11 @@ async function sourcesSteps(port, entryId) {
         fs.writeFileSync(path.join(outDir, `${name}-${w}x${h}.png`), (await win.webContents.capturePage()).toPNG());
       }
     };
+    // 순서 확인용 — 일반 폴더를 하나 더 두면 시스템·레일에서 [일반 폴더들] 아래 [스팀] 묶음이 보인다
+    const shotDir = path.join(EXT, "ShotOrder"); put(path.join(shotDir, "o.png"), [5, 5, 5], 1_700_003_100);
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [shotDir] });
+    const shotOrderId = (await js(`window.starlog.sources.add({ kind: "folder", name: "런처 스크린샷" })`)).source.id;
+    dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] });
     for (let i = 1; i <= 14; i++) put(path.join(shots, "ShareX", "2026-10", `fill${i}.png`), [i * 15, 90, 200 - i * 10], 1_700_005_000 + i);
     await snap("starlog", `/screenshots?entry=${entryId}`);
     await snap("steam", `/screenshots?source=${steamId}&group=4242`, `document.querySelector('[data-show-moved]')?.click()`, 4000);
@@ -1449,6 +1494,7 @@ async function sourcesSteps(port, entryId) {
     await snap("detail", `/library/detail?entry=${entryId}`, `const h = [...document.querySelectorAll('h3')].find((x) => /Screenshots/.test(x.textContent)); if (h) { let el = h.parentElement; while (el) { if (el.scrollHeight > el.clientHeight + 4) el.scrollTop += h.getBoundingClientRect().top - 140; el = el.parentElement; } }`, 5000);
     await snap("viewer", `/screenshots?entry=${entryId}`, `document.querySelector('[data-pane=starlog] [data-tile] > button')?.click()`);
     await snap("system-settings", `/system?tab=settings`);
+    await js(`window.starlog.sources.remove(${JSON.stringify(shotOrderId)})`);
     for (let i = 1; i <= 14; i++) fs.rmSync(path.join(shots, "ShareX", "2026-10", `fill${i}.png`), { force: true });
     win.setContentSize(1280, 800);
   }

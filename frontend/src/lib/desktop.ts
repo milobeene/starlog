@@ -323,6 +323,8 @@ export interface StarlogBridge {
     /** 폴더는 일렉트론이 네이티브 창으로 고른다. 취소하면 `canceled: true` */
     add(req: { kind: SourceKind; name: string }): Promise<{ canceled: true } | { canceled: false; source: ExternalSource }>;
     rename(id: string, name: string): Promise<void>;
+    /** 등록 순서(id 전부). 스팀은 서버 아닌 메인이 늘 일반 폴더 뒤로 보낸다 */
+    reorder?(ids: string[]): Promise<void>;
     remove(id: string): Promise<boolean>;
     /** `firstKey`: 화면이 보는 묶음 — 배경 썸네일을 그쪽부터 만든다 */
     scan(id: string, firstKey?: string | null): Promise<InboxScan>;

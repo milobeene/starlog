@@ -84,7 +84,19 @@ export default function Rail({
       openLabel="목록"
       ariaLabel="스크린샷 목록"
       dataAttr={{ "data-rail": "" }}
-      header={<PanelTitle count={total}>Screenshots</PanelTitle>}
+      header={
+        <>
+          <PanelTitle count={total}>Screenshots</PanelTitle>
+          {/* 라이브러리 사이드바의 "모두 접기" 자리·글씨 — 이 화면은 라이브러리에서 들어오는 곁가지라 돌아갈 길을 같은 자리에 둔다 */}
+          <Link
+            href="/library"
+            onClick={() => onOpenChange(false)}
+            className="flex shrink-0 items-center gap-1 text-[10px] tracking-widest text-white/35 uppercase transition-colors hover:text-white"
+          >
+            <span aria-hidden>‹</span> 라이브러리
+          </Link>
+        </>
+      }
       footer={
         desktop ? (
           <div className="flex shrink-0 border-t border-white/10 p-3">
@@ -166,7 +178,8 @@ export default function Rail({
             </p>
           ) : (
             <ul className="mt-1 flex flex-col gap-0.5">
-              {sources.map((s) => {
+              {/* 스팀은 늘 마지막 — 메인도 그렇게 주지만 화면에서도 한 번 더 (안정 분할이라 등록 순서는 유지) */}
+              {[...sources.filter((x) => x.kind !== "steam"), ...sources.filter((x) => x.kind === "steam")].map((s) => {
                 const open = s.id === activeSource;
                 const flat = open && (groups === null || groups.length <= 1 || (s.kind === "folder" && activeGroup === ""));
                 return (

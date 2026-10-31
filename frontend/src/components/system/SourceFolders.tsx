@@ -1,7 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { Button, FIELD_INPUT, FIELD_SELECT } from "@/components/ui/Field";
 import { bridgeMessage, getBridge, type ExternalSource, type SourceKind } from "@/lib/desktop";
@@ -30,6 +33,9 @@ export default function SourceFolders() {
     getBridge()?.sources?.list().then(setList).catch(() => setList([]));
   }, []);
   useEffect(load, [load]);
+
+  const plain = useMemo(() => (list ?? []).filter((x) => x.kind !== "steam"), [list]);
+  const steam = useMemo(() => (list ?? []).filter((x) => x.kind === "steam"), [list]);
 
   if (!sources) return null;
 
@@ -60,22 +66,19 @@ export default function SourceFolders() {
     }
   };
 
-  return (
-    <section className="flex flex-col border-t border-white/8 pt-6" data-source-folders>
-      <div className="flex items-baseline justify-between gap-3">
-        <h3 className="text-[11px] font-semibold tracking-widest text-white/50 uppercase">외부 스크린샷 폴더</h3>
-        <Link href="/screenshots" className="text-xs text-white/50 transition-colors hover:text-white">
-          스크린샷 화면 열기 →
-        </Link>
-      </div>
-      <p className="mt-2 text-[11px] text-white/35">
-        스팀이나 ShareX가 사진을 쌓는 폴더를 등록하면 스크린샷 화면에서 보고, 고른 사진을 게임으로 가져올 수 있습니다.
-        스팀 폴더는 복사만 하고, 그 밖의 폴더는 옮기면 원본이 휴지통으로 갑니다. 등록은 이 PC에만 남습니다.
-      </p>
+  /* 놓는 즉시 화면에 반영하고 저장은 뒤에서 — 실패하면 디스크의 순서로 되돌린다 */
+  const reorder = (a: ExternalSource[], b: ExternalSource[]) => {
+    const next = [...a, ...b];
+    setList(next);
+    sources?.reorder?.(next.map((x) => x.id)).catch((caught) => {
+      setError(bridgeMessage(caught, "순서를 저장하지 못했습니다."));
+      load();
+    });
+  };
 
-      <ul className="mt-3 flex flex-col gap-2">
-        {(list ?? []).map((s) => (
-          <li key={s.id} className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 px-4 py-2.5">
+  const renderRow = (s: ExternalSource, handle: ReactNode) => (
+    <>
+      {handle}
             <span className="shrink-0 rounded border border-white/15 px-1.5 py-0.5 text-[10px] font-semibold tracking-widest text-white/50 uppercase">
               {KIND_LABEL[s.kind]}
             </span>
@@ -122,10 +125,35 @@ export default function SourceFolders() {
                 </button>
               </>
             )}
-          </li>
-        ))}
-        {list?.length === 0 && <li className="text-xs text-white/30">등록한 폴더가 없습니다.</li>}
-      </ul>
+    </>
+  );
+
+  return (
+    <section className="flex flex-col border-t border-white/8 pt-6" data-source-folders>
+      <div className="flex items-baseline justify-between gap-3">
+        <h3 className="text-[11px] font-semibold tracking-widest text-white/50 uppercase">외부 스크린샷 폴더</h3>
+        <Link href="/screenshots" className="text-xs text-white/50 transition-colors hover:text-white">
+          스크린샷 화면 열기 →
+        </Link>
+      </div>
+      <p className="mt-2 text-[11px] text-white/35">
+        스팀이나 ShareX가 사진을 쌓는 폴더를 등록하면 스크린샷 화면에서 보고, 고른 사진을 게임으로 가져올 수 있습니다.
+        스팀 폴더는 복사만 하고, 그 밖의 폴더는 옮기면 원본이 휴지통으로 갑니다. 등록은 이 PC에만 남습니다.
+      </p>
+
+      <div className="mt-3 flex flex-col gap-2" data-source-list>
+        {plain.length > 0 && (
+          <SortableGroup items={plain} label="source-plain" onReorder={(next) => reorder(next, steam)} renderRow={renderRow} />
+        )}
+        {steam.length > 0 && (
+          <>
+            {/* 스팀은 늘 아래 — 일반 폴더 위로는 못 올라가니 따로 묶어 보여준다 */}
+            {plain.length > 0 && <p className="mt-1 text-[10px] tracking-widest text-white/30 uppercase">Steam — 항상 일반 폴더 아래</p>}
+            <SortableGroup items={steam} label="source-steam" onReorder={(next) => reorder(plain, next)} renderRow={renderRow} />
+          </>
+        )}
+        {list?.length === 0 && <p className="text-xs text-white/30">등록한 폴더가 없습니다.</p>}
+      </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2" data-source-add>
         <select aria-label="종류" value={kind} onChange={(e) => setKind(e.target.value as SourceKind)} className={`${FIELD_SELECT} !w-36 shrink-0`}>
@@ -162,5 +190,74 @@ export default function SourceFolders() {
         />
       )}
     </section>
+  );
+}
+
+/**
+ * 한 묶음 안에서만 끌어 바꾸는 세로 목록. 일반 폴더와 스팀을 **서로 다른 DndContext**로 둬서
+ * 스팀이 일반 폴더 위로 올라갈 길 자체를 없앴다 (메인도 저장할 때 한 번 더 뒤로 보낸다)
+ */
+function SortableGroup({
+  items,
+  label,
+  onReorder,
+  renderRow,
+}: {
+  items: ExternalSource[];
+  label: string;
+  onReorder: (next: ExternalSource[]) => void;
+  renderRow: (s: ExternalSource, handle: ReactNode) => ReactNode;
+}) {
+  /* 5px 움직여야 시작 — 이름 바꾸기·해제 버튼 클릭이 끌기로 먹히지 않게. 손잡이에서만 잡힌다 */
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const ids = items.map((i) => i.id);
+  const end = (e: DragEndEvent) => {
+    if (!e.over) return;
+    const from = ids.indexOf(String(e.active.id));
+    const to = ids.indexOf(String(e.over.id));
+    if (from < 0 || to < 0 || from === to) return;
+    onReorder(arrayMove(items, from, to));
+  };
+  return (
+    <DndContext id={label} sensors={sensors} collisionDetection={closestCenter} onDragEnd={end}>
+      <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+        <ul className="flex flex-col gap-2" data-source-group={label}>
+          {items.map((s) => (
+            <SortableRow key={s.id} id={s.id} render={(handle) => renderRow(s, handle)} />
+          ))}
+        </ul>
+      </SortableContext>
+    </DndContext>
+  );
+}
+
+function SortableRow({ id, render }: { id: string; render: (handle: ReactNode) => ReactNode }) {
+  const { setNodeRef, setActivatorNodeRef, attributes, listeners, transform, transition, isDragging } = useSortable({ id });
+  const handle = (
+    <button
+      type="button"
+      ref={setActivatorNodeRef}
+      aria-label="끌어서 순서 바꾸기"
+      title="끌어서 순서 바꾸기"
+      data-source-handle={id}
+      className="-ml-1 shrink-0 cursor-grab touch-none px-1 text-white/25 transition-colors hover:text-white/70 active:cursor-grabbing"
+      {...attributes}
+      {...listeners}
+    >
+      ⋮⋮
+    </button>
+  );
+  return (
+    <li
+      ref={setNodeRef}
+      data-source-row={id}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
+      className={`flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 ${isDragging ? "relative z-10 bg-white/10 opacity-80 shadow-lg" : ""}`}
+    >
+      {render(handle)}
+    </li>
   );
 }

@@ -1378,6 +1378,7 @@ function registerIpc() {
     return { canceled: false, source: sources.add({ kind, name, dir: picked.filePaths[0] }) };
   });
   handle("sources:rename", (_e, id, name) => { sources.rename(id, name); });
+  handle("sources:reorder", (_e, ids) => { sources.reorder(ids); });
   handle("sources:remove", (_e, id) => {
     const removed = sources.remove(id);
     if (removed) { extMedia.dropCache(id); movedFiles.drop(id); }

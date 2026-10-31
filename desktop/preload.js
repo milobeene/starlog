@@ -245,6 +245,8 @@ if (trustedOrigin()) contextBridge.exposeInMainWorld("starlog", {
     /** `{kind: "steam"|"folder", name}` → `{canceled: true}` | `{canceled: false, source}` */
     add: (req) => ipcRenderer.invoke("sources:add", req),
     rename: (id, name) => ipcRenderer.invoke("sources:rename", id, name),
+    /** 등록 순서 — id를 빠짐없이. 스팀은 저장할 때 늘 뒤로 간다 */
+    reorder: (ids) => ipcRenderer.invoke("sources:reorder", ids),
     remove: (id) => ipcRenderer.invoke("sources:remove", id),
     /** 한 폴더를 훑는다 — 묶음(스팀은 게임, 폴더는 하위 폴더)과 파일 목록 */
     scan: (id, firstKey) => ipcRenderer.invoke("sources:scan", id, firstKey),
