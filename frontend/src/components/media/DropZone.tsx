@@ -34,6 +34,7 @@ export default function DropZone({
   disabled = false,
   /** 영상까지 받나. 커버는 이미지만, 스크린샷은 영상도 받는다 */
   video = false,
+  compact = false,
   hint,
   children,
 }: {
@@ -41,6 +42,8 @@ export default function DropZone({
   multiple?: boolean;
   disabled?: boolean;
   video?: boolean;
+  /** 한 줄짜리 얇은 띠 — 격자 위에 늘 얹어 두는 자리 */
+  compact?: boolean;
   hint?: string;
   children?: React.ReactNode;
 }) {
@@ -125,7 +128,9 @@ export default function DropZone({
           input.current?.click();
         }
       }}
-      className={`relative flex min-h-40 w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed p-6 text-center transition-colors ${
+      className={`relative flex w-full cursor-pointer items-center justify-center border border-dashed text-center transition-colors ${
+        compact ? "min-h-14 flex-row gap-3 rounded-lg px-4 py-3" : "min-h-40 flex-col gap-2 rounded-xl p-6"
+      } ${
         disabled
           ? "cursor-not-allowed border-white/10 opacity-50"
           : over
@@ -148,11 +153,11 @@ export default function DropZone({
 
       {children ?? (
         <>
-          <UploadIcon />
+          <UploadIcon compact={compact} />
           <p className="text-sm text-white/70">
             {over ? "놓으면 됩니다" : "여기에 끌어다 놓거나 클릭해서 고르세요"}
           </p>
-          <p className="text-[11px] text-white/35">
+          <p className={`text-[11px] text-white/35 ${compact ? "hidden md:block" : ""}`}>
             {hint ?? (video ? "JPG · PNG · WebP · MP4 · MOV · WebM" : "붙여넣기(⌘V)도 됩니다 · JPG · PNG · WebP")}
           </p>
         </>
@@ -173,10 +178,10 @@ function extensionOf(name: string): string {
   return dot < 0 || dot === name.length - 1 ? name : name.slice(dot + 1).toLowerCase();
 }
 
-function UploadIcon() {
+function UploadIcon({ compact }: { compact: boolean }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4"
-         className="h-7 w-7 text-white/40">
+         className={`${compact ? "h-5 w-5" : "h-7 w-7"} text-white/40`}>
       <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" />
       <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
     </svg>

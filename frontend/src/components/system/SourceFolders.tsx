@@ -61,16 +61,16 @@ export default function SourceFolders() {
   };
 
   return (
-    <section>
+    <section className="flex flex-col border-t border-white/8 pt-6" data-source-folders>
       <div className="flex items-baseline justify-between gap-3">
         <h3 className="text-[11px] font-semibold tracking-widest text-white/50 uppercase">외부 스크린샷 폴더</h3>
-        <Link href="/screenshots-inbox" className="text-xs text-white/50 transition-colors hover:text-white">
-          인박스 열기 →
+        <Link href="/screenshots" className="text-xs text-white/50 transition-colors hover:text-white">
+          스크린샷 화면 열기 →
         </Link>
       </div>
       <p className="mt-2 text-[11px] text-white/35">
-        스팀이나 ShareX가 사진을 쌓는 폴더를 등록하면 인박스에서 보고, 고른 사진을 게임으로 옮길 수 있습니다.
-        옮기면 원본은 휴지통으로 갑니다. 등록은 이 PC에만 남습니다.
+        스팀이나 ShareX가 사진을 쌓는 폴더를 등록하면 스크린샷 화면에서 보고, 고른 사진을 게임으로 가져올 수 있습니다.
+        스팀 폴더는 복사만 하고, 그 밖의 폴더는 옮기면 원본이 휴지통으로 갑니다. 등록은 이 PC에만 남습니다.
       </p>
 
       <ul className="mt-3 flex flex-col gap-2">
@@ -127,8 +127,8 @@ export default function SourceFolders() {
         {list?.length === 0 && <li className="text-xs text-white/30">등록한 폴더가 없습니다.</li>}
       </ul>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <select aria-label="종류" value={kind} onChange={(e) => setKind(e.target.value as SourceKind)} className={`${FIELD_SELECT} w-auto`}>
+      <div className="mt-3 flex flex-wrap items-center gap-2" data-source-add>
+        <select aria-label="종류" value={kind} onChange={(e) => setKind(e.target.value as SourceKind)} className={`${FIELD_SELECT} !w-36 shrink-0`}>
           <option value="steam">Steam</option>
           <option value="folder">일반 폴더</option>
         </select>
@@ -138,7 +138,7 @@ export default function SourceFolders() {
           maxLength={NAME_MAX}
           onChange={(e) => setName(e.target.value)}
           placeholder={`이름 (비우면 ${KIND_LABEL[kind]})`}
-          className={`${FIELD_INPUT} max-w-xs flex-1`}
+          className={`${FIELD_INPUT} !w-auto min-w-40 max-w-xs flex-1`}
         />
         <Button disabled={busy} onClick={() => void add()}>폴더 고르기</Button>
       </div>

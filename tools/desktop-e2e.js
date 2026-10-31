@@ -512,11 +512,11 @@ async function mediaProtocolSteps(port, entryId, folder, stored, items) {
 /** 뷰어 — 누르고 있기는 초당 ~8장(120ms), 열면 진행 방향 원본을 미리 받는다 */
 async function viewerSteps(entryId) {
   await goto(`app://starlog/library/detail?entry=${entryId}`);
-  await js(`[...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "전체 화면").click()`);
-  await sleep(800);
-  const tiles = await js(`document.querySelectorAll('[aria-label="스크린샷 갤러리"] .grid button[aria-label]').length`);
+  await goto(`app://starlog/screenshots?entry=${entryId}`);
+  await sleep(1500);
+  const tiles = await js(`document.querySelectorAll('[data-pane=starlog] [data-count] [data-tile] > button').length`);
   mediaRequests.length = 0;
-  await js(`document.querySelectorAll('[aria-label="스크린샷 갤러리"] .grid button[aria-label]')[0].click()`);
+  await js(`document.querySelectorAll('[data-pane=starlog] [data-count] [data-tile] > button')[0].click()`);
   await sleep(1200);
   const prefetched = mediaRequests.filter((u) => u.startsWith("starlog-media://shot/")).map((u) => decodeURIComponent(u.split("/").pop().split("?")[0]));
   const items = await js(`(async () => (await (await fetch("http://127.0.0.1:" + window.starlog.backendPort() + "/api/screenshots", { headers: { "X-Starlog-Token": window.starlog.session.token() } })).json()).items.map((i) => [i.fileName, i.kind]))()`);
@@ -903,7 +903,8 @@ async function sourcesSteps(port, entryId) {
   const cached = fs.existsSync(cacheDir) ? fs.readdirSync(cacheDir).filter((n) => n.endsWith(".jpg")) : [];
   const dotThumbs = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => (d.name === ".thumbs" ? [path.join(dir, d.name)] : d.isDirectory() && !d.isSymbolicLink() ? dotThumbs(path.join(dir, d.name)) : []));
   check("썸네일 캐시 — 앱 데이터 thumb-cache/<sourceId>/<sha1>.jpg, 수정시각 = 원본, 사용자 폴더에는 아무것도 안 쓴다",
-    cached.length === 1 && /^[0-9a-f]{40}\.jpg$/.test(cached[0]) && Math.abs(fs.statSync(path.join(cacheDir, cached[0])).mtimeMs - fs.statSync(path.join(A, "a.png")).mtimeMs) <= 1
+    (() => { const mine = require("crypto").createHash("sha1").update(a4242.rel).digest("hex") + ".jpg"; /* 배경 미리 만들기가 다른 장도 채울 수 있다 */
+      return cached.includes(mine) && cached.every((n) => /^[0-9a-f]{40}\.jpg$/.test(n)) && Math.abs(fs.statSync(path.join(cacheDir, mine)).mtimeMs - fs.statSync(path.join(A, "a.png")).mtimeMs) <= 1; })()
     && dotThumbs(steam).length === 0 && fs.readdirSync(A).sort().join() === "a.png,b.png,thumbnails", `${cached.join()} ${dotThumbs(steam).join()}`);
   await Promise.all(g["4242"].items.map((i) => get(i.thumbUrl)));
   await sleep(1200);   // 색인 쓰기(800ms 미룸)
@@ -977,21 +978,27 @@ async function sourcesSteps(port, entryId) {
   const added = listAfter.filter((n) => !listBefore.includes(n));
   const folder = path.join(MEDIA_ROOT, fs.readdirSync(MEDIA_ROOT).filter((n) => !n.startsWith("."))[0]);
   const committedBytes = job?.committed?.map((n) => read(path.join(folder, n)));
-  check("옮기기 — 확정되고 원본은 휴지통으로 (mode move, trashed 2), 사진은 시각 순서(a → b)로 번호가 붙는다",
-    job?.phase === "done" && job.mode === "move" && job.trashed === 2 && (job.trashFailures ?? []).length === 0 && added.length === 2
+  check("스팀 복사 — 확정되고 (mode add, fromSteam), 사진은 시각 순서(a → b)로 번호가 붙는다",
+    job?.phase === "done" && job.mode === "add" && job.fromSteam === true && added.length === 2
     && committedBytes?.[0]?.equals(aBytes) && committedBytes?.[1]?.equals(bBytes), JSON.stringify(job));
-  check("옮기기 — 원본은 폴더에서 사라지고 휴지통에 있다 (영구 삭제 아님), 스팀의 thumbnails는 안 건드린다",
-    !fs.existsSync(path.join(A, "a.png")) && !fs.existsSync(path.join(A, "b.png")) && trashedFiles.length === 2
-    && trashedFiles.every(([, dest]) => fs.existsSync(dest)) && fs.existsSync(thumbOfA), JSON.stringify(trashedFiles.map((t) => path.basename(t[1]))));
+  check("스팀 복사 — 원본·스팀 thumbnails는 그대로, 휴지통에는 아무것도 안 간다 (스팀 폴더는 복사만)",
+    fs.existsSync(path.join(A, "a.png")) && fs.existsSync(path.join(A, "b.png")) && fs.existsSync(thumbOfA) && trashedFiles.length === 0
+    && (job.trashed ?? 0) === 0, JSON.stringify(trashedFiles.map((t) => path.basename(t[1]))));
   const sc2 = await js(`window.starlog.sources.scan(${JSON.stringify(steamId)})`);
-  check("옮기기 — 다음 목록에서 옮긴 장이 빠진다 (4242 = e만)", sc2.groups.find((x) => x.key === "4242")?.items.map((i) => i.name).join() === "e.png");
-  check("옮기기 — 이 PC에 appid → 게임을 기억한다 (settings.json)", (await js("window.starlog.sources.memory()"))["4242"] === entryId
+  const items4242 = sc2.groups.find((x) => x.key === "4242")?.items ?? [];
+  check("스팀 복사 — 다음 목록에서 복사한 장(a·b)은 moved: true, 안 한 장(e)은 false",
+    items4242.length === 3 && items4242.filter((i) => i.moved).map((i) => i.name).sort().join() === "a.png,b.png" && items4242.find((i) => i.name === "e.png")?.moved === false,
+    JSON.stringify(items4242.map((i) => [i.name, i.moved])));
+  const movedFile = JSON.parse(fs.readFileSync(path.join(TMP, "appData/starlog/moved-files.json"), "utf8"));
+  check("스팀 복사 — 가져간 기억은 앱 데이터의 moved-files.json (등록 id·상대 경로·크기·시각)",
+    Object.keys(movedFile[steamId] ?? {}).length === 2 && Object.keys(movedFile[steamId]).every((k) => k.split("\u0000").length === 3));
+  check("스팀 복사 — 옛 appid → 게임 기억도 (폴백) 남는다", (await js("window.starlog.sources.memory()"))["4242"] === entryId
     && JSON.parse(fs.readFileSync(path.join(TMP, "appData/starlog/settings.json"), "utf8")).steamGameMap?.["4242"] === entryId);
   const states = await js("__ing2.filter((j) => j.batchId === " + JSON.stringify(mv.batchId) + ").map((j) => j.phase + ':' + (j.mode ?? ''))");
-  check("옮기기 — 진행 알림이 mode: move로 온다 (copying → … → done)", states.includes("copying:move") && states.at(-1) === "done:move", [...new Set(states)].join(" "));
+  check("스팀 복사 — 진행 알림이 온다 (copying → … → done)", states.includes("copying:add") && states.at(-1) === "done:add", [...new Set(states)].join(" "));
   await sleep(1500);
   const toastText = await js("document.body.innerText");
-  check("옮기기 — 토스트 문구 '2장 옮김 (원본은 휴지통)'", /2장 옮김 \(원본은 휴지통\)/.test(toastText), toastText.split("\n").filter((l) => /옮/.test(l)).join(" | "));
+  check("스팀 복사 — 토스트 '2장 복사함 (스팀 원본은 그대로)' + 스팀 쪽 정리 안내", /2장 복사함 \(스팀 원본은 그대로\)/.test(toastText) && /스팀 쪽 정리는 스팀 스크린샷 관리자에서/.test(toastText), toastText.split("\n").filter((l) => /복사|스팀/.test(l)).join(" | "));
 
   // 7) 실패 — 아무것도 안 건드린다
   put(path.join(shots, "g1.png"), [11, 22, 33], 1_700_000_500);
@@ -1119,41 +1126,249 @@ async function sourcesSteps(port, entryId) {
     viaRoot.length === 1 && viaRoot[0] === path.join(MIXED, "USERDATA", "7", "760", "REMOTE") && viaRemote.length === 1, JSON.stringify([viaRoot, viaRemote]));
   await js(`window.starlog.sources.remove(${JSON.stringify(extraId)})`);
 
-  // 10) 화면 — 인박스, 게임 고르기(상태 순서 · 기억 고정), 시스템의 등록 구역
+  // 10) 스크린샷 화면 (/screenshots) — 레일 · 스팀 연결 · 복사 · 폴더 트리 · 탭 전환 · 시스템의 등록 구역
+  const waitFor = async (expr, ms = 8000) => { const t0 = Date.now(); for (;;) { const v = await js(`!!(${expr})`); if (v) return v; if (Date.now() - t0 > ms) return v; await sleep(100); } };
+  const gridCount = `document.querySelector('[data-shots-page] [data-count]')?.children.length ?? 0`;
+
+  // 10-1) 옛 주소는 새 화면으로
+  await goto("app://starlog/screenshots-inbox");
+  check("스크린샷 화면 — 옛 /screenshots-inbox는 /screenshots로 보낸다", await waitFor(`location.pathname === "/screenshots"`), await js("location.pathname"));
+
+  // 10-2) 스팀 — 레일의 묶음(게임 이름 · 연결), 옮긴 것은 기본 숨김 + 토글
+  await goto(`app://starlog/screenshots?source=${steamId}`);
+  let page = "";
+  for (let i = 0; i < 40 && !/E2E 스팀 게임/.test(page); i++) { await sleep(200); page = await js("document.body.innerText"); }
+  check("스크린샷 화면 — 레일에 STARLOG·외부 폴더(스팀 묶음: 게임 이름)가 보인다", /STARLOG/.test(page) && /외부 폴더/.test(page) && /내 스팀/.test(page) && /ShareX/.test(page)
+    && /E2E 스팀 게임/.test(page) && /둘째 라이브러리 게임/.test(page) && /비 스팀 게임 3000000000/.test(page), page.split("\n").slice(0, 24).join(" | "));
+  await js(`document.querySelector('[data-rail-group="4242"]').click()`);
+  await waitFor(`document.querySelector('[data-pane=external] [data-count]')`);
+  await sleep(1200);
+  const hidden = await js(gridCount);
+  const toggleText = await js(`document.querySelector('[data-show-moved]')?.textContent ?? null`);
+  check("스크린샷 화면 — 이미 복사해 간 스팀 사진은 기본 숨김 (3장 중 1장), [옮긴 것도 보기 (2)]", hidden === 1 && /옮긴 것도 보기 \(2\)/.test(toggleText ?? ""), `${hidden} ${toggleText}`);
+  await js(`document.querySelector('[data-show-moved]').click()`);
+  await sleep(600);
+  const shown = await js(`({ tiles: ${gridCount}, badges: [...document.querySelectorAll('[data-pane=external] [data-count] span')].filter((s) => s.textContent === "옮김").length })`);
+  check("스크린샷 화면 — 켜면 3장, 복사해 간 2장은 '옮김' 배지로 흐리게", shown.tiles === 3 && shown.badges === 2, JSON.stringify(shown));
+  const tileSrc = await js(`document.querySelector('[data-pane=external] [data-count] img:not([data-lqip])')?.src ?? null`);
+  const drawn = await js(`(() => { const i = document.querySelector('[data-pane=external] [data-count] img:not([data-lqip])'); return i && i.complete ? i.naturalWidth : 0; })()`);
+  check("스크린샷 화면 — 썸네일이 starlog-media://srcthumb로 뜨고 app:// 창이 그린다 (CSP)", /^starlog-media:\/\/srcthumb\//.test(tileSrc ?? "") && drawn > 0, `${tileSrc} ${drawn}`);
+
+  // 스팀 연결 — 옛 기억(4242 → entryId)이 서버 연결(직접)로 옮겨졌고, 옮기기는 확인 한 번
+  await sleep(500);
+  const linkNote = await js(`document.querySelector('[data-link-note]')?.textContent ?? null`);
+  const linkRow = await api(port, "POST", "/api/steam-links/resolve", { appids: ["4242"] });
+  const linked4242 = linkRow.json?.links?.find((l) => l.appid === "4242");
+  const hasLinksApi = linkRow.status === 200;
+  check("스팀 연결 — 옛 기억이 연결 표(직접)로 옮겨지고 묶음에 '→ 게임 · 직접'이 뜬다 (서버 연결 API가 있을 때)",
+    !hasLinksApi || (linked4242?.entryId === entryId && linked4242.source === "MANUAL" && /→ .+ · 직접/.test(linkNote ?? "")), `${linkRow.status} ${JSON.stringify(linked4242)} ${linkNote}`);
+  check("스팀 연결 — 옛 기억은 옮긴 뒤 비어서 온다 (memoryMigrated)", !hasLinksApi || Object.keys(await js("window.starlog.sources.memory()")).length === 0);
+
+  // 선택 → [게임으로 복사] → 연결된 게임이 미리 골라진 확인, [다른 게임 고르기] → 고르기 창(연결된 게임이 맨 위)
   const gameB = await api(port, "POST", "/api/games", { name: "E2E 게임 B" });
   const entryB = await api(port, "POST", "/api/backlog", { gameId: gameB.json?.id });
   const gameC = await api(port, "POST", "/api/games", { name: "E2E 게임 C" });
   const entryC = await api(port, "POST", "/api/backlog", { gameId: gameC.json?.id });
   const play = await api(port, "POST", `/api/backlog/${entryC.json?.id}/playthroughs`, { startedOn: "2026-10-01", status: "PLAYING" });
   const cardC = (await api(port, "GET", "/api/backlog/cards")).json.find((c) => c.entryId === entryC.json?.id);
-  await goto("app://starlog/screenshots-inbox");
-  let page = "";
-  for (let i = 0; i < 30 && !/E2E 스팀 게임/.test(page); i++) { await sleep(200); page = await js("document.body.innerText"); }
-  check("인박스 화면 — 폴더 탭과 묶음(게임 이름·개수)이 보인다", /내 스팀/.test(page) && /ShareX/.test(page) && /E2E 스팀 게임/.test(page) && /둘째 라이브러리 게임/.test(page) && /비 스팀 게임 3000000000/.test(page), page.split("\n").slice(0, 14).join(" | "));
-  await js(`document.querySelector('[data-group="4242"]').click()`);
-  await sleep(1200);
-  const tiles = await js(`document.querySelectorAll('[data-inbox] [data-count] button').length`);
-  const tileSrc = await js(`document.querySelector('[data-inbox] [data-count] img:not([data-lqip])')?.src ?? null`);
-  check("인박스 화면 — 4242 묶음의 칸이 그려지고 썸네일이 starlog-media://srcthumb로 뜬다", tiles === 1 && /^starlog-media:\/\/srcthumb\//.test(tileSrc ?? ""), `${tiles} ${tileSrc}`);
-  const drawn = await js(`(() => { const i = document.querySelector('[data-inbox] [data-count] img:not([data-lqip])'); return i && i.complete ? i.naturalWidth : 0; })()`);
-  check("인박스 화면 — app:// 창의 <img>가 외부 파일 썸네일을 그린다 (CSP)", drawn > 0, String(drawn));
-  await js(`[...document.querySelectorAll('main button')].find((b) => b.textContent.trim() === '선택').click()`);
-  await sleep(200);
-  await js(`document.querySelector('[data-inbox] [data-count] button').click()`);
+  await js(`document.querySelector('[data-pane=external] [data-check]').click()`);
+  await sleep(300);
+  const selCount = await js(`document.body.innerText.match(/(\\d+)개 선택/)?.[1] ?? null`);
+  await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+  await sleep(300);
+  const afterEsc = await js(`document.body.innerText.match(/(\\d+)개 선택/)?.[1] ?? null`);
+  check("선택 — 체크를 누르면 선택 모드로 1개 선택, Esc는 선택을 푼다", selCount === "1" && afterEsc === null, `${selCount} → ${afterEsc}`);
+  await js(`document.querySelector('[data-pane=external] [data-check]').click()`);
   await sleep(200);
   await js(`document.querySelector('[data-move]').click()`);
-  await sleep(1500);
+  await sleep(1200);
+  const confirmText = await js("document.body.innerText");
+  check("스팀 복사 — 연결된 게임이 있으면 확인 한 번 (게임 이름 + 스팀은 복사만 안내 + [다른 게임 고르기])",
+    !hasLinksApi || (/1장을 복사합니다/.test(confirmText) && /스팀 쪽 정리는 스팀 스크린샷 관리자에서/.test(confirmText) && (await js(`!!document.querySelector('[data-pick-other]') && !!document.querySelector('[data-confirm-move]')`))), confirmText.split("\n").slice(0, 30).join(" | "));
+  if (hasLinksApi) { await js(`document.querySelector('[data-pick-other]').click()`); await sleep(1500); } else { await sleep(300); }
   const order = await js(`[...document.querySelectorAll('[data-entry-id]')].map((b) => Number(b.dataset.entryId))`);
   const pickerText = await js("document.body.innerText");
-  check("게임 고르기 — 기억한 게임이 맨 위(고정), 다음은 PLAYING, 그다음 나머지",
-    order[0] === entryId && order[1] === entryC.json?.id && order.includes(entryB.json?.id) && cardC?.status === "PLAYING" && /지난번에 이 게임으로 옮겼습니다/.test(pickerText),
+  check("게임 고르기 — 연결된(기억한) 게임이 맨 위, 다음은 PLAYING, 그다음 나머지, 스팀 안내 문구",
+    order[0] === entryId && order[1] === entryC.json?.id && order.includes(entryB.json?.id) && cardC?.status === "PLAYING" && /스팀 폴더는 복사만 합니다/.test(pickerText),
     `${order.join()} C=${cardC?.status} play=${play.status}`);
   await js(`[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '취소' && b.closest('[role=dialog]'))?.click()`);
   await sleep(300);
-  await goto("app://starlog/system?tab=usage");
+
+  // 10-3) 폴더 종류 — 트리(사진이 바로 든 폴더만, 중간 폴더는 한 칸으로), 바로 아래 사진만
+  await goto(`app://starlog/screenshots?source=${folderId}`);
+  await waitFor(`document.querySelector('[data-rail-source="${folderId}"]')`);
+  await sleep(1500);
+  const treeText = await js(`document.querySelector('[data-rail]')?.innerText ?? ""`);
+  const treeKeys = await js(`[...document.querySelectorAll('[data-rail-group]')].map((b) => b.dataset.railGroup)`);
+  check("폴더 트리 — 사진이 바로 든 폴더만 (ShareX/2026-10 한 칸으로 접힘, d1/d2/d3/d4), '(폴더 바로 아래)' 항목은 없다",
+    treeKeys.includes("ShareX/2026-10") && treeKeys.includes("d1/d2/d3/d4") && !treeKeys.includes("ShareX") && !/폴더 바로 아래/.test(treeText), `${treeKeys.join(",")} :: ${treeText.replace(/\n/g, " | ")}`);
+  await js(`document.querySelector('[data-rail-group="ShareX/2026-10"]').click()`);
+  await sleep(1200);
+  const treeTiles = await js(gridCount);
+  check("폴더 트리 — 접힌 폴더를 누르면 그 폴더 바로 아래 사진만 (y1·y2·감시 시험 new = 3장)", treeTiles === 3, String(treeTiles));
+  // 하위 폴더 없는 폴더는 묶음 단계가 없다
+  const FLAT = path.join(EXT, "Flat");
+  put(path.join(FLAT, "f1.png"), [1, 1, 1], 1_700_001_000);
+  put(path.join(FLAT, "f2.png"), [2, 2, 2], 1_700_001_001);
+  dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [FLAT] });
+  const flatId = (await js(`window.starlog.sources.add({ kind: "folder", name: "평평한 폴더" })`)).source.id;
+  dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] });
+  await goto(`app://starlog/screenshots?source=${flatId}`);
+  await waitFor(`document.querySelector('[data-pane=external] [data-count]')`);
+  await sleep(600);
+  check("폴더 트리 — 하위 폴더가 없으면 묶음 단계가 없고 바로 사진이 뜬다 (2장)", (await js(`document.querySelectorAll('[data-rail-group]').length`)) === 0 && (await js(gridCount)) === 2);
+  await js(`window.starlog.sources.remove(${JSON.stringify(flatId)})`);
+
+  // 10-4) 폴더 탭을 오가도 끝없이 읽지 않는다 — 폴더에 변화가 계속 생겨도 (감시가 연달아 울려도) 읽기가 끝난다
+  await goto(`app://starlog/screenshots?source=${steamId}`);
+  await waitFor(`document.querySelector('[data-rail-source="${folderId}"]')`);
+  let storm = 0;
+  const stormTimer = setInterval(() => { try { put(path.join(shots, "storm", `s${storm++ % 4}.png`), [storm % 250, 3, 4], 1_700_002_000 + storm); } catch { /* 정리 중 */ } }, 120);
+  const finishes = [];
+  for (let round = 0; round < 3; round++) {
+    for (const id of [folderId, steamId]) {
+      const t0 = Date.now();
+      await js(`document.querySelector('[data-rail-source="${id}"]').click()`);
+      const ok = await waitFor(`!document.querySelector('[data-loading]') && document.querySelector('[data-pane=external] [data-count], [data-pane=external] [role=alert], [data-pane=external] p')`, 12000);
+      finishes.push(ok ? Date.now() - t0 : -1);
+    }
+  }
+  clearInterval(stormTimer);
+  fs.rmSync(path.join(shots, "storm"), { recursive: true, force: true });
+  check("폴더 탭 전환 — 변화가 계속 생기는 폴더에서도 6번 모두 로딩이 끝난다 (예전엔 읽기가 계속 버려져 끝없이 로딩)", finishes.every((x) => x >= 0), finishes.join(","));
+
+  // 10-5) 시스템 — 외부 폴더 등록 구역은 앱 설정 탭, 데이터 폴더 바로 아래, 종류·이름·고르기가 한 줄
+  await goto("app://starlog/system?tab=settings");
   let sys = "";
   for (let i = 0; i < 25 && !/외부 스크린샷 폴더/.test(sys); i++) { await sleep(200); sys = await js("document.body.innerText"); }
-  check("시스템 — 외부 스크린샷 폴더 구역에 등록한 폴더와 인박스 링크", /외부 스크린샷 폴더/.test(sys) && /내 스팀/.test(sys) && /ShareX/.test(sys) && /인박스 열기/.test(sys));
+  const layout = await js(`(() => {
+    const secs = [...document.querySelectorAll("section")];
+    const data = secs.find((s) => /데이터 폴더/.test(s.querySelector("h3")?.textContent ?? ""));
+    const src = document.querySelector("[data-source-folders]");
+    const row = document.querySelector("[data-source-add]");
+    const tops = row ? [...row.children].map((c) => { const r = c.getBoundingClientRect(); return Math.round(r.top + r.height / 2); }) : [];
+    return { below: !!data && !!src && data.nextElementSibling === src, oneLine: tops.length === 3 && Math.max(...tops) - Math.min(...tops) <= 1, tops };
+  })()`);
+  check("시스템 — 외부 스크린샷 폴더는 앱 설정 탭의 데이터 폴더 바로 아래, 종류·이름·[폴더 고르기]가 한 줄",
+    /외부 스크린샷 폴더/.test(sys) && /내 스팀/.test(sys) && /ShareX/.test(sys) && /스크린샷 화면 열기/.test(sys) && layout.below && layout.oneLine, JSON.stringify(layout));
+  await goto("app://starlog/system?tab=usage");
+  await sleep(800);
+  check("시스템 — 사용량 탭에는 더 이상 없다", !/외부 스크린샷 폴더/.test(await js("document.body.innerText")));
+
+  // 11) STARLOG 쪽 — 레일 · 격자 · 선택/Esc · 크게 보기 크기 · 상세의 [전체 보기]
+  win.emit("focus");
+  const mediaFolder = path.join(MEDIA_ROOT, fs.readdirSync(MEDIA_ROOT).filter((n) => !n.startsWith("."))[0]);
+  const big = (w, h, name) => fs.writeFileSync(path.join(mediaFolder, name), nativeImage.createFromBitmap(Buffer.alloc(w * h * 4, 120), { width: w, height: h }).toPNG());
+  big(2256, 960, "vz-a.png"); big(1692, 720, "vz-b.png"); big(1128, 480, "vz-c.png");
+  const apiCount = (await api(port, "GET", `/api/backlog/${entryId}/screenshots`)).json.length;
+  await goto(`app://starlog/screenshots?entry=${entryId}`);
+  await waitFor(`document.querySelector('[data-pane=starlog] [data-count]')`);
+  await sleep(800);
+  const railInfo = await js(`({ rail: !!document.querySelector('[data-rail-game="${entryId}"]'), tiles: ${gridCount}, title: document.querySelector('[data-pane=starlog] h1')?.textContent })`);
+  check("STARLOG 화면 — 레일에 게임, 격자 칸 수가 서버 목록과 같다 (보이는 줄만 그리므로 상한 안)", railInfo.rail && railInfo.tiles > 0 && railInfo.tiles <= apiCount, JSON.stringify({ ...railInfo, apiCount }));
+  await js(`document.querySelector('[data-pane=starlog] [data-check]').click()`);
+  await sleep(250);
+  const n1 = await js(`document.body.innerText.match(/(\\d+)개 선택/)?.[1] ?? null`);
+  await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+  await sleep(250);
+  check("STARLOG 화면 — 체크로 선택 모드, Esc로 선택 해제", n1 === "1" && (await js(`document.body.innerText.match(/(\\d+)개 선택/)?.[1] ?? null`)) === null);
+  // 크게 보기 — 해상도가 달라도 같은 크기로 (contain, 작은 그림은 키운다)
+  const measure = async (name) => {
+    await js(`document.querySelector('[aria-label="${name} 크게 보기"]').click()`);
+    await sleep(900);
+    const m = await js(`(() => {
+      const v = [...document.querySelectorAll('[role=dialog][aria-modal=true]')].find((x) => x.className.includes('z-[200]'));
+      const img = v?.querySelector('img[alt="${name}"]'); if (!img) return null;
+      const r = img.getBoundingClientRect(), a = img.naturalWidth / img.naturalHeight;
+      return { box: [Math.round(r.width), Math.round(r.height)], content: Math.round(Math.min(r.width, r.height * a)), nat: img.naturalWidth, fit: getComputedStyle(img).objectFit };
+    })()`);
+    await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+    await sleep(250);
+    return m;
+  };
+  const vz = [await measure("vz-a.png"), await measure("vz-b.png"), await measure("vz-c.png")];
+  check("크게 보기 — 2256×960·1692×720·1128×480이 같은 크기로 뜬다 (contain, 작은 그림도 상자에 맞춰 키움)",
+    vz.every(Boolean) && vz.every((m) => m.fit === "contain") && new Set(vz.map((m) => m.content)).size === 1 && vz[2].content > vz[2].nat, JSON.stringify(vz));
+  // 상세의 [전체 보기]
+  await goto(`app://starlog/library/detail?entry=${entryId}`);
+  await sleep(1500);
+  const detailLink = await js(`[...document.querySelectorAll("a")].find((a) => a.textContent.trim() === "전체 보기")?.getAttribute("href") ?? null`);
+  const detailBtns = await js(`[...document.querySelectorAll('[role=group]')].map((g) => g.getAttribute("aria-label"))`);
+  check("상세 — 스크린샷 구역의 [전체 보기]는 스크린샷 화면으로, 버튼은 선택/보기 두 묶음", detailLink === `/screenshots?entry=${entryId}` && detailBtns.includes("선택") && detailBtns.includes("보기"), `${detailLink} ${detailBtns}`);
+  for (const f of ["vz-a.png", "vz-b.png", "vz-c.png"]) fs.rmSync(path.join(mediaFolder, f), { force: true });
+
+  // 12) 낡은 .thumbs 치우기 — 사진이 하나도 없으면 .thumbs도 없다 / 색인이 있는 척해도 목록은 폴더를 따른다
+  const mediaWork = require(path.join(ROOT, "desktop/mediaWork.js"));
+  const gate2 = path.join(await (async () => { const r = await api(port, "POST", `/api/backlog/${entryB.json.id}/screenshots/folder`); return r.json.path; })());
+  put(path.join(gate2, "t1.png"), [1, 2, 3], 1_700_003_000);
+  put(path.join(gate2, "t2.png"), [3, 2, 1], 1_700_003_001);
+  mediaWork.rescan(gate2);
+  for (let i = 0; i < 60 && !fs.existsSync(path.join(gate2, ".thumbs", "index.json")); i++) await sleep(150);
+  check("낡은 .thumbs — 사진이 있으면 색인이 생긴다", fs.existsSync(path.join(gate2, ".thumbs", "index.json")));
+  fs.rmSync(path.join(gate2, "t1.png")); fs.rmSync(path.join(gate2, "t2.png"));
+  const listEmpty = (await api(port, "GET", `/api/backlog/${entryB.json.id}/screenshots`)).json;
+  check("낡은 .thumbs — 사진을 다 지운 직후 목록은 비어 있다 (유령 항목 없음)", listEmpty.length === 0, JSON.stringify(listEmpty.map((i) => i.fileName)));
+  mediaWork.rescan(gate2);
+  for (let i = 0; i < 60 && fs.existsSync(path.join(gate2, ".thumbs")); i++) await sleep(150);
+  check("낡은 .thumbs — 훑기가 .thumbs(index.json·썸네일)를 지운다", !fs.existsSync(path.join(gate2, ".thumbs")));
+  // 색인이 거짓 항목을 들고 있어도 (도장이 맞는 척) 목록에는 안 나온다
+  put(path.join(gate2, "real.png"), [9, 9, 9], 1_700_003_100);
+  fs.mkdirSync(path.join(gate2, ".thumbs"), { recursive: true });
+  const dirNs = fs.statSync(gate2, { bigint: true }).mtimeNs.toString();
+  const realSt = fs.statSync(path.join(gate2, "real.png"), { bigint: true });
+  fs.writeFileSync(path.join(gate2, ".thumbs", "index.json"), JSON.stringify({ v: 1, dir: { m: dirNs, n: 2 }, files: {
+    "real.png": { m: realSt.mtimeNs.toString(), s: Number(realSt.size), w: 32, h: 18, p: null },
+    "ghost.png": { m: "1", s: 1, w: 1, h: 1, p: null },
+  } }));
+  const ghostList = (await api(port, "GET", `/api/backlog/${entryB.json.id}/screenshots`)).json.map((i) => i.fileName);
+  check("낡은 .thumbs — 색인에만 있는 파일은 (도장이 맞아도) 목록에 안 나온다", ghostList.join() === "real.png", ghostList.join());
+  fs.rmSync(path.join(gate2, "real.png"));
+  mediaWork.rescan(gate2);
+  for (let i = 0; i < 60 && fs.existsSync(path.join(gate2, ".thumbs")); i++) await sleep(150);
+
+  // 13) 외부 폴더 썸네일 미리 만들기 — STARLOG를 보고 있을 때만, 떠나면 멈춘다
+  const PRE = path.join(EXT, "Pre");
+  for (let i = 1; i <= 8; i++) put(path.join(PRE, `p${i}.png`), [i * 20, 30, 30], 1_700_004_000 + i);
+  dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [PRE] });
+  const preId = (await js(`window.starlog.sources.add({ kind: "folder", name: "미리 만들기" })`)).source.id;
+  dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] });
+  const cacheJpgs = () => { try { return fs.readdirSync(path.join(extMedia.cacheRoot(), preId)).filter((f) => f.endsWith(".jpg")).length; } catch { return 0; } };
+  win.emit("blur");
+  await js(`window.starlog.sources.scan(${JSON.stringify(preId)})`);
+  await sleep(2500);
+  const whileAway = cacheJpgs();
+  win.emit("focus");
+  for (let i = 0; i < 80 && cacheJpgs() < 8; i++) await sleep(150);
+  check("외부 썸네일 미리 만들기 — 포커스가 없으면 안 만들고(0장), 돌아오면 8장 모두 만든다", whileAway === 0 && cacheJpgs() === 8, `떠난 동안 ${whileAway} → ${cacheJpgs()}`);
+  const preScan = await js(`window.starlog.sources.scan(${JSON.stringify(preId)})`);
+  check("외부 썸네일 미리 만들기 — 다음 목록에 흐린 자리표시가 실린다", preScan.groups[0].items.every((i) => typeof i.placeholder === "string"), JSON.stringify(preScan.groups[0].items.map((i) => !!i.placeholder)));
+  await js(`window.starlog.sources.remove(${JSON.stringify(preId)})`);
+
+  // 화면 확인용 캡처 — STARLOG_E2E_SHOTS=<폴더>일 때만 (레이아웃 점검)
+  if (process.env.STARLOG_E2E_SHOTS) {
+    const outDir = process.env.STARLOG_E2E_SHOTS;
+    fs.mkdirSync(outDir, { recursive: true });
+    const snap = async (name, route, after, wait = 2200) => {
+      for (const [w, h] of [[1920, 1080], [1440, 900]]) {
+        win.setContentSize(w, h);
+        await goto(`app://starlog${route}`);
+        await sleep(wait);
+        if (after) { await sleep(1800); const r = await js(`(() => { ${after}; return 0; })()`); await sleep(1200); }
+        fs.writeFileSync(path.join(outDir, `${name}-${w}x${h}.png`), (await win.webContents.capturePage()).toPNG());
+      }
+    };
+    for (let i = 1; i <= 14; i++) put(path.join(shots, "ShareX", "2026-10", `fill${i}.png`), [i * 15, 90, 200 - i * 10], 1_700_005_000 + i);
+    await snap("starlog", `/screenshots?entry=${entryId}`);
+    await snap("steam", `/screenshots?source=${steamId}&group=4242`, `document.querySelector('[data-show-moved]')?.click()`, 4000);
+    await snap("folder-tree", `/screenshots?source=${folderId}&group=${encodeURIComponent("ShareX/2026-10")}`);
+    await snap("folder-select", `/screenshots?source=${folderId}&group=${encodeURIComponent("ShareX/2026-10")}`, `document.querySelectorAll('[data-pane=external] [data-check]')[0]?.click(); setTimeout(() => document.querySelectorAll('[data-pane=external] [data-check]')[2]?.click(), 200)`);
+    await snap("detail", `/library/detail?entry=${entryId}`, `const h = [...document.querySelectorAll('h3')].find((x) => /Screenshots/.test(x.textContent)); if (h) { let el = h.parentElement; while (el) { if (el.scrollHeight > el.clientHeight + 4) el.scrollTop += h.getBoundingClientRect().top - 140; el = el.parentElement; } }`, 5000);
+    await snap("viewer", `/screenshots?entry=${entryId}`, `document.querySelector('[data-pane=starlog] [data-tile] > button')?.click()`);
+    await snap("system-settings", `/system?tab=settings`);
+    for (let i = 1; i <= 14; i++) fs.rmSync(path.join(shots, "ShareX", "2026-10", `fill${i}.png`), { force: true });
+    win.setContentSize(1280, 800);
+  }
+
   // 해제 — 캐시도 지운다
   await js(`window.starlog.sources.remove(${JSON.stringify(steamId)})`);
   check("해제 — 등록과 썸네일 캐시가 지워지고 파일은 그대로", (await js("window.starlog.sources.list()")).every((s) => s.id !== steamId)
@@ -1742,8 +1957,8 @@ async function cloudBackupSteps(save) {
     check("클라우드 백업 — 내보내기 JSON(gzip), 게임이 들어 있다", Boolean(dump?.formatVersion) && text.includes("E2E 테스트 게임"));
     check("클라우드 백업 — 자격증명 칸이 없다", !/password|secretKey|accessKey|clientSecret|apiKey/i.test(text));
     const dumped = dump?.entries?.find((e) => e.cover)?.cover;
-    check("클라우드 백업 — 형식 6, DB 커버가 바이트(base64)째 실린다",
-      dump?.formatVersion === 6 && dumped?.location === "DB" && coverBytes !== null && Buffer.from(dumped.data ?? "", "base64").equals(coverBytes),
+    check("클라우드 백업 — 형식 6 이상, DB 커버가 바이트(base64)째 실린다",
+      dump?.formatVersion >= 6 && dumped?.location === "DB" && coverBytes !== null && Buffer.from(dumped.data ?? "", "base64").equals(coverBytes),
       `${dump?.formatVersion} ${dumped?.location} ${dumped?.sizeBytes}`);
     check("클라우드 백업 — 파일 0600 · 폴더 0700", fs.existsSync(file) && (fs.statSync(file).mode & 0o777) === 0o600
       && (fs.statSync(autoDir).mode & 0o777) === 0o700);

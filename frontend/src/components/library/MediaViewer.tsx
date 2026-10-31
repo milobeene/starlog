@@ -153,50 +153,53 @@ export default function MediaViewer({
         onClick={(e) => e.stopPropagation()}
         className="relative flex max-h-full max-w-full flex-col items-center gap-3"
       >
-        {isVideo ? (
-          /*
-            재생·멈춤만 준다 (사용자 결정 2026-08-28). 타임라인·전체화면·이어보기는 안 넣는다 —
-            브라우저 기본 컨트롤이 재생/멈춤/볼륨까지는 주므로 그것만 켠다
-          */
-          <video
-            src={item.url}
-            controls
-            controlsList="nodownload noplaybackrate"
-            disablePictureInPicture
-            className="max-h-[80vh] max-w-full rounded-lg"
-          />
-        ) : (
-          /*
-            썸네일을 먼저 같은 칸에 깔고(그리드가 이미 받아 둔 것), 원본이 풀리면 그 위에 그린다.
-            칸 크기는 원본이 정한다 — 원본이 아직이면 썸네일이 자리를 잡되 화면 높이에 맞춰 키운다
-          */
-          <div className="relative">
-            {thumb && !originalReady && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={thumb}
-                alt=""
-                aria-hidden
-                onLoad={() => painted(item.url, "thumb")}
-                className={`${showOriginal ? "absolute inset-0 h-full w-full" : "h-[80vh] max-w-full"} rounded-lg object-contain`}
-              />
-            )}
-            {showOriginal && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={item.url}
-                src={item.url}
-                alt={item.fileName}
-                decoding="async"
-                onLoad={(e) => {
-                  const url = item.url;
-                  e.currentTarget.decode().catch(() => {}).finally(() => { setReadyUrl(url); painted(url, "orig"); });
-                }}
-                className={`relative max-h-[80vh] max-w-full rounded-lg object-contain ${originalReady || !thumb ? "" : "opacity-0"}`}
-              />
-            )}
-          </div>
-        )}
+        {/*
+          **상자 크기는 해상도와 무관하다** — 창에서 캡션 자리를 뺀 만큼으로 늘 같고, 사진은 그 안에 맞춘다(contain).
+          예전엔 칸 크기를 원본이 정해서 작은 사진(1128×480)은 큰 사진(2256×960)보다 작게 떴다.
+          `object-contain`은 작은 그림도 상자에 맞춰 키운다(부드럽게). 썸네일도 같은 상자라 원본이 풀려도 크기가 안 튄다
+        */}
+        <div className="relative h-[calc(100vh-8.5rem)] w-[calc(100vw-4rem)]">
+          {isVideo ? (
+            /*
+              재생·멈춤만 준다 (사용자 결정 2026-08-28). 타임라인·전체화면·이어보기는 안 넣는다 —
+              브라우저 기본 컨트롤이 재생/멈춤/볼륨까지는 주므로 그것만 켠다
+            */
+            <video
+              src={item.url}
+              controls
+              controlsList="nodownload noplaybackrate"
+              disablePictureInPicture
+              className="absolute inset-0 h-full w-full object-contain"
+            />
+          ) : (
+            <>
+              {thumb && !originalReady && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={thumb}
+                  alt=""
+                  aria-hidden
+                  onLoad={() => painted(item.url, "thumb")}
+                  className="absolute inset-0 h-full w-full object-contain"
+                />
+              )}
+              {showOriginal && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  key={item.url}
+                  src={item.url}
+                  alt={item.fileName}
+                  decoding="async"
+                  onLoad={(e) => {
+                    const url = item.url;
+                    e.currentTarget.decode().catch(() => {}).finally(() => { setReadyUrl(url); painted(url, "orig"); });
+                  }}
+                  className={`absolute inset-0 h-full w-full object-contain ${originalReady || !thumb ? "" : "opacity-0"}`}
+                />
+              )}
+            </>
+          )}
+        </div>
 
         <div className="num flex items-center gap-3 text-[11px] text-white/45">
           <span>{item.fileName}</span>

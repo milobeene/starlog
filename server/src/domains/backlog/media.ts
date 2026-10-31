@@ -583,7 +583,7 @@ async function entryFolders() {
  * 파일을 열지 않는다 (stat만). 수천 장이어도 폴더 수 × readdir + 파일 수 × stat 두 번이다.
  * `games`는 거르기 전 전체 — 위쪽 고르기 목록이 지금 필터와 상관없이 같은 게임을 보여야 한다
  */
-export async function listGallery(entryId: number | null, kind: GalleryKind) {
+export async function listGallery(entryId: number | null, kind: GalleryKind, summaryOnly = false) {
   const t0 = performance.now();
   if (entryId !== null) await db().transaction((tx) => findAliveEntry404(tx, entryId));
   const games: { entryId: number; gameName: string; imageCount: number; videoCount: number }[] = [];
@@ -595,7 +595,7 @@ export async function listGallery(entryId: number | null, kind: GalleryKind) {
       const k = mediaKindOf(name);
       if (k === null) continue;
       if (k === "IMAGE") images++; else videos++;
-      if ((entryId !== null && entry.entryId !== entryId) || (kind !== "ALL" && kind !== k)) continue;
+      if (summaryOnly || (entryId !== null && entry.entryId !== entryId) || (kind !== "ALL" && kind !== k)) continue;
       items.push({ entryId: entry.entryId, gameName: entry.displayName, kind: k, ...describe(entry.entryId, folder, name, v, e), mtimeNs: v.mtimeNs });
     }
     if (images + videos > 0) games.push({ entryId: entry.entryId, gameName: entry.displayName, imageCount: images, videoCount: videos });

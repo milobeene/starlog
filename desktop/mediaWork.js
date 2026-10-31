@@ -70,6 +70,13 @@ async function scan(folder, current) {
   try { before = await fsp.lstat(folder, { bigint: true }); } catch { return { work: [], changed: false }; }
   if (!before.isDirectory()) return { work: [], changed: false };
   let names = await fsp.readdir(folder);
+  // 미디어가 하나도 없으면 `.thumbs`는 낡은 찌꺼기다 — 색인이 남으면 없는 사진이 목록에 비칠 수 있다. 진짜 폴더일 때만 치운다
+  if (!names.some(isMediaName)) {
+    index.drop(folder);
+    const td = media.thumbDirOf(folder);
+    if (td?.exists) { try { await fsp.rm(td.dir, { recursive: true, force: true }); } catch { /* 다음 훑기에 */ } }
+    return { work: [], changed: false };
+  }
   // `.thumbs`를 먼저 만든다 — 훑는 중에 생기면 폴더 mtime이 바뀌어 도장이 안 찍힌다
   if (names.some(isMediaName) && !names.some((n) => media.isThumbDirName(n))) {
     try {

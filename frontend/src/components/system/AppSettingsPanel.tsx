@@ -1,5 +1,6 @@
 "use client";
 
+import SourceFolders from "@/components/system/SourceFolders";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Field";
 import { getBridge } from "@/lib/desktop";
@@ -16,6 +17,7 @@ export default function AppSettingsPanel() {
   return (
     <div className="flex flex-col gap-8">
       <DataFolder />
+      <SourceFolders />
       <DesktopSection />
     </div>
   );

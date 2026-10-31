@@ -31,6 +31,7 @@ import type { PlatformAccountRow, PlatformRow } from "../platform/service";
 import { ACQUISITION_METHODS, PLAYTHROUGH_STATUSES, deriveState } from "../backlog/shared";
 import { belongsTo } from "../backlog/refs";
 import { PALETTE } from "../tag/service";
+import { importManualLinks, wipeLinks } from "../steam/service";
 import { FORMAT_VERSION, npe, valueOf, type DumpCatalog, type DumpCover, type DumpEntry, type DumpGame, type DumpMoney, type DumpPlayRecord, type DumpProfile, type MemberDump } from "./dump";
 import { PLAY_RECORD_KINDS, hoursText, minutesText, tenthsFromHours, tenthsOf } from "../backlog/playtime";
 import { presetsValue, profileValues, saveProfile } from "./query";
@@ -530,6 +531,7 @@ async function importEntry(d: Db, g: GameRow, item: DumpEntry, c: Catalog, versi
   }
 
   if (item.cover !== null) await attachCover(d, entryId, item.cover, now, version);
+  if (version >= 7) await importManualLinks(d, entryId, item.steamAppIds ?? null, now);
   const playTotal = await importPlayRecords(d, entryId, item.playRecords, playTimeHours, item.createdAt, now);
 
   // 파생 상태는 회차·취득을 다 붙인 다음에 — 순서가 바뀌면 status가 위시리스트로 굳는다
@@ -676,6 +678,7 @@ async function wipe(d: Db) {
   await d.delete(playthrough);
   // homeops 일정(`homeops_play_log`)은 항목을 지울 때 cascade로 같이 사라진다 — 새 항목은 번호가 달라 이어 붙일 수 없다
   await d.delete(playRecord);
+  await wipeLinks(d);
   // 개발사·유통사 오버라이드 테이블도 항목을 가리키는 FK라 항목보다 먼저
   await d.delete(backlogDeveloperOverride);
   await d.delete(backlogPublisherOverride);

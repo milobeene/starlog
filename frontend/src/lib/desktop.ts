@@ -34,6 +34,8 @@ export type IngestJob = {
   /** 휴지통으로 간 원본 수 · 확정 뒤 휴지통으로 못 보낸 원본(사진은 이미 STARLOG 안이다) */
   trashed?: number;
   trashFailures?: { source: string; reason: string }[];
+  /** 스팀에서 복사해 온 일 — 스팀 폴더에는 아무것도 하지 않는다 */
+  fromSteam?: boolean;
 };
 
 /* ── 외부 스크린샷 폴더 (스팀·ShareX …) ── */
@@ -56,6 +58,8 @@ export interface InboxItem {
   rel: string;
   name: string;
   kind: "IMAGE" | "VIDEO";
+  /** 스팀에서 이미 STARLOG로 복사해 간 사진 (이 PC의 기억). 폴더 종류에는 늘 false */
+  moved?: boolean;
   contentType: string;
   sizeBytes: number;
   takenAtMs: number;
@@ -320,9 +324,14 @@ export interface StarlogBridge {
     add(req: { kind: SourceKind; name: string }): Promise<{ canceled: true } | { canceled: false; source: ExternalSource }>;
     rename(id: string, name: string): Promise<void>;
     remove(id: string): Promise<boolean>;
-    scan(id: string): Promise<InboxScan>;
+    /** `firstKey`: 화면이 보는 묶음 — 배경 썸네일을 그쪽부터 만든다 */
+    scan(id: string, firstKey?: string | null): Promise<InboxScan>;
+    /** 탐색기로 열기 (묶음 키: 스팀 appid · 하위 폴더, 폴더 바로 아래는 빈 문자열) */
+    reveal?(id: string, groupKey: string): Promise<void>;
     /** `{appid: entryId}` — 이 PC에서 마지막으로 그 appid를 옮긴 게임 */
     memory(): Promise<Record<string, number>>;
+    /** 옛 appid → 게임 기억을 서버 연결 표로 옮겼다 — 이제 `memory()`는 비어서 온다 */
+    memoryMigrated?(): Promise<void>;
     watch(): Promise<void>;
     unwatch(): Promise<void>;
     onChanged(callback: (c: { sourceId: string }) => void): () => void;

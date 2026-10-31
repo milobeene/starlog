@@ -24,12 +24,15 @@ const lastPlayed = (c: BacklogCard) => {
 export default function GamePicker({
   pinnedId,
   count,
+  steam = false,
   onPick,
   onClose,
 }: {
   pinnedId: number | null;
   count: number;
-  onPick: (entryId: number) => void;
+  /** 스팀에서 가져오는 중 — 복사만 하고 스팀 쪽은 안 건드린다고 알린다 */
+  steam?: boolean;
+  onPick: (entryId: number, name: string) => void;
   onClose: () => void;
 }) {
   const [cards, setCards] = useState<BacklogCard[] | null>(null);
@@ -61,7 +64,7 @@ export default function GamePicker({
 
   return (
     <Modal
-      title={`${count}장을 옮길 게임`}
+      title={steam ? `${count}장을 복사할 게임` : `${count}장을 옮길 게임`}
       onClose={onClose}
       width="max-w-lg"
       footer={<Button onClick={onClose}>취소</Button>}
@@ -70,7 +73,9 @@ export default function GamePicker({
         <div className="flex">
           <SearchInput value={query} onChange={setQuery} placeholder="게임 검색…" />
         </div>
-        <p className="text-[11px] text-white/35">옮기면 원본은 휴지통으로 갑니다.</p>
+        <p className="text-[11px] text-white/35">
+          {steam ? "스팀 폴더는 복사만 합니다 — 스팀 쪽 정리는 스팀 스크린샷 관리자에서" : "옮기면 원본은 휴지통으로 갑니다."}
+        </p>
         {error ? (
           <p className="text-sm text-red-400">{error}</p>
         ) : !cards ? (
@@ -87,7 +92,7 @@ export default function GamePicker({
                   <button
                     type="button"
                     data-entry-id={c.entryId}
-                    onClick={() => onPick(c.entryId)}
+                    onClick={() => onPick(c.entryId, c.displayName)}
                     className={`flex w-full items-center gap-3 rounded-md border px-3 py-2 text-left transition-colors ${
                       pinned ? "border-white/30 bg-white/10" : "border-transparent hover:bg-white/5"
                     }`}

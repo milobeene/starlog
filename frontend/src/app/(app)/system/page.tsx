@@ -11,7 +11,6 @@ import GameMasterPanel from "@/components/system/GameMasterPanel";
 import ConnectionPanel from "@/components/system/ConnectionPanel";
 import AppSettingsPanel from "@/components/system/AppSettingsPanel";
 import MediaDrive from "@/components/system/MediaDrive";
-import SourceFolders from "@/components/system/SourceFolders";
 import ExternalPlaysPanel from "@/components/system/ExternalPlaysPanel";
 import { useApi } from "@/lib/useApi";
 import { api } from "@/lib/api";
@@ -165,7 +164,6 @@ function UsageTab() {
         )}
       </section>
 
-      <SourceFolders />
     </div>
   );
 }

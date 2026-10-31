@@ -283,7 +283,8 @@ routes.get("/api/screenshots", async (c) => {
   const q = query(c);
   const entryId = q.long("entryId");
   const kind = q.enumOf("kind", ["ALL", "IMAGE", "VIDEO"] as const) ?? "ALL";
-  return c.json(await listGallery(entryId, kind));
+  // summary: 게임별 개수(`games`)만 — 화면 왼쪽 레일이 목록 없이 게임과 개수만 필요할 때
+  return c.json(await listGallery(entryId, kind, q.bool("summary", false)));
 });
 
 routes.get("/api/backlog/:entryId/screenshots", async (c) => {

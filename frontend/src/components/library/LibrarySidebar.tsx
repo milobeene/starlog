@@ -8,7 +8,6 @@ import { invalidateQueries, useApi } from "@/lib/useApi";
 import { api, errorMessage } from "@/lib/api";
 import { reportTagMoveFailure } from "@/lib/tasks";
 import { Skeleton } from "@/components/ui/Skeleton";
-import ScreenshotGallery from "@/components/media/ScreenshotGallery";
 import { useDragAutoScroll } from "@/components/library/useDragAutoScroll";
 import { coverSrc } from "@/lib/cover";
 import type { BacklogCard, BacklogName, FacetsResponse } from "@/lib/types";
@@ -57,7 +56,6 @@ export default function LibrarySidebar() {
   }
 
   /** 모든 게임의 스크린샷 갤러리 (F5). 상세 화면에서는 그 게임으로 여는 쪽이 따로 있다 */
-  const [galleryOpen, setGalleryOpen] = useState(false);
 
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   /** 드래그가 얹혀 있는 그룹. 놓을 자리를 눈에 보이게 한다 */
@@ -393,12 +391,10 @@ export default function LibrarySidebar() {
           Add Game <span className="text-lg leading-none">+</span>
         </Link>
         {/* 글자 없이 아이콘만 — 드로어 폭(16rem)에서 Add Game과 나란히 두려는 것. 같은 줄이라 높이는 늘어나 맞는다 */}
-        <button
-          type="button"
-          onClick={() => {
-            setOpen(false);   // 드로어가 열려 있었다면 갤러리를 닫았을 때 목록이 덮고 있지 않게
-            setGalleryOpen(true);
-          }}
+        {/* 스크린샷 화면 — STARLOG 게임과 스팀·ShareX 같은 외부 폴더를 한 곳에서 */}
+        <Link
+          href="/screenshots"
+          onClick={() => setOpen(false)}   // 드로어가 열려 있었다면 화면이 가려지지 않게
           aria-label="스크린샷"
           title="스크린샷"
           className="flex shrink-0 items-center justify-center rounded-md border border-white/15 px-3.5 transition-all hover:bg-white hover:text-black"
@@ -407,22 +403,10 @@ export default function LibrarySidebar() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.75" d="M3 7a2 2 0 012-2h2.5l1.2-1.5h6.6L16.5 5H19a2 2 0 012 2v11a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
             <circle cx="12" cy="12.5" r="3.5" strokeWidth="1.75" />
           </svg>
-        </button>
-        {/* 스팀·ShareX 같은 외부 폴더의 사진 인박스 (2.2) */}
-        <Link
-          href="/screenshots-inbox"
-          aria-label="스크린샷 인박스"
-          title="스크린샷 인박스"
-          className="flex shrink-0 items-center justify-center rounded-md border border-white/15 px-3.5 transition-all hover:bg-white hover:text-black"
-        >
-          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.75" d="M4 13l2.2-6.2A2 2 0 018.1 5.5h7.8a2 2 0 011.9 1.3L20 13m-16 0v5a1.5 1.5 0 001.5 1.5h13A1.5 1.5 0 0020 18v-5m-16 0h4.5l1 2h5l1-2H20" />
-          </svg>
         </Link>
       </div>
     </aside>
 
-    {galleryOpen && <ScreenshotGallery initialEntryId={null} onClose={() => setGalleryOpen(false)} />}
     </>
   );
 }

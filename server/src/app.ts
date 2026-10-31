@@ -19,6 +19,7 @@ import { routes as stats } from "./domains/stats/routes";
 import { routes as system } from "./domains/system/routes";
 import { routes as backlog } from "./domains/backlog/routes";
 import { routes as member } from "./domains/member/routes";
+import { routes as steam } from "./domains/steam/routes";
 
 /** 스프링 기본 오류 본문(timestamp·status·error·path) — 우리 핸들러가 못 잡은 예외(진짜 버그)일 때 */
 function springError(c: Context, status: 404 | 500, error: string) {
@@ -57,7 +58,7 @@ export function createApp(opts: { staticDir: string | null }) {
   app.use("/api/*", contentTypeGuard);
   app.use("/api/*", sizeGuard);
 
-  for (const r of [tag, subscription, platform, game, stats, system, backlog, member]) app.route("/", r);
+  for (const r of [tag, subscription, platform, game, stats, system, backlog, member, steam]) app.route("/", r);
 
   app.all("/api/*", (c) => springError(c, 404, "Not Found"));
   if (opts.staticDir) app.get("*", serveStatic(opts.staticDir));

@@ -489,3 +489,22 @@ export const homeopsReleased = pgTable("homeops_released", {
 	externalId: varchar("external_id", { length: 200 }).primaryKey().notNull(),
 	releasedAt: timestamp("released_at", { precision: 6, mode: 'string' }).notNull(),
 });
+
+export const steamAppLink = pgTable("steam_app_link", {
+	appid: varchar({ length: 20 }).primaryKey().notNull(),
+	backlogEntryId: bigint("backlog_entry_id", { mode: "number" }),
+	igdbGameId: bigint("igdb_game_id", { mode: "number" }),
+	source: varchar({ length: 10 }).notNull(),
+	checkedAt: timestamp("checked_at", { precision: 6, mode: 'string' }),
+	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }),
+	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }),
+}, (table) => [
+	index("idx_steam_app_link_entry").using("btree", table.backlogEntryId.asc().nullsLast().op("int8_ops")),
+	foreignKey({
+			columns: [table.backlogEntryId],
+			foreignColumns: [backlogEntry.id],
+			name: "fk_steam_app_link_entry"
+		}).onDelete("set null"),
+	check("chk_steam_app_link_appid", sql`(appid)::text ~ '^[0-9]{1,20}$'::text`),
+	check("chk_steam_app_link_source", sql`(source)::text = ANY ((ARRAY['AUTO'::character varying, 'MANUAL'::character varying, 'NONE'::character varying])::text[])`),
+]);

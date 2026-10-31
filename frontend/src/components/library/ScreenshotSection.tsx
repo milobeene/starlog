@@ -4,19 +4,19 @@ import { Collapsible } from "@/components/settings/SettingsSection";
 import { useEffect, useMemo, useRef, useState } from "react";
 import DropZone from "@/components/media/DropZone";
 import SectionIcon from "@/components/ui/SectionIcon";
-import { Button } from "@/components/ui/Field";
+import Link from "next/link";
+import { Icon, ToolButton, ToolGroup, toolClass } from "@/components/ui/ToolButton";
+import { IngestProgress, UploadFailures } from "@/components/media/IngestProgress";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
-import { api, errorMessage } from "@/lib/api";
+import { api } from "@/lib/api";
 import { useApi } from "@/lib/useApi";
-import { uploadScreenshot } from "@/lib/upload";
+import { useShotUpload } from "@/lib/useShotUpload";
 import { backendUrl } from "@/lib/apiBase";
 import { usePick } from "@/lib/usePick";
 import { getBridge } from "@/lib/desktop";
-import { getIngestBridge, useEntryIngest } from "@/lib/ingest";
-import { bytesParts } from "@/lib/format";
+import { useEntryIngest } from "@/lib/ingest";
 import MediaViewer from "./MediaViewer";
 import MediaThumb, { PlayBadge } from "@/components/media/MediaThumb";
-import ScreenshotGallery from "@/components/media/ScreenshotGallery";
 import ShareMenu from "@/components/media/ShareMenu";
 import { onMediaChanged } from "@/lib/mediaEvents";
 import { useIdlePreload, useWindowedGrid } from "@/lib/useWindowedGrid";
@@ -48,7 +48,7 @@ type Shot = {
   placeholder?: string | null;
 };
 
-export default function ScreenshotSection({ entryId, gameName }: { entryId: number; gameName?: string }) {
+export default function ScreenshotSection({ entryId }: { entryId: number; gameName?: string }) {
   /** 펼침 상태를 여기서 든다 — 버튼이 제목 줄에 있어서 Collapsible 밖이다 */
   const [expanded, setExpanded] = useState(false);
   /** 접을 만큼 긴가. Collapsible이 실제로 재서 알려준다 — 장수로 어림하면 창 폭에 따라 틀린다 */
@@ -56,13 +56,7 @@ export default function ScreenshotSection({ entryId, gameName }: { entryId: numb
   /* 조회는 화면 전체가 쓰는 훅에 맡긴다 — 로딩·에러·재조회가 이미 한 벌로 들어 있다 */
   const list = useApi<Shot[]>(`/api/backlog/${entryId}/screenshots`);
   const [viewing, setViewing] = useState<number | null>(null);
-  /** 전체 화면 갤러리 — 이 게임으로 걸러서 연다 (F5) */
-  const [galleryOpen, setGalleryOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  /** 올리다 실패한 파일들 — 하나 실패했다고 나머지를 멈추지 않고, 끝에 한꺼번에 알린다 */
-  const [failed, setFailed] = useState<{ name: string; reason: string }[]>([]);
   /* 넣기(복사) 일의 진실은 전역 스토어다 — 화면을 떠났다 와도 버튼이 잠겨 있어야 한다 */
   const ingest = useEntryIngest(entryId);
 
@@ -109,55 +103,7 @@ export default function ScreenshotSection({ entryId, gameName }: { entryId: numb
     wasIngesting.current = Boolean(ingest);
   }, [ingest, reload]);
 
-  const add = async (files: File[]) => {
-    setBusy(true);
-    setError(null);
-    setFailed([]);
-    try {
-      /*
-       * 경로가 있는 파일(탐색기에서 끌어온 것)은 메인이 직접 복사한다 — 브라우저로 통째로 올리면
-       * 수백 MB 영상은 메모리와 시간을 먹고, 한도에도 걸린다. 경로가 없는 것(클립보드)만 HTTP로 간다
-       */
-      const bridge = getIngestBridge();
-      const withPath: { file: File; path: string }[] = [];
-      const rest: File[] = [];
-      for (const file of files) {
-        const path = bridge?.pathOf(file) || null;
-        if (path) withPath.push({ file, path });
-        else rest.push(file);
-      }
-
-      if (bridge && withPath.length > 0) {
-        try {
-          await bridge.ingest({
-            entryId,
-            sources: withPath.map((x) => x.path),
-            // 원본 시각 — 서버가 이 순서로 번호를 붙인다
-            takenAt: Object.fromEntries(withPath.map((x) => [x.path, x.file.lastModified])),
-          });
-        } catch (caught) {
-          setError(errorMessage(caught, "넣지 못했습니다."));
-        }
-      }
-
-      // 한 장씩 순서대로 — 동시에 보내면 서버가 붙이는 번호가 겹친다.
-      // 하나가 실패해도 나머지는 계속 올리고, 실패는 모아서 이유와 함께 보인다
-      const bad: { name: string; reason: string }[] = [];
-      for (const file of rest) {
-        try {
-          // 원본 시각을 함께 보낸다 — 서버가 파일에 심어 "찍은 순서"를 만든다
-          await uploadScreenshot(entryId, file, file.lastModified);
-        } catch (caught) {
-          bad.push({ name: file.name || "(이름 없음)", reason: errorMessage(caught, "올리지 못했습니다.") });
-        }
-      }
-      setFailed(bad);
-    } finally {
-      // 중간에 실패해도 앞에서 올라간 것은 보여야 한다
-      list.reload();
-      setBusy(false);
-    }
-  };
+  const { add, busy, error, failed, clearFailed } = useShotUpload(entryId, list.reload);
 
   const removeSelected = async () => {
     // ConfirmDialog가 실패를 받아 보여주도록 던진다
@@ -185,56 +131,46 @@ export default function ScreenshotSection({ entryId, gameName }: { entryId: numb
           Screenshots
         </span>
         {/* 칸을 음수 마진으로 넓히지 않는다 — 이웃 버튼 히트박스가 겹친다. 간격은 gap으로만 */}
-        <span className="flex flex-wrap items-center justify-end gap-1.5">
-          {selectMode && <span className="num mr-1 text-xs font-normal text-white/50">{selected.size}개 선택</span>}
-          {selectMode && (
-            <Button onClick={toggleAll}>{allSelected ? "전체 선택 해제" : "전체 선택"}</Button>
-          )}
-          {selectMode && (
-            <ShareMenu
-              targets={[...selected].sort((x, y) => x - y).flatMap((i) => (shots?.[i] ? [{ entryId, fileName: shots[i].fileName }] : []))}
-            />
-          )}
-          {selectMode && (
-            <Button variant="danger" disabled={selected.size === 0 || busy} onClick={() => setConfirmDelete(true)}>
-              삭제
-            </Button>
-          )}
+        <span className="flex flex-wrap items-center justify-end gap-2 text-xs font-normal">
+          {selectMode && <span className="num mr-1 text-white/50">{selected.size}개 선택</span>}
+          {/* 고르기 계열 — 선택 모드에서만 늘어난다. 삭제만 붉다 */}
           {shots && shots.length > 0 && (
-            <Button onClick={() => (selectMode ? cancel() : setSelectMode(true))}>
-              {selectMode ? "취소" : "선택"}
-            </Button>
+            <ToolGroup label="선택">
+              <ToolButton icon="select" active={selectMode} onClick={() => (selectMode ? cancel() : setSelectMode(true))}>
+                {selectMode ? "선택 취소" : "선택"}
+              </ToolButton>
+              {selectMode && (
+                <ToolButton icon="all" onClick={toggleAll}>{allSelected ? "전체 해제" : "전체 선택"}</ToolButton>
+              )}
+              {selectMode && (
+                <ShareMenu
+                  targets={[...selected].sort((x, y) => x - y).flatMap((i) => (shots?.[i] ? [{ entryId, fileName: shots[i].fileName }] : []))}
+                />
+              )}
+              {selectMode && (
+                <ToolButton icon="trash" tone="danger" disabled={selected.size === 0 || busy} onClick={() => setConfirmDelete(true)}>
+                  삭제
+                </ToolButton>
+              )}
+            </ToolGroup>
           )}
-          {/*
-            탐색기 열기는 일렉트론에서만 뜻이 있다 — 브라우저는 로컬 경로를 못 연다.
-            **작은 글씨로 내렸다** (v1.1.3) — 이 자리의 주된 동작은 펼치기다
-          */}
-          {getBridge() && (
-            <button
-              type="button"
-              onClick={openFolder}
-              className="rounded-md px-2.5 py-2 text-[11px] font-normal text-white/35 transition-colors hover:bg-white/5 hover:text-white"
-            >
-              폴더 열기
-            </button>
-          )}
-          {/* 0개여도 연다 — 갤러리가 빈 상태를 보여주고, 다른 게임으로 넘어갈 수도 있다 */}
-          <button
-            type="button"
-            onClick={() => setGalleryOpen(true)}
-            className="rounded-md px-2.5 py-2 text-[11px] font-normal text-white/50 transition-colors hover:bg-white/5 hover:text-white"
-          >
-            전체 화면
-          </button>
-          {/*
-            펼치기가 **제목 줄로 올라왔다** (v1.1.3). 내용 아래에 있으면 스크린샷이
-            수십 장일 때 버튼이 화면 밖으로 밀려 손이 안 닿는다
-          */}
-          {canCollapse && (
-            <Button onClick={() => setExpanded((v) => !v)}>
-              {expanded ? "접기" : "펼치기"}
-            </Button>
-          )}
+          {/* 보기·열기 계열 — 탐색기 열기는 일렉트론에서만 뜻이 있다 (브라우저는 로컬 경로를 못 연다) */}
+          <ToolGroup label="보기">
+            {getBridge() && (
+              <ToolButton icon="folder" onClick={openFolder} title="탐색기에서 이 게임의 스크린샷 폴더 열기">폴더 열기</ToolButton>
+            )}
+            {/* 0개여도 연다 — 스크린샷 화면이 빈 상태와 넣기 자리를 보여준다 */}
+            <Link href={`/screenshots?entry=${entryId}`} className={toolClass()} title="스크린샷 화면에서 크게 보기">
+              <Icon name="expand" />
+              전체 보기
+            </Link>
+            {/* 펼치기가 제목 줄로 올라왔다 (v1.1.3) — 내용 아래에 있으면 수십 장일 때 손이 안 닿는다 */}
+            {canCollapse && (
+              <ToolButton icon={expanded ? "less" : "more"} onClick={() => setExpanded((v) => !v)}>
+                {expanded ? "접기" : "펼치기"}
+              </ToolButton>
+            )}
+          </ToolGroup>
         </span>
       </h3>
 
@@ -243,29 +179,7 @@ export default function ScreenshotSection({ entryId, gameName }: { entryId: numb
           {error ?? "스크린샷을 불러오지 못했습니다."}
         </p>
       )}
-      {failed.length > 0 && (
-        <div role="alert" className="mb-3 rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2.5 text-xs">
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-red-300">{failed.length}개를 올리지 못했습니다</span>
-            <button
-              type="button"
-              onClick={() => setFailed([])}
-              aria-label="닫기"
-              className="text-base leading-none text-white/35 transition-colors hover:text-white"
-            >
-              ×
-            </button>
-          </div>
-          <ul className="mt-1.5 flex flex-col gap-1">
-            {failed.map((f, i) => (
-              <li key={`${f.name}-${i}`} className="flex gap-2">
-                <span className="max-w-[40%] shrink-0 truncate text-white/70">{f.name}</span>
-                <span className="min-w-0 flex-1 text-white/40">{f.reason}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <UploadFailures failed={failed} onClose={clearFailed} />
 
       {/* 스크린샷도 접는다 (v1.2) — 수십 장이면 화면 아래가 통째로 밀린다 */}
       {shots && shots.length > 0 && (
@@ -368,32 +282,6 @@ export default function ScreenshotSection({ entryId, gameName }: { entryId: numb
         />
       )}
 
-      {galleryOpen && (
-        <ScreenshotGallery
-          initialEntryId={entryId}
-          initialGameName={gameName}
-          onClose={() => setGalleryOpen(false)}
-        />
-      )}
     </section>
-  );
-}
-
-/** 이 게임에 도는 넣기 — 전역 알림과 같은 숫자를 자리에서도 보여준다 */
-function IngestProgress({ done, total, bytesDone, bytesTotal }: { done: number; total: number; bytesDone: number; bytesTotal: number }) {
-  const size = (n: number) => {
-    const { value, unit } = bytesParts(n);
-    return `${value}${unit}`;
-  };
-  const ratio = bytesTotal > 0 ? bytesDone / bytesTotal : total > 0 ? done / total : 0;
-  return (
-    <div className="flex w-full max-w-xs flex-col items-center gap-2">
-      <p className="num text-sm text-white/70">
-        넣는 중 {done}/{total} · {size(bytesDone)}/{size(bytesTotal)}
-      </p>
-      <div className="h-1 w-full overflow-hidden rounded-full bg-white/10">
-        <div className="h-full rounded-full bg-white/70 transition-all duration-300" style={{ width: `${Math.min(100, ratio * 100)}%` }} />
-      </div>
-    </div>
   );
 }

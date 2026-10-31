@@ -104,6 +104,9 @@ function failureLines(job: IngestJob) {
   });
 }
 
+/** 스팀 폴더는 복사만 한다 — 원본·썸네일·스팀의 목록 어느 것도 건드리지 않는다 */
+export const STEAM_NOTE = "스팀 폴더는 복사만 합니다 — 스팀 쪽 정리는 스팀 스크린샷 관리자에서";
+
 export function applyIngestJob(job: IngestJob) {
   setJob(job);
   const id = taskId(job);
@@ -112,7 +115,9 @@ export function applyIngestJob(job: IngestJob) {
     putTask({
       id,
       kind: "screenshot-ingest",
-      title: move
+      title: job.fromSteam
+        ? `복사하는 중 ${job.done}/${job.total}`
+        : move
         ? `옮기는 중 ${job.done}/${job.total}`
         : `스크린샷 넣는 중 ${job.done}/${job.total} (${fmt(job.bytesDone)}/${fmt(job.bytesTotal)})`,
       progress: { done: job.done, total: job.total, label: job.message ?? PHASE_LABEL[job.phase] },
@@ -127,12 +132,15 @@ export function applyIngestJob(job: IngestJob) {
     putTask({
       id,
       kind: "screenshot-ingest",
-      title: move ? `${n}장 옮김 (원본은 휴지통)` : `${n}장 넣음`,
+      title: job.fromSteam ? `${n}장 복사함 (스팀 원본은 그대로)` : move ? `${n}장 옮김 (원본은 휴지통)` : `${n}장 넣음`,
       // 사진은 이미 안전하다 — 휴지통으로 못 보낸 원본만 알린다
       result: {
         ok: true,
         lines: stuck.slice(0, MAX_FAIL_LINES).map((f) => ({ ok: false, label: baseName(f.source), detail: f.reason })),
-        message: stuck.length > 0 ? `원본 ${stuck.length}개는 휴지통으로 못 보내 남겨 두었습니다` : undefined,
+        message: [
+          stuck.length > 0 ? `원본 ${stuck.length}개는 휴지통으로 못 보내 남겨 두었습니다` : null,
+          job.fromSteam ? STEAM_NOTE : null,
+        ].filter(Boolean).join(" · ") || undefined,
       },
     });
     return;
@@ -147,7 +155,7 @@ export function applyIngestJob(job: IngestJob) {
     id,
     kind: "screenshot-ingest",
     // 롤백이면 폴더는 그대로다 — 그걸 먼저 말해야 불안하지 않다
-    title: move ? "옮기지 못했습니다 — 원본은 그대로입니다" : "넣지 못했습니다 — 되돌렸습니다",
+    title: job.fromSteam ? "복사하지 못했습니다 — 스팀 원본은 그대로입니다" : move ? "옮기지 못했습니다 — 원본은 그대로입니다" : "넣지 못했습니다 — 되돌렸습니다",
     result: { ok: false, lines: failureLines(job), message: notes.join(" · ") || undefined },
   });
 }

@@ -27,11 +27,11 @@
    }
   },
   {
-   "name": "가져오기 — 형식 7 (미래 파일)",
+   "name": "가져오기 — 형식 8 (미래 파일)",
    "method": "POST",
    "path": "/api/me/import",
    "body": {
-    "formatVersion": 7,
+    "formatVersion": 8,
     "entries": []
    }
   },
@@ -123,11 +123,11 @@
    }
   },
   {
-   "name": "덮어쓰기 — 형식 7 (지우고 나서 터짐 → 롤백)",
+   "name": "덮어쓰기 — 형식 8 (지우고 나서 터짐 → 롤백)",
    "method": "POST",
    "path": "/api/me/replace",
    "body": {
-    "formatVersion": 7,
+    "formatVersion": 8,
     "entries": []
    }
   },

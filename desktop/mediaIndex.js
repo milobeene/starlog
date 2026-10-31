@@ -113,6 +113,13 @@ function renameRetry(tmp, target, attempt) {
   }
 }
 
+/** 폴더에 미디어가 하나도 없을 때 — 들고 있던 색인과 미룬 쓰기를 버린다 (안 그러면 타이머가 `.thumbs`를 되살린다) */
+function drop(folder) {
+  const s = open.get(folder);
+  if (s?.timer) clearTimeout(s.timer);
+  open.delete(folder);
+}
+
 /** 세션을 닫거나 앱을 끌 때 — 미뤄 둔 쓰기를 지금 */
 function flushAll() {
   for (const [folder, s] of open) {
@@ -127,4 +134,4 @@ function forget() {
   open.clear();
 }
 
-module.exports = { FILE, THUMB_DIR, get, put, remove, replace, files, flushAll, forget };
+module.exports = { FILE, THUMB_DIR, get, put, remove, replace, drop, files, flushAll, forget };

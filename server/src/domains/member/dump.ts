@@ -33,8 +33,10 @@ import { opt, zDate, zDecimal, zLong, zText } from "../../common/schemas";
  * 6 — DB 커버(V17)의 바이트를 싣는다 (2026-10-25). 커버에 `location: "DB"` + `data`(base64), 타입은 `contentType`.
  *     LOCAL·EXTERNAL 커버는 예전처럼 키만. 옛 앱은 `DB` 위치를 모르므로 번호를 올렸다 (5 이하를 읽는 동작은 그대로 —
  *     5 이하 파일의 `DB`는 예전처럼 모르는 위치다)
+ * 7 — 항목에 `steamAppIds`: 스팀 앱 번호 중 **직접 고른(MANUAL) 것만** (2026-10-31, V21). 자동(AUTO/NONE)은 IGDB에서 다시 만들어지는
+ *     캐시라 안 싣는다. 옛 앱은 이 칸을 모르고 무시한다(모르는 키는 버린다) — 6 이하를 읽는 동작은 그대로
  */
-export const FORMAT_VERSION = 6;
+export const FORMAT_VERSION = 7;
 
 /** 커버 한 장(5MB)의 base64 — 4/3배 + 여유. 본문 한도(256MB)는 따로 걸린다 */
 const MAX_COVER_BASE64 = Math.ceil((5 * 1024 * 1024) / 3) * 4 + 16;
@@ -144,6 +146,8 @@ const Entry = z.object({
   rating: decimal, playTimeHours: decimal, memo: longText, tag: text, genres: texts,
   cover: opt(Cover), playthroughs: list(Playthrough), acquisitions: list(Acquisition),
   playRecords: list(PlayRecord, 20_000),
+  /** 형식 7 */
+  steamAppIds: texts,
 });
 
 /** 요청 본문 */

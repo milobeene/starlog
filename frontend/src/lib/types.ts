@@ -59,6 +59,17 @@ export interface LastPlaythroughSummary {
   emulatorName: string | null;
 }
 
+/** 스팀 앱 ↔ STARLOG 항목 연결 (서버 `steam_app_link`, V21). NONE은 IGDB에서 찾았지만 맞는 게임이 없다는 기억 */
+export type SteamLinkSource = "AUTO" | "MANUAL" | "NONE";
+
+export interface SteamLink {
+  appid: string;
+  entryId: number | null;
+  entryName: string | null;
+  /** 아직 모르면 null */
+  source: SteamLinkSource | null;
+}
+
 export interface BacklogCard {
   entryId: number;
   coverUrl: string | null;

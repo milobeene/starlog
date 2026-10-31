@@ -247,9 +247,13 @@ if (trustedOrigin()) contextBridge.exposeInMainWorld("starlog", {
     rename: (id, name) => ipcRenderer.invoke("sources:rename", id, name),
     remove: (id) => ipcRenderer.invoke("sources:remove", id),
     /** 한 폴더를 훑는다 — 묶음(스팀은 게임, 폴더는 하위 폴더)과 파일 목록 */
-    scan: (id) => ipcRenderer.invoke("sources:scan", id),
+    scan: (id, firstKey) => ipcRenderer.invoke("sources:scan", id, firstKey),
+    /** 탐색기로 열기 — 묶음 키(스팀 appid · 하위 폴더 상대 경로, 폴더 바로 아래는 "")로 메인이 폴더를 찾는다 */
+    reveal: (id, groupKey) => ipcRenderer.invoke("sources:reveal", id, groupKey),
     /** `{appid: entryId}` — 이 PC에서 마지막으로 그 appid를 옮긴 게임 */
     memory: () => ipcRenderer.invoke("sources:memory"),
+    /** 옛 appid → 게임 기억을 서버 연결 표로 옮겼다 — 이후 memory()는 빈 객체 */
+    memoryMigrated: () => ipcRenderer.invoke("sources:memoryMigrated"),
     watch: () => ipcRenderer.invoke("sources:watch"),
     unwatch: () => ipcRenderer.invoke("sources:unwatch"),
     onChanged: (callback) => {

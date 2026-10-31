@@ -323,6 +323,36 @@ query game_time_to_beats "timeToBeat" {
   };
 }
 
+/**
+ * 스팀 앱 번호(uid) → IGDB 게임 id. `external_games`는 한 번에 최대 500건 — 호출자가 그 안으로 자른다.
+ *
+ * 스팀은 `external_game_source = 1` (IGDB가 `category`를 걷어내는 중이라 새 칸이 정석).
+ * 새 칸이 거절되면(400 → ExternalApi) 옛 칸 `category = 1`로 한 번 더 — 둘 다 기록에 남는다.
+ * uid는 숫자만 받는다(APIcalypse 본문에 끼우므로 숫자 확인이 인젝션 방어). 같은 uid가 여럿이면 먼저 온 쪽
+ */
+export async function igdbSteamGames(uids: string[]): Promise<Map<string, string>> {
+  const safe = uids.filter((u) => /^[0-9]{1,20}$/.test(u));
+  const out = new Map<string, string>();
+  if (safe.length === 0) return out;
+  const list = safe.map((u) => `"${u}"`).join(",");
+  const q = (cond: string) => `fields uid, game;\nwhere ${cond} & uid = (${list});\nlimit ${Math.min(500, safe.length * 3)};`;
+  let nodes: unknown;
+  try {
+    nodes = await post("external_games", q("external_game_source = 1"), `steam n=${safe.length}`);
+  } catch (e) {
+    if (!(e instanceof ExternalApi)) throw e;
+    nodes = await post("external_games", q("category = 1"), `steam(legacy) n=${safe.length}`);
+  }
+  for (const n of (nodes ?? []) as Node[]) {
+    const uid = str(n?.uid);
+    const g = n?.game;
+    // game은 id 숫자로 온다 (확장하지 않았으므로). 객체면 id를 꺼낸다
+    const gid = typeof g === "object" && g !== null ? str((g as Record<string, unknown>).id) : str(g);
+    if (uid !== null && gid !== null && !out.has(uid)) out.set(uid, gid);
+  }
+  return out;
+}
+
 function imageId(n: Node): string | null {
   return n ? str(n.image_id) : null;
 }

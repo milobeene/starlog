@@ -48,6 +48,7 @@ const snapshot = (j) => ({
   failures: j.failures.map((f) => ({ ...f })), message: j.message,
   // 옮기기(원본을 휴지통으로)인지, 휴지통으로 간 수, 못 보낸 원본
   mode: j.afterCommit === "trash" ? "move" : "add", trashed: j.trashed, trashFailures: j.trashFailures.map((f) => ({ ...f })),
+  fromSteam: j.fromSteam,
 });
 
 function emit(job, force) {
@@ -119,7 +120,7 @@ function inspect(source) {
 
 /**
  * @param {{entryId:number, sources:string[], takenAt?:Record<string,number>}} req
- * @param {{afterCommit?: "keep"|"trash", onFinished?: (job) => void}} [trusted] 메인 안에서만 건다 — IPC로 오는 req에는 없다
+ * @param {{afterCommit?: "keep"|"trash", fromSteam?: boolean, onFinished?: (job) => void}} [trusted] 메인 안에서만 건다 — IPC로 오는 req에는 없다
  * @returns {Promise<{batchId:string}>}
  */
 async function start(req, trusted = {}) {
@@ -135,6 +136,8 @@ async function start(req, trusted = {}) {
     committed: [], failures: [], message: "준비 중", lastEmit: 0,
     afterCommit: trusted.afterCommit === "trash" ? "trash" : "keep", onFinished: trusted.onFinished ?? null,
     trashed: 0, trashFailures: [],
+    // 스팀에서 복사해 가는 일 — 원본에 아무것도 하지 않는다 (afterCommit은 keep)
+    fromSteam: trusted.fromSteam === true,
   };
 
   // 검사 — 틀린 게 하나라도 있으면 하나도 안 복사한다 (failed). 같은 파일이 두 번이면 한 번으로

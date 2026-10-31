@@ -37,6 +37,8 @@ const mediaWork = require("./mediaWork");
 const ingest = require("./ingest");
 const sources = require("./sources");
 const extMedia = require("./extMedia");
+const extPregen = require("./extPregen");
+const movedFiles = require("./movedFiles");
 const mediaTiming = require("./mediaTiming");
 const mediaGate = require("./mediaGate");
 const csp = require("./csp");
@@ -510,6 +512,7 @@ function startBackend(port, config) {
     backendPort = null;
     backendMediaRoot = null;
     mediaWork.stop();
+    extPregen.stop();
     if (!stoppingOnPurpose) {
       const lost = session;
       session = null;
@@ -623,6 +626,7 @@ async function settleProbe(probe, port, { checkOnly = false } = {}) {
 function stopBackend() {
   stopAutoBackupTimer();
   mediaWork.stop();
+  extPregen.stop();
   if (!backend) {
     session = null;
     return Promise.resolve();
@@ -1376,11 +1380,19 @@ function registerIpc() {
   handle("sources:rename", (_e, id, name) => { sources.rename(id, name); });
   handle("sources:remove", (_e, id) => {
     const removed = sources.remove(id);
-    if (removed) extMedia.dropCache(id);
+    if (removed) { extMedia.dropCache(id); movedFiles.drop(id); }
     return removed;
   });
-  handle("sources:memory", () => sources.rememberedGames());
-  handle("sources:scan", async (_e, id) => {
+  /** 탐색기로 연다 — 묶음 키로 폴더를 다시 찾아 검사한다 (화면은 경로를 못 정한다) */
+  handle("sources:reveal", (_e, id, groupKey) => {
+    const dir = sources.folderPath(id, groupKey ?? "");
+    if (!dir || isBundle(dir)) throw new Error("폴더를 찾을 수 없습니다");
+    shell.openPath(dir);
+  });
+  /** 옛 `steamGameMap`(appid → 게임) — 서버 연결 표로 한 번 옮긴 뒤엔 비워서 준다 (`memoryMigrated`) */
+  handle("sources:memory", () => (store.getSettings().steamMapMigrated ? {} : sources.rememberedGames()));
+  handle("sources:memoryMigrated", () => { store.patchSettings({ steamMapMigrated: true }); });
+  handle("sources:scan", async (_e, id, firstKey) => {
     const { src, groups, truncated } = await sources.scan(id);
     const all = [];
     const out = groups.map((g) => ({
@@ -1388,7 +1400,7 @@ function registerIpc() {
       items: g.items.map((it) => {
         all.push(it.rel);
         return {
-          rel: it.rel, name: it.name, kind: it.kind, contentType: media.contentTypeOf(it.name), sizeBytes: it.size, takenAtMs: it.mtimeMs,
+          rel: it.rel, name: it.name, kind: it.kind, moved: src.kind === "steam" && movedFiles.has(src.id, it.rel, it.size, it.mtimeMs), contentType: media.contentTypeOf(it.name), sizeBytes: it.size, takenAtMs: it.mtimeMs,
           ...extMedia.urlsOf(src.id, it.rel, it.mtimeMs),
           ...(extMedia.infoOf(src.id, it.rel, it.size, it.mtimeMs) ?? { placeholder: null, width: null, height: null }),
         };
@@ -1396,6 +1408,8 @@ function registerIpc() {
     }));
     // 옮겨서 사라진 파일의 캐시. 훑기가 잘렸으면 목록이 전부가 아니라 멀쩡한 캐시까지 지우게 되므로 건너뛴다
     if (!truncated) extMedia.prune(src.id, all);
+    // 화면이 보는 묶음의 썸네일을 배경에서 미리 (포커스가 있을 때만 — extPregen.js)
+    extPregen.enqueue(src.id, src.root, groups.map((g) => ({ key: g.key, items: g.items })), typeof firstKey === "string" ? firstKey : null);
     return { sourceId: src.id, kind: src.kind, truncated, groups: out };
   });
   /** 인박스 화면이 열려 있는 동안만 폴더를 본다 */
@@ -1427,10 +1441,14 @@ function registerIpc() {
     const appid = src.kind === "steam" && typeof req.groupKey === "string" && /^\d{1,12}$/.test(req.groupKey) ? req.groupKey : null;
     try {
       return await ingest.start({ entryId, sources: files.map((f) => f.real) }, {
-        afterCommit: "trash",
+        // 스팀 폴더는 복사만 한다 — 원본·스팀 썸네일·screenshots.vdf 어느 것도 지우지 않는다. 폴더 종류만 휴지통
+        afterCommit: src.kind === "steam" ? "keep" : "trash",
+        fromSteam: src.kind === "steam",
         // 옮겨졌으면 그 appid를 이 게임으로 기억한다 (다음에 맨 위에 올려 줄 뿐, 저절로 고르지는 않는다)
         onFinished: (job) => {
           release();
+          // 가져간 스팀 사진은 따로 기억한다 (목록에서 흐리게·기본 숨김)
+          if (src.kind === "steam" && job.phase === "done") movedFiles.mark(src.id, files);
           if (appid && job.phase === "done" && job.committed.length > 0) sources.rememberGame(appid, entryId);
         },
       });
@@ -2041,6 +2059,7 @@ function startMediaWork() {
   const send = (channel, payload) => { if (win && !win.isDestroyed()) win.webContents.send(channel, payload); };
   // 비정상 종료가 남긴 받다 만 묶음 — 한 시간 넘은 것만 (돌고 있는 묶음은 건드리지 않는다)
   try { ingest.sweepStale(backendMediaRoot); } catch (e) { console.error("[ingest] 묶음 정리 실패", e?.message ?? e); }
+  extPregen.start();
   mediaWork.start(backendMediaRoot, {
     onProgress: (p) => send("media:progress", p),
     onChanged: (c) => send("media:changed", c),

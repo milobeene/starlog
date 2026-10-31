@@ -369,6 +369,39 @@ function resolveFile(id, segments) {
   }
 }
 
+/**
+ * 탐색기로 열 폴더 — 스팀은 `…/<appid>/screenshots`, 폴더는 등록 폴더(또는 그 하위 폴더). 화면은 `(sourceId, 묶음 키)`만 보낸다.
+ * 링크를 따라가지 않는 진짜 폴더만, 등록 폴더 안일 때만. 아니면 null
+ */
+function folderPath(id, groupKey) {
+  const src = get(id);
+  if (!src) return null;
+  if (src.kind === "steam") {
+    if (typeof groupKey !== "string" || !isNumeric(groupKey)) return null;
+    for (const remote of steamRemotes(src.root)) {
+      const dir = path.join(remote, groupKey, "screenshots");
+      if (isRealDir(dir)) {
+        const real = media.realpath(dir);
+        if (media.partsInside(src.root, real)) return real;
+      }
+    }
+    return null;
+  }
+  const segs = groupKey === "" || groupKey === undefined ? [] : segmentsOf(groupKey);
+  if (!segs) return null;
+  let cur = src.root;
+  try {
+    for (const seg of segs) {
+      cur = path.join(cur, seg);
+      if (!fs.lstatSync(cur).isDirectory()) return null;
+    }
+    const real = media.realpath(cur);
+    return segs.length === 0 || media.partsInside(src.root, real)?.length === segs.length ? real : null;
+  } catch {
+    return null;
+  }
+}
+
 /** `"a/b/c.png"` 꼴 상대 경로(화면이 보낸 값) → 조각들. 모양이 이상하면 null */
 function segmentsOf(rel) {
   if (typeof rel !== "string" || rel === "" || rel.length > 2048 || rel.includes("\0") || rel.includes("\\")) return null;
@@ -377,6 +410,6 @@ function segmentsOf(rel) {
 }
 
 module.exports = {
-  NAME_MAX, MAX_SOURCES, MAX_SEGMENTS, list, get, add, rename, remove, scan, resolveFile, segmentsOf,
+  NAME_MAX, MAX_SOURCES, MAX_SEGMENTS, list, get, add, rename, remove, scan, resolveFile, folderPath, segmentsOf,
   rememberedGames, rememberGame, steamRemotes,
 };

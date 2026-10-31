@@ -1,0 +1,339 @@
+{
+ "name": "steam-links",
+ "note": "스팀 앱 연결 (V21) — IGDB 키가 없는 서버라 조회는 안 나간다(캐시만 답, 모르면 source null). AUTO/NONE 행은 `sql`로 심는다. MANUAL PUT/DELETE, 검증(숫자만·200개·404), 내보내기 형식 7의 steamAppIds(MANUAL만)",
+ "fixture": "fresh",
+ "sql": [
+  "insert into game (source, external_id, name, created_at, updated_at) values ('IGDB', '9001', 'Steam Alpha', '2026-01-01 09:00:00', '2026-01-01 09:00:00'), ('IGDB', '9002', 'Steam Beta', '2026-01-01 09:00:00', '2026-01-01 09:00:00')",
+  "insert into backlog_entry (game_id, status, display_name, display_name_sort_key, created_at, updated_at) select id, 'WISHLIST', name, '1|' || lower(name), '2026-01-01 09:00:00', '2026-01-01 09:00:00' from game where name like 'Steam %' order by name",
+  "insert into steam_app_link (appid, backlog_entry_id, igdb_game_id, source, checked_at, created_at, updated_at) select '1001', id, 9001, 'AUTO', '2026-01-01 09:00:00', '2026-01-01 09:00:00', '2026-01-01 09:00:00' from backlog_entry where display_name = 'Steam Alpha'",
+  "insert into steam_app_link (appid, backlog_entry_id, igdb_game_id, source, checked_at, created_at, updated_at) values ('1002', null, 7777, 'NONE', '2026-01-01 09:00:00', '2026-01-01 09:00:00', '2026-01-01 09:00:00')"
+ ],
+ "steps": [
+  {
+   "name": "준비 — 카드 (A·B 번호)",
+   "method": "GET",
+   "path": "/api/backlog/cards",
+   "save": {
+    "a": "0.entryId",
+    "b": "1.entryId"
+   }
+  },
+  {
+   "name": "resolve — AUTO(심은 것)·NONE(심은 것, 로컬 재맞춤 대상이나 항목 없음)·모르는 번호(null)·비스팀 번호(null). 키가 없어 조회 없음",
+   "method": "POST",
+   "path": "/api/steam-links/resolve",
+   "body": {
+    "appids": [
+     "1001",
+     "1002",
+     "1003",
+     "5000000000",
+     "1001"
+    ]
+   }
+  },
+  {
+   "name": "resolve — 빈 목록",
+   "method": "POST",
+   "path": "/api/steam-links/resolve",
+   "body": {
+    "appids": []
+   }
+  },
+  {
+   "name": "resolve — 숫자 아닌 값은 400",
+   "method": "POST",
+   "path": "/api/steam-links/resolve",
+   "body": {
+    "appids": [
+     "12a"
+    ]
+   }
+  },
+  {
+   "name": "resolve — 201개는 400",
+   "method": "POST",
+   "path": "/api/steam-links/resolve",
+   "body": {
+    "appids": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "21",
+     "22",
+     "23",
+     "24",
+     "25",
+     "26",
+     "27",
+     "28",
+     "29",
+     "30",
+     "31",
+     "32",
+     "33",
+     "34",
+     "35",
+     "36",
+     "37",
+     "38",
+     "39",
+     "40",
+     "41",
+     "42",
+     "43",
+     "44",
+     "45",
+     "46",
+     "47",
+     "48",
+     "49",
+     "50",
+     "51",
+     "52",
+     "53",
+     "54",
+     "55",
+     "56",
+     "57",
+     "58",
+     "59",
+     "60",
+     "61",
+     "62",
+     "63",
+     "64",
+     "65",
+     "66",
+     "67",
+     "68",
+     "69",
+     "70",
+     "71",
+     "72",
+     "73",
+     "74",
+     "75",
+     "76",
+     "77",
+     "78",
+     "79",
+     "80",
+     "81",
+     "82",
+     "83",
+     "84",
+     "85",
+     "86",
+     "87",
+     "88",
+     "89",
+     "90",
+     "91",
+     "92",
+     "93",
+     "94",
+     "95",
+     "96",
+     "97",
+     "98",
+     "99",
+     "100",
+     "101",
+     "102",
+     "103",
+     "104",
+     "105",
+     "106",
+     "107",
+     "108",
+     "109",
+     "110",
+     "111",
+     "112",
+     "113",
+     "114",
+     "115",
+     "116",
+     "117",
+     "118",
+     "119",
+     "120",
+     "121",
+     "122",
+     "123",
+     "124",
+     "125",
+     "126",
+     "127",
+     "128",
+     "129",
+     "130",
+     "131",
+     "132",
+     "133",
+     "134",
+     "135",
+     "136",
+     "137",
+     "138",
+     "139",
+     "140",
+     "141",
+     "142",
+     "143",
+     "144",
+     "145",
+     "146",
+     "147",
+     "148",
+     "149",
+     "150",
+     "151",
+     "152",
+     "153",
+     "154",
+     "155",
+     "156",
+     "157",
+     "158",
+     "159",
+     "160",
+     "161",
+     "162",
+     "163",
+     "164",
+     "165",
+     "166",
+     "167",
+     "168",
+     "169",
+     "170",
+     "171",
+     "172",
+     "173",
+     "174",
+     "175",
+     "176",
+     "177",
+     "178",
+     "179",
+     "180",
+     "181",
+     "182",
+     "183",
+     "184",
+     "185",
+     "186",
+     "187",
+     "188",
+     "189",
+     "190",
+     "191",
+     "192",
+     "193",
+     "194",
+     "195",
+     "196",
+     "197",
+     "198",
+     "199",
+     "200",
+     "201"
+    ]
+   }
+  },
+  {
+   "name": "resolve — appids 칸이 없으면 400(읽을 수 없음)",
+   "method": "POST",
+   "path": "/api/steam-links/resolve",
+   "body": {}
+  },
+  {
+   "name": "PUT — 없는 항목은 404",
+   "method": "PUT",
+   "path": "/api/steam-links/1003",
+   "body": {
+    "entryId": 999999
+   }
+  },
+  {
+   "name": "PUT — 숫자 아닌 appid는 400",
+   "method": "PUT",
+   "path": "/api/steam-links/abc",
+   "body": {
+    "entryId": "${a}"
+   }
+  },
+  {
+   "name": "PUT — MANUAL 연결 (심어 둔 AUTO 1001을 B로 덮는다)",
+   "method": "PUT",
+   "path": "/api/steam-links/1001",
+   "body": {
+    "entryId": "${b}"
+   }
+  },
+  {
+   "name": "PUT — 새 번호 1003을 A로",
+   "method": "PUT",
+   "path": "/api/steam-links/1003",
+   "body": {
+    "entryId": "${a}"
+   }
+  },
+  {
+   "name": "resolve — MANUAL 둘 (1001은 B, 1003은 A)",
+   "method": "POST",
+   "path": "/api/steam-links/resolve",
+   "body": {
+    "appids": [
+     "1001",
+     "1003"
+    ]
+   }
+  },
+  {
+   "name": "내보내기 — 형식 7, 항목에 steamAppIds는 MANUAL만",
+   "method": "GET",
+   "path": "/api/me/export"
+  },
+  {
+   "name": "DELETE — 1001 지움",
+   "method": "DELETE",
+   "path": "/api/steam-links/1001"
+  },
+  {
+   "name": "DELETE — 없는 번호도 204",
+   "method": "DELETE",
+   "path": "/api/steam-links/424242"
+  },
+  {
+   "name": "resolve — 지운 1001은 모름(null), 1003은 그대로",
+   "method": "POST",
+   "path": "/api/steam-links/resolve",
+   "body": {
+    "appids": [
+     "1001",
+     "1003"
+    ]
+   }
+  }
+ ]
+}

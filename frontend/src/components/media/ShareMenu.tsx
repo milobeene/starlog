@@ -4,6 +4,7 @@ import Dropdown from "@/components/ui/Dropdown";
 import { errorMessage } from "@/lib/api";
 import { getBridge, type MediaTarget } from "@/lib/desktop";
 import { putTask } from "@/lib/tasks";
+import { Icon, toolClass } from "@/components/ui/ToolButton";
 
 /** 결과는 토스트로. 같은 `id`라 연달아 눌러도 하나만 남는다 */
 function toast(title: string, ok: boolean, message?: string) {
@@ -63,11 +64,8 @@ export default function ShareMenu({ targets }: { targets: MediaTarget[] }) {
       panelClassName="w-64"
       disabled={none}
       trigger={() => (
-        <span
-          className={`block rounded-md border border-white/15 px-3 py-2 text-xs font-medium tracking-widest whitespace-nowrap text-white/80 uppercase transition-all sm:px-4 ${
-            none ? "opacity-40" : "hover:bg-white/10 hover:text-white"
-          }`}
-        >
+        <span className={`${toolClass()} ${none ? "pointer-events-none opacity-35" : ""}`}>
+          <Icon name="share" />
           공유
         </span>
       )}

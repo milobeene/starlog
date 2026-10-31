@@ -19,6 +19,7 @@ import { ldt, moneyJson } from "../../common/json";
 import { gameCollections, type GameRow } from "../game/service";
 import type { TagRow } from "../tag/service";
 import { FORMAT_VERSION } from "./dump";
+import { manualAppidsByEntry } from "../steam/service";
 import { colorsOf, presetsOf } from "./query";
 import { findProfile, type ProfileRow } from "./profile";
 
@@ -85,6 +86,7 @@ export async function exportData(d: Db) {
   const acqs = await acquisitions(d, new Map(subs.map((s, i) => [s.id, i])));
   const records = groupBy(await d.select().from(playRecord).orderBy(asc(playRecord.id)), (r) => r.backlogEntryId,
     (r) => ({ kind: r.kind, minutes: Number(r.minutes), playedOn: r.playedOn, note: r.note }));
+  const steamOf = await manualAppidsByEntry(d);
   const tagById = new Map(tags.map((t) => [t.id, t.name]));
   const genreById = new Map(genreNames.map((x) => [x.id, x.name]));
   const genresOf = groupBy(genreLinks, (l) => l.backlogEntryId);
@@ -129,6 +131,7 @@ export async function exportData(d: Db) {
       playthroughs: pts.get(e.id) ?? [],
       acquisitions: acqs.get(e.id) ?? [],
       playRecords: records.get(e.id) ?? [],
+      steamAppIds: steamOf.get(e.id) ?? [],
     });
   }
 
