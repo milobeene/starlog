@@ -15,7 +15,8 @@ import { openDb, setDb, type OpenDb } from "./db/client";
 import { migrate } from "./db/migrate";
 import { DiagnosticFailure, classify, inspectSchema } from "./diagnose";
 import { runStartupTasks } from "./startup";
-import { ensureMediaDirs } from "./common/storage";
+import { ensureMediaDirs, mediaDir } from "./common/storage";
+import { sweepIncoming } from "./domains/backlog/incoming";
 import { createApp } from "./app";
 import { setListenPort } from "./http/guard";
 import { ensureProfile } from "./domains/member/profile";
@@ -139,6 +140,8 @@ async function main() {
    * **권한 문제를 파일을 받은 뒤에야 안다.** 못 쓰는 곳이면 여기서 터져 기동 실패로 드러나야 한다
    */
   ensureMediaDirs();
+  // 받다 만 스크린샷 묶음(`.incoming`)은 못 쓴다 — 한 시간 지난 것을 치운다. 실패해도 기동은 막지 않는다
+  try { const n = sweepIncoming(mediaDir()); if (n) console.log(`받다 만 스크린샷 묶음 ${n}개 정리`); } catch (e) { console.warn("받다 만 묶음 정리 실패", e); }
   await runStartupTasks();
 
   const app = createApp({ staticDir: cfg.staticDir });

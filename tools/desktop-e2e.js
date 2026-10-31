@@ -380,7 +380,8 @@ async function mediaSteps(port, entryId) {
   const rawResults = await raw.webContents.executeJavaScript(`(async () => {
     const r = {};
     for (const [ch, ...args] of [["media:copy", { entryId: ${entryId}, fileName: ${JSON.stringify(stored["land.png"])} }],
-      ["connections:list"], ["saves:list"], ["settings:get"], ["connections:reveal", "x", "db.password"]]) {
+      ["connections:list"], ["saves:list"], ["settings:get"], ["connections:reveal", "x", "db.password"],
+      ["media:ingest", { entryId: ${entryId}, sources: [] }], ["media:ingestStatus"], ["media:driveInfo"], ["media:setDriveLabel", "x"]]) {
       r[ch] = await window.raw.invoke(ch, ...args).then(() => "통과", () => "거절");
     }
     r.port = window.raw.sendSync("session:port");
@@ -390,7 +391,8 @@ async function mediaSteps(port, entryId) {
   })()`);
   raw.destroy();
   check("IPC 발신자 검사 — 남의 문서의 invoke는 전부 거절 (media·connections·saves·settings)",
-    ["media:copy", "connections:list", "saves:list", "settings:get", "connections:reveal"].every((k) => rawResults[k] === "거절"), JSON.stringify(rawResults));
+    ["media:copy", "connections:list", "saves:list", "settings:get", "connections:reveal", "media:ingest", "media:ingestStatus",
+      "media:driveInfo", "media:setDriveLabel"].every((k) => rawResults[k] === "거절"), JSON.stringify(rawResults));
   check("IPC 발신자 검사 — 동기 IPC(포트·토큰·배경)도 null", rawResults.port === null && rawResults.token === null && rawResults.bg === null);
 
   // ── 폴더로 저장 (대화상자는 바꿔 끼운다 — 매번 고르는지 센다) ──
@@ -591,6 +593,187 @@ async function mediaBackgroundSteps(save, entryId) {
     whileAway === 0 && countThumbs() >= total2 - 1, `떠나 있는 동안 ${whileAway}장 → 돌아와서 ${countThumbs()}/${total2} ${Date.now() - f0}ms`);
   for (const f of fs.readdirSync(folder)) if (/^drop2?-\d+\.png$|^watched\.png$/.test(f)) fs.rmSync(path.join(folder, f));
   return port;
+}
+
+
+// ── 스크린샷 넣기 (ingest.js) — 경로로 받아 메인이 복사·검증·커밋, 전부 아니면 전혀 ──
+async function ingestSteps(save, entryId) {
+  const crypto = require("crypto");
+  const folder = path.join(MEDIA_ROOT, fs.readdirSync(MEDIA_ROOT).filter((n) => !n.startsWith("."))[0]);
+  const src = path.join(TMP, "ingest-src");
+  fs.mkdirSync(src, { recursive: true });
+  const { nativeImage } = realElectron;
+  const noise = (w, h) => { const b = Buffer.alloc(w * h * 4); crypto.randomFillSync(b); for (let i = 3; i < b.length; i += 4) b[i] = 255; return nativeImage.createFromBitmap(b, { width: w, height: h }); };
+  const small = (c) => { const b = Buffer.alloc(16 * 16 * 4, c); return nativeImage.createFromBitmap(b, { width: 16, height: 16 }).toPNG(); };
+  const bigPng = path.join(src, "big4k.png");
+  fs.writeFileSync(bigPng, noise(3000, 3000).toPNG());   // 20MB 넘는 4K급 — 예전엔 이 한 장에서 멈췄다
+  const aJpg = path.join(src, "a.jpg"), cPng = path.join(src, "c.png");
+  fs.writeFileSync(aJpg, nativeImage.createFromBitmap(Buffer.alloc(16 * 16 * 4, 90), { width: 16, height: 16 }).toJPEG(80));
+  fs.writeFileSync(cPng, small(200));
+  const sec = (s) => new Date(s * 1000);
+  fs.utimesSync(bigPng, sec(1_600_000_002), sec(1_600_000_002));
+  fs.utimesSync(cPng, sec(1_600_000_001), sec(1_600_000_001));
+  fs.utimesSync(aJpg, sec(1_600_000_009), sec(1_600_000_009));   // takenAt이 더 이르다
+  check("시험 파일 — 큰 PNG가 20MB를 넘는다", fs.statSync(bigPng).size > 20 * 1024 * 1024, `${(fs.statSync(bigPng).size / 1048576).toFixed(1)}MB`);
+
+  await js(`window.__ing = []; window.starlog.media.onIngest((j) => __ing.push(j)); 0`);
+  const listNames = async () => (await api(await js("window.starlog.backendPort()"), "GET", `/api/backlog/${entryId}/screenshots`)).json.map((i) => i.fileName);
+  const waitJob = async (batchId, ms = 60000) => {
+    const t0 = Date.now();
+    for (;;) {
+      const job = (await js("window.starlog.media.ingestStatus()")).find((j) => j.batchId === batchId);
+      if (job && !["copying", "verifying", "committing"].includes(job.phase)) return job;
+      if (Date.now() - t0 > ms) return job ?? null;
+      await sleep(50);
+    }
+  };
+  const incomingGone = () => !fs.existsSync(path.join(folder, ".incoming"));
+  const before = await listNames();
+
+  // 1) 성공 — 큰 파일 포함 3개, 시각 순으로 번호가 이어진다
+  const { batchId } = await js(`window.starlog.media.ingest(${JSON.stringify({ entryId, sources: [aJpg, bigPng, cPng, aJpg],
+    takenAt: { [aJpg]: 1_500_000_000_000 } })})`);
+  check("넣기 — 바로 batchId를 돌려준다 (UUID)", /^[0-9a-f-]{36}$/.test(batchId), batchId);
+  const job = await waitJob(batchId);
+  const after = await listNames();
+  const added = after.filter((n) => !before.includes(n)).sort();
+  check("넣기 — 3개 모두 들어갔다 (중복 경로는 한 번으로)", job?.phase === "done" && job.total === 3 && job.committed.length === 3 && added.length === 3,
+    JSON.stringify({ phase: job?.phase, total: job?.total, committed: job?.committed, failures: job?.failures }));
+  const nextNum = Math.max(...before.map((n) => parseInt(n, 10) || 0)) + 1;
+  check("넣기 — 기존 최대 번호 다음부터 이어 붙는다 (시각 순: a → c → 큰 것)",
+    JSON.stringify(job?.committed.map((n) => parseInt(n, 10))) === JSON.stringify([nextNum, nextNum + 1, nextNum + 2])
+    && job.committed[0].endsWith(".jpg") && job.committed[1].endsWith(".png"), JSON.stringify(job?.committed));
+  const same = (a, b) => crypto.createHash("sha256").update(fs.readFileSync(a)).digest("hex") === crypto.createHash("sha256").update(fs.readFileSync(b)).digest("hex");
+  check("넣기 — 내용이 원본과 같다 (큰 PNG 포함)", same(bigPng, path.join(folder, job.committed[2])) && same(cPng, path.join(folder, job.committed[1])));
+  const mt = (n) => Math.round(fs.statSync(path.join(folder, n)).mtimeMs);
+  check("넣기 — 수정시각 보존 (takenAt 우선, 없으면 원본)", mt(job.committed[0]) === 1_500_000_000_000 && mt(job.committed[1]) === 1_600_000_001_000
+    && mt(job.committed[2]) === 1_600_000_002_000, `${mt(job.committed[0])} ${mt(job.committed[1])} ${mt(job.committed[2])}`);
+  check("넣기 — 원본은 그대로 남는다 · .incoming은 비었다", fs.existsSync(bigPng) && fs.existsSync(cPng) && incomingGone());
+  const seen = (await js("__ing")).filter((j) => j.batchId === batchId);
+  const phases = [...new Set(seen.map((j) => j.phase))];
+  check("넣기 — 진행 알림 (copying → verifying → committing → done), 바이트가 단조 증가",
+    JSON.stringify(phases) === JSON.stringify(["copying", "verifying", "committing", "done"])
+    && seen.every((j, i) => i === 0 || j.bytesDone >= seen[i - 1].bytesDone) && seen.at(-1).bytesDone === seen.at(-1).bytesTotal && seen[0].bytesTotal > 20 * 1024 * 1024,
+    `${phases.join(">")} ${seen.length}건`);
+  check("넣기 — 진행 알림은 쓰로틀 (초당 ~5건 이하)", seen.length < 60, String(seen.length));
+  const status = await js("window.starlog.media.ingestStatus()");
+  check("넣기 — 상태는 메인에 남는다 (화면을 떠났다 와도)", status.some((j) => j.batchId === batchId && j.phase === "done"));
+  const listed = (await api(await js("window.starlog.backendPort()"), "GET", `/api/backlog/${entryId}/screenshots`)).json;
+  check("넣기 — 목록에 찍은 시각이 실린다", Math.abs(Date.parse(listed.find((i) => i.fileName === job.committed[0]).takenAt) - 1_500_000_000_000) < 1000);
+
+  // 2) 롤백 — 중간에 원본이 사라지면 아무것도 안 들어간다
+  const gone = path.join(src, "gone.png");
+  fs.writeFileSync(gone, small(10));
+  const r1 = await js(`window.starlog.media.ingest(${JSON.stringify({ entryId, sources: [bigPng, gone] })})`);
+  fs.rmSync(gone);
+  const rolled = await waitJob(r1.batchId);
+  await sleep(300);
+  check("롤백 — 복사 중 원본이 사라지면 rolledBack, 실패 원본을 알려 준다",
+    rolled?.phase === "rolledBack" && rolled.failures.length === 1 && rolled.failures[0].source === gone && rolled.committed.length === 0, JSON.stringify(rolled));
+  check("롤백 — 아무것도 커밋되지 않았고 .incoming이 없다", (await listNames()).length === after.length && incomingGone());
+
+  // 2-1) 서브밀리초 mtime — 실제 파일은 거의 다 소수 ms다. 예전엔 Date(정수)와 비교해 전부 롤백됐다
+  const frac = path.join(src, "frac.png");
+  fs.writeFileSync(frac, small(77));
+  fs.utimesSync(frac, 1_600_000_500.123457, 1_600_000_500.123457);
+  const fracNat = path.join(src, "frac-natural.png");
+  fs.writeFileSync(fracNat, small(78));   // utimes 없이 — 파일시스템이 준 그대로
+  const r3 = await js(`window.starlog.media.ingest(${JSON.stringify({ entryId, sources: [frac, fracNat] })})`);
+  const fracJob = await waitJob(r3.batchId);
+  check("서브밀리초 mtime — 롤백되지 않고 커밋된다", fracJob?.phase === "done" && fracJob.committed.length === 2 && incomingGone(), JSON.stringify(fracJob));
+  for (const n of fracJob?.committed ?? []) fs.rmSync(path.join(folder, n), { force: true });   // 뒤 단계의 개수 계산을 안 흔든다
+
+  // 3) 공간 부족 — 시험용 환경변수로 남은 공간을 박는다
+  process.env.STARLOG_INGEST_FREE_BYTES = String(100 * 1024 * 1024);
+  const r2 = await js(`window.starlog.media.ingest(${JSON.stringify({ entryId, sources: [cPng] })})`);
+  const noSpace = await waitJob(r2.batchId);
+  delete process.env.STARLOG_INGEST_FREE_BYTES;
+  check("공간 부족 — 복사 전에 failed, 필요/남음을 말한다", noSpace?.phase === "failed" && /공간 부족: 필요 .* \/ 남음 /.test(noSpace.message ?? "") && noSpace.bytesDone === 0 && incomingGone(),
+    JSON.stringify(noSpace));
+
+  // 4) 요청 검사
+  const bad = await js(`window.starlog.media.ingest(${JSON.stringify({ entryId, sources: [cPng, src, "relative.png", path.join(src, "nope.png"), path.join(src, "x.txt")] })})`);
+  fs.writeFileSync(path.join(src, "x.txt"), "x");
+  const badJob = await waitJob(bad.batchId);
+  check("검사 — 폴더·상대 경로·없는 파일이 섞이면 아무것도 안 넣고 failed (사유 목록)",
+    badJob?.phase === "failed" && badJob.failures.length >= 3 && badJob.committed.length === 0 && (await listNames()).length === after.length, JSON.stringify(badJob?.failures));
+  const rejects = [];
+  for (const req of [{ entryId: 0, sources: [cPng] }, { entryId: "1", sources: [cPng] }, { entryId, sources: [] }, { entryId, sources: "x" }, null]) {
+    rejects.push(await js(`window.starlog.media.ingest(${JSON.stringify(req)}).then(() => "통과", () => "거절")`));
+  }
+  check("검사 — 잘못된 entryId·빈 목록·모양이 틀린 요청은 거절", rejects.every((x) => x === "거절"), rejects.join(","));
+
+  // 5) 같은 폴더는 한 번에 하나 — 둘을 연달아 넣으면 순서대로 모두 들어간다
+  const p1 = path.join(src, "q1.png"), p2 = path.join(src, "q2.png");
+  fs.writeFileSync(p1, small(11)); fs.writeFileSync(p2, small(12));
+  fs.utimesSync(p1, sec(1_600_000_100), sec(1_600_000_100)); fs.utimesSync(p2, sec(1_600_000_050), sec(1_600_000_050));
+  const [j1, j2] = [await js(`window.starlog.media.ingest(${JSON.stringify({ entryId, sources: [bigPng, p1] })})`),
+    await js(`window.starlog.media.ingest(${JSON.stringify({ entryId, sources: [p2] })})`)];
+  const [d1, d2] = [await waitJob(j1.batchId), await waitJob(j2.batchId)];
+  check("대기열 — 같은 폴더의 두 묶음이 겹치지 않고 차례로 들어간다 (번호가 묶음 순서대로)",
+    d1?.phase === "done" && d2?.phase === "done" && parseInt(d2.committed[0], 10) === parseInt(d1.committed.at(-1), 10) + 1
+    && (await listNames()).length === after.length + 3, `${d1?.committed} | ${d2?.committed}`);
+
+  // 6) 드라이브 정보·이름표
+  const di = await js("window.starlog.media.driveInfo()");
+  check("드라이브 — root·freeBytes·totalBytes (label은 처음엔 null)",
+    typeof di.root === "string" && di.root.length > 0 && di.freeBytes > 0 && di.totalBytes >= di.freeBytes && di.label === null, JSON.stringify(di));
+  await js(`window.starlog.media.setDriveLabel("  내 HDD (D:)  ")`);
+  const di2 = await js("window.starlog.media.driveInfo()");
+  const settingsFile = JSON.parse(fs.readFileSync(path.join(TMP, "appData/starlog/settings.json"), "utf8"));
+  check("드라이브 — 이름표는 다듬어 저장되고 settings.json에 데이터 루트 키로 남는다",
+    di2.label === "내 HDD (D:)" && Object.values(settingsFile.driveLabels ?? {}).includes("내 HDD (D:)"), JSON.stringify(settingsFile.driveLabels));
+  const labelBad = [];
+  for (const v of ["x".repeat(41), "a\u0007b", 5]) labelBad.push(await js(`window.starlog.media.setDriveLabel(${JSON.stringify(v)}).then(() => "통과", () => "거절")`));
+  check("드라이브 — 41자·제어문자·문자열이 아닌 값은 거절", labelBad.every((x) => x === "거절") && (await js("window.starlog.media.driveInfo()")).label === "내 HDD (D:)", labelBad.join(","));
+  await js(`window.starlog.media.setDriveLabel(null)`);
+  check("드라이브 — null이면 이름표를 지운다", (await js("window.starlog.media.driveInfo()")).label === null);
+
+  // 7) .incoming은 목록·프로토콜에 안 나오고, 한 시간 넘은 것만 세션을 열 때 치운다
+  const stale = path.join(folder, ".incoming", "11111111-1111-4111-8111-111111111111");
+  const fresh = path.join(folder, ".incoming", "22222222-2222-4222-8222-222222222222");
+  for (const d of [stale, fresh]) { fs.mkdirSync(d, { recursive: true }); fs.copyFileSync(cPng, path.join(d, "0000.png")); }
+  const old = new Date(Date.now() - 2 * 3600_000);
+  fs.utimesSync(stale, old, old);
+  check("정리 — .incoming 안 파일은 목록에 안 나온다", (await listNames()).length === after.length + 3 && !(await listNames()).some((n) => n.startsWith("0000")));
+  const outside = await fetch(`starlog-media://shot/${encodeURIComponent(path.basename(folder))}/.incoming/22222222-2222-4222-8222-222222222222/0000.png`).then((r) => r.status, () => -1);
+  check("정리 — starlog-media는 .incoming을 안 내준다", outside === 404 || outside === -1, String(outside));
+  await js("window.starlog.cancelLaunch()");
+  const re = await js(`window.starlog.launch({ mode: "local", target: ${JSON.stringify(save)} })`);
+  check("정리 — 세션을 열 때 한 시간 넘은 묶음만 지운다", re.ok && !fs.existsSync(stale) && fs.existsSync(fresh), `${re.ok} stale=${fs.existsSync(stale)} fresh=${fs.existsSync(fresh)}`);
+  fs.rmSync(path.join(folder, ".incoming"), { recursive: true, force: true });
+
+  // 8) 화면 끝에서 끝까지 — 입력 칸에 진짜 파일을 넣으면(CDP) 화면이 경로를 뽑아 ingest → 알림 → 목록 다시 읽기
+  const port2 = re.port;
+  const e2eFile = path.join(src, "ui-drop.png");
+  fs.writeFileSync(e2eFile, noise(64, 64).toPNG());
+  fs.utimesSync(e2eFile, sec(1_600_000_300), sec(1_600_000_300));
+  await goto(`app://starlog/library/detail?entry=${entryId}`);
+  const namesBefore = (await api(port2, "GET", `/api/backlog/${entryId}/screenshots`)).json.map((i) => i.fileName);
+  const dbg = win.webContents.debugger;
+  dbg.attach("1.3");
+  try {
+    const marked = await js(`(() => { const i = [...document.querySelectorAll('input[type=file][multiple]')][0]; if (!i) return false; i.setAttribute('data-e2e', 'shots'); return true; })()`);
+    check("화면 — 스크린샷 파일 입력 칸이 있다", marked === true);
+    const doc = await dbg.sendCommand("DOM.getDocument", { depth: 0 });
+    const { nodeId } = await dbg.sendCommand("DOM.querySelector", { nodeId: doc.root.nodeId, selector: "input[data-e2e=shots]" });
+    await dbg.sendCommand("DOM.setFileInputFiles", { nodeId, files: [e2eFile] });
+  } finally {
+    // 입력 칸 설정이 끝났으면 분리 — 이후 단계에 영향이 없게
+  }
+  const t8 = Date.now();
+  let toast = "", names8 = namesBefore;
+  while (Date.now() - t8 < 20000) {
+    toast = await js("document.body.innerText");
+    names8 = (await api(port2, "GET", `/api/backlog/${entryId}/screenshots`)).json.map((i) => i.fileName);
+    if (/1장 넣음/.test(toast) && names8.length === namesBefore.length + 1) break;
+    await sleep(150);
+  }
+  try { dbg.detach(); } catch { /* 이미 분리 */ }
+  check("화면 — 파일을 넣으면 메인이 받아 알림('1장 넣음')이 뜬다", /1장 넣음/.test(toast), toast.split("\n").filter((l) => /넣/.test(l)).join(" | "));
+  const tiles = await js(`document.querySelectorAll('img[src^="starlog-media://"], [data-testid=shot], button img').length`);
+  check("화면 — 끝나면 목록을 다시 읽어 새 장이 들어온다", names8.length === namesBefore.length + 1, `${namesBefore.length} → ${names8.length}, 화면 img ${tiles}`);
+  return port2;
 }
 
 // ── 보안 점검 회귀 (2026-10-25): 창 이동 잠금 · 새 창 · 권한 · 마크다운 · 데이터 루트 · openPath ──
@@ -1447,6 +1630,7 @@ realElectron.app.whenReady().then(async () => {
 
     await mediaSteps(port, entry.json?.id);
     port = await mediaBackgroundSteps(SAVE, entry.json?.id);
+    port = await ingestSteps(SAVE, entry.json?.id);
     await coverDbSteps(port, entry.json?.id);
     await coverResizeSteps(port, entry.json?.id);
     // 스크린샷·영상이 생긴 뒤에 — 상세의 갤러리 썸네일·<video>까지 정책 안에서 뜨는지

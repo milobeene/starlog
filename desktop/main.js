@@ -34,6 +34,7 @@ const thumbs = require("./thumbs");
 const thumbPool = require("./thumbPool");
 const mediaProtocol = require("./mediaProtocol");
 const mediaWork = require("./mediaWork");
+const ingest = require("./ingest");
 const mediaTiming = require("./mediaTiming");
 const mediaGate = require("./mediaGate");
 const csp = require("./csp");
@@ -1149,6 +1150,14 @@ function onAsync(channel, fn) {
 }
 
 function registerIpc() {
+  ingest.init({
+    getBackend: () => ({ port: backendPort, mediaRoot: backendMediaRoot }),
+    postJson,
+    send: (channel, payload) => { if (win && !win.isDestroyed()) win.webContents.send(channel, payload); },
+    // 새 파일의 썸네일·색인 — 감시가 곧 알려 주지만 기다리지 않고 바로 훑는다
+    onCommitted: (folder) => mediaWork.rescan(folder),
+  });
+
   /**
    * 지금 백엔드의 포트. **동기로 답한다.**
    *
@@ -1333,6 +1342,16 @@ function registerIpc() {
   onAsync("media:timing", (_e, event, data) => mediaTiming.fromRenderer(event, data));
   /** 마우스·휠 — 창이 보이고 1분 안에 만졌으면 포커스가 없어도 배경 일을 한다 */
   onAsync("media:activity", () => mediaGate.input());
+
+  // ── 스크린샷 넣기 (ingest.js) — 파일 경로를 받아 메인이 복사한다 ──
+  /** 끌어놓은 파일의 경로는 preload가 `webUtils`로 뽑아 오지만, 메인은 그 값을 믿지 않고 `ingest.start`가 다시 검사한다 */
+  handle("media:ingest", (_e, req) => ingest.start(req));
+  handle("media:ingestStatus", () => ingest.status());
+  handle("media:driveInfo", () => {
+    const root = currentDataRoot();
+    return ingest.driveInfo(path.join(root, "media"), store.getDriveLabel(root));
+  });
+  handle("media:setDriveLabel", (_e, label) => { store.setDriveLabel(currentDataRoot(), label); });
 
   handle("saves:list", () => saveFiles.list(dataDirs()));
 
@@ -1924,6 +1943,11 @@ function registerIpc() {
   });
 }
 
+/** 지금 서버가 보는 데이터 루트 (없으면 설정의 것) — 드라이브 이름표의 열쇠 */
+function currentDataRoot() {
+  return backendMediaRoot ? path.dirname(backendMediaRoot) : store.getSettings().dataRoot;
+}
+
 /**
  * 세션이 열렸다 — 배경 썸네일·감시·캐시 데우기를 이 서버의 데이터 루트로 (`mediaWork.js`).
  * 입구로 나가도 서버가 살아 있으면 그대로 돈다. 서버를 내릴 때(`stopBackend`) 멈춘다
@@ -1931,6 +1955,8 @@ function registerIpc() {
 function startMediaWork() {
   if (!backendMediaRoot) return;
   const send = (channel, payload) => { if (win && !win.isDestroyed()) win.webContents.send(channel, payload); };
+  // 비정상 종료가 남긴 받다 만 묶음 — 한 시간 넘은 것만 (돌고 있는 묶음은 건드리지 않는다)
+  try { ingest.sweepStale(backendMediaRoot); } catch (e) { console.error("[ingest] 묶음 정리 실패", e?.message ?? e); }
   mediaWork.start(backendMediaRoot, {
     onProgress: (p) => send("media:progress", p),
     onChanged: (c) => send("media:changed", c),

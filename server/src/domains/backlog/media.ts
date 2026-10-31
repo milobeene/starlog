@@ -27,6 +27,7 @@ import { config } from "../../config";
 import { recordApiCall } from "../system/service";
 import { assignMediaFolder, mediaSlugGiven, uniqueMediaSlug } from "../game/service";
 import { findAliveEntry, findAliveEntry404 } from "./shared";
+import { commitIncoming, isBatchId, moveNoClobber } from "./incoming";
 import { saveIfChanged } from "../../db/changes";
 
 const MB = (n: number) => Math.floor(n / 1024 / 1024);
@@ -388,7 +389,7 @@ export async function listScreenshots(entryId: number) {
 }
 
 /** `001.png`, `002.jpg` … 가장 큰 번호 다음. 개수 + 1이면 중간을 지웠을 때 덮어쓴다 */
-function nextName(folder: string, extension: string): string {
+export function nextName(folder: string, extension: string): string {
   let max = 0;
   for (const name of localList(folder)) {
     const base = name.replace(/\..*$/, "");
@@ -433,6 +434,45 @@ export async function saveScreenshot(entryId: number, fileName: string | null,
   const kind = mediaKindOf(saved.stored);
   if (kind !== null) warmThumb(path.join(saved.folder, saved.stored), kind === "IMAGE" ? "image" : "video");
   return saved.item;
+}
+
+/**
+ * 일렉트론이 `.incoming/<batchId>/`에 받아 둔 묶음을 번호 붙여 제자리로 (`incoming.ts`).
+ * 폴더 이름을 정하는 트랜잭션 안에서 한다 — 한 장씩 올리는 길(`saveScreenshot`)과 번호 경합을 같이 막는다.
+ * @param rename 테스트가 중간 실패를 흉내 낼 수 있게
+ */
+export async function commitScreenshots(entryId: number, batchId: string, rename: (a: string, b: string) => void = moveNoClobber) {
+  if (!isBatchId(batchId)) throw new InvalidInput("묶음 번호가 올바르지 않습니다");
+  // 옮긴 뒤의 일(목록 만들기·트랜잭션 커밋)이 터지면 파일을 `.incoming`으로 되돌린다 —
+  // 갤러리에 남은 채 메인이 rolledBack으로 알면 재시도가 중복을 만든다
+  let undo: (() => void) | null = null;
+  let saved: { folder: string; names: string[]; items: ReturnType<typeof describe>[]; finish: () => void };
+  try {
+    saved = await db().transaction(async (tx) => {
+      const folder = (await folderOf(tx, entryId, true, true))!;
+      const done = commitIncoming(folder, batchId, {
+        rename,
+        nextName,
+        check: (name, head) => {
+          const ext = name.slice(name.lastIndexOf(".") + 1).toLowerCase();
+          const type = IMAGES[ext] ?? VIDEOS[ext];
+          if (type === undefined) return `지원하지 않는 형식입니다: ${ext}`;
+          return magicMatches(head, type) ? null : "파일 내용이 형식과 맞지 않습니다";
+        },
+      });
+      undo = done.undo;
+      return { folder, names: done.names, items: done.names.map((n) => describe(entryId, folder, n)), finish: done.finish };
+    });
+  } catch (e) {
+    (undo as (() => void) | null)?.();
+    throw e;
+  }
+  saved.finish();
+  for (const name of saved.names) {
+    const kind = mediaKindOf(name);
+    if (kind !== null) warmThumb(path.join(saved.folder, name), kind === "IMAGE" ? "image" : "video");
+  }
+  return { files: saved.items };
 }
 
 /** 스크린샷으로 읽히는 이름: 조각 하나, 점으로 시작하지 않음, 이미지·영상 확장자 */

@@ -203,6 +203,7 @@ function watch(current) {
     const parts = rel.split(/[\\/]/).filter(Boolean);
     if (parts.length === 0 || parts[0].startsWith(".")) return;
     if (parts.length >= 2 && media.isThumbDirName(parts[1])) return;   // 우리가 쓰는 곳
+    if (parts.length >= 2 && parts[1].toLowerCase() === ".incoming") return;   // 넣는 중인 묶음 — 커밋되면 게임 폴더에서 다시 온다
     queueScan(current, path.join(current.root, parts[0]));
   });
   watcher.on("error", () => {
@@ -335,6 +336,11 @@ function stop() {
   index.forget();
 }
 
+/** 넣기가 끝난 폴더를 지금 훑는다 (감시가 놓쳐도) */
+function rescan(folder) {
+  if (run) queueScan(run, folder);
+}
+
 /** `starlog-media://` 요청마다 — 지금 화면이 보는 폴더, 그리고 "바쁘다"는 표시 */
 function noteRequest(folder) {
   if (!run) return;
@@ -349,4 +355,4 @@ function cancelPregen() {
   return thumbs.cancelLow();
 }
 
-module.exports = { start, stop, noteRequest, cancelPregen, scan };
+module.exports = { start, stop, noteRequest, cancelPregen, scan, rescan };

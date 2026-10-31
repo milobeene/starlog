@@ -107,6 +107,7 @@ npx tsx test/harness/run.ts test/scenarios/<도메인>.json --update   # 동작�
 - 녹화본(`test/golden/`)은 **자바와 diff 0으로 확인된 결과**를 녹화해 둔 것 — 응답 + 픽스처 대비 바뀐 행 + 파일 트리
 - 픽스처는 `server/.dev/`에 실데이터 백업(`docs/backup-*-neon`)에서 자동으로 만든다
 - ⚠️ 녹화본·픽스처는 실데이터라 **gitignore** — 이 테스트는 백업이 있는 맥에서만 돈다
+- 달력에 따라 변하는 값(구독 누적 지출)은 시나리오에 `"today": "YYYY-MM-DD"` + `env.STARLOG_PROFILE: "test"`로 서버의 "오늘"을 고정한다(`STARLOG_TEST_TODAY`, `clock.ts` `testToday` — dev·test 프로필에서만 듣고 운영은 무시). 고정한 시나리오에서 "오늘 이후"가 필요하면 날짜를 그보다 뒤로 박는다
 - 빈 세이브에서 시작하려면 `"fixture": "fresh"` (프로필 + 기본 카탈로그만)
 - API로 못 만드는 행(homeops 일정)은 시나리오의 `"sql": [...]` — 픽스처 복사본을 최신 버전까지 올린 뒤, 시작 상태를 뜨기 전에 넣는다
 - 정규화: 실행 중 생긴 시각은 `<NOW>`(실행 시작 ~ 지금+1분 — 그보다 미래면 값 그대로라 +9시간 같은 어긋남이 보인다, 파일 주소의 `?v=<ms>`도), 서버가 채운 오늘 날짜는 `<TODAY>`

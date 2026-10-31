@@ -24,8 +24,19 @@ export function nowKst(d: Date = new Date()): string {
   return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}:${p.second}.${p.fractionalSecond}`;
 }
 
-/** `2026-10-24` */
-export function todayKst(d: Date = new Date()): string {
-  const p = parts(d);
+/**
+ * 테스트 전용 고정 "오늘" — `STARLOG_TEST_TODAY=YYYY-MM-DD`. **dev·test 프로필에서만** 듣는다(`config.devProfile`과 같은 규칙).
+ * 구독 지출처럼 "오늘까지" 쌓이는 값이 달력에 따라 녹화본과 어긋나는 걸 막는다. 운영 프로필은 무시한다.
+ */
+export function testToday(env: Record<string, string | undefined> = process.env): string | null {
+  if (!["dev", "test"].includes(env.STARLOG_PROFILE ?? "")) return null;
+  const v = (env.STARLOG_TEST_TODAY ?? "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
+}
+
+/** `2026-10-24` — 인자 없이 부르면(= "오늘") 테스트 고정값이 우선한다 */
+export function todayKst(d?: Date): string {
+  if (d === undefined) { const t = testToday(); if (t) return t; }
+  const p = parts(d ?? new Date());
   return `${p.year}-${p.month}-${p.day}`;
 }

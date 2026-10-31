@@ -8,6 +8,7 @@ import TaskToasts from "@/components/layout/TaskToasts";
 import { Button } from "@/components/ui/Field";
 import { useCloudBackupToasts } from "@/lib/cloudBackup";
 import { getBridge } from "@/lib/desktop";
+import { useIngestToasts } from "@/lib/ingest";
 import { rememberAppPath } from "@/lib/lastAppPath";
 import { attachMediaEvents } from "@/lib/mediaEvents";
 import { refreshSession, useSession } from "@/lib/session";
@@ -60,6 +61,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   // 자동 백업은 기동 직후 뒤에서 돈다 — 껍데기가 받아야 어느 화면에 있든 결과가 뜬다
   useCloudBackupToasts();
+  // 스크린샷 넣기는 몇 분 걸릴 수 있다 — 화면을 옮겨도 진행·결과가 보이게 껍데기에 붙인다
+  useIngestToasts();
 
   const [stuck, setStuck] = useState(false);
   useEffect(() => {

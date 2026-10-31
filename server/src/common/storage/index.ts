@@ -27,8 +27,8 @@ import { THUMB_DIR } from "./thumbs";
 export const STORAGE_LIMITS = {
   /** 커버 한 장 (5MB) */
   maxUploadBytes: 5 * 1024 * 1024,
-  /** 스크린샷 한 장 (20MB) */
-  maxScreenshotBytes: 20 * 1024 * 1024,
+  /** 스크린샷 한 장 (100MB) — HTTP로 올리는 길(붙여넣기 등). 파일 끌어놓기는 일렉트론이 복사해 와서 제한이 없다 */
+  maxScreenshotBytes: 100 * 1024 * 1024,
   /** 영상 하나 (200MB) */
   maxVideoBytes: 200 * 1024 * 1024,
   /** 업로드 허가증 유효 시간 (10분, 초 단위) */

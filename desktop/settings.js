@@ -171,6 +171,35 @@ function patchSettings(patch) {
   return { ...next, dataRoot: next.dataRoot || DEFAULT_DATA_ROOT };
 }
 
+// ───────────── 드라이브 이름표 ─────────────
+
+const LABEL_MAX = 40;
+/** 데이터 루트마다 따로 — 루트를 옮기면 그 루트의 이름표가 보인다. 윈도우는 대소문자를 안 가린다 */
+const labelKey = (dataRoot) => (process.platform === "win32" ? path.resolve(dataRoot).toLowerCase() : path.resolve(dataRoot));
+
+function getDriveLabel(dataRoot) {
+  const all = readSettings().driveLabels;
+  const v = all && typeof all === "object" && !Array.isArray(all) ? all[labelKey(dataRoot)] : null;
+  return typeof v === "string" && v !== "" ? v : null;
+}
+
+/** 화면이 보낸 값이라 여기서 다시 본다 — 앞뒤 공백 제거, 40자, 제어문자 금지. null·빈 칸은 지움 */
+function setDriveLabel(dataRoot, label) {
+  let clean = null;
+  if (label !== null && label !== undefined) {
+    if (typeof label !== "string") throw new Error("이름이 올바르지 않습니다");
+    clean = label.trim();
+    if (/[\u0000-\u001f\u007f]/.test(clean)) throw new Error("이름에 쓸 수 없는 글자가 있습니다");
+    if ([...clean].length > LABEL_MAX) throw new Error(`이름은 ${LABEL_MAX}자까지입니다`);
+    if (clean === "") clean = null;
+  }
+  const current = readSettings().driveLabels;
+  const next = { ...(current && typeof current === "object" && !Array.isArray(current) ? current : {}) };
+  if (clean === null) delete next[labelKey(dataRoot)];
+  else next[labelKey(dataRoot)] = clean;
+  patchSettings({ driveLabels: next });
+}
+
 // ───────────── 연결 설정 (자격증명) ─────────────
 
 /** 비밀 칸. 화면에는 가려서, 디스크에는 잠가서 둔다 */
@@ -477,6 +506,8 @@ module.exports = {
   storageUrls,
   connectionNames,
   patchSettings,
+  getDriveLabel,
+  setDriveLabel,
   getConnections,
   listMasked,
   resolveProfile,

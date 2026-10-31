@@ -10,6 +10,7 @@ import ApiUsagePanel from "@/components/system/ApiUsagePanel";
 import GameMasterPanel from "@/components/system/GameMasterPanel";
 import ConnectionPanel from "@/components/system/ConnectionPanel";
 import AppSettingsPanel from "@/components/system/AppSettingsPanel";
+import MediaDrive from "@/components/system/MediaDrive";
 import ExternalPlaysPanel from "@/components/system/ExternalPlaysPanel";
 import { useApi } from "@/lib/useApi";
 import { api } from "@/lib/api";
@@ -155,6 +156,7 @@ function UsageTab() {
           <Stat label="커버" value={<Bytes bytes={database.coverBytes} />} hint={`${database.coverCount.toLocaleString()}장`} />
           <Stat label="스크린샷" value={<Bytes bytes={database.mediaBytes} />} hint={`${database.mediaCount.toLocaleString()}개 (영상 포함)`} />
         </div>
+        <MediaDrive />
         {database.sizeBytes === null && (
           <p className="mt-2 text-[11px] text-white/30">
             지금 데이터베이스는 크기를 알려주지 않습니다.

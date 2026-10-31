@@ -58,6 +58,8 @@ interface Scenario {
   steps: Step[];
   /** 서버에 넣을 환경변수 — 예: `{"STARLOG_PROFILE": "test", "STARLOG_THUMBNAILER": "copy"}` */
   env?: Record<string, string>;
+  /** 서버의 "오늘"을 고정 — `YYYY-MM-DD`. dev·test 프로필 시나리오 전용(`STARLOG_TEST_TODAY`). 달력에 따라 변하는 값(구독 누적 지출)용 */
+  today?: string;
   /** 시작 DB. 기본 `real`(실데이터) */
   fixture?: "real" | "fresh";
   /** 빈 DB(스키마만)에서 시작 */
@@ -383,7 +385,7 @@ async function main() {
   const token = devProfile ? null : crypto.randomBytes(32).toString("hex");
   const log: string[] = [];
   const server = spawn(path.join(ROOT, "node_modules/.bin/tsx"), [path.join(ROOT, "src/main.ts")],
-    { stdio: ["ignore", "pipe", "pipe"], env: { ...serverEnv, STARLOG_DB_DIR: dbDir, STARLOG_PORT: String(port), STARLOG_DATA_ROOT: dataDir, ...(scenario.env ?? {}), ...(token ? { STARLOG_API_TOKEN: token } : {}) } });
+    { stdio: ["ignore", "pipe", "pipe"], env: { ...serverEnv, STARLOG_DB_DIR: dbDir, STARLOG_PORT: String(port), STARLOG_DATA_ROOT: dataDir, ...(scenario.env ?? {}), ...(scenario.today ? { STARLOG_TEST_TODAY: scenario.today } : {}), ...(token ? { STARLOG_API_TOKEN: token } : {}) } });
   try {
     await waitFor(server, log, /STARLOG_READY/, 30000, "서버");
   } catch (e) {

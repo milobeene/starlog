@@ -1,5 +1,7 @@
 {
  "name": "stats",
+ "env": { "STARLOG_PROFILE": "test" },
+ "today": "2026-10-25",
  "steps": [
   {
    "name": "실데이터 — 장르 분포",
@@ -176,7 +178,7 @@
    "path": "/api/me/subscriptions",
    "body": {
     "serviceName": "Delta",
-    "startedOn": "2026-10-31",
+    "startedOn": "2030-06-01",
     "fee": {
      "amount": 1000,
      "currency": "jpy"

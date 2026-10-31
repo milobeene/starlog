@@ -37,7 +37,9 @@ export type TaskKind =
   /** 끌어다 놓아 태그 옮기기 — 실패만 띄운다. 성공은 화면이 바로 보여준다 */
   | "tag-move"
   /** 세션을 열 때 빠진 스크린샷 썸네일을 뒤에서 만든다 (일렉트론 `mediaWork.js`) */
-  | "media-thumbs";
+  | "media-thumbs"
+  /** 스크린샷을 복사·검증·확정하는 넣기 일 (2.1.0, 메인이 돌린다) */
+  | "screenshot-ingest";
 
 export type Task = {
   id: string;

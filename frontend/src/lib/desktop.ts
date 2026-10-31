@@ -15,6 +15,22 @@
 
 export type LaunchMode = "local" | "cloud";
 
+export type IngestPhase = "copying" | "verifying" | "committing" | "done" | "failed" | "rolledBack";
+
+export type IngestJob = {
+  batchId: string;
+  entryId: number;
+  phase: IngestPhase;
+  done: number;
+  total: number;
+  bytesDone: number;
+  bytesTotal: number;
+  /** 끝났을 때 최종 파일 이름 */
+  committed: string[];
+  failures: { source: string; reason: string }[];
+  message: string | null;
+};
+
 export interface SaveFile {
   name: string;
   sizeBytes: number;
@@ -231,6 +247,15 @@ export interface StarlogBridge {
     onChanged?(callback: (c: { folder: string; thumbs?: boolean }) => void): () => void;
     /** 배경 썸네일 중단 */
     cancelPrepare?(): Promise<number>;
+    /** 끌어놓은 파일의 실제 경로 (클립보드·Blob이면 null). 옛 preload에는 없다 */
+    pathOf?(file: File): string | null;
+    /** 경로로 넣기 — 메인이 복사·검증·커밋한다. 바로 `{batchId}`, 진행은 `onIngest`·`ingestStatus` */
+    ingest?(req: { entryId: number; sources: string[]; takenAt?: Record<string, number> }): Promise<{ batchId: string }>;
+    onIngest?(callback: (job: IngestJob) => void): () => void;
+    ingestStatus?(): Promise<IngestJob[]>;
+    /** 미디어 폴더가 있는 드라이브 — 남은 공간과 사용자가 붙인 이름 */
+    driveInfo?(): Promise<{ root: string; label: string | null; freeBytes: number; totalBytes: number }>;
+    setDriveLabel?(label: string | null): Promise<void>;
     /** 속도 기록이 켜져 있나 (동기) · 기록 한 줄 — `STARLOG_MEDIA_TIMING=1`일 때만 남는다 */
     timingOn?(): boolean;
     timing?(event: string, data: Record<string, number | string | boolean>): void;

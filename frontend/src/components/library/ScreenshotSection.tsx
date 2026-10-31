@@ -1,7 +1,7 @@
 "use client";
 
 import { Collapsible } from "@/components/settings/SettingsSection";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import DropZone from "@/components/media/DropZone";
 import SectionIcon from "@/components/ui/SectionIcon";
 import { Button } from "@/components/ui/Field";
@@ -12,6 +12,8 @@ import { uploadScreenshot } from "@/lib/upload";
 import { backendUrl } from "@/lib/apiBase";
 import { usePick } from "@/lib/usePick";
 import { getBridge } from "@/lib/desktop";
+import { getIngestBridge, useEntryIngest } from "@/lib/ingest";
+import { bytesParts } from "@/lib/format";
 import MediaViewer from "./MediaViewer";
 import MediaThumb, { PlayBadge } from "@/components/media/MediaThumb";
 import ScreenshotGallery from "@/components/media/ScreenshotGallery";
@@ -59,6 +61,10 @@ export default function ScreenshotSection({ entryId, gameName }: { entryId: numb
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** 올리다 실패한 파일들 — 하나 실패했다고 나머지를 멈추지 않고, 끝에 한꺼번에 알린다 */
+  const [failed, setFailed] = useState<{ name: string; reason: string }[]>([]);
+  /* 넣기(복사) 일의 진실은 전역 스토어다 — 화면을 떠났다 와도 버튼이 잠겨 있어야 한다 */
+  const ingest = useEntryIngest(entryId);
 
   /*
    * **찍은 순서로 본다** (사용자 결정 2026-08-28). 서버는 파일명 순(넣은 순)으로 주는데,
@@ -96,17 +102,56 @@ export default function ScreenshotSection({ entryId, gameName }: { entryId: numb
   const { selectMode, setSelectMode, selected, allSelected, pick, toggleAll, clear, cancel } =
     usePick(shots?.length ?? 0, listKey);
 
+  /* 일이 끝나는 순간 목록을 다시 읽는다 — 다른 화면에 있다 돌아와도 마운트 시 조회가 받는다 */
+  const wasIngesting = useRef(false);
+  useEffect(() => {
+    if (wasIngesting.current && !ingest) reload();
+    wasIngesting.current = Boolean(ingest);
+  }, [ingest, reload]);
+
   const add = async (files: File[]) => {
     setBusy(true);
     setError(null);
+    setFailed([]);
     try {
-      // 한 장씩 순서대로 — 동시에 보내면 서버가 붙이는 번호가 겹친다
+      /*
+       * 경로가 있는 파일(탐색기에서 끌어온 것)은 메인이 직접 복사한다 — 브라우저로 통째로 올리면
+       * 수백 MB 영상은 메모리와 시간을 먹고, 한도에도 걸린다. 경로가 없는 것(클립보드)만 HTTP로 간다
+       */
+      const bridge = getIngestBridge();
+      const withPath: { file: File; path: string }[] = [];
+      const rest: File[] = [];
       for (const file of files) {
-        // 원본 시각을 함께 보낸다 — 서버가 파일에 심어 "찍은 순서"를 만든다
-        await uploadScreenshot(entryId, file, file.lastModified);
+        const path = bridge?.pathOf(file) || null;
+        if (path) withPath.push({ file, path });
+        else rest.push(file);
       }
-    } catch (caught) {
-      setError(errorMessage(caught, "올리지 못했습니다."));
+
+      if (bridge && withPath.length > 0) {
+        try {
+          await bridge.ingest({
+            entryId,
+            sources: withPath.map((x) => x.path),
+            // 원본 시각 — 서버가 이 순서로 번호를 붙인다
+            takenAt: Object.fromEntries(withPath.map((x) => [x.path, x.file.lastModified])),
+          });
+        } catch (caught) {
+          setError(errorMessage(caught, "넣지 못했습니다."));
+        }
+      }
+
+      // 한 장씩 순서대로 — 동시에 보내면 서버가 붙이는 번호가 겹친다.
+      // 하나가 실패해도 나머지는 계속 올리고, 실패는 모아서 이유와 함께 보인다
+      const bad: { name: string; reason: string }[] = [];
+      for (const file of rest) {
+        try {
+          // 원본 시각을 함께 보낸다 — 서버가 파일에 심어 "찍은 순서"를 만든다
+          await uploadScreenshot(entryId, file, file.lastModified);
+        } catch (caught) {
+          bad.push({ name: file.name || "(이름 없음)", reason: errorMessage(caught, "올리지 못했습니다.") });
+        }
+      }
+      setFailed(bad);
     } finally {
       // 중간에 실패해도 앞에서 올라간 것은 보여야 한다
       list.reload();
@@ -198,6 +243,29 @@ export default function ScreenshotSection({ entryId, gameName }: { entryId: numb
           {error ?? "스크린샷을 불러오지 못했습니다."}
         </p>
       )}
+      {failed.length > 0 && (
+        <div role="alert" className="mb-3 rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2.5 text-xs">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-red-300">{failed.length}개를 올리지 못했습니다</span>
+            <button
+              type="button"
+              onClick={() => setFailed([])}
+              aria-label="닫기"
+              className="text-base leading-none text-white/35 transition-colors hover:text-white"
+            >
+              ×
+            </button>
+          </div>
+          <ul className="mt-1.5 flex flex-col gap-1">
+            {failed.map((f, i) => (
+              <li key={`${f.name}-${i}`} className="flex gap-2">
+                <span className="max-w-[40%] shrink-0 truncate text-white/70">{f.name}</span>
+                <span className="min-w-0 flex-1 text-white/40">{f.reason}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* 스크린샷도 접는다 (v1.2) — 수십 장이면 화면 아래가 통째로 밀린다 */}
       {shots && shots.length > 0 && (
@@ -271,10 +339,14 @@ export default function ScreenshotSection({ entryId, gameName }: { entryId: numb
         onFiles={add}
         multiple
         video
-        disabled={busy}
+        disabled={busy || Boolean(ingest)}
         hint="이미지와 영상 · 파일을 끌어다 놓거나, 클립보드에 있으면 ⌘V"
       >
-        {busy ? <p className="text-sm text-white/60">올리는 중…</p> : undefined}
+        {ingest ? (
+          <IngestProgress done={ingest.done} total={ingest.total} bytesDone={ingest.bytesDone} bytesTotal={ingest.bytesTotal} />
+        ) : busy ? (
+          <p className="text-sm text-white/60">올리는 중…</p>
+        ) : undefined}
       </DropZone>
 
       {confirmDelete && (
@@ -304,5 +376,24 @@ export default function ScreenshotSection({ entryId, gameName }: { entryId: numb
         />
       )}
     </section>
+  );
+}
+
+/** 이 게임에 도는 넣기 — 전역 알림과 같은 숫자를 자리에서도 보여준다 */
+function IngestProgress({ done, total, bytesDone, bytesTotal }: { done: number; total: number; bytesDone: number; bytesTotal: number }) {
+  const size = (n: number) => {
+    const { value, unit } = bytesParts(n);
+    return `${value}${unit}`;
+  };
+  const ratio = bytesTotal > 0 ? bytesDone / bytesTotal : total > 0 ? done / total : 0;
+  return (
+    <div className="flex w-full max-w-xs flex-col items-center gap-2">
+      <p className="num text-sm text-white/70">
+        넣는 중 {done}/{total} · {size(bytesDone)}/{size(bytesTotal)}
+      </p>
+      <div className="h-1 w-full overflow-hidden rounded-full bg-white/10">
+        <div className="h-full rounded-full bg-white/70 transition-all duration-300" style={{ width: `${Math.min(100, ratio * 100)}%` }} />
+      </div>
+    </div>
   );
 }

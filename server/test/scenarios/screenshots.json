@@ -171,6 +171,22 @@
    "path": "/api/screenshots"
   },
   {
+   "name": "받기 묶음 커밋 — 묶음 번호가 경로 조각이면 400",
+   "method": "POST",
+   "path": "/api/backlog/${ea}/screenshots/commit",
+   "body": {
+    "batchId": "../x"
+   }
+  },
+  {
+   "name": "받기 묶음 커밋 — 받아 둔 게 없으면 400",
+   "method": "POST",
+   "path": "/api/backlog/${ea}/screenshots/commit",
+   "body": {
+    "batchId": "0b1e4a7e-2f4c-4f0e-9d0a-1c2d3e4f5a6b"
+   }
+  },
+  {
    "name": "삭제 — B 사진 (썸네일도 함께 — 파일 트리가 증거)",
    "method": "POST",
    "path": "/api/backlog/${eb}/screenshots/delete",

@@ -24,7 +24,7 @@ import { changeTag, replaceGenres } from "../tag/service";
 import { addPlaythrough, deletePlaythrough, updatePlaythrough } from "./playthrough";
 import { addToBacklog } from "./entry";
 import {
-  confirmExternalCover, deleteCover, deleteScreenshots, listGallery, listScreenshots, mediaContentTypeOf, prepareCover,
+  commitScreenshots, confirmExternalCover, deleteCover, deleteScreenshots, listGallery, listScreenshots, mediaContentTypeOf, prepareCover,
   readCoverFile, removeFile, resolveScreenshot, resolveThumb, saveUploadedCover, saveScreenshot, screenshotFilePath,
   screenshotFolderPath,
 } from "./media";
@@ -309,6 +309,13 @@ routes.post("/api/backlog/:entryId/screenshots", async (c) => {
 routes.post("/api/backlog/:entryId/screenshots/folder", async (c) => {
   const entryId = pathId(c, "entryId");
   return c.json({ path: await screenshotFolderPath(entryId) });
+});
+
+/** 일렉트론이 받아 둔 묶음을 번호 붙여 제자리로 — `{fileName}`(GET)과 겹치지 않는 POST지만 고정 경로라 같이 먼저 건다 */
+routes.post("/api/backlog/:entryId/screenshots/commit", async (c) => {
+  const entryId = pathId(c, "entryId");
+  const { batchId } = await readBodyExact(c, z.object({ batchId: z.string() }));
+  return c.json(await commitScreenshots(entryId, batchId));
 });
 
 /**

@@ -21,7 +21,7 @@
  * 메인이 창의 이동을 막지만 두 번째 울타리로, 지금 문서가 `app://starlog`나 `http://127.0.0.1:<지금 서버>`가
  * 아니면 `window.starlog`를 아예 만들지 않는다. 메인도 IPC마다 발신자를 다시 본다
  */
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 /*
  * 파일을 창 아무 데나 떨어뜨리면 크로미움이 그 파일로 **문서를 이동**한다. 끌어놓기 칸(`DropZone`)이
@@ -218,6 +218,20 @@ if (trustedOrigin()) contextBridge.exposeInMainWorld("starlog", {
       return () => ipcRenderer.removeListener("media:changed", handler);
     },
     cancelPrepare: () => ipcRenderer.invoke("media:cancelPrepare"),
+    /** 끌어놓은 `File`의 실제 경로. 클립보드·Blob이면 null — 그건 HTTP 길로 간다 */
+    pathOf: (file) => {
+      try { return webUtils.getPathForFile(file) || null; } catch { return null; }
+    },
+    /** 경로로 넣기 — 메인이 복사·검증·커밋한다. 바로 `{batchId}`를 주고 상태는 `onIngest`·`ingestStatus`로 */
+    ingest: (req) => ipcRenderer.invoke("media:ingest", req),
+    ingestStatus: () => ipcRenderer.invoke("media:ingestStatus"),
+    onIngest: (callback) => {
+      const handler = (_event, payload) => callback(payload);
+      ipcRenderer.on("media:ingest", handler);
+      return () => ipcRenderer.removeListener("media:ingest", handler);
+    },
+    driveInfo: () => ipcRenderer.invoke("media:driveInfo"),
+    setDriveLabel: (label) => ipcRenderer.invoke("media:setDriveLabel", label),
     timingOn: () => ipcRenderer.sendSync("media:timingOn") === true,
     timing: (event, data) => ipcRenderer.send("media:timing", event, data),
   },
