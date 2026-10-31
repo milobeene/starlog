@@ -29,6 +29,8 @@ export default function ShotGrid({
   selected,
   onOpen,
   onPick,
+  lead,
+  columns = "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6",
 }: {
   items: GridItem[];
   selectMode: boolean;
@@ -36,18 +38,23 @@ export default function ShotGrid({
   onOpen: (index: number) => void;
   /** 체크 눌림·선택 모드에서의 칸 눌림 */
   onPick: (index: number, event: React.MouseEvent) => void;
+  /** 첫 칸에 끼울 것 (추가 카드) — 사진과 같은 칸 크기라 창 계산에 한 칸으로 센다 */
+  lead?: React.ReactNode;
+  columns?: string;
 }) {
-  const { attachOuter, attachGrid, start, end, top, height } = useWindowedGrid(items.length);
+  const shift = lead ? 1 : 0;
+  const { attachOuter, attachGrid, start, end, top, height } = useWindowedGrid(items.length + shift);
   return (
     <div ref={attachOuter} className={`relative ${selectMode ? "select-none" : ""}`} style={height === null ? undefined : { height }}>
       <div
         ref={attachGrid}
         data-count={items.length}
-        className="absolute inset-x-0 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6"
+        className={`absolute inset-x-0 grid gap-2 ${columns}`}
         style={{ top }}
       >
-        {items.slice(start, end).map((item, offset) => {
-          const index = start + offset;
+        {lead && start === 0 && lead}
+        {items.slice(Math.max(0, start - shift), Math.max(0, end - shift)).map((item, offset) => {
+          const index = Math.max(0, start - shift) + offset;
           const picked = selected.has(index);
           const isVideo = item.contentType.startsWith("video/");
           return (

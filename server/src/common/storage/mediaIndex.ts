@@ -40,29 +40,48 @@ function cleanEntry(e: unknown): IndexEntry | null {
 }
 
 /**
+ * 파싱한 색인을 기억한다 — 갤러리 요약이 게임 폴더 수십 개의 index.json(자리표시 포함 수십 KB)을 매번 파싱하면
+ * 50폴더×200장에서 ~20ms였다. 열쇠는 **index.json 자신의 판**(mtime·크기)이다 — 메인이 다시 쓰면 바뀐다.
+ * 도장(폴더 mtime·항목 수)은 캐시하지 않고 매번 다시 본다 (싸고, 탐색기로 넣고 지운 것을 바로 알아야 한다)
+ */
+const parsed = new Map<string, { key: string; files: Record<string, IndexEntry>; dir: { m: string; n: number } | null }>();
+const PARSED_MAX = 400;
+
+/**
  * @param names `readdir`를 그대로 (거르기 전) — 도장의 항목 수와 맞춰 본다
  */
 export function readFolderIndex(folder: string, names: string[]): FolderIndex | null {
   const dir = path.join(folder, THUMB_DIR);
-  let raw: unknown;
+  const file = path.join(dir, "index.json");
+  let key: string;
   try {
     if (!fs.lstatSync(dir).isDirectory()) return null;   // 링크면 안 읽는다
-    raw = JSON.parse(fs.readFileSync(path.join(dir, "index.json"), "utf8"));
+    const st = fs.statSync(file, { bigint: true });
+    key = `${st.mtimeNs}:${st.size}`;
   } catch {
     return null;
   }
-  const data = raw as { v?: unknown; dir?: { m?: unknown; n?: unknown } | null; files?: unknown };
-  if (data?.v !== 1 || !data.files || typeof data.files !== "object" || Array.isArray(data.files)) return null;
-  const files: Record<string, IndexEntry> = {};
-  for (const [name, e] of Object.entries(data.files as Record<string, unknown>)) {
-    const clean = cleanEntry(e);
-    if (clean) files[name] = clean;
+  let hit = parsed.get(file);
+  if (!hit || hit.key !== key) {
+    let raw: unknown;
+    try { raw = JSON.parse(fs.readFileSync(file, "utf8")); } catch { return null; }
+    const data = raw as { v?: unknown; dir?: { m?: unknown; n?: unknown } | null; files?: unknown };
+    if (data?.v !== 1 || !data.files || typeof data.files !== "object" || Array.isArray(data.files)) return null;
+    const files: Record<string, IndexEntry> = {};
+    for (const [name, e] of Object.entries(data.files as Record<string, unknown>)) {
+      const clean = cleanEntry(e);
+      if (clean) files[name] = clean;
+    }
+    const d = data.dir && typeof data.dir.m === "string" && Number.isInteger(data.dir.n) ? { m: data.dir.m, n: data.dir.n as number } : null;
+    hit = { key, files, dir: d };
+    if (parsed.size >= PARSED_MAX) parsed.delete(parsed.keys().next().value!);
+    parsed.set(file, hit);
   }
   let trusted = false;
-  if (data.dir && typeof data.dir.m === "string" && data.dir.n === names.length) {
-    try { trusted = fs.lstatSync(folder, { bigint: true }).mtimeNs.toString() === data.dir.m; } catch { trusted = false; }
+  if (hit.dir && hit.dir.n === names.length) {
+    try { trusted = fs.lstatSync(folder, { bigint: true }).mtimeNs.toString() === hit.dir.m; } catch { trusted = false; }
   }
-  return { files, trusted };
+  return { files: hit.files, trusted };
 }
 
 /** 판이 같은 항목만 — 다르면 메인이 아직 못 본 새 파일이다 */

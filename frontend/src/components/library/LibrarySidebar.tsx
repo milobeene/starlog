@@ -7,6 +7,7 @@ import { useMemo, useRef, useState } from "react";
 import { invalidateQueries, useApi } from "@/lib/useApi";
 import { api, errorMessage } from "@/lib/api";
 import { reportTagMoveFailure } from "@/lib/tasks";
+import SidePanel from "@/components/ui/SidePanel";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useDragAutoScroll } from "@/components/library/useDragAutoScroll";
 import { coverSrc } from "@/lib/cover";
@@ -178,54 +179,13 @@ export default function LibrarySidebar() {
     setCollapsed(allCollapsed ? new Set() : new Set(groups.map((g) => g.key)));
 
   return (
-    <>
-      {/* 열렸을 때 뒤를 눌러 닫는다. 폰에서 X 버튼만 있으면 닫기가 번거롭다 */}
-      {open && (
-        <button
-          aria-label="목록 닫기"
-          onClick={() => setOpen(false)}
-          className="fixed inset-0 z-20 bg-black/50 backdrop-blur-[1px] lg:hidden"
-        />
-      )}
-
-      {/* 여는 버튼 — 화면 왼쪽 아래. 엄지가 닿는 자리다 */}
-      <button
-        onClick={() => setOpen((v) => !v)}
-        aria-label={open ? "목록 닫기" : "게임 목록 열기"}
-        aria-expanded={open}
-        /*
-         * 열리면 숨긴다 — 사이드바가 이 자리를 덮어 버튼과 목록이 겹쳐 보였다.
-         * 닫는 건 배경막을 누르면 된다 (위 button)
-         */
-        className={`fixed bottom-4 left-4 z-40 flex items-center gap-2 rounded-full border border-white/20 bg-black/70 px-4 py-2.5 text-xs font-medium tracking-wider text-white/90 uppercase backdrop-blur-md transition-opacity hover:bg-black/85 lg:hidden ${
-          open ? "pointer-events-none opacity-0" : "opacity-100"
-        }`}
-      >
-        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="2"
-            d="M4 6h16M4 12h16M4 18h16"
-          />
-        </svg>
-        목록
-      </button>
-
-    <aside
-      /*
-       * ## lg 미만에서는 드로어다
-       *
-       * 폭이 w-64(16rem)라 390px 화면에서는 본문에 남는 게 6rem뿐이다.
-       * 그래서 좁은 화면에서는 **화면 밖에 세워두고** 버튼으로 밀어 넣는다(translate-x).
-       * `hidden`이 아니라 이동으로 처리하는 이유 — 목록을 미리 받아둬야
-       * 열자마자 스켈레톤이 아니라 내용이 보인다
-       */
-      className={`glass-panel fixed inset-y-0 left-0 z-30 mt-16 mr-2 mb-4 ml-0 flex w-64 shrink-0 flex-col overflow-hidden rounded-xl transition-transform duration-200 ease-out lg:static lg:mt-20 lg:ml-6 lg:translate-x-0 xl:w-72 ${
-        open ? "translate-x-0 shadow-2xl" : "-translate-x-full"
-      }`}
-    >
-      <div className="flex shrink-0 items-center gap-2 border-b border-white/10 p-5">
+    <SidePanel
+      open={open}
+      onOpenChange={setOpen}
+      openLabel="목록"
+      listRef={listRef}
+      header={
+        <>
         <h3 className="flex-1 text-[10px] tracking-widest text-white/40 uppercase">
           All Games {names.data && <span className="num text-white/25">({names.data.length})</span>}
         </h3>
@@ -241,9 +201,33 @@ export default function LibrarySidebar() {
             {allCollapsed ? "모두 펴기" : "모두 접기"}
           </button>
         )}
+        </>
+      }
+      footer={
+      <div className="flex shrink-0 gap-2 border-t border-white/10 p-3">
+        <Link
+          href="/add"
+          className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-md border border-white/15 py-2.5 text-sm font-medium whitespace-nowrap transition-all hover:bg-white hover:text-black"
+        >
+          Add Game <span className="text-lg leading-none">+</span>
+        </Link>
+        {/* 글자 없이 아이콘만 — 드로어 폭(16rem)에서 Add Game과 나란히 두려는 것. 같은 줄이라 높이는 늘어나 맞는다 */}
+        {/* 스크린샷 화면 — STARLOG 게임과 스팀·ShareX 같은 외부 폴더를 한 곳에서 */}
+        <Link
+          href="/screenshots"
+          onClick={() => setOpen(false)}   // 드로어가 열려 있었다면 화면이 가려지지 않게
+          aria-label="스크린샷"
+          title="스크린샷"
+          className="flex shrink-0 items-center justify-center rounded-md border border-white/15 px-3.5 transition-all hover:bg-white hover:text-black"
+        >
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.75" d="M3 7a2 2 0 012-2h2.5l1.2-1.5h6.6L16.5 5H19a2 2 0 012 2v11a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+            <circle cx="12" cy="12.5" r="3.5" strokeWidth="1.75" />
+          </svg>
+        </Link>
       </div>
-
-      <div ref={listRef} className="flex-1 overflow-y-auto p-2">
+      }
+    >
         {/* 태그(covers)까지 와야 그린다 — 하나라도 없으면 스켈레톤 */}
         {names.loading || covers.loading || !covers.data ? (
           <div className="flex flex-col gap-2 p-2">
@@ -381,32 +365,6 @@ export default function LibrarySidebar() {
             })}
           </div>
         )}
-      </div>
-
-      <div className="flex shrink-0 gap-2 border-t border-white/10 p-3">
-        <Link
-          href="/add"
-          className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-md border border-white/15 py-2.5 text-sm font-medium whitespace-nowrap transition-all hover:bg-white hover:text-black"
-        >
-          Add Game <span className="text-lg leading-none">+</span>
-        </Link>
-        {/* 글자 없이 아이콘만 — 드로어 폭(16rem)에서 Add Game과 나란히 두려는 것. 같은 줄이라 높이는 늘어나 맞는다 */}
-        {/* 스크린샷 화면 — STARLOG 게임과 스팀·ShareX 같은 외부 폴더를 한 곳에서 */}
-        <Link
-          href="/screenshots"
-          onClick={() => setOpen(false)}   // 드로어가 열려 있었다면 화면이 가려지지 않게
-          aria-label="스크린샷"
-          title="스크린샷"
-          className="flex shrink-0 items-center justify-center rounded-md border border-white/15 px-3.5 transition-all hover:bg-white hover:text-black"
-        >
-          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.75" d="M3 7a2 2 0 012-2h2.5l1.2-1.5h6.6L16.5 5H19a2 2 0 012 2v11a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
-            <circle cx="12" cy="12.5" r="3.5" strokeWidth="1.75" />
-          </svg>
-        </Link>
-      </div>
-    </aside>
-
-    </>
+    </SidePanel>
   );
 }

@@ -2,34 +2,26 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
-import EmptyState from "@/components/ui/EmptyState";
-import { Button } from "@/components/ui/Field";
 import { ToolButton, ToolGroup } from "@/components/ui/ToolButton";
-import DropZone from "@/components/media/DropZone";
-import { IngestProgress, UploadFailures } from "@/components/media/IngestProgress";
-import ShareMenu from "@/components/media/ShareMenu";
+import { UploadFailures } from "@/components/media/IngestProgress";
 import MediaViewer from "@/components/library/MediaViewer";
 import { api } from "@/lib/api";
-import { backendUrl } from "@/lib/apiBase";
 import { getBridge } from "@/lib/desktop";
 import { useEntryIngest } from "@/lib/ingest";
 import { onMediaChanged } from "@/lib/mediaEvents";
 import { invalidateQueries, useApi } from "@/lib/useApi";
 import { usePick } from "@/lib/usePick";
 import { useShotUpload } from "@/lib/useShotUpload";
+import { newestFirst, type Shot } from "@/lib/shots";
+import { useFileDrop } from "@/lib/useFileDrop";
+import { useShotShortcuts } from "@/lib/useShotShortcuts";
+import AddTile from "@/components/media/AddTile";
+import ErrorNotice from "@/components/ui/ErrorNotice";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { useIdlePreload } from "@/lib/useWindowedGrid";
 import PaneHeader from "./PaneHeader";
+import { SelectActions, SelectionCount, SelectToggle } from "./SelectBar";
 import ShotGrid, { type GridItem } from "./ShotGrid";
-
-type Shot = {
-  fileName: string;
-  url: string;
-  sizeBytes: number;
-  contentType: string;
-  takenAt: string | null;
-  thumbUrl: string | null;
-  placeholder?: string | null;
-};
 
 /**
  * STARLOG 안 게임 하나의 스크린샷 — 보기 · 고르기 · 삭제 · 공유 · 폴더 열기 · 넣기.
@@ -42,12 +34,7 @@ export default function StarlogPane({ entryId, gameName }: { entryId: number; ga
   const ingest = useEntryIngest(entryId);
   const zone = useRef<HTMLDivElement>(null);
 
-  /* 찍은 순서의 반대(최신이 앞) — 큰 화면에서는 방금 찍은 것이 먼저 보여야 한다. 절대 주소로 바꾸는 곳도 여기 한 곳 */
-  const shots = useMemo(() => list.data
-    ? [...list.data]
-        .sort((a, b) => (b.takenAt ?? "").localeCompare(a.takenAt ?? "") || b.fileName.localeCompare(a.fileName))
-        .map((shot) => ({ ...shot, url: backendUrl(shot.url), thumbUrl: shot.thumbUrl ? backendUrl(shot.thumbUrl) : null }))
-    : null, [list.data]);
+  const shots = useMemo(() => (list.data ? newestFirst(list.data) : null), [list.data]);
 
   const reload = list.reload;
   useEffect(() => onMediaChanged(reload), [reload]);
@@ -68,7 +55,7 @@ export default function StarlogPane({ entryId, gameName }: { entryId: number; ga
     [shots],
   );
   const listKey = shots?.map((s) => s.fileName).join("\n") ?? null;
-  const { selectMode, setSelectMode, selected, allSelected, pick, toggleAll, clear, cancel } = usePick(items.length, listKey);
+  const { selectMode, setSelectMode, selected, allSelected, pick, toggleAll, selectAll, clear, cancel } = usePick(items.length, listKey);
 
   useIdlePreload(useMemo(() => items.map((i) => i.thumbUrl), [items]), viewing === null);
 
@@ -90,81 +77,80 @@ export default function StarlogPane({ entryId, gameName }: { entryId: number; ga
     getBridge()?.openPath(path);
   };
 
-  /* Esc는 선택을 푼다 (크게 보기·확인창이 자기 Esc를 처리하는 동안은 건드리지 않는다) */
-  useEffect(() => {
-    if (!selectMode || viewing !== null || confirmDelete) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") cancel(); };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [selectMode, viewing, confirmDelete, cancel]);
+  const blocked = upload.busy || Boolean(ingest);
+  const drop = useFileDrop({ onFiles: upload.add, disabled: blocked, zone });
+  useShotShortcuts({
+    enabled: viewing === null && !confirmDelete,
+    selectMode,
+    selectedCount: selected.size,
+    itemCount: items.length,
+    onToggleMode: () => setSelectMode(true),
+    onSelectAll: selectAll,
+    onCancel: cancel,
+    onDelete: () => setConfirmDelete(true),
+  });
 
   const closeViewer = useCallback(() => setViewing(null), []);
   const count = shots?.length ?? null;
-  const blocked = upload.busy || Boolean(ingest);
+
+  const chosenTargets = chosen.map((s) => ({ entryId, fileName: s.fileName }));
+  const errorText = upload.error ?? (list.error ? "스크린샷을 불러오지 못했습니다." : null);
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-pane="starlog">
-      <PaneHeader title={gameName} count={count}>
-        <ToolGroup label="선택">
-          <ToolButton icon="select" active={selectMode} disabled={!selectMode && items.length === 0} onClick={() => (selectMode ? cancel() : setSelectMode(true))}>
-            {selectMode ? "선택 취소" : "선택"}
-          </ToolButton>
-          {selectMode && <ToolButton icon="all" onClick={toggleAll}>{allSelected ? "전체 해제" : "전체 선택"}</ToolButton>}
-          {selectMode && <ShareMenu targets={chosen.map((s) => ({ entryId, fileName: s.fileName }))} />}
-          {selectMode && (
-            <ToolButton icon="trash" tone="danger" disabled={selected.size === 0 || upload.busy} onClick={() => setConfirmDelete(true)}>
-              삭제{selected.size ? ` (${selected.size})` : ""}
-            </ToolButton>
-          )}
-        </ToolGroup>
-        {selectMode && <span className="num text-xs text-white/50">{selected.size}개 선택</span>}
-        <ToolGroup label="넣기·열기">
-          <ToolButton icon="plus" disabled={blocked} onClick={() => zone.current?.querySelector<HTMLElement>("[role=button]")?.click()} title="사진·영상 고르기 (끌어다 놓거나 ⌘V도 됩니다)">
-            추가
-          </ToolButton>
-          {getBridge() && <ToolButton icon="folder" onClick={() => void openFolder()} title="탐색기에서 이 게임의 스크린샷 폴더 열기">폴더 열기</ToolButton>}
-        </ToolGroup>
+    <div
+      ref={zone}
+      {...drop.handlers}
+      className="min-h-0 min-w-0 flex-1 overflow-y-auto"
+      data-pane="starlog"
+      data-scroller
+    >
+      {/* 여백은 안쪽 상자가 가진다 — 스크롤러에 패딩을 주면 sticky의 top이 패딩 안쪽부터 재져서 판넬이 그만큼 아래에 선다 */}
+      <div className="page-x pt-[4.5rem] pb-10 lg:pt-20">
+      <PaneHeader
+        title={gameName}
+        href={`/library/detail?entry=${entryId}`}
+        count={count}
+        left={selectMode ? <SelectionCount count={selected.size} /> : null}
+      >
+        {getBridge() && (
+          <ToolGroup label="열기">
+            <ToolButton icon="folder" short onClick={() => void openFolder()} title="탐색기에서 이 게임의 스크린샷 폴더 열기">폴더 열기</ToolButton>
+          </ToolGroup>
+        )}
+        {selectMode && (
+          <SelectActions allSelected={allSelected} onToggleAll={toggleAll} shareTargets={chosenTargets} deleteCount={selected.size} deleteDisabled={upload.busy} onDelete={() => setConfirmDelete(true)} />
+        )}
+        <SelectToggle selectMode={selectMode} disabled={!selectMode && items.length === 0} onClick={() => (selectMode ? cancel() : setSelectMode(true))} />
       </PaneHeader>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 xl:px-8" data-scroller>
-        <div ref={zone} className="mb-4">
-          <DropZone
-            compact
-            onFiles={upload.add}
-            multiple
-            video
-            disabled={blocked}
-            hint="이미지와 영상 · 파일을 끌어다 놓거나, 클립보드에 있으면 ⌘V"
-          >
-            {ingest ? (
-              <IngestProgress done={ingest.done} total={ingest.total} bytesDone={ingest.bytesDone} bytesTotal={ingest.bytesTotal} />
-            ) : upload.busy ? (
-              <p className="text-sm text-white/60">올리는 중…</p>
-            ) : undefined}
-          </DropZone>
-        </div>
-        {(upload.error || list.error) && (
-          <p role="alert" className="mb-3 text-xs text-red-400">{upload.error ?? "스크린샷을 불러오지 못했습니다."}</p>
+      <div className="mt-4">
+        {(errorText || drop.rejected) && (
+          <p role="alert" className="mb-3 text-xs text-red-400">{errorText ?? drop.rejected}</p>
         )}
         <UploadFailures failed={upload.failed} onClose={upload.clearFailed} />
 
-        {list.loading && !shots ? (
+        {list.error && !shots ? (
+          <ErrorNotice error={list.error} onRetry={reload} />
+        ) : list.loading && !shots ? (
           <div data-loading className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
-            {Array.from({ length: 12 }, (_, i) => <div key={i} className="image-placeholder aspect-video animate-pulse rounded-lg" />)}
+            {Array.from({ length: 12 }, (_, i) => <Skeleton key={i} className="aspect-video w-full rounded-lg" />)}
           </div>
-        ) : items.length === 0 ? (
-          <EmptyState title="이 게임의 스크린샷이 없습니다" hint="위 띠에 파일을 끌어다 놓거나, 클립보드에 있으면 ⌘V로 붙여 넣을 수 있습니다." action={<Button onClick={reload}>다시 읽기</Button>} />
         ) : (
-          <ShotGrid
-            items={items}
-            selectMode={selectMode}
-            selected={selected}
-            onOpen={setViewing}
-            onPick={(index, event) => { if (!selectMode) setSelectMode(true); pick(index, event); }}
-          />
+          <>
+            <ShotGrid
+              items={items}
+              selectMode={selectMode}
+              selected={selected}
+              onOpen={setViewing}
+              onPick={(index, event) => { if (!selectMode) setSelectMode(true); pick(index, event); }}
+              lead={<AddTile onFiles={upload.add} over={drop.over} disabled={blocked} uploading={upload.busy} ingest={ingest} />}
+            />
+            {items.length === 0 && <p className="mt-4 text-center text-xs text-white/30" data-empty>아직 이 게임의 스크린샷이 없습니다.</p>}
+          </>
         )}
       </div>
 
+      </div>
       {viewing !== null && shots && <MediaViewer items={shots} index={viewing} onIndex={setViewing} onClose={closeViewer} />}
       {confirmDelete && (
         <ConfirmDialog

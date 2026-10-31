@@ -68,6 +68,8 @@ export default function MediaViewer({
   const [readyUrl, setReadyUrl] = useState<string | null>(null);
   const direction = useRef(1);
   const lastStep = useRef(0);
+  /** 사진 상자 — 배경 클릭이 "사진 위인가"를 가릴 때 쓴다 */
+  const boxRef = useRef<HTMLDivElement>(null);
   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** 속도 기록 — 넘긴 순간부터 그 장의 무언가(썸네일·원본)가 그려질 때까지 */
   const moveMark = useRef<{ url: string; t0: number; thumb: boolean; orig: boolean } | null>(null);
@@ -139,74 +141,91 @@ export default function MediaViewer({
   const showOriginal = !holding || !thumb;
   const originalReady = readyUrl === item.url;
 
+  /*
+   * 배경을 누르면 닫는다. **안 닫는 자리는 사진이 실제로 그려진 사각형뿐이다** — object-contain의 여백
+   * (상자는 늘 같은 크기라 가로로 긴 사진은 위아래가 빈다)은 배경이다. 영상은 컨트롤이 여백까지 걸칠 수 있어 요소 전체를 쓴다
+   */
+  const onBackdropClick = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest("video")) return;
+    const box = boxRef.current;
+    if (box) {
+      const img = [...box.querySelectorAll("img")].reverse().find((i) => i.naturalWidth > 0 && getComputedStyle(i).opacity !== "0");
+      if (img) {
+        const r = img.getBoundingClientRect();
+        const scale = Math.min(r.width / img.naturalWidth, r.height / img.naturalHeight);
+        const w = img.naturalWidth * scale;
+        const h = img.naturalHeight * scale;
+        const left = r.left + (r.width - w) / 2;
+        const top = r.top + (r.height - h) / 2;
+        if (e.clientX >= left && e.clientX <= left + w && e.clientY >= top && e.clientY <= top + h) return;
+      }
+    }
+    onClose();
+  };
+
   return createPortal(
     <div
-      /* 바깥을 눌러야 닫힌다. 사진 자체는 안 닫는다 — 보려고 연 것을 보다가 닫히면 안 된다 */
-      onClick={onClose}
+      onClick={onBackdropClick}
       // aria-modal은 DropZone이 "뒤에 깔린 칸인가"를 가리는 표지이기도 하다
       role="dialog"
       aria-modal="true"
       aria-label={item.fileName}
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/55 p-8 backdrop-blur-md"
+      className="fixed inset-0 z-[200] bg-black/55 backdrop-blur-md"
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="relative flex max-h-full max-w-full flex-col items-center gap-3"
-      >
-        {/*
-          **상자 크기는 해상도와 무관하다** — 창에서 캡션 자리를 뺀 만큼으로 늘 같고, 사진은 그 안에 맞춘다(contain).
-          예전엔 칸 크기를 원본이 정해서 작은 사진(1128×480)은 큰 사진(2256×960)보다 작게 떴다.
-          `object-contain`은 작은 그림도 상자에 맞춰 키운다(부드럽게). 썸네일도 같은 상자라 원본이 풀려도 크기가 안 튄다
-        */}
-        <div className="relative h-[calc(100vh-8.5rem)] w-[calc(100vw-4rem)]">
-          {isVideo ? (
-            /*
-              재생·멈춤만 준다 (사용자 결정 2026-08-28). 타임라인·전체화면·이어보기는 안 넣는다 —
-              브라우저 기본 컨트롤이 재생/멈춤/볼륨까지는 주므로 그것만 켠다
-            */
-            <video
-              src={item.url}
-              controls
-              controlsList="nodownload noplaybackrate"
-              disablePictureInPicture
-              className="absolute inset-0 h-full w-full object-contain"
-            />
-          ) : (
-            <>
-              {thumb && !originalReady && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={thumb}
-                  alt=""
-                  aria-hidden
-                  onLoad={() => painted(item.url, "thumb")}
-                  className="absolute inset-0 h-full w-full object-contain"
-                />
-              )}
-              {showOriginal && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  key={item.url}
-                  src={item.url}
-                  alt={item.fileName}
-                  decoding="async"
-                  onLoad={(e) => {
-                    const url = item.url;
-                    e.currentTarget.decode().catch(() => {}).finally(() => { setReadyUrl(url); painted(url, "orig"); });
-                  }}
-                  className={`absolute inset-0 h-full w-full object-contain ${originalReady || !thumb ? "" : "opacity-0"}`}
-                />
-              )}
-            </>
-          )}
-        </div>
+      {/*
+        **상자 크기는 해상도와 무관하다** — 창에서 위(닫기)·아래(캡션)·양옆(화살표 자리)을 뺀 만큼으로 늘 같고, 사진은 그 안에 맞춘다(contain).
+        예전엔 칸 크기를 원본이 정해서 작은 사진(1128×480)은 큰 사진(2256×960)보다 작게 떴다.
+        양옆은 화살표가 서는 **통로**라 사진과 겹치지 않는다. 썸네일도 같은 상자라 원본이 풀려도 크기가 안 튄다
+      */}
+      <div ref={boxRef} className="absolute inset-x-12 top-14 bottom-12 sm:inset-x-[4.5rem]">
+        {isVideo ? (
+          /*
+            재생·멈춤만 준다 (사용자 결정 2026-08-28). 타임라인·전체화면·이어보기는 안 넣는다 —
+            브라우저 기본 컨트롤이 재생/멈춤/볼륨까지는 주므로 그것만 켠다
+          */
+          <video
+            src={item.url}
+            controls
+            controlsList="nodownload noplaybackrate"
+            disablePictureInPicture
+            className="absolute inset-0 h-full w-full object-contain"
+          />
+        ) : (
+          <>
+            {thumb && !originalReady && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={thumb}
+                alt=""
+                aria-hidden
+                onLoad={() => painted(item.url, "thumb")}
+                className="absolute inset-0 h-full w-full object-contain"
+              />
+            )}
+            {showOriginal && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={item.url}
+                src={item.url}
+                alt={item.fileName}
+                decoding="async"
+                onLoad={(e) => {
+                  const url = item.url;
+                  e.currentTarget.decode().catch(() => {}).finally(() => { setReadyUrl(url); painted(url, "orig"); });
+                }}
+                className={`absolute inset-0 h-full w-full object-contain ${originalReady || !thumb ? "" : "opacity-0"}`}
+              />
+            )}
+          </>
+        )}
+      </div>
 
-        <div className="num flex items-center gap-3 text-[11px] text-white/45">
-          <span>{item.fileName}</span>
-          <span className="text-white/25">
-            {index + 1} / {items.length}
-          </span>
-        </div>
+      <div className="num pointer-events-none absolute inset-x-12 bottom-3 flex items-center justify-center gap-3 text-[11px] text-white/45 sm:inset-x-[4.5rem]">
+        <span className="truncate">{item.fileName}</span>
+        <span className="shrink-0 text-white/25">
+          {index + 1} / {items.length}
+        </span>
       </div>
 
       {items.length > 1 && (
@@ -219,7 +238,7 @@ export default function MediaViewer({
       <button
         onClick={onClose}
         aria-label="닫기"
-        className="absolute top-5 right-6 text-2xl leading-none text-white/50 transition-colors hover:text-white"
+        className="absolute top-3 right-4 flex h-9 w-9 items-center justify-center rounded-full text-2xl leading-none text-white/50 transition-colors hover:bg-white/10 hover:text-white"
       >
         ×
       </button>
@@ -236,12 +255,11 @@ function Arrow({ side, onClick }: { side: "left" | "right"; onClick: () => void 
         onClick();
       }}
       aria-label={side === "left" ? "이전" : "다음"}
-      className={`absolute top-1/2 -translate-y-1/2 rounded-full border border-white/15 bg-black/40 p-3 text-white/60 transition-colors hover:border-white/40 hover:text-white ${
-        side === "left" ? "left-5" : "right-5"
+      className={`absolute top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-black/40 text-white/60 transition-colors hover:border-white/40 hover:text-white sm:h-11 sm:w-11 ${
+        side === "left" ? "left-1.5 sm:left-3" : "right-1.5 sm:right-3"
       }`}
     >
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
-           className="h-5 w-5">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
         <path d={side === "left" ? "M15 5l-7 7 7 7" : "M9 5l7 7-7 7"} />
       </svg>
     </button>

@@ -20,6 +20,7 @@ const ICONS = {
   move: "M4 12h14m-5-5l5 5-5 5",
   plus: "M12 5v14M5 12h14",
   panel: "M4 5h16v14H4zM9 5v14",
+  up: "M12 19V5m-6 6l6-6 6 6",
 } as const;
 
 export type ToolIcon = keyof typeof ICONS;
@@ -30,6 +31,11 @@ export function Icon({ name, className = "h-3.5 w-3.5" }: { name: ToolIcon; clas
       <path d={ICONS[name]} />
     </svg>
   );
+}
+
+/** 단축키 칩 — 눈에 걸리지 않게 흐리고, 좁은 화면(키보드가 없는 쪽)에서는 숨긴다 */
+export function Kbd({ children }: { children: string }) {
+  return <kbd className="num hidden rounded border border-white/15 px-1 text-[10px] leading-4 font-normal text-white/35 md:inline">{children}</kbd>;
 }
 
 type Tone = "default" | "danger" | "primary";
@@ -47,13 +53,17 @@ export function ToolButton({
   tone = "default",
   active = false,
   className = "",
+  kbd,
+  title,
+  short = false,
   children,
   ...rest
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { icon?: ToolIcon; tone?: Tone; active?: boolean }) {
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { icon?: ToolIcon; tone?: Tone; active?: boolean; kbd?: string; /** 좁은 화면에서는 아이콘만 (글자는 스크린리더용으로 남긴다) */ short?: boolean }) {
   return (
-    <button type="button" {...rest} className={`${toolClass(tone, active)} ${className}`}>
+    <button type="button" {...rest} title={kbd ? `${title ?? ""}${title ? " · " : ""}단축키 ${kbd}` : title} className={`${toolClass(tone, active)} ${className}`}>
       {icon && <Icon name={icon} />}
-      {children}
+      {short ? <span className="max-sm:sr-only">{children}</span> : children}
+      {kbd && <Kbd>{kbd}</Kbd>}
     </button>
   );
 }

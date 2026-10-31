@@ -10,14 +10,9 @@ import { useSourceScan } from "@/lib/useSourceScan";
 import { useSteamLinks } from "@/lib/useSteamLinks";
 import type { GalleryResponse } from "@/lib/types";
 import ExternalPane from "./ExternalPane";
-import Rail from "./Rail";
+import Rail, { type RailSegment } from "./Rail";
+import { useStoredState } from "@/lib/useStoredState";
 import StarlogPane from "./StarlogPane";
-
-const COLLAPSE_KEY = "starlog.shots.railCollapsed";
-
-function readCollapsed(): boolean {
-  try { return window.localStorage.getItem(COLLAPSE_KEY) === "1"; } catch { return false; }
-}
 
 /**
  * 스크린샷 화면 하나 — 예전의 전체 화면 갤러리(오버레이)와 스크린샷 인박스(`/screenshots-inbox`)를 합쳤다.
@@ -36,19 +31,30 @@ export default function ScreenshotsPage() {
   const groupParam = params.get("group");
 
   const desktop = Boolean(getBridge()?.sources);
-  const [collapsed, setCollapsed] = useState(false);
-  useEffect(() => { queueMicrotask(() => setCollapsed(readCollapsed())); }, []);
-  const toggleRail = () => setCollapsed((c) => {
-    try { window.localStorage.setItem(COLLAPSE_KEY, c ? "0" : "1"); } catch { /* 기억 못 해도 동작한다 */ }
-    return !c;
-  });
+  /* 폰에서만 의미가 있는 드로어 열림 — lg 이상은 늘 떠 있다 (라이브러리 사이드바와 같다) */
+  const [railOpen, setRailOpen] = useState(false);
+
+  /*
+   * 레일은 STARLOG / 외부 폴더 중 하나만 보인다. 마지막 고른 쪽을 기억하되 **주소가 이긴다** —
+   * ?entry=는 STARLOG, ?source=는 외부. 주소의 종류가 바뀐 순간(렌더 중 비교)에만 따라간다
+   */
+  const [storedSeg, storeSeg] = useStoredState<RailSegment>("starlog.shots.railSegment", "starlog", ["starlog", "external"]);
+  const urlSeg: RailSegment | null = entryParam !== null ? "starlog" : sourceParam !== null ? "external" : null;
+  const [pickedSeg, setPickedSeg] = useState<RailSegment | null>(null);
+  const [seenUrlSeg, setSeenUrlSeg] = useState(urlSeg);
+  if (seenUrlSeg !== urlSeg) {
+    setSeenUrlSeg(urlSeg);
+    setPickedSeg(urlSeg);
+  }
+  const segment: RailSegment = pickedSeg ?? urlSeg ?? storedSeg;
+  const chooseSegment = (seg: RailSegment) => { setPickedSeg(seg); storeSeg(seg); };
 
   /* 레일의 게임 목록 — 개수만 (`summary`). 폴더 감시가 알리면 다시 읽는다 */
   const gallery = useApi<GalleryResponse>("/api/screenshots?summary=true");
   const reloadGallery = gallery.reload;
   useEffect(() => onMediaChanged(reloadGallery), [reloadGallery]);
   const games = useMemo(
-    () => gallery.data ? gallery.data.games.map((g) => ({ entryId: g.entryId, gameName: g.gameName, count: g.imageCount + g.videoCount })) : null,
+    () => gallery.data ? gallery.data.games.map((g) => ({ entryId: g.entryId, gameName: g.gameName, count: g.imageCount + g.videoCount, latestMs: g.latestAt ? Date.parse(g.latestAt) : null })) : null,
     [gallery.data],
   );
 
@@ -68,11 +74,12 @@ export default function ScreenshotsPage() {
   if (entryId !== null) view = { kind: "game", id: entryId };
   else if (sourceOk) view = { kind: "source", id: sourceParam! };
   else if (sourceParam === null) {
-    if (games && games.length > 0) view = { kind: "game", id: games[0].entryId };
-    else if (games && sources) {
-      const first = sources.find((s) => s.ok);
-      if (first) view = { kind: "source", id: first.id };
-    }
+    /* 기본 화면은 레일이 보여 주는 쪽의 첫 항목 — 기억한 쪽이 외부 폴더면 첫 폴더부터 */
+    const firstSource = sources?.find((s) => s.ok);
+    const newest = games && games.length > 0 ? [...games].sort((a, b) => (b.latestMs ?? 0) - (a.latestMs ?? 0))[0] : null;
+    if (segment === "external" && firstSource) view = { kind: "source", id: firstSource.id };
+    else if (newest) view = { kind: "game", id: newest.entryId };
+    else if (games && firstSource) view = { kind: "source", id: firstSource.id };
   }
   const activeSource = view?.kind === "source" ? view.id : null;
 
@@ -104,11 +111,14 @@ export default function ScreenshotsPage() {
 
   const activeSrc = sources?.find((s) => s.id === activeSource) ?? null;
 
+  /* main이 아니라 div — 전역 CSS가 main에 스크롤바 거터를 잡아 판넬이 라이브러리보다 6px 밀린다 */
   return (
-    <main className="flex h-full pt-16" data-shots-page>
+    <div className="flex h-full w-full overflow-hidden" data-shots-page>
       <Rail
-        collapsed={collapsed}
-        onToggle={toggleRail}
+        open={railOpen}
+        onOpenChange={setRailOpen}
+        segment={segment}
+        onSegment={chooseSegment}
         games={games}
         gamesLoading={gallery.loading}
         activeEntry={view?.kind === "game" ? view.id : null}
@@ -124,6 +134,7 @@ export default function ScreenshotsPage() {
         links={steamLinks.links}
       />
 
+      <div className="relative flex h-full min-w-0 flex-1 flex-col overflow-hidden">
       {view?.kind === "game" ? (
         <StarlogPane key={view.id} entryId={view.id} gameName={title} />
       ) : view?.kind === "source" && activeSrc ? (
@@ -143,7 +154,7 @@ export default function ScreenshotsPage() {
           onShowMoved={setShowMoved}
         />
       ) : (
-        <div className="flex min-w-0 flex-1 items-center justify-center">
+        <div className="flex min-w-0 flex-1 items-center justify-center pt-16">
           {gallery.loading || (desktop && sources === null) ? (
             <div data-loading className="image-placeholder h-24 w-48 animate-pulse rounded-lg" />
           ) : (
@@ -154,6 +165,7 @@ export default function ScreenshotsPage() {
           )}
         </div>
       )}
-    </main>
+      </div>
+    </div>
   );
 }

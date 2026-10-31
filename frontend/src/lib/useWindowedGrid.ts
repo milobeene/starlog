@@ -75,6 +75,9 @@ export function useWindowedGrid(count: number, { overscanRows = 3, aspect = 16 /
     top: geo ? first * geo.rowH : 0,
     /** 바깥 상자 높이(px). 재기 전에는 null — 그동안은 그리드가 제 높이로 선다 */
     height: geo ? Math.max(0, totalRows * geo.rowH - geo.rowGap) : null,
+    /** 줄 하나의 높이(간격 포함)와 간격 — 접힌 높이를 "몇 줄 반"으로 정할 때 쓴다. 재기 전엔 null */
+    rowH: geo?.rowH ?? null,
+    rowGap: geo?.rowGap ?? 0,
   };
 }
 

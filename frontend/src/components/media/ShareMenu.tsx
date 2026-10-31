@@ -66,7 +66,7 @@ export default function ShareMenu({ targets }: { targets: MediaTarget[] }) {
       trigger={() => (
         <span className={`${toolClass()} ${none ? "pointer-events-none opacity-35" : ""}`}>
           <Icon name="share" />
-          공유
+          <span className="max-sm:sr-only">공유</span>
         </span>
       )}
     >

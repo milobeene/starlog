@@ -36,6 +36,13 @@ export function usePick(count: number, resetKey?: unknown) {
     clear();
   }, [clear]);
 
+  /** 단축키용 — 모드에 들어가며 전부 고른다 (이미 전부면 그대로) */
+  const selectAll = useCallback(() => {
+    setSelectMode(true);
+    setSelected(new Set(order));
+    setAnchor(null);
+  }, [order]);
+
   const toggleAll = () => {
     setSelected(allSelected ? new Set() : new Set(order));
     setAnchor(null);
@@ -71,5 +78,5 @@ export function usePick(count: number, resetKey?: unknown) {
     setSelected(result.next);
   };
 
-  return { selectMode, setSelectMode, selected, order, allSelected, pick, toggleAll, clear, cancel };
+  return { selectMode, setSelectMode, selected, order, allSelected, pick, toggleAll, selectAll, clear, cancel };
 }

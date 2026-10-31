@@ -14,6 +14,9 @@ import { useIdlePreload } from "@/lib/useWindowedGrid";
 import { STEAM_NOTE } from "@/lib/ingest";
 import type { SteamLink } from "@/lib/types";
 import PaneHeader from "./PaneHeader";
+import { SelectActions, SelectionCount, SelectToggle } from "./SelectBar";
+import { useShotShortcuts } from "@/lib/useShotShortcuts";
+import { Skeleton } from "@/components/ui/Skeleton";
 import ShotGrid, { type GridItem } from "./ShotGrid";
 
 /**
@@ -72,7 +75,7 @@ export default function ExternalPane({
     [rawItems, moving],
   );
 
-  const { selectMode, setSelectMode, selected, allSelected, pick, toggleAll, cancel } =
+  const { selectMode, setSelectMode, selected, allSelected, pick, toggleAll, selectAll, cancel } =
     usePick(items.length, `${source.id}/${group?.key}/${items.length}`);
   const chosen = useMemo(
     () => [...selected].sort((a, b) => a - b).map((i) => rawItems[i]).filter((it) => Boolean(it) && !it.moved && !moving?.rels.has(it.rel)),
@@ -108,13 +111,15 @@ export default function ExternalPane({
   );
   const closeViewer = useCallback(() => setViewing(null), []);
 
-  /* Esc는 선택을 푼다 (크게 보기·고르기 창이 자기 Esc를 처리하는 동안은 건드리지 않는다) */
-  useEffect(() => {
-    if (!selectMode || viewing !== null || picking) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") cancel(); };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [selectMode, viewing, picking, cancel]);
+  useShotShortcuts({
+    enabled: viewing === null && !picking && !confirming,
+    selectMode,
+    selectedCount: selected.size,
+    itemCount: items.length,
+    onToggleMode: () => setSelectMode(true),
+    onSelectAll: selectAll,
+    onCancel: cancel,
+  });
 
   const startMove = async (entryId: number, name: string | null) => {
     if (!sourcesApi || !group) return;
@@ -141,25 +146,24 @@ export default function ExternalPane({
   const pinnedId = steam ? link?.entryId ?? null : null;
   /* 연결된 게임이 있으면 고르기 창 대신 확인 한 번 — [다른 게임 고르기]로 바꿀 수 있다 */
   const beginMove = () => { if (steam && link?.entryId != null) setConfirming(true); else setPicking(true); };
-  const title = group && scan && scan.groups.length > 1 ? `${source.name} · ${group.title}` : source.name;
+  /* 제목은 그 묶음의 이름 하나 — 폴더 이름까지 앞에 붙이면 길어져 도구 줄이 아래로 밀린다. 폴더 이름은 작은 글씨로 */
+  const multi = Boolean(group && scan && scan.groups.length > 1);
+  const title = multi && group ? group.title : source.name;
+  const subText = multi ? [source.name, group?.sub].filter(Boolean).join(" · ") : group?.sub ?? null;
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-pane="external">
+    <div className="min-h-0 min-w-0 flex-1 overflow-y-auto" data-pane="external" data-scroller>
+      {/* 여백은 안쪽 상자가 가진다 — 스크롤러 패딩은 sticky의 기준을 밀어 낸다 */}
+      <div className="page-x pt-[4.5rem] pb-10 lg:pt-20">
       <PaneHeader
         title={title}
-        sub={group?.sub}
+        sub={subText}
         count={group ? items.length : null}
-        note={steam && link?.entryId != null ? `→ ${link.entryName ?? "연결된 게임"} · ${link.source === "AUTO" ? "자동" : "직접"}` : null}
+        note={steam && link?.entryId != null ? `→ ${link.entryName ?? "연결된 게임"}` : null}
+        left={selectMode ? <SelectionCount count={selected.size} /> : null}
       >
         {group && (
           <>
-            <ToolGroup label="선택">
-              <ToolButton icon="select" active={selectMode} disabled={!selectMode && items.length === 0} onClick={() => (selectMode ? cancel() : setSelectMode(true))}>
-                {selectMode ? "선택 취소" : "선택"}
-              </ToolButton>
-              {selectMode && <ToolButton icon="all" onClick={toggleAll}>{allSelected ? "전체 해제" : "전체 선택"}</ToolButton>}
-            </ToolGroup>
-            {selectMode && <span className="num text-xs text-white/50">{selected.size}개 선택</span>}
             {steam && movedCount > 0 && (
               <ToolGroup label="보기">
                 <ToolButton active={showMoved} onClick={() => onShowMoved(!showMoved)} data-show-moved>
@@ -167,21 +171,23 @@ export default function ExternalPane({
                 </ToolButton>
               </ToolGroup>
             )}
-            <ToolGroup label="옮기기">
-              <ToolButton icon="move" tone="primary" data-move disabled={chosen.length === 0 || moving !== null} onClick={beginMove}>
-                {moving ? (steam ? "복사하는 중…" : "옮기는 중…") : `${steam ? "게임으로 복사" : "게임으로 옮기기"}${selected.size ? ` (${selected.size})` : ""}`}
-              </ToolButton>
-            </ToolGroup>
             {sourcesApi?.reveal && (
               <ToolGroup label="열기">
                 <ToolButton icon="folder" onClick={reveal} title="탐색기에서 이 폴더 열기">폴더 열기</ToolButton>
               </ToolGroup>
             )}
+            <ToolGroup label="옮기기">
+              <ToolButton icon="move" tone="primary" data-move disabled={chosen.length === 0 || moving !== null} onClick={beginMove}>
+                {moving ? (steam ? "복사하는 중…" : "옮기는 중…") : `${steam ? "게임으로 복사" : "게임으로 옮기기"}${selected.size ? ` (${selected.size})` : ""}`}
+              </ToolButton>
+            </ToolGroup>
+            {selectMode && <SelectActions allSelected={allSelected} onToggleAll={toggleAll} />}
+            <SelectToggle selectMode={selectMode} disabled={!selectMode && items.length === 0} onClick={() => (selectMode ? cancel() : setSelectMode(true))} />
           </>
         )}
       </PaneHeader>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 xl:px-8" data-scroller>
+      <div className="mt-4">
         {moveError && <p role="alert" className="mb-3 text-xs text-red-400">{moveError}</p>}
         {scan?.truncated && <p className="mb-3 text-xs text-white/50">목록이 너무 많아 일부만 표시합니다.</p>}
         {error ? (
@@ -191,7 +197,7 @@ export default function ExternalPane({
           </div>
         ) : loading ? (
           <div data-loading className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
-            {Array.from({ length: 12 }, (_, i) => <div key={i} className="image-placeholder aspect-video animate-pulse rounded-lg" />)}
+            {Array.from({ length: 12 }, (_, i) => <Skeleton key={i} className="aspect-video w-full rounded-lg" />)}
           </div>
         ) : !group ? (
           <EmptyState title="사진이 없습니다" hint="이 폴더에서 사진이나 영상을 찾지 못했습니다." />
@@ -206,6 +212,7 @@ export default function ExternalPane({
         )}
       </div>
 
+      </div>
       {viewing !== null && viewerItems[viewing] && (
         <MediaViewer items={viewerItems} index={viewing} onIndex={setViewing} onClose={closeViewer} />
       )}

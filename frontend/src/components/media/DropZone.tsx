@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { splitAccepted } from "@/lib/dropFiles";
 
 /**
  * 이미지 받는 자리 — **드롭 · 클릭 · 붙여넣기** (v1.0 6단계, architecture §10-1).
@@ -80,22 +81,8 @@ export default function DropZone({
   }, [onFiles, multiple, disabled]);
 
   const accept = (list: FileList | null) => {
-    const all = Array.from(list ?? []);
-    const files = all.filter(
-      (f) => f.type.startsWith("image/") || (video && f.type.startsWith("video/")),
-    );
-    const skipped = all.filter((f) => !files.includes(f));
-
-    // 서버 문구와 같은 글자 — 확장자가 없으면 파일 이름을 대신 보인다
-    const kinds = [...new Set(skipped.map((f) => extensionOf(f.name)))].join(", ");
-    setRejected(
-      skipped.length === 0
-        ? null
-        : `지원하지 않는 형식입니다: ${kinds} (${
-            video ? "jpg · png · webp · mp4 · mov · webm" : "jpg, png, webp만 가능"
-          })`,
-    );
-
+    const { files, message } = splitAccepted(list, video);
+    setRejected(message);
     if (files.length > 0) onFiles(multiple ? files : files.slice(0, 1));
   };
 
@@ -170,12 +157,6 @@ export default function DropZone({
       )}
     </div>
   );
-}
-
-/** `a.b.pdf` → `pdf`. 점이 없으면 이름 전체 */
-function extensionOf(name: string): string {
-  const dot = name.lastIndexOf(".");
-  return dot < 0 || dot === name.length - 1 ? name : name.slice(dot + 1).toLowerCase();
 }
 
 function UploadIcon({ compact }: { compact: boolean }) {

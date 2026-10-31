@@ -539,9 +539,9 @@ async function viewerSteps(entryId) {
   })()`);
   check("뷰어 — 누르고 있으면 초당 ~8장 (120ms 간격, 키 반복 30/s를 거른다)",
     hold.events >= 20 && hold.steps >= 6 && hold.steps <= 10 && hold.minGap >= 100, JSON.stringify(hold));
-  await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+  await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }))`);
   await sleep(200);
-  await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+  await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }))`);
 }
 
 /**
@@ -1128,7 +1128,7 @@ async function sourcesSteps(port, entryId) {
 
   // 10) 스크린샷 화면 (/screenshots) — 레일 · 스팀 연결 · 복사 · 폴더 트리 · 탭 전환 · 시스템의 등록 구역
   const waitFor = async (expr, ms = 8000) => { const t0 = Date.now(); for (;;) { const v = await js(`!!(${expr})`); if (v) return v; if (Date.now() - t0 > ms) return v; await sleep(100); } };
-  const gridCount = `document.querySelector('[data-shots-page] [data-count]')?.children.length ?? 0`;
+  const gridCount = `document.querySelectorAll('[data-shots-page] [data-count] [data-tile]').length`;
 
   // 10-1) 옛 주소는 새 화면으로
   await goto("app://starlog/screenshots-inbox");
@@ -1137,9 +1137,9 @@ async function sourcesSteps(port, entryId) {
   // 10-2) 스팀 — 레일의 묶음(게임 이름 · 연결), 옮긴 것은 기본 숨김 + 토글
   await goto(`app://starlog/screenshots?source=${steamId}`);
   let page = "";
-  for (let i = 0; i < 40 && !/E2E 스팀 게임/.test(page); i++) { await sleep(200); page = await js("document.body.innerText"); }
+  for (let i = 0; i < 40 && !/(E2E 스팀 게임|E2E 테스트 게임)[\s\S]*둘째 라이브러리 게임/.test(page); i++) { await sleep(200); page = await js("document.body.innerText"); }
   check("스크린샷 화면 — 레일에 STARLOG·외부 폴더(스팀 묶음: 게임 이름)가 보인다", /STARLOG/.test(page) && /외부 폴더/.test(page) && /내 스팀/.test(page) && /ShareX/.test(page)
-    && /E2E 스팀 게임/.test(page) && /둘째 라이브러리 게임/.test(page) && /비 스팀 게임 3000000000/.test(page), page.split("\n").slice(0, 24).join(" | "));
+    && /(E2E 스팀 게임|E2E 테스트 게임)/.test(page) && /둘째 라이브러리 게임/.test(page) && /비 스팀 게임 3000000000/.test(page), page.split("\n").slice(0, 24).join(" | "));
   await js(`document.querySelector('[data-rail-group="4242"]').click()`);
   await waitFor(`document.querySelector('[data-pane=external] [data-count]')`);
   await sleep(1200);
@@ -1160,8 +1160,8 @@ async function sourcesSteps(port, entryId) {
   const linkRow = await api(port, "POST", "/api/steam-links/resolve", { appids: ["4242"] });
   const linked4242 = linkRow.json?.links?.find((l) => l.appid === "4242");
   const hasLinksApi = linkRow.status === 200;
-  check("스팀 연결 — 옛 기억이 연결 표(직접)로 옮겨지고 묶음에 '→ 게임 · 직접'이 뜬다 (서버 연결 API가 있을 때)",
-    !hasLinksApi || (linked4242?.entryId === entryId && linked4242.source === "MANUAL" && /→ .+ · 직접/.test(linkNote ?? "")), `${linkRow.status} ${JSON.stringify(linked4242)} ${linkNote}`);
+  check("스팀 연결 — 옛 기억이 연결 표(직접)로 옮겨지고 묶음에 '→ 게임'이 뜬다 (자동·직접 배지는 없다) (서버 연결 API가 있을 때)",
+    !hasLinksApi || (linked4242?.entryId === entryId && linked4242.source === "MANUAL" && /^→ [^·]+$/.test(linkNote ?? "")), `${linkRow.status} ${JSON.stringify(linked4242)} ${linkNote}`);
   check("스팀 연결 — 옛 기억은 옮긴 뒤 비어서 온다 (memoryMigrated)", !hasLinksApi || Object.keys(await js("window.starlog.sources.memory()")).length === 0);
 
   // 선택 → [게임으로 복사] → 연결된 게임이 미리 골라진 확인, [다른 게임 고르기] → 고르기 창(연결된 게임이 맨 위)
@@ -1174,7 +1174,7 @@ async function sourcesSteps(port, entryId) {
   await js(`document.querySelector('[data-pane=external] [data-check]').click()`);
   await sleep(300);
   const selCount = await js(`document.body.innerText.match(/(\\d+)개 선택/)?.[1] ?? null`);
-  await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+  await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }))`);
   await sleep(300);
   const afterEsc = await js(`document.body.innerText.match(/(\\d+)개 선택/)?.[1] ?? null`);
   check("선택 — 체크를 누르면 선택 모드로 1개 선택, Esc는 선택을 푼다", selCount === "1" && afterEsc === null, `${selCount} → ${afterEsc}`);
@@ -1269,7 +1269,7 @@ async function sourcesSteps(port, entryId) {
   await js(`document.querySelector('[data-pane=starlog] [data-check]').click()`);
   await sleep(250);
   const n1 = await js(`document.body.innerText.match(/(\\d+)개 선택/)?.[1] ?? null`);
-  await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+  await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }))`);
   await sleep(250);
   check("STARLOG 화면 — 체크로 선택 모드, Esc로 선택 해제", n1 === "1" && (await js(`document.body.innerText.match(/(\\d+)개 선택/)?.[1] ?? null`)) === null);
   // 크게 보기 — 해상도가 달라도 같은 크기로 (contain, 작은 그림은 키운다)
@@ -1282,20 +1282,104 @@ async function sourcesSteps(port, entryId) {
       const r = img.getBoundingClientRect(), a = img.naturalWidth / img.naturalHeight;
       return { box: [Math.round(r.width), Math.round(r.height)], content: Math.round(Math.min(r.width, r.height * a)), nat: img.naturalWidth, fit: getComputedStyle(img).objectFit };
     })()`);
-    await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+    await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }))`);
     await sleep(250);
     return m;
   };
   const vz = [await measure("vz-a.png"), await measure("vz-b.png"), await measure("vz-c.png")];
   check("크게 보기 — 2256×960·1692×720·1128×480이 같은 크기로 뜬다 (contain, 작은 그림도 상자에 맞춰 키움)",
     vz.every(Boolean) && vz.every((m) => m.fit === "contain") && new Set(vz.map((m) => m.content)).size === 1 && vz[2].content > vz[2].nat, JSON.stringify(vz));
-  // 상세의 [전체 보기]
+  // 11-b) 새 화면 규칙 — 추가 카드가 첫 칸 · 최신이 앞 · 제목 링크 · 단축키(e.code) · 선택 머리 자리 · 뷰어 배경 클릭
+  const key = (code, k, extra = "") => js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(k)}, code: ${JSON.stringify(code)}, bubbles: true${extra} }))`);
+  const apiList = (await api(port, "GET", `/api/backlog/${entryId}/screenshots`)).json;
+  const newest = [...apiList].sort((a, b) => (b.takenAt ?? "").localeCompare(a.takenAt ?? "") || b.fileName.localeCompare(a.fileName))[0]?.fileName;
+  const shape = await js(`(() => {
+    const g = document.querySelector('[data-pane=starlog] [data-count]');
+    const t = document.querySelector('[data-pane=starlog] [data-title-link]');
+    return { addFirst: g?.firstElementChild?.hasAttribute('data-add-tile') ?? false, first: g?.children[1]?.querySelector('button')?.getAttribute('aria-label') ?? null, href: t?.getAttribute('href') ?? null,
+      tileSize: (() => { const a = g?.children[0]?.getBoundingClientRect(), b = g?.children[1]?.getBoundingClientRect(); return a && b ? [Math.round(a.width), Math.round(a.height), Math.round(b.width), Math.round(b.height)] : null; })() };
+  })()`);
+  check("스크린샷 화면 — 추가 카드가 첫 칸(사진과 같은 크기), 그 다음이 최신 사진, 제목은 상세 링크",
+    shape.addFirst && shape.first === `${newest} 크게 보기` && shape.href === `/library/detail?entry=${entryId}` && shape.tileSize[0] === shape.tileSize[2] && Math.abs(shape.tileSize[1] - shape.tileSize[3]) <= 1, JSON.stringify({ ...shape, newest }));
+  // 단축키 — 한글 입력기가 켜진 상태(key는 ㄴ·ㅁ)에서도 code로 동작
+  await key("KeyS", "ㄴ"); await sleep(250);
+  const btnText = () => js(`document.querySelector('[data-pane=starlog] [data-select-toggle]')?.textContent.replace(/\\s*S$/, '').trim()`);
+  const modeOn = (await btnText()) === "선택 취소";
+  const rightBefore = await js(`Math.round(document.querySelector('[data-pane=starlog] [data-select-toggle]').getBoundingClientRect().right)`);
+  await key("KeyA", "ㅁ"); await sleep(250);
+  const total = await js(`Number(document.body.innerText.match(/(\\d+)개 선택/)?.[1] ?? -1)`);
+  const rightAfter = await js(`Math.round(document.querySelector('[data-pane=starlog] [data-select-toggle]').getBoundingClientRect().right)`);
+  const countLeft = await js(`(() => { const c = document.querySelector('[data-pane=starlog] [data-selection-count]').getBoundingClientRect(), t = document.querySelector('[data-pane=starlog] [data-select-toggle]').getBoundingClientRect(); return c.right < t.left && c.left < t.left - 200; })()`);
+  check("단축키 — S로 선택 모드, A로 전체 선택 (한글 입력 상태에서도), 'n개 선택'은 왼쪽 · [선택 취소]는 맨 오른쪽 같은 자리",
+    modeOn && total === apiList.length && countLeft && rightBefore === rightAfter, JSON.stringify({ modeOn, total, of: apiList.length, countLeft, rightBefore, rightAfter }));
+  await key("Delete", "Delete"); await sleep(400);
+  const confirmOpen = await js(`!![...document.querySelectorAll('[role=dialog]')].find((d) => /삭제/.test(d.textContent) && d.querySelector('button'))`);
+  await key("Escape", "Escape"); await sleep(400);   // 확인창 Esc — 선택은 그대로
+  const stillSel = await js(`!!document.querySelector('[data-pane=starlog] [data-selection-count]')`);
+  check("단축키 — Delete는 삭제 확인창을 연다 (확인 전엔 아무것도 안 지운다)", confirmOpen && stillSel && (await api(port, "GET", `/api/backlog/${entryId}/screenshots`)).json.length === apiList.length, JSON.stringify({ confirmOpen, stillSel }));
+  await key("Escape", "Escape"); await sleep(250);
+  const exited = !(await js(`!!document.querySelector('[data-pane=starlog] [data-selection-count]')`));
+  // 입력칸에 포커스가 있으면 무시한다
+  await js(`document.querySelector('[data-rail] input')?.focus()`);
+  await js(`document.querySelector('[data-rail] input')?.dispatchEvent(new KeyboardEvent('keydown', { key: 's', code: 'KeyS', bubbles: true }))`); await sleep(250);
+  const ignored = (await btnText()) === "선택";
+  await js(`document.activeElement?.blur()`);
+  check("단축키 — Esc로 선택 해제, 입력칸에서 누른 S는 무시", exited && ignored, JSON.stringify({ exited, ignored }));
+  // 뷰어 — 화살표는 사진 밖 통로, 사진 위 클릭은 안 닫고 여백·배경 클릭은 닫는다
+  await js(`document.querySelector('[aria-label="vz-a.png 크게 보기"]').click()`);
+  await sleep(1200);
+  const vgeo = await js(`(() => {
+    const v = [...document.querySelectorAll('[role=dialog][aria-modal=true]')].find((x) => x.className.includes('z-[200]')); const img = v?.querySelector('img[alt="vz-a.png"]'); if (!img) return null;
+    const r = img.getBoundingClientRect(), a = img.naturalWidth / img.naturalHeight, w = Math.min(r.width, r.height * a), h = w / a;
+    const arrows = [...v.querySelectorAll('button[aria-label=이전], button[aria-label=다음]')].map((b) => b.getBoundingClientRect());
+    return { cx: r.left + r.width / 2, cy: r.top + r.height / 2, letterY: r.top + (r.height - h) / 2 - 6, boxLeft: r.left, boxRight: r.right,
+      overlap: arrows.some((b) => !(b.right <= r.left || b.left >= r.right || b.bottom <= r.top || b.top >= r.bottom)), nArrows: arrows.length };
+  })()`);
+  const click = (x, y) => js(`(() => { const e = document.elementFromPoint(${x}, ${y}); e?.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: ${x}, clientY: ${y} })); return 0; })()`);
+  const viewerOpen = () => js(`!![...document.querySelectorAll('[role=dialog][aria-modal=true]')].find((x) => x.className.includes('z-[200]'))`);
+  await click(vgeo.cx, vgeo.cy); await sleep(250);
+  const stayOnImage = await viewerOpen();
+  await click(vgeo.cx, vgeo.letterY); await sleep(250);
+  const closedLetterbox = !(await viewerOpen());
+  await js(`document.querySelector('[aria-label="vz-a.png 크게 보기"]').click()`); await sleep(900);
+  await click(6, 400); await sleep(250);
+  const closedBackdrop = !(await viewerOpen());
+  check("뷰어 — 화살표는 사진과 안 겹친다, 사진 위 클릭은 유지 · 사진 위아래 여백(contain)·배경 클릭은 닫는다",
+    vgeo.nArrows === 2 && !vgeo.overlap && stayOnImage && closedLetterbox && closedBackdrop, JSON.stringify({ ...vgeo, stayOnImage, closedLetterbox, closedBackdrop }));
+  // 레일 — 두 칸 토글(한 번에 한 목록) · 기억 · 최근 사진순
+  const gal = (await api(port, "GET", "/api/screenshots?summary=true")).json.games[0];
+  const seg = await js(`(() => ({ tabs: [...document.querySelectorAll('[data-rail-segment]')].map((b) => b.dataset.railSegment), game: !!document.querySelector('[data-rail-game]'), src: !!document.querySelector('[data-rail-source]') }))()`);
+  await js(`document.querySelector('[data-rail-segment=external]').click()`); await sleep(500);
+  const seg2 = await js(`(() => ({ game: !!document.querySelector('[data-rail-game]'), src: !!document.querySelector('[data-rail-source]'), stored: localStorage.getItem('starlog.shots.railSegment') }))()`);
+  await js(`document.querySelector('[data-rail-segment=starlog]').click()`); await sleep(300);
+  check("레일 — [STARLOG][외부 폴더] 한 번에 한 목록, 고른 쪽을 기억, 요약 API는 게임마다 latestAt",
+    seg.tabs.join() === "starlog,external" && seg.game && !seg.src && !seg2.game && seg2.src && seg2.stored === "external" && /^\d{4}-\d\d-\d\dT/.test(gal?.latestAt ?? ""), JSON.stringify({ seg, seg2, latestAt: gal?.latestAt }));
+  // 상세의 [전체 보기] — 구역이 충분히 길고 창이 낮아야 머리 버튼이 화면 위로 나간다
+  for (let i = 0; i < 24; i++) big(64, 36, `vz-x${String(i).padStart(2, "0")}.png`);
+  win.setContentSize(1280, 460);
   await goto(`app://starlog/library/detail?entry=${entryId}`);
   await sleep(1500);
   const detailLink = await js(`[...document.querySelectorAll("a")].find((a) => a.textContent.trim() === "전체 보기")?.getAttribute("href") ?? null`);
   const detailBtns = await js(`[...document.querySelectorAll('[role=group]')].map((g) => g.getAttribute("aria-label"))`);
-  check("상세 — 스크린샷 구역의 [전체 보기]는 스크린샷 화면으로, 버튼은 선택/보기 두 묶음", detailLink === `/screenshots?entry=${entryId}` && detailBtns.includes("선택") && detailBtns.includes("보기"), `${detailLink} ${detailBtns}`);
-  for (const f of ["vz-a.png", "vz-b.png", "vz-c.png"]) fs.rmSync(path.join(mediaFolder, f), { force: true });
+  check("상세 — 스크린샷 구역의 [전체 보기]는 스크린샷 화면으로, 버튼은 선택/보기 두 묶음", detailLink === `/screenshots?entry=${entryId}` && detailBtns.includes("선택 모드") && detailBtns.includes("보기"), `${detailLink} ${detailBtns}`);
+  // 상세 구역 — 접힘이 기본(셋째 줄 중간에서 잘림), 최신이 앞, 추가 카드가 첫 칸, 스크롤하면 위로 가는 줄이 고정
+  const dsec = await js(`(() => { const g = document.querySelector('[data-shot-section] [data-count]'); const c = document.querySelector('[data-shot-section] [data-collapsed]');
+    return { addFirst: g?.firstElementChild?.hasAttribute('data-add-tile') ?? false, first: g?.children[1]?.querySelector('button')?.getAttribute('aria-label') ?? null, collapsed: !!c, h: c ? Math.round(c.getBoundingClientRect().height) : null, tile: Math.round(g?.children[1]?.getBoundingClientRect().height ?? 0) }; })()`);
+  const nowNewest = [...(await api(port, "GET", `/api/backlog/${entryId}/screenshots`)).json].sort((a, b) => (b.takenAt ?? "").localeCompare(a.takenAt ?? "") || b.fileName.localeCompare(a.fileName))[0]?.fileName;
+  check("상세 구역 — 접힘이 기본(두 줄 반 높이), 첫 칸은 추가 카드, 그다음이 최신 사진",
+    dsec.addFirst && dsec.collapsed && dsec.first === `${nowNewest} 크게 보기` && dsec.h > dsec.tile * 2 && dsec.h < dsec.tile * 3.2, JSON.stringify({ ...dsec, nowNewest }));
+  await js(`document.querySelector('[data-expand-toggle]')?.click()`); await sleep(500);
+  const expandedNow = await js(`!document.querySelector('[data-shot-section] [data-collapsed]')`);
+  const scrollSec = (y) => js(`(() => { const sec = document.querySelector('[data-shot-section]'); let el = sec.parentElement; while (el && !/auto|scroll/.test(getComputedStyle(el).overflowY)) el = el.parentElement; el.scrollTop += sec.getBoundingClientRect().top - 110 + ${y}; return 0; })()`);
+  await scrollSec(500); await sleep(700);
+  const pinnedBar = await js(`(() => { const b = document.querySelector('[data-sticky-bar] > div'); const r = b?.getBoundingClientRect(); return b ? { top: Math.round(r.top), rightGap: Math.round(window.innerWidth - r.right), up: !!b.querySelector('[data-scroll-top]'), btns: [...b.querySelectorAll('button, a')].map((x) => x.textContent.trim().replace(/\\s*S$/, '')) } : null; })()`);
+  await js(`document.querySelector('[data-scroll-top]')?.click()`); await sleep(1500);
+  const backAtHeader = await js(`(() => { const h = [...document.querySelectorAll('[data-shot-section] h3')][0]; const t = h.getBoundingClientRect().top; return { t: Math.round(t), bar: !!document.querySelector('[data-sticky-bar]') }; })()`);
+  check("상세 구역 — 펼치면 접힘이 풀리고, 머리 버튼이 화면 위로 나가면 오른쪽 위에 [위로]+버튼 줄이 고정, [위로]는 구역 머리로 돌아간다",
+    expandedNow && pinnedBar && pinnedBar.top < 120 && pinnedBar.up && pinnedBar.btns.includes("선택") && pinnedBar.btns.some((t) => /전체 보기/.test(t)) && pinnedBar.btns.some((t) => /접기/.test(t))
+    && backAtHeader.t > 40 && backAtHeader.t < 300 && !backAtHeader.bar, JSON.stringify({ expandedNow, pinnedBar, backAtHeader }));
+  for (const f of ["vz-a.png", "vz-b.png", "vz-c.png", ...Array.from({ length: 24 }, (_, i) => `vz-x${String(i).padStart(2, "0")}.png`)]) fs.rmSync(path.join(mediaFolder, f), { force: true });
+  win.setContentSize(1280, 800);
 
   // 12) 낡은 .thumbs 치우기 — 사진이 하나도 없으면 .thumbs도 없다 / 색인이 있는 척해도 목록은 폴더를 따른다
   const mediaWork = require(path.join(ROOT, "desktop/mediaWork.js"));

@@ -3,7 +3,7 @@
 import { bytesParts } from "@/lib/format";
 
 /** 이 게임에 도는 넣기 — 전역 알림과 같은 숫자를 자리에서도 보여준다 */
-export function IngestProgress({ done, total, bytesDone, bytesTotal }: { done: number; total: number; bytesDone: number; bytesTotal: number }) {
+export function IngestProgress({ done, total, bytesDone, bytesTotal, compact = false }: { done: number; total: number; bytesDone: number; bytesTotal: number; compact?: boolean }) {
   const size = (n: number) => {
     const { value, unit } = bytesParts(n);
     return `${value}${unit}`;
@@ -11,9 +11,18 @@ export function IngestProgress({ done, total, bytesDone, bytesTotal }: { done: n
   const ratio = bytesTotal > 0 ? bytesDone / bytesTotal : total > 0 ? done / total : 0;
   return (
     <div className="flex w-full max-w-xs flex-col items-center gap-2">
-      <p className="num text-sm text-white/70">
-        넣는 중 {done}/{total} · {size(bytesDone)}/{size(bytesTotal)}
-      </p>
+      {compact ? (
+        // 사진 한 칸 크기 안에서는 두 줄로 — 한 줄이면 칸 밖으로 넘친다
+        <p className="num text-[11px] leading-snug text-white/70">
+          넣는 중 {done}/{total}
+          <br />
+          <span className="text-white/45">{size(bytesDone)}/{size(bytesTotal)}</span>
+        </p>
+      ) : (
+        <p className="num text-sm text-white/70">
+          넣는 중 {done}/{total} · {size(bytesDone)}/{size(bytesTotal)}
+        </p>
+      )}
       <div className="h-1 w-full overflow-hidden rounded-full bg-white/10">
         <div className="h-full rounded-full bg-white/70 transition-all duration-300" style={{ width: `${Math.min(100, ratio * 100)}%` }} />
       </div>

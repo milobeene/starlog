@@ -562,3 +562,14 @@
 @media (prefers-reduced-motion: reduce) {
   .grain-layer { animation: none; }
 }
+
+/* ── 긴 글자 흘리기 (Marquee) — 동작 줄임이면 정적 말줄임으로 남는다 ── */
+@keyframes marquee-run {
+  0%, 18% { transform: translateX(0); }
+  50%, 68% { transform: translateX(calc(-1 * var(--marquee-d))); }
+  100% { transform: translateX(0); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .marquee-box:has(.marquee-run) { text-overflow: clip; }
+  .marquee-run { animation: marquee-run var(--marquee-t) ease-in-out infinite; }
+}

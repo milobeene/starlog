@@ -586,19 +586,22 @@ async function entryFolders() {
 export async function listGallery(entryId: number | null, kind: GalleryKind, summaryOnly = false) {
   const t0 = performance.now();
   if (entryId !== null) await db().transaction((tx) => findAliveEntry404(tx, entryId));
-  const games: { entryId: number; gameName: string; imageCount: number; videoCount: number }[] = [];
+  const games: { entryId: number; gameName: string; imageCount: number; videoCount: number; latestAt: string | null }[] = [];
   const items: (ReturnType<typeof describe> & { entryId: number; gameName: string; kind: MediaKind; mtimeNs: bigint })[] = [];
   for (const { entry, folder } of await entryFolders()) {
     let images = 0, videos = 0;
+    /* 가장 최근 사진의 시각 — 색인 도장이 맞으면 `folderMedia`가 stat 없이 색인의 mtime을 주므로 공짜다 */
+    let latest: bigint | null = null;
     // 항목 목록과 같은 거름 — `._001.png`(맥 AppleDouble) 같은 점 파일은 열리지 않는 칸이 된다 (`folderMedia`)
     for (const { name, v, entry: e } of folderMedia(folder)) {
       const k = mediaKindOf(name);
       if (k === null) continue;
       if (k === "IMAGE") images++; else videos++;
+      if (latest === null || v.mtimeNs > latest) latest = v.mtimeNs;
       if (summaryOnly || (entryId !== null && entry.entryId !== entryId) || (kind !== "ALL" && kind !== k)) continue;
       items.push({ entryId: entry.entryId, gameName: entry.displayName, kind: k, ...describe(entry.entryId, folder, name, v, e), mtimeNs: v.mtimeNs });
     }
-    if (images + videos > 0) games.push({ entryId: entry.entryId, gameName: entry.displayName, imageCount: images, videoCount: videos });
+    if (images + videos > 0) games.push({ entryId: entry.entryId, gameName: entry.displayName, imageCount: images, videoCount: videos, latestAt: latest === null ? null : instantText(latest) });
   }
   items.sort((a, b) => (a.mtimeNs !== b.mtimeNs ? (a.mtimeNs < b.mtimeNs ? 1 : -1)
     : a.entryId !== b.entryId ? a.entryId - b.entryId : a.fileName < b.fileName ? 1 : a.fileName > b.fileName ? -1 : 0));

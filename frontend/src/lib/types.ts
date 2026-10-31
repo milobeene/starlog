@@ -614,7 +614,7 @@ export interface GalleryItem {
 
 export interface GalleryResponse {
   /** 필터와 무관한 전체 목록(파일 있는 게임만, 이름순) — 드롭다운용 */
-  games: { entryId: number; gameName: string; imageCount: number; videoCount: number }[];
+  games: { entryId: number; gameName: string; imageCount: number; videoCount: number; /** 가장 최근 사진의 시각 (없으면 null) */ latestAt: string | null }[];
   items: GalleryItem[];
 }
 
